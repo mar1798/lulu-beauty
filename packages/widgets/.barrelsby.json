@@ -1,0 +1,13 @@
+{
+  "directory": [
+    "./src/atoms",
+    "./src/molecules",
+    "./src/organisms",
+    "./src/contexts",
+    "./src/templates",
+    "./src/hooks",
+    "./src/utils",
+    "./src/styling/lib",
+    "./src/styling/mixin"
+  ]
+}

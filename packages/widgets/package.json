@@ -1,0 +1,119 @@
+{
+  "name": "widgets",
+  "private": true,
+  "version": "1.0.0",
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "exports": {
+    "./atoms": "./src/atoms/index.ts",
+    "./molecules": "./src/molecules/index.ts",
+    "./organisms": "./src/organisms/index.ts",
+    "./templates": "./src/templates/index.ts",
+    "./contexts": "./src/contexts/index.ts",
+    "./hooks": "./src/hooks/index.ts",
+    "./utils": "./src/utils/index.ts",
+    "./types": "./src/types.ts",
+    "./feed": "./src/stories/feed.ts",
+    "./styling/lib": "./src/styling/lib/index.ts",
+    "./styling/properties": "./src/styling/properties.css.ts",
+    "./styling/global.css": "./src/styling/global.css.ts",
+    "./styling/preflight.css": "./src/styling/preflight.css.ts"
+  },
+  "sideEffects": [
+    "./src/styling/global.css.ts",
+    "./src/styling/preflight.css.ts"
+  ],
+  "typesVersions": {
+    "*": {
+      "styling/lib": [
+        "./src/styling/lib/index.ts"
+      ],
+      "styling/properties": [
+        "./src/styling/properties.css.ts"
+      ],
+      "atoms": [
+        "./src/atoms/index.ts"
+      ],
+      "molecules": [
+        "./src/molecules/index.ts"
+      ],
+      "organisms": [
+        "./src/organisms/index.ts"
+      ],
+      "templates": [
+        "./src/templates/index.ts"
+      ],
+      "hooks": [
+        "./src/hooks/index.ts"
+      ],
+      "contexts": [
+        "./src/contexts/index.ts"
+      ],
+      "utils": [
+        "./src/utils/index.ts"
+      ],
+      "types": [
+        "./src/types.ts"
+      ],
+      "feed": [
+        "./src/stories/feed.ts"
+      ]
+    }
+  },
+  "scripts": {
+    "clear": "rimraf storybook-static && rimraf .turbo && rimraf tsconfig.tsbuildinfo",
+    "build": "barrelsby -DqS --exclude=stories --config ./.barrelsby.json",
+    "generate": "node ./tools/generate.js && barrelsby -DqS --exclude=stories --config ./.barrelsby.json",
+    "lint": "eslint --config eslint.config.mjs ./",
+    "types": "tsc --noEmit",
+    "check": "tsc --noEmit && eslint --config eslint.config.mjs ./",
+    "test": "vitest run",
+    "storybook": "storybook dev -p 6006",
+    "build-storybook": "storybook build",
+    "barrels": "barrelsby -DqS --exclude=stories --config ./.barrelsby.json"
+  },
+  "dependencies": {
+    "clsx": "^2.1.1",
+    "html-react-parser": "^5.1.18",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@eslint/compat": "^1.2.3",
+    "@eslint/js": "^9.15.0",
+    "@faker-js/faker": "^9.2.0",
+    "@storybook/addon-a11y": "^8.4.4",
+    "@storybook/addon-actions": "^8.4.4",
+    "@storybook/addon-controls": "^8.4.4",
+    "@storybook/addon-essentials": "^8.4.4",
+    "@storybook/addon-interactions": "^8.4.4",
+    "@storybook/addon-links": "^8.4.4",
+    "@storybook/core-common": "^8.4.4",
+    "@storybook/react": "^8.4.4",
+    "@storybook/react-vite": "^8.4.4",
+    "@storybook/theming": "^8.4.4",
+    "@types/color": "^4.2.0",
+    "@types/node": "^22.9.0",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@typescript-eslint/eslint-plugin": "^8.14.0",
+    "@typescript-eslint/parser": "^8.14.0",
+    "@vanilla-extract/css": "^1.16.0",
+    "@vanilla-extract/css-utils": "^0.1.4",
+    "@vanilla-extract/vite-plugin": "^4.0.17",
+    "@vitejs/plugin-react": "^4.3.3",
+    "barrelsby": "^2.8.1",
+    "color": "^4.2.3",
+    "eslint": "^9.14.0",
+    "eslint-config-prettier": "^9.1.0",
+    "eslint-plugin-import": "^2.31.0",
+    "eslint-plugin-react": "^7.37.2",
+    "eslint-plugin-react-hooks": "^5.0.0",
+    "generate-template-files": "^3.2.1",
+    "storybook": "^8.4.7",
+    "typescript": "^5.6.3",
+    "vite": "^5.4.11",
+    "vite-plugin-svgr": "^4.3.0"
+  }
+}

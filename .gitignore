@@ -1,0 +1,16 @@
+node_modules/
+.vscode/
+.idea/
+coverage/
+
+### macOS template
+# General
+.DS_Store
+.AppleDouble
+.LSOverride
+
+=======
+# Local
+.env
+dist
+.turbo

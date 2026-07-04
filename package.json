@@ -1,0 +1,27 @@
+{
+  "name": "drewl",
+  "private": true,
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "build": "npm run build -w $WORKSPACE",
+    "start": "npm start -w $WORKSPACE",
+    "clear": "turbo run clear",
+    "test": "turbo run test",
+    "barrels": "turbo run barrels",
+    "dev": "turbo run dev",
+    "lint": "turbo run lint",
+    "check": "turbo run check",
+    "format": "prettier --write \"./**/*.{js,ts,tsx,jsx,json,md}\""
+  },
+  "devDependencies": {
+    "prettier": "^3.9.4",
+    "turbo": "latest"
+  },
+  "packageManager": "pnpm@11.9.0",
+  "engines": {
+    "node": "22.12.0"
+  }
+}

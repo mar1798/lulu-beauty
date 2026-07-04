@@ -1,0 +1,22 @@
+{
+  "compilerOptions": {
+    "target": "es2015",
+    "lib": ["esnext"],
+    "allowJs": false,
+    "skipLibCheck": true,
+    "checkJs": true,
+    "strict": true,
+    "forceConsistentCasingInFileNames": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "module": "esnext",
+    "moduleResolution": "node",
+    "resolveJsonModule": true,
+    "noImplicitAny": true,
+    "noImplicitReturns": true,
+    "isolatedModules": true,
+    "plugins": [],
+    "incremental": true
+  },
+  "exclude": ["node_modules"]
+}
