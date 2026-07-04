@@ -7,13 +7,10 @@ import tsEslintParser from '@typescript-eslint/parser'
 import rootConfig from '../../eslint.config.mjs'
 import configPrettier from 'eslint-config-prettier'
 import importPlugin from 'eslint-plugin-import'
-import { FlatCompat } from '@eslint/eslintrc'
+import nextCoreWebVitals from 'eslint-config-next/core-web-vitals'
+import nextTypescript from 'eslint-config-next/typescript'
 import nextPlugin from '@next/eslint-plugin-next'
 import reactHooksPlugin from 'eslint-plugin-react-hooks'
-
-const compat = new FlatCompat({
-  baseDirectory: import.meta.dirname,
-})
 
 export default [
   {
@@ -22,7 +19,8 @@ export default [
   ...rootConfig,
   configPrettier,
   js.configs.recommended,
-  ...compat.extends('next/core-web-vitals', 'next/typescript'),
+  ...nextCoreWebVitals,
+  ...nextTypescript,
   {
     files: ['**/*.{ts,tsx}'],
     plugins: {

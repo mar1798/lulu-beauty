@@ -1,7 +1,7 @@
 import '../src/styling/preflight.css'
 import '../src/styling/global.css'
 import { breakpoints } from '../src/breakpoints'
-import { themes } from '@storybook/theming'
+import { themes } from 'storybook/theming'
 
 const compiledViewports = Object.keys(breakpoints).reduce((carry, key) => {
   const keyAs = key as keyof typeof breakpoints

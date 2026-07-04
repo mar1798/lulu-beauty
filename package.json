@@ -8,20 +8,24 @@
   "scripts": {
     "build": "npm run build -w $WORKSPACE",
     "start": "npm start -w $WORKSPACE",
-    "clear": "turbo run clear",
-    "test": "turbo run test",
-    "barrels": "turbo run barrels",
-    "dev": "turbo run dev",
-    "lint": "turbo run lint",
-    "check": "turbo run check",
+    "clear": "turbo run clear --filter=!//",
+    "test": "turbo run test --filter=!//",
+    "barrels": "turbo run barrels --filter=!//",
+    "dev": "turbo run dev --filter=!//",
+    "lint": "turbo run lint --filter=!//",
+    "check": "turbo run check --filter=!//",
     "format": "prettier --write \"./**/*.{js,ts,tsx,jsx,json,md}\""
   },
   "devDependencies": {
     "prettier": "^3.9.4",
     "turbo": "latest"
   },
-  "packageManager": "pnpm@11.9.0",
+  "overrides": {
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7"
+  },
+  "packageManager": "npm@10.9.0",
   "engines": {
-    "node": "22.12.0"
+    "node": "22.23.1"
   }
 }
