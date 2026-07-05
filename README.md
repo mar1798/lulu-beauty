@@ -1,5 +1,9 @@
 # Lulu beauty repository
 
+Lulu Beauty is an online catalog/ordering platform — customers browse a product catalog, add items to a cart, and submit a request before an owner-defined deadline (there is no online payment; the owner fulfills requests offline and exports them to Excel). This is a Turborepo monorepo containing the frontend, the UI component library it's built from, and the backend API.
+
+See `PLAN.md` at the repo root for the full backend architecture/design and a running `## Done` log of what's actually been implemented so far.
+
 ## Packages
 
 - `widgets`: UI component library.
@@ -7,6 +11,7 @@
 ## Apps 
 
 - `website`: an application that uses nextjs, and the widgets package to render the website. 
+- `api`: NestJS + Prisma + PostgreSQL backend, runs via Docker.
 
 
 ## Commands
@@ -20,8 +25,11 @@ npm run check
 
 ### ENV Variables:
 
+Each app documents its own env vars in a `.env.example` file — copy it to `.env` before running:
+
 ```bash
-...
+cp apps/website/.env.example apps/website/.env
+cp apps/api/.env.example apps/api/.env
 ```
 
 ## Package `widgets`
@@ -87,6 +95,29 @@ After that, you can start the Storybook with `npm run storybook -w widgets` and 
 ## Website app:
 
 ...
+
+## Api app:
+
+NestJS backend with PostgreSQL (via Prisma). Runs in Docker together with its database.
+
+Setup:
+
+```bash
+cp apps/api/.env.example apps/api/.env
+docker compose up --build
+```
+
+This starts a `db` (Postgres) container and an `api` container; migrations run automatically on startup. Once it's up:
+
+```bash
+curl http://localhost:3001/health
+```
+
+should return `{"status":"ok", ...}` — this check verifies a real database connection, not just that the process is running.
+
+To connect to the database directly (e.g. with Beekeeper Studio, TablePlus, psql), use the `POSTGRES_*` values from `apps/api/.env` against `localhost:5432`.
+
+See `PLAN.md` for the full domain model (users, cart, orders, order deadlines, Telegram OTP auth, catalog import/export) and implementation status.
 
 
 ## General:

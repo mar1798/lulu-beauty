@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Repository overview
 
-Turborepo monorepo for the Lulu Beauty (drewl) online catalog/ordering platform (no payments — customers submit requests, the owner fulfills them offline).
+Turborepo monorepo for the Lulu Beauty online catalog/ordering platform (no payments — customers submit requests, the owner fulfills them offline).
 
 - `apps/website` — Next.js 15 app that renders the site, consuming `widgets`.
 - `apps/api` — NestJS + Prisma + PostgreSQL backend. See `PLAN.md` at the repo root for the full architecture/design and a running `## Done` log of what's implemented so far.
