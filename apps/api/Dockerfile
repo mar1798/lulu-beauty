@@ -1,29 +1,24 @@
 # syntax=docker/dockerfile:1
 
-FROM node:22.23.1-alpine AS deps
+FROM python:3.12-slim AS builder
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy
 WORKDIR /app
-COPY package.json package-lock.json ./
-COPY apps/api/package.json apps/api/package.json
-COPY apps/website/package.json apps/website/package.json
-COPY packages/widgets/package.json packages/widgets/package.json
-RUN npm ci
 
-FROM node:22.23.1-alpine AS build
-WORKDIR /app
-COPY --from=deps /app/node_modules ./node_modules
+RUN --mount=type=cache,target=/root/.cache/uv \
+    --mount=type=bind,source=uv.lock,target=uv.lock \
+    --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
+    uv sync --frozen --no-install-project --no-dev
+
 COPY . .
-RUN npx prisma generate --schema apps/api/prisma/schema.prisma
-RUN npm run build -w api
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --no-dev
 
-FROM node:22.23.1-alpine AS runtime
-ENV NODE_ENV=production
+FROM python:3.12-slim AS runtime
+ENV PATH="/app/.venv/bin:$PATH"
 WORKDIR /app
-RUN addgroup -S nodegrp && adduser -S nodeusr -G nodegrp
-COPY --from=build --chown=nodeusr:nodegrp /app/node_modules ./node_modules
-COPY --from=build --chown=nodeusr:nodegrp /app/apps/api/dist ./apps/api/dist
-COPY --from=build --chown=nodeusr:nodegrp /app/apps/api/prisma ./apps/api/prisma
-COPY --from=build --chown=nodeusr:nodegrp /app/apps/api/package.json ./apps/api/package.json
-USER nodeusr
-WORKDIR /app/apps/api
+RUN addgroup --system apigrp && adduser --system --ingroup apigrp --no-create-home apiusr
+COPY --from=builder --chown=apiusr:apigrp /app /app
+USER apiusr
 EXPOSE 3001
-CMD ["sh", "-c", "npx prisma migrate deploy && node dist/main.js"]
+CMD ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-3001}"]

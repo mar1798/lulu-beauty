@@ -7,20 +7,20 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 Turborepo monorepo for the Lulu Beauty online catalog/ordering platform (no payments — customers submit requests, the owner fulfills them offline).
 
 - `apps/website` — Next.js 15 app that renders the site, consuming `widgets`.
-- `apps/api` — NestJS + Prisma + PostgreSQL backend. See `PLAN.md` at the repo root for the full architecture/design and a running `## Done` log of what's implemented so far.
+- `apps/api` — Python + FastAPI + PostgreSQL backend, using `uv` for dependency management and SQLAlchemy (async) + Alembic for the DB layer. See `PLAN.md` at the repo root for the full architecture/design and a running `## Done` log of what's implemented so far. **Not** an npm workspace — it has no `package.json` and is excluded from Turborepo/`npm run *` commands; manage it with `uv`/Docker as described below.
 - `packages/widgets` — standalone React component library styled with vanilla-extract, developed/tested in isolation via Storybook.
 
-Despite `package.json` declaring `"packageManager": "pnpm@11.9.0"`, the repo actually uses **npm** in practice: there is a committed `package-lock.json`, CI (`.github/workflows/*.yml`) runs `npm ci`, and the README's documented commands all use `npm`. Use `npm`, not `pnpm`, when installing or running scripts.
+Despite `package.json` declaring `"packageManager": "pnpm@11.9.0"`, the repo actually uses **npm** in practice: there is a committed `package-lock.json`, CI (`.github/workflows/node.js.yml`) runs `npm ci`, and the README's documented commands all use `npm`. Use `npm`, not `pnpm`, when installing or running scripts. This applies to `apps/website` and `packages/widgets` only — `apps/api` is a separate Python project managed with `uv` (see below), not part of the npm workspace.
 
 ## Commands
 
 Run from the repo root unless noted. Workspace-scoped commands use `-w <workspace>` (e.g. `-w widgets`).
 
-- `npm run check` — runs `tsc --noEmit` + eslint (via turbo, across all workspaces that define it). Run this before finishing any change.
-- `npm run lint` — eslint only, all workspaces.
-- `npm test` — runs each workspace's `test` script (via turbo): `vitest run` for `widgets`, `jest` for `api`.
+- `npm run check` — runs `tsc --noEmit` + eslint (via turbo, across all workspaces that define it: `website`, `widgets`). Does **not** cover `apps/api` — run that separately (see Backend-specific below). Run both before finishing any change that touches the relevant app.
+- `npm run lint` — eslint only, `website`/`widgets`.
+- `npm test` — runs each JS workspace's `test` script (via turbo): `vitest run` for `widgets`. Does not cover `apps/api` — use `uv run pytest` there.
 - `npm run barrels` — regenerates the auto-generated `index.ts` barrel files (see below).
-- `npm run dev` — turbo dev across workspaces (for the website: `next dev`; for the api: `nest start --watch`).
+- `npm run dev` — turbo dev across JS workspaces (for the website: `next dev`). Start the api separately (`docker compose up --build`, or `uv run uvicorn app.main:app --reload` from `apps/api`).
 - `npm run build -w <workspace>` / `npm start -w <workspace>` — build/start a single workspace.
 
 Widgets-specific (run with `-w widgets` or `cd packages/widgets`):
@@ -30,10 +30,13 @@ Widgets-specific (run with `-w widgets` or `cd packages/widgets`):
 
 To run a single vitest test file: `npx vitest run <path-to-test>` from `packages/widgets`.
 
-Backend-specific (run with `-w api` or `cd apps/api`):
-- `docker compose up --build` (from repo root) — brings up `db` (Postgres 16, with healthcheck) and `api` (builds the Dockerfile, runs `prisma migrate deploy` on start, then serves on port 3001). `docker compose down` to tear down.
+Backend-specific (run with `cd apps/api`; uses `uv`, not npm):
+- `docker compose up --build` (from repo root) — brings up `db` (Postgres 16, with healthcheck) and `api` (builds `apps/api/Dockerfile`, runs `alembic upgrade head` on start, then serves on port 3001). `docker compose down` to tear down.
 - `cp apps/api/.env.example apps/api/.env` — required before running the api directly (outside Docker) or via compose (the `api` service's `env_file` points at it); `DATABASE_URL` there targets `localhost` for local dev, while the containerized `api` service overrides it to target the `db` hostname.
-- `npm run prisma:generate -w api` / `npm run prisma:migrate:dev -w api` / `npm run prisma:migrate:deploy -w api` — Prisma client generation and migrations.
+- `uv sync` — installs dependencies into `apps/api/.venv` per `uv.lock`.
+- `uv run uvicorn app.main:app --reload --port 3001` — local dev server (outside Docker; requires Postgres reachable per `DATABASE_URL`).
+- `uv run pytest` / `uv run ruff check .` / `uv run mypy app` — tests / lint / type-check. Run all three before finishing any `apps/api` change.
+- `uv run alembic revision --autogenerate -m "<message>"` / `uv run alembic upgrade head` — generate and apply migrations; commit generated files under `migrations/versions/` (the Docker image only runs `alembic upgrade head`, it doesn't generate new revisions).
 - `curl http://localhost:3001/health` — health check that verifies live DB connectivity (not just process liveness); returns `503` if the database is unreachable.
 
 ## Architecture
@@ -58,16 +61,16 @@ The package is consumed via subpath exports (see `package.json` `exports`/`types
 
 ### `apps/api`
 
-NestJS 11 backend, PostgreSQL via Prisma. Full domain design (auth, cart, orders, order cycles/deadlines, Telegram OTP, catalog import/export) is in `PLAN.md` at the repo root, along with a `## Done` log tracking what's actually been implemented — check that before assuming a module exists.
+FastAPI backend, PostgreSQL via SQLAlchemy 2.0 (async, `asyncpg` driver) + Alembic migrations. Managed with `uv` (`pyproject.toml` + committed `uv.lock`), fully independent of the npm/Turborepo workspace. Full domain design (auth, cart, orders, order cycles/deadlines, Telegram OTP, catalog import/export) is in `PLAN.md` at the repo root, along with a `## Done` log tracking what's actually been implemented — check that before assuming a module exists.
 
-- `src/main.ts` / `src/app.module.ts` — bootstrap and root module.
-- `src/prisma/` — `PrismaModule` (global) + `PrismaService` wrapping `PrismaClient`, connecting on `OnModuleInit`.
-- `src/health/` — `GET /health` via `@nestjs/terminus`, with a custom `PrismaHealthIndicator` that runs a real `SELECT 1` against the database (not just an app-liveness check).
-- `prisma/schema.prisma` — Prisma schema; migrations live in `prisma/migrations/` (commit these — `prisma migrate deploy` in the Docker image only applies what's already there, it doesn't generate new ones).
+- `app/main.py` — `create_app()` builds the `FastAPI` instance and mounts routers.
+- `app/config.py` — `Settings` (`pydantic-settings`), reads `DATABASE_URL`/`PORT` from the environment/`.env`.
+- `app/db.py` — async SQLAlchemy `engine`/`async_sessionmaker`, declarative `Base` (models will subclass this), and a `get_session` FastAPI dependency.
+- `app/health/router.py` — `GET /health` runs a real `SELECT 1` against the database and returns `503` if it's unreachable (not just an app-liveness check).
+- `alembic.ini` / `migrations/` — Alembic config and migration scripts; `migrations/env.py` reads `DATABASE_URL` from `app.config.settings` rather than a hardcoded URL, and uses `Base.metadata` as `target_metadata` for autogeneration. Commit generated files under `migrations/versions/` — `alembic upgrade head` in the Docker image only applies what's already there, it doesn't generate new revisions.
+- `tests/` — `pytest` + `pytest-asyncio` (`asyncio_mode = "auto"`), using `httpx.AsyncClient` against the FastAPI app.
 
-**tsconfig**: `apps/api/tsconfig.json` does **not** extend the root `tsconfig.json` — the root config is bundler-mode/`noEmit` (for the frontend packages) and incompatible with NestJS's decorator metadata + CommonJS emit. `apps/api` has its own standalone tsconfig (`module`/`moduleResolution: node16`, `emitDecoratorMetadata`, `experimentalDecorators`, `rootDir`/`outDir` for emit).
-
-**Docker**: `apps/api/Dockerfile` is a multi-stage build (deps → build → runtime, non-root user) invoked with the **repo root** as build context (`docker-compose.yml` at the repo root sets `context: .`, `dockerfile: apps/api/Dockerfile`) since it's an npm-workspaces monorepo — the deps stage needs the root `package.json`/`package-lock.json` plus every workspace's `package.json` for `npm ci` to resolve correctly.
+**Docker**: `apps/api/Dockerfile` is a multi-stage `uv`-based build (builder → runtime, non-root user), invoked with **`apps/api` itself** as the build context (`docker-compose.yml` sets `build.context: apps/api`) — unlike the frontend apps, it has no dependency on anything else in the monorepo.
 
 ### `apps/website`
 
@@ -82,3 +85,5 @@ Next.js 15 app (`src/pages` — Pages Router). Key points from `next.config.js`:
 
 - Keep API/data-fetching logic and cross-cutting concerns (e.g. analytics) out of `widgets` — that package is strictly the visual component library. Website-specific/API logic lives in `apps/website`.
 - ESLint requires explicit return types on functions (`@typescript-eslint/explicit-function-return-type`), with expressions and const-assertion arrow functions exempted.
+- **Building new UI**: don't hand-roll markup/CSS from scratch. Use the shadcn MCP server (registered in `.mcp.json`) to look up a real, production-quality reference implementation first — `shadcn` for general components, the built-in `@magicui` namespace (e.g. `@magicui/globe`) for motion/animated ones. Treat the fetched source as a **structural/behavioral reference only**: this repo has no Tailwind CSS and no shadcn/Radix runtime installed (`packages/widgets` is vanilla-extract-only, see below) — hand-port the markup structure and behavior into a proper `widgets` atom/molecule/organism (scaffolded via `npm run generate -w widgets`), rewriting all styling in vanilla-extract. Never install shadcn/Magic UI components directly via `shadcn add`/`npx @magicuidesign/cli` into this repo, and never introduce Tailwind as a second styling system alongside vanilla-extract.
+- **Animation**: for fade/slide/stagger/etc. patterns, use the `motion` skill (`.claude/skills/motion/`, invoke as `/motion`) and the `motion` MCP server (registered in `.mcp.json`, free/no-account, docs+example search at `https://mcp.motion.dev`) rather than guessing timing/easing values. `best-practices/` under the skill works fully offline even if the MCP server is unreachable. The library itself (formerly Framer Motion, now `motion`) is **not yet installed** in `packages/widgets` — install it there (`npm install motion -w widgets`) before writing the first animated component, and always import from `motion/react`, never the deprecated `framer-motion` package. The `motion-plus` server (Motion+ paid tier: MotionScore audits, gated example source) is intentionally **not** registered — same reasoning as skipping AI Designer MCP, no account to wire up.

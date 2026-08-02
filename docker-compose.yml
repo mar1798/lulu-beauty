@@ -18,15 +18,14 @@ services:
 
   api:
     build:
-      context: .
-      dockerfile: apps/api/Dockerfile
+      context: apps/api
     restart: unless-stopped
     env_file:
       - apps/api/.env
     environment:
       # Always talk to the `db` service by its compose network hostname, regardless of
       # what apps/api/.env sets DATABASE_URL to for local (non-Docker) development.
-      DATABASE_URL: postgresql://${POSTGRES_USER:-lulu}:${POSTGRES_PASSWORD:-lulu}@db:5432/${POSTGRES_DB:-lulu}?schema=public
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-lulu}:${POSTGRES_PASSWORD:-lulu}@db:5432/${POSTGRES_DB:-lulu}
     depends_on:
       db:
         condition: service_healthy

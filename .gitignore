@@ -14,3 +14,11 @@ coverage/
 .env
 dist
 .turbo
+
+# Python (apps/api)
+__pycache__/
+*.pyc
+.venv/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/

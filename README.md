@@ -11,7 +11,7 @@ See `PLAN.md` at the repo root for the full backend architecture/design and a ru
 ## Apps 
 
 - `website`: an application that uses nextjs, and the widgets package to render the website. 
-- `api`: NestJS + Prisma + PostgreSQL backend, runs via Docker.
+- `api`: FastAPI + SQLAlchemy/Alembic + PostgreSQL backend (managed with `uv`), runs via Docker.
 
 
 ## Commands
@@ -98,7 +98,7 @@ After that, you can start the Storybook with `npm run storybook -w widgets` and 
 
 ## Api app:
 
-NestJS backend with PostgreSQL (via Prisma). Runs in Docker together with its database.
+FastAPI backend with PostgreSQL (via SQLAlchemy 2.0 async + Alembic migrations), dependencies managed with [uv](https://docs.astral.sh/uv/). Runs in Docker together with its database. Not part of the npm/Turborepo workspace — it has no `package.json`.
 
 Setup:
 
@@ -107,7 +107,7 @@ cp apps/api/.env.example apps/api/.env
 docker compose up --build
 ```
 
-This starts a `db` (Postgres) container and an `api` container; migrations run automatically on startup. Once it's up:
+This starts a `db` (Postgres) container and an `api` container; migrations run automatically on startup (`alembic upgrade head`). Once it's up:
 
 ```bash
 curl http://localhost:3001/health
@@ -116,6 +116,17 @@ curl http://localhost:3001/health
 should return `{"status":"ok", ...}` — this check verifies a real database connection, not just that the process is running.
 
 To connect to the database directly (e.g. with Beekeeper Studio, TablePlus, psql), use the `POSTGRES_*` values from `apps/api/.env` against `localhost:5432`.
+
+To work on the api outside Docker:
+
+```bash
+cd apps/api
+uv sync
+uv run uvicorn app.main:app --reload --port 3001
+uv run pytest        # tests
+uv run ruff check .  # lint
+uv run mypy app      # type check
+```
 
 See `PLAN.md` for the full domain model (users, cart, orders, order deadlines, Telegram OTP auth, catalog import/export) and implementation status.
 
@@ -126,4 +137,5 @@ It is important to separate the API interaction logic from the visual component 
 
 Before pushing changes, run:
 
-`npm run check` - This checks types and lints the entire project.
+- `npm run check` - checks types and lints `website`/`widgets`.
+- for `apps/api` changes, also run `uv run pytest && uv run ruff check . && uv run mypy app` from `apps/api` (it's a separate Python project, not covered by `npm run check`).
