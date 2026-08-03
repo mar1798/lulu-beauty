@@ -28,11 +28,21 @@ jobs:
           --health-timeout 5s
           --health-retries 10
 
-    # Matches tests/conftest.py's DATABASE_URL placeholder: the DB-integration tests under
+    # Mirrors tests/conftest.py's placeholders. DATABASE_URL: the DB-integration tests under
     # tests/integration/ skip themselves when Postgres isn't reachable (e.g. local `uv run
-    # pytest` without this service), so this env var is what turns them on in CI.
+    # pytest` without this service), so this env var is what turns them on in CI. The rest are
+    # required fields on Settings, which is instantiated at import time — without them, steps
+    # that import the app outside pytest (alembic) fail before they run. Placeholders only:
+    # nothing here reaches a real Telegram bot or a real deployment.
     env:
       DATABASE_URL: postgresql+asyncpg://test:test@localhost:5432/test
+      JWT_ACCESS_SECRET: test-access-secret-at-least-32-bytes-long
+      JWT_REFRESH_SECRET: test-refresh-secret-at-least-32-bytes-long
+      TELEGRAM_BOT_TOKEN: test-telegram-token
+      TELEGRAM_BOT_USERNAME: test_bot
+      OWNER_PHONE: "+10000000000"
+      OWNER_NAME: Test Owner
+      OWNER_PASSWORD: test-owner-password
 
     steps:
       - name: Get repository code
