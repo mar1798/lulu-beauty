@@ -27,8 +27,8 @@ class Settings(BaseSettings):
     owner_name: str
     owner_password: str
 
-    cycle_timezone: str = "Asia/Almaty"
-    currency: str = "KZT"
+    cycle_timezone: str = "Asia/Bishkek"
+    currency: str = "KGS"
 
     storage_driver: Literal["local"] = "local"
     upload_dir: str = "./uploads"
