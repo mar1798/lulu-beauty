@@ -4,11 +4,13 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Upload
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import CurrentUser, require_admin
+from app.catalog.import_service import CatalogImportService
 from app.catalog.models import Category, Product
 from app.catalog.schemas import (
     CategoryCreateRequest,
     CategoryResponse,
     CategoryUpdateRequest,
+    ImportSummaryResponse,
     PageResponse,
     ProductCreateRequest,
     ProductImageResponse,
@@ -30,6 +32,7 @@ router = APIRouter(tags=["catalog"])
 
 MAX_IMAGE_BYTES = 5 * 1024 * 1024
 ALLOWED_IMAGE_CONTENT_TYPES = {"image/jpeg", "image/png", "image/webp"}
+MAX_IMPORT_BYTES = 10 * 1024 * 1024
 
 
 def _category_response(category: Category) -> CategoryResponse:
@@ -264,3 +267,18 @@ async def delete_product_image(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "product_image_not_found") from error
 
     await session.commit()
+
+
+@router.post("/admin/catalog/import", response_model=ImportSummaryResponse)
+async def import_catalog(
+    file: UploadFile = File(...),
+    session: AsyncSession = Depends(get_session),
+    _admin: CurrentUser = Depends(require_admin),
+) -> ImportSummaryResponse:
+    content = await file.read()
+    if len(content) > MAX_IMPORT_BYTES:
+        raise HTTPException(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, "import_file_too_large")
+
+    summary = await CatalogImportService(session).import_file(file.filename or "", content)
+    await session.commit()
+    return summary

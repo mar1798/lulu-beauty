@@ -71,3 +71,14 @@ class ProductUpdateRequest(CamelModel):
     price_cents: int | None = Field(default=None, ge=0)
     category_id: uuid.UUID | None = None
     in_stock: bool | None = None
+
+
+class ImportRowErrorResponse(CamelModel):
+    row: int
+    message: str
+
+
+class ImportSummaryResponse(CamelModel):
+    created: int
+    updated: int
+    errors: list[ImportRowErrorResponse]
