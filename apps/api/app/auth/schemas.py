@@ -1,9 +1,9 @@
 from pydantic import Field
 
 from app.auth.models import OtpPurpose
+from app.common.phone import PHONE_PATTERN
 from app.common.schemas import CamelModel
 
-PHONE_PATTERN = r"^\+[1-9]\d{7,14}$"
 OTP_CODE_PATTERN = r"^\d{6}$"
 
 

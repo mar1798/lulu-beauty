@@ -7,3 +7,4 @@ from app.cart.models import Cart, CartItem  # noqa: F401
 from app.catalog.models import Category, Product, ProductImage  # noqa: F401
 from app.cycles.models import OrderCycle  # noqa: F401
 from app.orders.models import Order, OrderItem  # noqa: F401
+from app.telegram.models import PendingTelegramContact  # noqa: F401

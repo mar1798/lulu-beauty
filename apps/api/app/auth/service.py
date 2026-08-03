@@ -8,6 +8,7 @@ from app.auth.models import OtpPurpose, RefreshToken, User
 from app.auth.otp_service import OtpService
 from app.auth.schemas import TokenResponse
 from app.auth.security import hash_password, hash_token, verify_password
+from app.telegram.models import PendingTelegramContact
 
 
 class PhoneAlreadyRegisteredError(Exception):
@@ -39,6 +40,9 @@ class AuthService:
 
         if user is None:
             user = User(phone=phone, name=name, password_hash=hash_password(password))
+            pending = await self._pop_pending_telegram_contact(phone)
+            if pending is not None:
+                user.telegram_chat_id = pending.chat_id
             self._session.add(user)
         else:
             user.name = name
@@ -122,3 +126,12 @@ class AuthService:
     async def _get_user_by_phone(self, phone: str) -> User | None:
         result = await self._session.execute(select(User).where(User.phone == phone))
         return result.scalar_one_or_none()
+
+    async def _pop_pending_telegram_contact(self, phone: str) -> PendingTelegramContact | None:
+        result = await self._session.execute(
+            select(PendingTelegramContact).where(PendingTelegramContact.phone == phone)
+        )
+        pending = result.scalar_one_or_none()
+        if pending is not None:
+            await self._session.delete(pending)
+        return pending

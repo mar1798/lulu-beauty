@@ -1,4 +1,3 @@
-import logging
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
@@ -8,8 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth.models import OtpCode, OtpPurpose, User
 from app.auth.security import generate_otp_code, hash_password, verify_password
 from app.config import settings
-
-logger = logging.getLogger("app.auth.otp")
+from app.telegram.bot import notifications_service
 
 RESEND_INTERVAL_SECONDS = 30
 
@@ -44,8 +42,7 @@ class OtpService:
         )
         await self._session.flush()
 
-        # Stand-in for Telegram delivery until the bot is wired up (see PLAN.md step 6).
-        logger.info("OTP for %s (%s): %s", user.phone, purpose.value, code)
+        await notifications_service.send_otp(user, code, purpose)
 
     async def verify(self, user: User, code: str, purpose: OtpPurpose) -> None:
         otp = await self._latest_active(user.id, purpose)
