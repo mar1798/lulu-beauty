@@ -8,6 +8,8 @@ from app.export.service import (
     HEADER,
     OrderExportRow,
     build_orders_workbook,
+    content_disposition,
+    readable_filename_label,
     sanitize_filename_label,
 )
 
@@ -73,3 +75,32 @@ def test_sanitize_filename_label_keeps_alphanumeric_dash_underscore() -> None:
 
 def test_sanitize_filename_label_passthrough_for_safe_label() -> None:
     assert sanitize_filename_label("new-year-batch_2") == "new-year-batch_2"
+
+
+def test_sanitize_filename_label_drops_non_ascii() -> None:
+    """Regression: Cyrillic is alnum in Python, so it used to survive into the header."""
+    sanitized = sanitize_filename_label("Июнь 2030")
+    assert sanitized.isascii()
+    assert sanitized.endswith("2030")
+    assert sanitize_filename_label("june-2030") == "june-2030"
+
+
+def test_readable_label_keeps_cyrillic_but_drops_path_characters() -> None:
+    assert readable_filename_label("Июнь 2030") == "Июнь-2030"
+    assert readable_filename_label("a/b:c") == "a-b-c"
+
+
+def test_content_disposition_is_latin1_encodable_and_keeps_extension() -> None:
+    header = content_disposition("orders-Июнь-2030.xlsx")
+
+    # Starlette encodes response headers as latin-1; a non-encodable value was a 500.
+    header.encode("latin-1")
+    assert 'filename="orders-' in header
+    assert '2030.xlsx"' in header  # the extension survives the ASCII fallback
+    assert "filename*=UTF-8''" in header
+    assert "%D0%98%D1%8E%D0%BD%D1%8C" in header  # percent-encoded "Июнь"
+
+
+def test_content_disposition_handles_ascii_filename_unchanged() -> None:
+    header = content_disposition("orders-all-cycles.xlsx")
+    assert 'filename="orders-all-cycles.xlsx"' in header

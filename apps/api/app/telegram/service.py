@@ -1,11 +1,23 @@
 import logging
 from datetime import datetime
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from aiogram import Bot
 
 from app.auth.models import OtpPurpose, User
+from app.config import settings
 
 logger = logging.getLogger("app.telegram")
+
+
+def _format_deadline(deadline_at: datetime) -> str:
+    """Deadline in the shop's local timezone — reminders are read by customers, not developers."""
+    try:
+        local = deadline_at.astimezone(ZoneInfo(settings.cycle_timezone))
+    except (ZoneInfoNotFoundError, ValueError):
+        logger.warning("Invalid CYCLE_TIMEZONE %r; falling back to UTC", settings.cycle_timezone)
+        return deadline_at.isoformat()
+    return local.strftime("%d.%m.%Y в %H:%M")
 
 
 class NotificationsService:
@@ -19,7 +31,8 @@ class NotificationsService:
         self._bot = bot
 
     async def send_otp(self, user: User, code: str, purpose: OtpPurpose) -> None:
-        message = f"Lulu Beauty {purpose.value.lower()} code: {code}"
+        action = "регистрации" if purpose is OtpPurpose.REGISTER else "входа"
+        message = f"Код подтверждения {action} в Lulu Beauty: {code}"
         if await self._try_send(user.telegram_chat_id, message):
             logger.info("Sent %s OTP to %s via Telegram", purpose.value, user.phone)
             return
@@ -27,8 +40,8 @@ class NotificationsService:
 
     async def send_reminder(self, user: User, cycle_label: str, deadline_at: datetime) -> None:
         message = (
-            f"Reminder: items in your Lulu Beauty cart for '{cycle_label}' will be cleared at "
-            f"{deadline_at.isoformat()} unless you check out."
+            f"Напоминание: товары в вашей корзине Lulu Beauty по заказу «{cycle_label}» "
+            f"будут удалены {_format_deadline(deadline_at)}, если вы не оформите заявку."
         )
         if await self._try_send(user.telegram_chat_id, message):
             logger.info("Sent reminder for cycle %s to %s via Telegram", cycle_label, user.phone)

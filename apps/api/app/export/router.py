@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import CurrentUser, require_admin
 from app.db import get_session
-from app.export.service import ExportService
+from app.export.service import ExportService, content_disposition
 
 router = APIRouter(tags=["export"])
 
@@ -22,5 +22,5 @@ async def export_orders(
     return Response(
         content=content,
         media_type=XLSX_MEDIA_TYPE,
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        headers={"Content-Disposition": content_disposition(filename)},
     )

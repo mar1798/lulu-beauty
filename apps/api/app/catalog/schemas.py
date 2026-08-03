@@ -1,20 +1,10 @@
 import uuid
-from typing import Generic, TypeVar
 
 from pydantic import Field
 
 from app.common.schemas import CamelModel
 
 SLUG_PATTERN = r"^[a-z0-9]+(-[a-z0-9]+)*$"
-
-T = TypeVar("T")
-
-
-class PageResponse(CamelModel, Generic[T]):  # noqa: UP046 - PEP 695 generics aren't used elsewhere yet
-    items: list[T]
-    total: int
-    page: int
-    page_size: int
 
 
 class ProductImageResponse(CamelModel):

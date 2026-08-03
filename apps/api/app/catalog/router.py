@@ -11,7 +11,6 @@ from app.catalog.schemas import (
     CategoryResponse,
     CategoryUpdateRequest,
     ImportSummaryResponse,
-    PageResponse,
     ProductCreateRequest,
     ProductImageResponse,
     ProductResponse,
@@ -25,6 +24,7 @@ from app.catalog.service import (
     ProductService,
     SlugAlreadyExistsError,
 )
+from app.common.schemas import PageResponse
 from app.db import get_session
 from app.storage.service import storage_service
 
@@ -123,11 +123,14 @@ async def delete_category(
 async def list_products(
     category: str | None = Query(default=None),
     in_stock: bool | None = Query(default=None),
+    q: str | None = Query(default=None, min_length=1, max_length=255),
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=100),
     session: AsyncSession = Depends(get_session),
 ) -> PageResponse[ProductResponse]:
-    products, total = await ProductService(session).list_public(category, in_stock, page, page_size)
+    products, total = await ProductService(session).list_public(
+        category, in_stock, page, page_size, q
+    )
     return PageResponse(
         items=[_product_response(product) for product in products],
         total=total,
@@ -142,6 +145,28 @@ async def get_product(slug: str, session: AsyncSession = Depends(get_session)) -
     if product is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "product_not_found")
     return _product_response(product)
+
+
+@router.get("/admin/products", response_model=PageResponse[ProductResponse])
+async def list_products_admin(
+    category: str | None = Query(default=None),
+    in_stock: bool | None = Query(default=None, alias="inStock"),
+    q: str | None = Query(default=None, min_length=1, max_length=255),
+    include_deleted: bool = Query(default=False, alias="includeDeleted"),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=20, ge=1, le=100, alias="pageSize"),
+    session: AsyncSession = Depends(get_session),
+    _admin: CurrentUser = Depends(require_admin),
+) -> PageResponse[ProductResponse]:
+    products, total = await ProductService(session).list_admin(
+        category, in_stock, page, page_size, q, include_deleted
+    )
+    return PageResponse(
+        items=[_product_response(product) for product in products],
+        total=total,
+        page=page,
+        page_size=page_size,
+    )
 
 
 @router.get("/admin/products/{product_id}", response_model=ProductResponse)
@@ -212,6 +237,21 @@ async def delete_product(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "product_not_found") from error
 
     await session.commit()
+
+
+@router.post("/admin/products/{product_id}/restore", response_model=ProductResponse)
+async def restore_product(
+    product_id: uuid.UUID,
+    session: AsyncSession = Depends(get_session),
+    _admin: CurrentUser = Depends(require_admin),
+) -> ProductResponse:
+    try:
+        product = await ProductService(session).restore(product_id)
+    except ProductNotFoundError as error:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "product_not_found") from error
+
+    await session.commit()
+    return _product_response(product)
 
 
 @router.post(

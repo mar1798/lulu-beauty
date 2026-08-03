@@ -3,9 +3,9 @@ from pydantic import ValidationError
 
 from app.catalog.schemas import (
     CategoryCreateRequest,
-    PageResponse,
     ProductCreateRequest,
 )
+from app.common.schemas import PageResponse
 
 
 def test_category_create_accepts_valid_slug() -> None:

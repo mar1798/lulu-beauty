@@ -2,12 +2,11 @@ import io
 import uuid
 from dataclasses import dataclass
 from datetime import datetime
+from urllib.parse import quote
 
 from openpyxl import Workbook
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth.models import User
 from app.config import settings
 from app.cycles.models import OrderCycle
 from app.orders.service import OrdersService
@@ -71,7 +70,36 @@ def build_orders_workbook(rows: list[OrderExportRow]) -> bytes:
 
 
 def sanitize_filename_label(label: str) -> str:
-    return "".join(char if char.isalnum() or char in "-_" else "-" for char in label)
+    """ASCII-only, filename-safe rendering of a label.
+
+    str.isalnum() is True for Cyrillic, so an earlier version let non-ASCII through into
+    Content-Disposition, where Starlette encodes headers as latin-1 — any Russian cycle
+    label turned the export into a 500. Non-ASCII is dropped here and the readable name is
+    carried separately by the RFC 5987 filename* parameter (see content_disposition).
+    """
+    return "".join(
+        char if (char.isascii() and char.isalnum()) or char in "-_" else "-" for char in label
+    )
+
+
+def readable_filename_label(label: str) -> str:
+    """Keeps letters of any alphabet, drops only what is unsafe inside a filename."""
+    unsafe = set('/\\:*?"<>|') | {chr(code) for code in range(32)}
+    return "".join("-" if char in unsafe or char == " " else char for char in label)
+
+
+def content_disposition(filename: str) -> str:
+    """attachment header with an ASCII fallback plus the UTF-8 name (RFC 5987).
+
+    Old clients read filename=; anything current prefers filename*, so the owner still
+    downloads "orders-Июнь-2030.xlsx" rather than a row of dashes.
+    """
+    stem, _, extension = filename.rpartition(".")
+    if stem:
+        ascii_name = f"{sanitize_filename_label(stem)}.{extension}"
+    else:
+        ascii_name = sanitize_filename_label(filename)
+    return f"attachment; filename=\"{ascii_name}\"; filename*=UTF-8''{quote(filename, safe='')}"
 
 
 class ExportService:
@@ -79,13 +107,9 @@ class ExportService:
         self._session = session
 
     async def export_orders(self, cycle_id: uuid.UUID | None) -> tuple[bytes, str]:
-        orders = await OrdersService(self._session).list_admin(cycle_id)
-
-        user_ids = {order.user_id for order in orders}
-        users_by_id: dict[uuid.UUID, User] = {}
-        if user_ids:
-            result = await self._session.execute(select(User).where(User.id.in_(user_ids)))
-            users_by_id = {user.id: user for user in result.scalars().all()}
+        orders_service = OrdersService(self._session)
+        orders = await orders_service.list_admin(cycle_id)
+        users_by_id = await orders_service.load_customers(orders)
 
         rows = [
             OrderExportRow(
@@ -118,4 +142,4 @@ class ExportService:
 
         cycle = await self._session.get(OrderCycle, cycle_id)
         label = cycle.label if cycle is not None and cycle.label else str(cycle_id)
-        return f"orders-{sanitize_filename_label(label)}.xlsx"
+        return f"orders-{readable_filename_label(label)}.xlsx"

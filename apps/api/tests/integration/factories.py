@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.models import Role, User
 from app.auth.security import hash_password
-from app.catalog.models import Product
+from app.catalog.models import Product, ProductImage
 from app.cycles.models import CycleStatus, OrderCycle
 
 
@@ -34,16 +34,39 @@ async def make_product(
     name: str = "Test Product",
     price_cents: int = 1000,
     in_stock: bool = True,
+    slug: str | None = None,
+    deleted_at: datetime | None = None,
 ) -> Product:
     product = Product(
         name=name,
-        slug=f"test-product-{uuid.uuid4().hex[:12]}",
+        slug=slug or f"test-product-{uuid.uuid4().hex[:12]}",
         price_cents=price_cents,
         in_stock=in_stock,
+        deleted_at=deleted_at,
     )
     session.add(product)
     await session.flush()
     return product
+
+
+async def make_product_image(
+    session: AsyncSession,
+    product: Product,
+    *,
+    url: str = "http://localhost:3001/files/image.jpg",
+    sort_order: int = 0,
+    is_primary: bool = False,
+) -> ProductImage:
+    image = ProductImage(
+        product_id=product.id,
+        url=url,
+        alt=None,
+        sort_order=sort_order,
+        is_primary=is_primary,
+    )
+    session.add(image)
+    await session.flush()
+    return image
 
 
 async def make_cycle(

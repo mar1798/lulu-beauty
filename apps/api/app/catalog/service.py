@@ -2,7 +2,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import func, select, update
+from sqlalchemy import Select, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -73,29 +73,62 @@ class ProductService:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
+    def _filtered_query(
+        self,
+        category_slug: str | None,
+        in_stock: bool | None,
+        search: str | None,
+        include_deleted: bool,
+    ) -> Select[tuple[Product]]:
+        query = select(Product)
+        if not include_deleted:
+            query = query.where(Product.deleted_at.is_(None))
+        if category_slug is not None:
+            query = query.join(Category).where(Category.slug == category_slug)
+        if in_stock is not None:
+            query = query.where(Product.in_stock.is_(in_stock))
+        if search:
+            # Escape LIKE wildcards so a user searching for "50%" doesn't match everything.
+            pattern = search.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+            query = query.where(Product.name.ilike(f"%{pattern}%", escape="\\"))
+        return query
+
+    async def _paginate(
+        self, query: Select[tuple[Product]], page: int, page_size: int
+    ) -> tuple[list[Product], int]:
+        total = await self._session.scalar(select(func.count()).select_from(query.subquery())) or 0
+
+        result = await self._session.execute(
+            query.options(selectinload(Product.images))
+            .order_by(Product.name)
+            .offset((page - 1) * page_size)
+            .limit(page_size)
+        )
+        return list(result.scalars().all()), total
+
     async def list_public(
         self,
         category_slug: str | None,
         in_stock: bool | None,
         page: int,
         page_size: int,
+        search: str | None = None,
     ) -> tuple[list[Product], int]:
-        query = select(Product).where(Product.deleted_at.is_(None))
-        if category_slug is not None:
-            query = query.join(Category).where(Category.slug == category_slug)
-        if in_stock is not None:
-            query = query.where(Product.in_stock.is_(in_stock))
+        query = self._filtered_query(category_slug, in_stock, search, include_deleted=False)
+        return await self._paginate(query, page, page_size)
 
-        total = await self._session.scalar(select(func.count()).select_from(query.subquery())) or 0
-
-        query = (
-            query.options(selectinload(Product.images))
-            .order_by(Product.name)
-            .offset((page - 1) * page_size)
-            .limit(page_size)
-        )
-        result = await self._session.execute(query)
-        return list(result.scalars().all()), total
+    async def list_admin(
+        self,
+        category_slug: str | None,
+        in_stock: bool | None,
+        page: int,
+        page_size: int,
+        search: str | None = None,
+        include_deleted: bool = False,
+    ) -> tuple[list[Product], int]:
+        """Admin listing — unlike list_public it can surface soft-deleted products."""
+        query = self._filtered_query(category_slug, in_stock, search, include_deleted)
+        return await self._paginate(query, page, page_size)
 
     async def get_by_slug(self, slug: str) -> Product | None:
         result = await self._session.execute(
@@ -156,6 +189,21 @@ class ProductService:
     async def soft_delete(self, product_id: uuid.UUID) -> None:
         product = await self.get_by_id(product_id)
         product.deleted_at = datetime.now(UTC)
+
+    async def restore(self, product_id: uuid.UUID) -> Product:
+        """Undo a soft-delete. Mirrors what a catalog re-import already does by slug."""
+        result = await self._session.execute(
+            select(Product)
+            .where(Product.id == product_id)
+            .options(selectinload(Product.images))
+        )
+        product = result.scalar_one_or_none()
+        if product is None:
+            raise ProductNotFoundError
+
+        product.deleted_at = None
+        await self._session.flush()
+        return product
 
     async def add_image(
         self, product_id: uuid.UUID, url: str, alt: str | None, is_primary: bool

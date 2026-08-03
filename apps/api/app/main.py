@@ -16,6 +16,7 @@ from app.export.router import router as export_router
 from app.health.router import router as health_router
 from app.orders.router import router as orders_router
 from app.telegram import bot as telegram_bot
+from app.users.router import router as users_router
 
 
 @asynccontextmanager
@@ -43,6 +44,7 @@ def create_app() -> FastAPI:
     )
     app.include_router(health_router)
     app.include_router(auth_router)
+    app.include_router(users_router)
     app.include_router(catalog_router)
     app.include_router(cycles_router)
     app.include_router(cart_router)

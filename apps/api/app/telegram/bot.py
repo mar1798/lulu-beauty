@@ -21,13 +21,13 @@ dispatcher = Dispatcher()
 @dispatcher.message(F.text == "/start")
 async def handle_start(message: Message) -> None:
     keyboard = ReplyKeyboardMarkup(
-        keyboard=[[KeyboardButton(text="Share phone number", request_contact=True)]],
+        keyboard=[[KeyboardButton(text="Поделиться номером телефона", request_contact=True)]],
         resize_keyboard=True,
         one_time_keyboard=True,
     )
     await message.answer(
-        "Welcome to Lulu Beauty! Share your phone number to link this chat "
-        "to your account and receive order codes/reminders here.",
+        "Добро пожаловать в Lulu Beauty! Поделитесь номером телефона, чтобы привязать "
+        "этот чат к вашему аккаунту и получать сюда коды подтверждения и напоминания.",
         reply_markup=keyboard,
     )
 
@@ -59,7 +59,7 @@ async def handle_contact(message: Message) -> None:
         await session.commit()
 
     await message.answer(
-        "Thanks! This chat is now linked to your phone number.",
+        "Готово! Этот чат привязан к вашему номеру телефона.",
         reply_markup=ReplyKeyboardRemove(),
     )
 
@@ -72,7 +72,7 @@ async def handle_fallback(message: Message) -> None:
         message.contact is not None,
         message.text,
     )
-    await message.answer("Send /start to link your phone number.")
+    await message.answer("Отправьте /start, чтобы привязать номер телефона.")
 
 
 def _create_bot() -> Bot | None:

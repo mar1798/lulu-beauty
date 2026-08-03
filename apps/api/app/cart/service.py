@@ -2,9 +2,11 @@ import uuid
 
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.cart.models import Cart, CartItem
 from app.cart.schemas import CartItemResponse, CartResponse
+from app.catalog.images import primary_image_url
 from app.catalog.models import Product
 from app.cycles.models import OrderCycle
 from app.cycles.service import CyclesService
@@ -130,6 +132,7 @@ class CartService:
             .join(Product, Product.id == CartItem.product_id)
             .where(CartItem.cart_id == cart.id)
             .order_by(Product.name)
+            .options(selectinload(Product.images))
         )
 
         items: list[CartItemResponse] = []
@@ -141,6 +144,8 @@ class CartService:
                 CartItemResponse(
                     product_id=product.id,
                     product_name=product.name,
+                    product_slug=product.slug,
+                    product_image_url=primary_image_url(product.images),
                     product_price_cents=product.price_cents,
                     quantity=cart_item.quantity,
                     line_total_cents=line_total_cents,

@@ -4,9 +4,12 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import CurrentUser, get_current_user, require_admin
+from app.auth.models import User
+from app.common.schemas import PageResponse
 from app.db import get_session
-from app.orders.models import Order
+from app.orders.models import Order, OrderStatus
 from app.orders.schemas import (
+    AdminOrderResponse,
     CheckoutRequest,
     OrderItemResponse,
     OrderResponse,
@@ -17,6 +20,21 @@ from app.orders.service import EmptyCartError, NoActiveCycleError, OrderNotFound
 router = APIRouter(tags=["orders"])
 
 
+def _order_items(order: Order) -> list[OrderItemResponse]:
+    return [
+        OrderItemResponse(
+            product_id=item.product_id,
+            product_name=item.product_name,
+            product_slug=item.product_slug,
+            product_image_url=item.product_image_url,
+            product_price_cents=item.product_price_cents,
+            quantity=item.quantity,
+            line_total_cents=item.product_price_cents * item.quantity,
+        )
+        for item in order.items
+    ]
+
+
 def _order_response(order: Order) -> OrderResponse:
     return OrderResponse(
         id=order.id,
@@ -25,16 +43,22 @@ def _order_response(order: Order) -> OrderResponse:
         total_cents=order.total_cents,
         note=order.note,
         created_at=order.created_at,
-        items=[
-            OrderItemResponse(
-                product_id=item.product_id,
-                product_name=item.product_name,
-                product_price_cents=item.product_price_cents,
-                quantity=item.quantity,
-                line_total_cents=item.product_price_cents * item.quantity,
-            )
-            for item in order.items
-        ],
+        items=_order_items(order),
+    )
+
+
+def _admin_order_response(order: Order, customer: User | None) -> AdminOrderResponse:
+    return AdminOrderResponse(
+        id=order.id,
+        cycle_id=order.cycle_id,
+        status=order.status,
+        total_cents=order.total_cents,
+        note=order.note,
+        created_at=order.created_at,
+        items=_order_items(order),
+        # A deleted user cascades its orders away, so this is defensive only.
+        customer_name=customer.name if customer is not None else "—",
+        customer_phone=customer.phone if customer is not None else "—",
     )
 
 
@@ -79,27 +103,39 @@ async def get_my_order(
     return _order_response(order)
 
 
-@router.get("/admin/orders", response_model=list[OrderResponse])
+@router.get("/admin/orders", response_model=PageResponse[AdminOrderResponse])
 async def list_orders_admin(
     cycle_id: uuid.UUID | None = Query(default=None, alias="cycleId"),
+    order_status: OrderStatus | None = Query(default=None, alias="status"),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=20, ge=1, le=100, alias="pageSize"),
     session: AsyncSession = Depends(get_session),
     _admin: CurrentUser = Depends(require_admin),
-) -> list[OrderResponse]:
-    orders = await OrdersService(session).list_admin(cycle_id)
-    return [_order_response(order) for order in orders]
+) -> PageResponse[AdminOrderResponse]:
+    service = OrdersService(session)
+    orders, total = await service.list_admin_page(cycle_id, order_status, page, page_size)
+    customers = await service.load_customers(orders)
+    return PageResponse(
+        items=[_admin_order_response(order, customers.get(order.user_id)) for order in orders],
+        total=total,
+        page=page,
+        page_size=page_size,
+    )
 
 
-@router.patch("/admin/orders/{order_id}/status", response_model=OrderResponse)
+@router.patch("/admin/orders/{order_id}/status", response_model=AdminOrderResponse)
 async def update_order_status(
     order_id: uuid.UUID,
     body: OrderStatusUpdateRequest,
     session: AsyncSession = Depends(get_session),
     _admin: CurrentUser = Depends(require_admin),
-) -> OrderResponse:
+) -> AdminOrderResponse:
+    service = OrdersService(session)
     try:
-        order = await OrdersService(session).update_status(order_id, body.status)
+        order = await service.update_status(order_id, body.status)
     except OrderNotFoundError as error:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "order_not_found") from error
 
+    customers = await service.load_customers([order])
     await session.commit()
-    return _order_response(order)
+    return _admin_order_response(order, customers.get(order.user_id))

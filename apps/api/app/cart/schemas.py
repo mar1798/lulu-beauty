@@ -18,6 +18,8 @@ class UpdateCartItemRequest(CamelModel):
 class CartItemResponse(CamelModel):
     product_id: uuid.UUID
     product_name: str
+    product_slug: str
+    product_image_url: str | None
     product_price_cents: int
     quantity: int
     line_total_cents: int

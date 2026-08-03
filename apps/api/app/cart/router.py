@@ -52,7 +52,9 @@ async def update_item(
         cart = await CartService(session).set_item_quantity(
             current_user.id, product_id, body.quantity
         )
-    except (NoActiveCycleError, CartItemNotFoundError) as error:
+    except NoActiveCycleError as error:
+        raise HTTPException(status.HTTP_409_CONFLICT, "no_active_cycle") from error
+    except CartItemNotFoundError as error:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "cart_item_not_found") from error
 
     await session.commit()

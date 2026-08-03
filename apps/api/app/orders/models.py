@@ -47,6 +47,10 @@ class OrderItem(UUIDPrimaryKeyMixin, Base):
         ForeignKey("products.id", ondelete="SET NULL"), index=True
     )
     product_name: Mapped[str] = mapped_column(String(255))
+    # Snapshotted alongside name/price so an order stays renderable (thumbnail + link to the
+    # catalog page) after the product is edited or soft-deleted — product_id goes NULL then.
+    product_slug: Mapped[str] = mapped_column(String(255), default="")
+    product_image_url: Mapped[str | None] = mapped_column(String(2048))
     product_price_cents: Mapped[int] = mapped_column(Integer)
     quantity: Mapped[int] = mapped_column(Integer)
 
