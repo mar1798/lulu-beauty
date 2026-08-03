@@ -34,5 +34,8 @@ class Settings(BaseSettings):
     upload_dir: str = "./uploads"
     public_files_base_url: str = "http://localhost:3001/files"
 
+    scheduler_enabled: bool = True
+    scheduler_interval_seconds: int = 300
+
 
 settings = Settings()  # type: ignore[call-arg]  # fields are sourced from env/.env at runtime

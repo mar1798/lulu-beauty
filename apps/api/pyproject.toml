@@ -15,6 +15,7 @@ dependencies = [
     "aiofiles>=24.1",
     "python-multipart>=0.0.9",
     "openpyxl>=3.1",
+    "apscheduler>=3.11.3",
 ]
 
 [dependency-groups]
@@ -61,3 +62,8 @@ extend-immutable-calls = [
 [tool.mypy]
 python_version = "3.12"
 strict = true
+
+[[tool.mypy.overrides]]
+# APScheduler ships no inline types and no stub package on PyPI as of 3.11.
+module = "apscheduler.*"
+ignore_missing_imports = true

@@ -1,7 +1,7 @@
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.models import OtpCode, OtpPurpose, User
@@ -58,6 +58,17 @@ class OtpService:
             raise OtpInvalidError("otp_invalid_code")
 
         otp.consumed_at = now
+
+    async def cleanup_expired(self) -> int:
+        now = datetime.now(UTC)
+        condition = or_(OtpCode.expires_at < now, OtpCode.consumed_at.is_not(None))
+
+        count = await self._session.scalar(
+            select(func.count()).select_from(OtpCode).where(condition)
+        )
+        await self._session.execute(delete(OtpCode).where(condition))
+        await self._session.flush()
+        return count or 0
 
     async def _latest_active(self, user_id: UUID, purpose: OtpPurpose) -> OtpCode | None:
         result = await self._session.execute(
