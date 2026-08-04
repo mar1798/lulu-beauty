@@ -5,3 +5,4 @@
 export * from './responsive'
 export * from './sizes'
 export * from './unstated'
+export * from './validation'

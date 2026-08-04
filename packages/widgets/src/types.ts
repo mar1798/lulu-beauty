@@ -555,3 +555,52 @@ export interface IProductTemplateProps {
   breadcrumbs?: ReactNode
   children: ReactNode
 }
+
+/* --- Авторизация --- */
+
+export interface IAuthTemplateProps {
+  title: string
+  subtitle?: string
+  children: ReactNode
+  /** Ссылка «нет аккаунта?» и прочее под карточкой. */
+  footer?: ReactNode
+}
+
+export interface ILoginValues {
+  /** E.164 — в этом виде его отдаёт `PhoneInput` и ждёт бэкенд. */
+  phone: string
+  password: string
+}
+
+export interface ILoginFormProps {
+  onSubmit: (values: ILoginValues) => void
+  isSubmitting?: boolean
+  /** Ошибка от сервера; ошибки полей форма считает сама. */
+  error?: string | null
+}
+
+export interface IRegisterValues extends ILoginValues {
+  name: string
+}
+
+export interface IRegisterFormProps {
+  onSubmit: (values: IRegisterValues) => void
+  isSubmitting?: boolean
+  error?: string | null
+}
+
+export interface IOtpVerifyFormProps {
+  onSubmit: (code: string) => void
+  isSubmitting?: boolean
+  error?: string | null
+  /** Например, «Код отправлен на +996 555 12 34 56». */
+  hint?: string
+  /** Слот «запросить новый код» — способ повтора зависит от страницы. */
+  resendAction?: ReactNode
+}
+
+export interface ITelegramLinkPromptProps {
+  /** Имя бота без `@`. Пустая строка — переменная окружения не настроена. */
+  botUsername: string
+  isLinked?: boolean
+}

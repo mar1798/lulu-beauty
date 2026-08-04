@@ -1,6 +1,7 @@
 import faker from './faker'
 import {
   IAlertProps,
+  IAuthTemplateProps,
   IBadgeProps,
   IBaseLayoutProps,
   IBreadcrumbsProps,
@@ -21,7 +22,9 @@ import {
   IImage,
   IInputProps,
   ILink,
+  ILoginFormProps,
   IOtpInputProps,
+  IOtpVerifyFormProps,
   IPaginationProps,
   IPasswordInputProps,
   IPhoneInputProps,
@@ -34,11 +37,13 @@ import {
   IProductGridProps,
   IProductImage,
   IProductTemplateProps,
+  IRegisterFormProps,
   ISearchFieldProps,
   ISelectProps,
   ISkeletonProps,
   ISpinnerProps,
   ISwitchProps,
+  ITelegramLinkPromptProps,
   ITextProps,
   ITextareaProps,
   IVisuallyHiddenProps,
@@ -365,4 +370,29 @@ export const feedCatalogTemplate = (): ICatalogTemplateProps => ({
 
 export const feedProductTemplate = (): IProductTemplateProps => ({
   children: 'Сюда встаёт карточка товара',
+})
+
+/* --- Авторизация --- */
+
+export const feedAuthTemplate = (): IAuthTemplateProps => ({
+  title: 'Вход',
+  subtitle: 'Введите телефон и пароль — код придёт в Telegram.',
+  children: 'Сюда встаёт форма',
+})
+
+export const feedLoginForm = (): ILoginFormProps => ({
+  onSubmit: noop,
+})
+
+export const feedRegisterForm = (): IRegisterFormProps => ({
+  onSubmit: noop,
+})
+
+export const feedOtpVerifyForm = (): IOtpVerifyFormProps => ({
+  onSubmit: noop,
+  hint: 'Код отправлен на +996 555 12 34 56',
+})
+
+export const feedTelegramLinkPrompt = (): ITelegramLinkPromptProps => ({
+  botUsername: 'lulu_beauty_bot',
 })

@@ -4,5 +4,9 @@
 
 export * from './footer/index'
 export * from './header/index'
+export * from './login-form/index'
+export * from './otp-verify-form/index'
 export * from './product-details/index'
 export * from './product-grid/index'
+export * from './register-form/index'
+export * from './telegram-link-prompt/index'

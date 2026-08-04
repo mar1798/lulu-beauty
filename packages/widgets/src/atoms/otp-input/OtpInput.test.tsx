@@ -60,6 +60,28 @@ describe('OtpInput', () => {
     expect(onChange).toHaveBeenLastCalledWith('123456')
   })
 
+  it('стирает цифру в заполненной ячейке по Backspace', async () => {
+    const onChange = vi.fn()
+
+    renderWidget(<OtpInput value="123456" onChange={onChange} />)
+    await userEvent.click(screen.getAllByRole('textbox')[5])
+    await userEvent.keyboard('{Backspace}')
+
+    expect(onChange).toHaveBeenLastCalledWith('12345')
+  })
+
+  it('позволяет перебить уже введённую цифру', async () => {
+    const onChange = vi.fn()
+
+    // Без выделения содержимого при фокусе в ячейку с maxLength=1
+    // новую цифру не вставить — код нельзя было бы исправить.
+    renderWidget(<OtpInput value="123456" onChange={onChange} />)
+    await userEvent.click(screen.getAllByRole('textbox')[0])
+    await userEvent.keyboard('9')
+
+    expect(onChange).toHaveBeenLastCalledWith('923456')
+  })
+
   it('возвращает фокус назад по Backspace в пустой ячейке', async () => {
     renderWidget(<OtpInput value="12" onChange={vi.fn()} />)
 

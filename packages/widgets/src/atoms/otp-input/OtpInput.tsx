@@ -79,9 +79,25 @@ export const OtpInput: FC<IOtpInputProps & IBasicStyling> = ({
   }
 
   const handleKeyDown = (index: number, event: KeyboardEvent<HTMLInputElement>): void => {
-    if (event.key === 'Backspace' && chars[index] === '') {
+    /**
+     * Backspace обрабатываем сами, а не полагаемся на браузер: в ячейке
+     * `maxLength=1` каретка может стоять перед цифрой, и тогда нативное
+     * удаление ничего не делает — исправить ошибочно введённый код было бы
+     * невозможно без перезагрузки страницы.
+     */
+    if (event.key === 'Backspace') {
       event.preventDefault()
-      focusCell(index - 1)
+
+      const next = [...chars]
+
+      if (next[index] === '') {
+        next[Math.max(index - 1, 0)] = ''
+        focusCell(index - 1)
+      } else {
+        next[index] = ''
+      }
+
+      emit(next.join(''))
       return
     }
 
@@ -133,6 +149,9 @@ export const OtpInput: FC<IOtpInputProps & IBasicStyling> = ({
             onChange={event => handleChange(index, event.target.value)}
             onKeyDown={event => handleKeyDown(index, event)}
             onPaste={handlePaste}
+            // Содержимое выделяется при фокусе, иначе в заполненную ячейку
+            // (`maxLength=1`) новую цифру просто не вставить.
+            onFocus={event => event.target.select()}
           />
         ))}
       </div>
