@@ -1,0 +1,132 @@
+import React, { useState } from 'react'
+import Head from 'next/head'
+import type { IOrder } from 'widgets/types'
+import { Alert, Button, Spinner, Text } from 'widgets/atoms'
+import { EmptyState } from 'widgets/molecules'
+import { CheckoutForm } from 'widgets/organisms'
+import { CartTemplate } from 'widgets/templates'
+import { SiteLayout } from '@/layouts/SiteLayout'
+import { useAuth } from '@/contexts/AuthContext'
+import { useCart } from '@/contexts/CartContext'
+import { isApiError } from '@/services/apiErrors'
+import { checkout } from '@/services/endpoints/orders'
+
+/**
+ * Оформление заявки.
+ *
+ * После успеха бэкенд забирает позиции из корзины в заявку, поэтому корзина
+ * перезагружается — иначе счётчик в шапке остался бы висеть.
+ */
+/** Короткий номер заявки: полный UUID покупателю не нужен. */
+const ORDER_NUMBER_LENGTH = 8
+
+const CheckoutPage: React.FC = () => {
+  const { user, isLoading: isAuthLoading } = useAuth()
+  const { cart, isLoading, reload } = useCart()
+
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [order, setOrder] = useState<IOrder | null>(null)
+
+  const handleSubmit = async (note: string | null): Promise<void> => {
+    setIsSubmitting(true)
+    setError(null)
+
+    try {
+      setOrder(await checkout(note ?? undefined))
+      await reload()
+    } catch (cause: unknown) {
+      setError(isApiError(cause) ? cause.message : 'Не удалось отправить заявку.')
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  const content = (): React.ReactNode => {
+    if (order !== null) {
+      return (
+        <>
+          <Alert tone="success" title="Заявка принята">
+            Мы передали её владельцу. После закрытия сбора с вами свяжутся по телефону.
+          </Alert>
+
+          {/* `items.length` — число позиций, а не штук: складывать количества здесь незачем. */}
+          <Text tone="secondary">
+            {`Номер заявки: ${order.id.slice(0, ORDER_NUMBER_LENGTH)} · позиций: ${order.items.length}`}
+          </Text>
+
+          <Button link={{ href: '/catalog' }} variant="secondary">
+            Вернуться в каталог
+          </Button>
+        </>
+      )
+    }
+
+    if (isAuthLoading || (user !== null && isLoading)) {
+      return <Spinner label="Загружаем корзину" />
+    }
+
+    if (user === null) {
+      return (
+        <EmptyState
+          title="Нужен вход"
+          description="Заявка оформляется на аккаунт — по нему владелец свяжется с вами."
+          action={<Button link={{ href: '/login' }}>Войти</Button>}
+        />
+      )
+    }
+
+    if (cart === null || cart.items.length === 0) {
+      return (
+        <EmptyState
+          title="Оформлять нечего"
+          description="Соберите корзину — и возвращайтесь сюда."
+          action={<Button link={{ href: '/catalog' }}>В каталог</Button>}
+        />
+      )
+    }
+
+    if (cart.cycleId === null) {
+      return (
+        <Alert tone="warning" title="Приём заявок закрыт">
+          Сейчас нет открытого сбора. Корзина сохранится до следующего.
+        </Alert>
+      )
+    }
+
+    return (
+      <CheckoutForm
+        totalCents={cart.totalCents}
+        itemCount={cart.items.reduce((sum, item) => sum + item.quantity, 0)}
+        deadlineAt={cart.cycleDeadlineAt}
+        isSubmitting={isSubmitting}
+        error={error}
+        onSubmit={note => {
+          void handleSubmit(note)
+        }}
+      />
+    )
+  }
+
+  return (
+    <SiteLayout>
+      <Head>
+        <title>Оформление заявки — Lulu Beauty</title>
+        <meta name="robots" content="noindex" />
+      </Head>
+
+      <CartTemplate
+        title={order === null ? 'Оформление заявки' : 'Заявка отправлена'}
+        summary={
+          order === null
+            ? 'Проверьте состав и добавьте комментарий, если он нужен.'
+            : undefined
+        }
+      >
+        {content()}
+      </CartTemplate>
+    </SiteLayout>
+  )
+}
+
+export default CheckoutPage

@@ -604,3 +604,60 @@ export interface ITelegramLinkPromptProps {
   botUsername: string
   isLinked?: boolean
 }
+
+/* --- Корзина и оформление --- */
+
+export interface IDeadlineCountdownProps {
+  /** ISO-строка дедлайна активного сбора; `null` — сбора нет. */
+  deadlineAt: string | null
+  label?: string
+  expiredLabel?: string
+}
+
+export interface IQuantityStepperProps {
+  value: number
+  onChange: (value: number) => void
+  min?: number
+  max?: number
+  disabled?: boolean
+  /** Уходит в `aria-label` группы — в списке позиций их несколько. */
+  label?: string
+}
+
+export interface ICartItemRowProps {
+  item: ICartItem
+  href: string
+  onQuantityChange: (quantity: number) => void
+  onRemove: () => void
+  /** Идёт запрос: блокирует контролы, чтобы не отправить два подряд. */
+  isBusy?: boolean
+}
+
+export interface ICartPanelProps {
+  cart: ICart | null
+  buildProductHref: (productSlug: string) => string
+  onQuantityChange: (productId: string, quantity: number) => void
+  onRemove: (productId: string) => void
+  onCheckout: () => void
+  isBusy?: boolean
+  error?: string | null
+  /** Показывается и на пустой корзине, и когда корзины ещё нет. */
+  emptyState?: ReactNode
+}
+
+export interface ICheckoutFormProps {
+  totalCents: number
+  itemCount: number
+  deadlineAt?: string | null
+  /** `null` — комментарий не заполнен; ровно это ждёт `CheckoutRequest`. */
+  onSubmit: (note: string | null) => void
+  isSubmitting?: boolean
+  error?: string | null
+}
+
+export interface ICartTemplateProps {
+  title: string
+  summary?: string
+  breadcrumbs?: ReactNode
+  children: ReactNode
+}

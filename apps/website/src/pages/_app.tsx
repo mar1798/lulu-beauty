@@ -7,6 +7,7 @@ import clsx from 'clsx'
 import React from 'react'
 import { ServicesContext } from 'widgets/contexts'
 import { AuthProvider } from '@/contexts/AuthContext'
+import { CartProvider } from '@/contexts/CartContext'
 import { Link } from '@/components/Link'
 import { Image } from '@/components/Image'
 import { shell } from '@/styles/shell.css'
@@ -56,9 +57,11 @@ const App: React.FC<AppProps> = ({ Component, pageProps }) => {
   return (
     <ServicesContext.Provider initialState={services}>
       <AuthProvider>
-        <div className={clsx(shell, inter.variable, eloqua.variable, inter.className)}>
-          <Component {...pageProps} />
-        </div>
+        <CartProvider>
+          <div className={clsx(shell, inter.variable, eloqua.variable, inter.className)}>
+            <Component {...pageProps} />
+          </div>
+        </CartProvider>
       </AuthProvider>
     </ServicesContext.Provider>
   )

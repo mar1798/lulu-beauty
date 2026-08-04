@@ -2,10 +2,12 @@ import React from 'react'
 import Head from 'next/head'
 import type { GetStaticPaths, GetStaticProps } from 'next'
 import type { IProduct } from 'widgets/types'
+import { Text } from 'widgets/atoms'
 import { Breadcrumbs } from 'widgets/molecules'
 import { ProductDetails } from 'widgets/organisms'
 import { ProductTemplate } from 'widgets/templates'
 import { SiteLayout } from '@/layouts/SiteLayout'
+import { AddToCartButton } from '@/components/AddToCartButton'
 import { isApiError } from '@/services/apiErrors'
 import { getProduct, listCategories, listProducts } from '@/services/endpoints/catalog'
 
@@ -92,8 +94,17 @@ const ProductPage: React.FC<IProductPageProps> = ({ product, categoryName }) => 
         />
       }
     >
-      {/* Кнопка «в корзину» встанет слотом `action` вместе с CartContext на шаге 7. */}
-      <ProductDetails product={product} categoryName={categoryName} />
+      <ProductDetails
+        product={product}
+        categoryName={categoryName}
+        action={
+          product.inStock ? (
+            <AddToCartButton productId={product.id} size="lg" />
+          ) : (
+            <Text tone="muted">Товара сейчас нет в наличии — загляните в следующий сбор.</Text>
+          )
+        }
+      />
     </ProductTemplate>
   </SiteLayout>
 )

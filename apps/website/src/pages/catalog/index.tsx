@@ -9,6 +9,7 @@ import { CategoryFilter, EmptyState, Pagination, SearchField } from 'widgets/mol
 import { ProductGrid } from 'widgets/organisms'
 import { CatalogTemplate } from 'widgets/templates'
 import { SiteLayout } from '@/layouts/SiteLayout'
+import { AddToCartButton } from '@/components/AddToCartButton'
 import { isApiError } from '@/services/apiErrors'
 import { listCategories, listProducts } from '@/services/endpoints/catalog'
 
@@ -197,6 +198,9 @@ const CatalogPage: React.FC<ICatalogPageProps> = ({ categories, initial }) => {
             products={products}
             isLoading={isLoading}
             buildHref={product => `/catalog/${product.slug}`}
+            renderAction={product =>
+              product.inStock ? <AddToCartButton productId={product.id} /> : null
+            }
             emptyState={
               <EmptyState
                 title="Ничего не нашлось"

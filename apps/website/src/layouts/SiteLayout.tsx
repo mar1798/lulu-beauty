@@ -4,6 +4,7 @@ import type { IFooterColumn, ILinkedLabel } from 'widgets/types'
 import { Footer, Header } from 'widgets/organisms'
 import { BaseLayout } from 'widgets/templates'
 import { useAuth } from '@/contexts/AuthContext'
+import { useCart } from '@/contexts/CartContext'
 
 /**
  * Каркас публичных страниц: шапка и подвал, настроенные данными сайта.
@@ -49,6 +50,7 @@ const sectionOf = (path: string): string => {
 export const SiteLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const router = useRouter()
   const { user } = useAuth()
+  const { itemCount } = useCart()
 
   return (
     <BaseLayout
@@ -57,7 +59,7 @@ export const SiteLayout: React.FC<{ children: React.ReactNode }> = ({ children }
           logo={{ label: 'Lulu Beauty', link: { href: '/' } }}
           navigation={NAVIGATION}
           cartLink={{ href: '/cart' }}
-          // Счётчик появится вместе с CartContext на шаге 7.
+          cartCount={itemCount}
           user={user === null ? null : { name: user.name, link: { href: '/account' } }}
           loginLink={{ href: '/login' }}
           currentHref={sectionOf(router.asPath)}

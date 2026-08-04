@@ -2,6 +2,11 @@ import faker from './faker'
 import {
   IAlertProps,
   IAuthTemplateProps,
+  ICart,
+  ICartItem,
+  ICartItemRowProps,
+  ICartPanelProps,
+  ICartTemplateProps,
   IBadgeProps,
   IBaseLayoutProps,
   IBreadcrumbsProps,
@@ -9,9 +14,11 @@ import {
   ICatalogTemplateProps,
   ICategory,
   ICategoryFilterProps,
+  ICheckoutFormProps,
   ICheckboxProps,
   IChipProps,
   IContainerProps,
+  IDeadlineCountdownProps,
   IDividerProps,
   IEmptyStateProps,
   IFileInputProps,
@@ -37,6 +44,7 @@ import {
   IProductGridProps,
   IProductImage,
   IProductTemplateProps,
+  IQuantityStepperProps,
   IRegisterFormProps,
   ISearchFieldProps,
   ISelectProps,
@@ -395,4 +403,78 @@ export const feedOtpVerifyForm = (): IOtpVerifyFormProps => ({
 
 export const feedTelegramLinkPrompt = (): ITelegramLinkPromptProps => ({
   botUsername: 'lulu_beauty_bot',
+})
+
+/* --- Корзина и оформление --- */
+
+const HOUR_MS = 60 * 60 * 1000
+const DEADLINE_HOURS = 30
+
+/** Дедлайн через полтора дня — так видны и дни, и часы. */
+const feedDeadline = (): string => new Date(Date.now() + DEADLINE_HOURS * HOUR_MS).toISOString()
+
+export const feedCartItem = (quantity = 2): ICartItem => {
+  const product = feedProduct()
+
+  return {
+    productId: product.id,
+    productName: product.name,
+    productSlug: product.slug,
+    productImageUrl: product.images[0]?.url ?? null,
+    productPriceCents: product.priceCents,
+    quantity,
+    lineTotalCents: product.priceCents * quantity,
+  }
+}
+
+export const feedCart = (): ICart => {
+  const items = [feedCartItem(1), feedCartItem(3)]
+
+  return {
+    cycleId: faker.string.uuid(),
+    cycleDeadlineAt: feedDeadline(),
+    items,
+    totalCents: items.reduce((sum, item) => sum + item.lineTotalCents, 0),
+  }
+}
+
+export const feedDeadlineCountdown = (): IDeadlineCountdownProps => ({
+  deadlineAt: feedDeadline(),
+})
+
+export const feedQuantityStepper = (): IQuantityStepperProps => ({
+  value: 2,
+  onChange: noop,
+})
+
+export const feedCartItemRow = (): ICartItemRowProps => {
+  const item = feedCartItem()
+
+  return {
+    item,
+    href: `/catalog/${item.productSlug}`,
+    onQuantityChange: noop,
+    onRemove: noop,
+  }
+}
+
+export const feedCartPanel = (): ICartPanelProps => ({
+  cart: feedCart(),
+  buildProductHref: slug => `/catalog/${slug}`,
+  onQuantityChange: noop,
+  onRemove: noop,
+  onCheckout: noop,
+})
+
+export const feedCheckoutForm = (): ICheckoutFormProps => ({
+  totalCents: 348_000,
+  itemCount: 4,
+  deadlineAt: feedDeadline(),
+  onSubmit: noop,
+})
+
+export const feedCartTemplate = (): ICartTemplateProps => ({
+  title: 'Корзина',
+  summary: 'Заявка отправится владельцу после закрытия сбора.',
+  children: 'Сюда встаёт список позиций',
 })

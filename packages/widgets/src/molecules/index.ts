@@ -3,9 +3,12 @@
  */
 
 export * from './breadcrumbs/index'
+export * from './cart-item-row/index'
 export * from './category-filter/index'
+export * from './deadline-countdown/index'
 export * from './empty-state/index'
 export * from './pagination/index'
 export * from './product-card/index'
 export * from './product-gallery/index'
+export * from './quantity-stepper/index'
 export * from './search-field/index'
