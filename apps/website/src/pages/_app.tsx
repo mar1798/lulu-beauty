@@ -5,6 +5,7 @@ import { Inter } from 'next/font/google'
 import localFont from 'next/font/local'
 import clsx from 'clsx'
 import React from 'react'
+import { AuthProvider } from '@/contexts/AuthContext'
 
 const inter = Inter({
   subsets: ['latin'],
@@ -39,13 +40,13 @@ const App: React.FC<AppProps> = ({
   pageProps,
 }) => {
   return (
-    <>
+    <AuthProvider>
       <main
         className={clsx(inter.className, eloqua.className)}
       >
         <Component {...pageProps} />
       </main>
-    </>
+    </AuthProvider>
   )
 }
 
