@@ -1,7 +1,9 @@
 import faker from './faker'
 import {
+  IAccountTemplateProps,
   IAlertProps,
   IAuthTemplateProps,
+  IAuthUser,
   ICart,
   ICartItem,
   ICartItemRowProps,
@@ -30,9 +32,17 @@ import {
   IInputProps,
   ILink,
   ILoginFormProps,
+  IOrder,
+  IOrderCardProps,
+  IOrderDetailsProps,
+  IOrderItem,
+  IOrderItemRowProps,
+  IOrderListProps,
+  IOrderStatusBadgeProps,
   IOtpInputProps,
   IOtpVerifyFormProps,
   IPaginationProps,
+  IProfileFormProps,
   IPasswordInputProps,
   IPhoneInputProps,
   IPortalProps,
@@ -477,4 +487,96 @@ export const feedCartTemplate = (): ICartTemplateProps => ({
   title: 'Корзина',
   summary: 'Заявка отправится владельцу после закрытия сбора.',
   children: 'Сюда встаёт список позиций',
+})
+
+/* --- Заявки покупателя и профиль --- */
+
+const DAY_MS = 24 * HOUR_MS
+
+export const feedOrderItem = (overrides: Partial<IOrderItem> = {}): IOrderItem => {
+  const product = feedProduct()
+  const quantity = faker.number.int({ min: 1, max: 3 })
+
+  return {
+    productId: product.id,
+    productName: product.name,
+    productSlug: product.slug,
+    productImageUrl: product.images[0]?.url ?? null,
+    productPriceCents: product.priceCents,
+    quantity,
+    lineTotalCents: product.priceCents * quantity,
+    ...overrides,
+  }
+}
+
+export const feedOrder = (overrides: Partial<IOrder> = {}): IOrder => {
+  const items = overrides.items ?? [feedOrderItem(), feedOrderItem()]
+
+  return {
+    id: faker.string.uuid(),
+    cycleId: faker.string.uuid(),
+    status: 'PENDING',
+    totalCents: items.reduce((sum, item) => sum + item.lineTotalCents, 0),
+    note: null,
+    createdAt: new Date(Date.now() - DAY_MS).toISOString(),
+    items,
+    ...overrides,
+  }
+}
+
+export const feedAuthUser = (overrides: Partial<IAuthUser> = {}): IAuthUser => ({
+  id: faker.string.uuid(),
+  phone: '+996555123456',
+  name: faker.person.firstName(),
+  role: 'CUSTOMER',
+  phoneVerified: true,
+  telegramLinked: false,
+  ...overrides,
+})
+
+export const feedOrderStatusBadge = (): IOrderStatusBadgeProps => ({
+  status: 'CONFIRMED',
+})
+
+export const feedOrderItemRow = (): IOrderItemRowProps => {
+  const item = feedOrderItem()
+
+  return { item, href: `/catalog/${item.productSlug}` }
+}
+
+export const feedOrderCard = (): IOrderCardProps => {
+  const order = feedOrder()
+
+  return { order, href: `/orders/${order.id}` }
+}
+
+export const feedOrderList = (): IOrderListProps => ({
+  orders: [
+    feedOrder(),
+    feedOrder({ status: 'CONFIRMED', createdAt: new Date(Date.now() - 5 * DAY_MS).toISOString() }),
+    feedOrder({ status: 'COMPLETED', createdAt: new Date(Date.now() - 30 * DAY_MS).toISOString() }),
+  ],
+  buildHref: order => `/orders/${order.id}`,
+})
+
+export const feedOrderDetails = (): IOrderDetailsProps => ({
+  order: feedOrder({ note: 'Позвоните после 18:00, пожалуйста.' }),
+  buildProductHref: slug => `/catalog/${slug}`,
+  isCurrentCycle: true,
+})
+
+export const feedProfileForm = (): IProfileFormProps => ({
+  user: feedAuthUser(),
+  onSubmit: noop,
+})
+
+export const feedAccountTemplate = (): IAccountTemplateProps => ({
+  title: 'Мои заявки',
+  summary: 'История ваших заявок по сборам.',
+  navigation: [
+    { label: 'Мои заявки', link: { href: '/orders' } },
+    { label: 'Профиль', link: { href: '/account' } },
+  ],
+  currentHref: '/orders',
+  children: 'Сюда встаёт содержимое раздела',
 })

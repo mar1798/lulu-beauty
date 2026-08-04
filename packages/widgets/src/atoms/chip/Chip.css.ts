@@ -8,18 +8,23 @@ export const container = style([
     display: 'inline-flex',
     alignItems: 'center',
     gap: rem(6),
-    minHeight: rem(36),
+    minHeight: rem(40),
     padding: `0 ${vars.space.md}`,
-    font: font('14/20', 500),
-    color: color.text('secondary'),
+    font: font('16/24', 500),
+    color: color.text('primary'),
     backgroundColor: color.surface('base'),
-    border: border(1, color.border('default')),
+    border: border(1, color.border('subtle')),
     borderRadius: vars.radius.pill,
+    /** Категорийная пилюля из референса: белая, с волосяной рамкой и лёгким подъёмом. */
+    boxShadow: vars.shadow.sm,
     cursor: 'pointer',
     whiteSpace: 'nowrap',
-    transition: transition('background-color', 'color', 'border-color'),
+    transition: transition('background-color', 'color', 'border-color', 'box-shadow'),
     selectors: {
-      '&:hover:not([disabled])': { borderColor: color.border('strong') },
+      '&:hover:not([disabled])': {
+        borderColor: color.border('strong'),
+        boxShadow: vars.shadow.lg,
+      },
       '&[disabled]': { opacity: 0.55, cursor: 'not-allowed' },
       /** Выбранное состояние читается и по контрасту, и по `aria-pressed`. */
       '&[aria-pressed="true"]': {
@@ -38,7 +43,7 @@ export const container = style([
  * У выбранного чипа цвет наследуется от инверсного текста.
  */
 export const count = style({
-  font: font('13/18', 500),
+  font: font('14/20', 500),
   color: color.text('muted'),
   selectors: {
     '[aria-pressed="true"] > &': {

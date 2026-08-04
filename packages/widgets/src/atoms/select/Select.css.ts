@@ -25,7 +25,8 @@ export const control = style([
   {
     appearance: 'none',
     cursor: 'pointer',
-    paddingRight: vars.space.xl,
+    /** Место под стрелку: она стоит в 16px от края пилюли и сама 18px шириной. */
+    paddingRight: vars.space.xxl,
   },
 ])
 
@@ -33,7 +34,7 @@ export const invalid = style(fieldInvalid())
 
 export const chevron = style({
   position: 'absolute',
-  right: vars.space.sm,
+  right: vars.space.md,
   top: '50%',
   transform: 'translateY(-50%)',
   fontSize: rem(18),

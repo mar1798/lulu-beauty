@@ -14,7 +14,7 @@ export const list = style({
 export const item = style({
   ...flexRow(8),
   alignItems: 'center',
-  font: font('13/18'),
+  font: font('14/20'),
   color: color.text('muted'),
   minWidth: 0,
 })

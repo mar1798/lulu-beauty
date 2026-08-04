@@ -6,11 +6,15 @@ export const container = style({
   margin: 0,
 })
 
+/**
+ * Шкала референса: 12 — пол для вторичных подписей, 16 — рабочий размер
+ * основного текста, 18 — крупный ввод. Мельче 12 не опускаемся.
+ */
 export const size = styleVariants({
   xs: { font: font('12/18') },
   sm: { font: font('14/20') },
-  md: { font: font('15/22') },
-  lg: { font: font('17/26') },
+  md: { font: font('16/24') },
+  lg: { font: font('18/28') },
 })
 
 export const weight = styleVariants({

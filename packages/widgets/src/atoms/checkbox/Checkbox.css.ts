@@ -44,7 +44,7 @@ export const body = style({
 })
 
 export const label = style({
-  font: font('15/22'),
+  font: font('16/24'),
   color: color.text('primary'),
 })
 

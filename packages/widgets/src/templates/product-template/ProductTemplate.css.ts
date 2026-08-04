@@ -3,6 +3,6 @@ import { flexColumn } from '../../styling/mixin'
 import { vars } from '../../styling/themes/contract.css'
 
 export const container = style({
-  ...flexColumn(24),
-  paddingBlock: vars.space.xl,
+  ...flexColumn(32),
+  paddingBlock: vars.space.xxl,
 })

@@ -504,6 +504,8 @@ export interface IEmptyStateProps {
   description?: string
   icon?: ReactNode
   action?: ReactNode
+  /** Уровень заголовка. По умолчанию 2 — блок обычно стоит прямо под `h1` страницы. */
+  level?: IHeadingLevel
 }
 
 export interface ISearchFieldProps {
@@ -659,5 +661,61 @@ export interface ICartTemplateProps {
   title: string
   summary?: string
   breadcrumbs?: ReactNode
+  children: ReactNode
+}
+
+/* --- Заявки покупателя и профиль --- */
+
+export interface IOrderStatusBadgeProps {
+  status: OrderStatus
+}
+
+export interface IOrderItemRowProps {
+  item: IOrderItem
+  /**
+   * `null` — товара больше нет в каталоге (`productId === null` в снапшоте),
+   * вести ссылке некуда, а название остаётся видно.
+   */
+  href: string | null
+}
+
+export interface IOrderCardProps {
+  order: IOrder
+  href: string
+}
+
+export interface IOrderListProps {
+  orders: IOrder[]
+  buildHref: (order: IOrder) => string
+  isLoading?: boolean
+  skeletonCount?: number
+  emptyState?: ReactNode
+}
+
+export interface IOrderDetailsProps {
+  order: IOrder
+  buildProductHref: (productSlug: string) => string
+  /** Заявка относится к ещё открытому сбору — состав можно обсудить с владельцем. */
+  isCurrentCycle?: boolean
+}
+
+export interface IProfileFormProps {
+  user: IAuthUser
+  /** Телефон менять нельзя: он же логин и цель OTP. Наружу уходит только имя. */
+  onSubmit: (name: string) => void
+  isSubmitting?: boolean
+  error?: string | null
+  isSaved?: boolean
+  /** Слот под выход из аккаунта и привязку Telegram. */
+  footer?: ReactNode
+}
+
+export interface IAccountTemplateProps {
+  title: string
+  summary?: string
+  /** Разделы личного кабинета: «Мои заявки», «Профиль». */
+  navigation: ILinkedLabel[]
+  /** Текущий путь — для `aria-current` в навигации раздела. */
+  currentHref?: string
   children: ReactNode
 }

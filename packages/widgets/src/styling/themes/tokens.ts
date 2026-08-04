@@ -12,8 +12,13 @@
  *
  * Цвета хранятся как каналы `'R, G, B'` — этого требует геттер `color()`
  * из `lib/color.ts`, который собирает `rgb(...)` / `rgba(...)`.
- * Палитра снята с `design-reference/` (тёплый кремовый фон, пастельная
- * лилово-розовая марка, глиняный акцент).
+ *
+ * Нейтральная шкала, поверхности, тени, скругления и трекинг сняты с
+ * `DESIGN.md` («floating shopping constellation on white marble»): белый холст
+ * `#f2f4f5`, белые карточки, чернильный текст, волосяные границы `#ebebeb`,
+ * мягкие двухслойные тени вместо рамок. Марочная (пастельный лилово-розовый) и
+ * акцентная (глина) шкалы плюс семантика оставлены прежними — единственный
+ * насыщенный цвет системы у нас свой, а не violet из референса.
  */
 import { rem } from '../lib/rem'
 import { shadow, uniteShadows } from '../lib/shadow'
@@ -34,28 +39,49 @@ function channels(hex: string): string {
 }
 
 /**
- * Тень одного уровня: цвет задаём каналами нейтрального 900 с альфой.
+ * Тень одного уровня. В референсе тени строго чёрные (`rgba(0,0,0,α)`) —
+ * тёплый подмес нейтрального 900 делал их грязными на холодном холсте.
  */
 function ink(alpha: number): string {
-  return `rgba(${channels('1e1c19')}, ${alpha})`
+  return `rgba(0, 0, 0, ${alpha})`
+}
+
+/**
+ * Тень, подкрашенная марочным цветом: референс тонирует тень под акцентной
+ * кнопкой её же оттенком, чтобы акцент читался и в подсветке. Violet заменён
+ * на нашу марку.
+ */
+function brandGlow(alpha: number): string {
+  return `rgba(${channels('a9587e')}, ${alpha})`
 }
 
 export const lightTokens = {
   color: {
-    /** Тёплая нейтральная шкала: фон страницы, текст, границы. */
+    /**
+     * Нейтральная шкала холста: белый → `canvas mist` → волосяная граница →
+     * `cool stone` → `muted gray` → `slate ink` → чернильный чёрный.
+     * Опорные значения (`f2f4f5`, `ebebeb`, `cccccc`, `787574`, `332f2d`,
+     * `000000`) взяты из DESIGN.md один в один, промежуточные добраны, чтобы
+     * шкала осталась равномерной.
+     */
     neutral: {
       '0': channels('ffffff'),
-      '50': channels('fbf9f7'),
-      '100': channels('f5f1ec'),
-      '200': channels('eae4dc'),
-      '300': channels('d9d1c6'),
-      '400': channels('b8aea1'),
-      '500': channels('918879'),
-      '600': channels('6e665a'),
-      '700': channels('4f4941'),
-      '800': channels('33302b'),
-      '900': channels('1e1c19'),
-      '950': channels('100f0d'),
+      '50': channels('f8f9fa'),
+      '100': channels('f2f4f5'),
+      '200': channels('ebebeb'),
+      '300': channels('e0e0e0'),
+      '400': channels('cccccc'),
+      '500': channels('787574'),
+      /**
+       * Чуть темнее референсного `#787574`: на холсте `#f2f4f5` тот даёт 4.18:1,
+       * ниже WCAG AA 4.5:1 (ловится axe). На `#6f6c6b` выходит 4.76:1 при том же
+       * оттенке, поэтому мелкий текст берёт 600, а иконки в покое — 500.
+       */
+      '600': channels('6f6c6b'),
+      '700': channels('4d4a48'),
+      '800': channels('332f2d'),
+      '900': channels('141414'),
+      '950': channels('000000'),
     },
     /** Марка: пастельный лилово-розовый. */
     brand: {
@@ -107,49 +133,72 @@ export const lightTokens = {
       '500': channels('3d6fb5'),
       '700': channels('2a4e7f'),
     },
-    /** Поверхности: карточки, панели, модалки. */
+    /**
+     * Поверхности: карточки, панели, модалки. Основная — чистый белый, от
+     * холста её отделяет мягкая тень, а не рамка (см. `shadow`).
+     */
     surface: {
       base: channels('ffffff'),
-      muted: channels('fbf9f7'),
-      sunken: channels('f5f1ec'),
+      muted: channels('f8f9fa'),
+      sunken: channels('f2f4f5'),
       soft: channels('faedf3'),
-      inverse: channels('1e1c19'),
-      overlay: channels('100f0d'),
+      inverse: channels('000000'),
+      overlay: channels('000000'),
     },
     /** Фоны страницы и крупных секций. */
     background: {
-      page: channels('fbf9f7'),
+      page: channels('f2f4f5'),
       soft: channels('f2d8e5'),
-      inverse: channels('1e1c19'),
+      inverse: channels('000000'),
     },
     text: {
-      primary: channels('1e1c19'),
-      secondary: channels('4f4941'),
+      primary: channels('000000'),
+      secondary: channels('332f2d'),
       /**
        * Нейтральный 600, а не 500: подсказками под полями и счётчиками
-       * набирается мелкий текст, и на 500 (`#918879`) axe справедливо ругался
-       * на контраст 3:1 — ниже требуемых WCAG AA 4.5:1. На 600 выходит 5.6:1.
+       * набирается мелкий текст, и на референсном 500 (`#787574`) контраст
+       * на холсте падает до 4.18:1 — ниже требуемых WCAG AA 4.5:1. На 600
+       * выходит 4.76:1 на холсте и 5.2:1 на белом.
        */
-      muted: channels('6e665a'),
-      subtle: channels('b8aea1'),
+      muted: channels('6f6c6b'),
+      subtle: channels('acaaa9'),
       inverse: channels('ffffff'),
       brand: channels('a9587e'),
       danger: channels('c9524a'),
       success: channels('3d8f62'),
     },
+    /**
+     * Границы — волосяные: `#ebebeb` из референса на разделителях и полях,
+     * `cool stone` на сильном состоянии. Фокус остаётся марочным.
+     */
     border: {
-      subtle: channels('eae4dc'),
-      default: channels('d9d1c6'),
-      strong: channels('b8aea1'),
+      subtle: channels('ebebeb'),
+      default: channels('e0e0e0'),
+      strong: channels('cccccc'),
       focus: channels('c4739a'),
-      inverse: channels('33302b'),
+      inverse: channels('332f2d'),
     },
   },
   font: {
     inter: `var(--font-inter, Inter, sans-serif)`,
     eloqua: `var(--font-eloqua, Eloqua, sans-serif)`,
   },
-  /** Скругления: мягкие карточки товаров и pill-бейджи из референса. */
+  /**
+   * Трекинг. Подпись референса: иерархию держит не жир, а отрицательный
+   * трекинг — крупный текст стягивается сильнее мелкого.
+   */
+  tracking: {
+    tight: '-0.05em',
+    display: '-0.03em',
+    body: '-0.011em',
+    none: '0',
+    wide: '0.04em',
+  },
+  /**
+   * Скругления: `xxl` (28px) — карточки, `xl` (20px) — картинка внутри
+   * карточки (референс держит внутренний радиус на ~8px меньше внешнего),
+   * `pill` — всё, что стоит в строке с текстом: кнопки, поля, чипы.
+   */
   radius: {
     none: '0',
     xs: rem(4),
@@ -161,25 +210,25 @@ export const lightTokens = {
     pill: '9999px',
     circle: '50%',
   },
+  /**
+   * Тени из референса: `md` — фирменная двухслойная «подушка» под карточками,
+   * `sm` — лёгкий подъём пилюль и чипов, `lg` — плавающие элементы вроде
+   * стрелок каруселей. `brand` подкрашена маркой (см. `brandGlow`).
+   */
   shadow: {
     none: 'none',
     xs: shadow('out', 0, 1, 2).colorize(ink(0.05)),
-    sm: uniteShadows(
-      shadow('out', 0, 2, 4).colorize(ink(0.06)),
-      shadow('out', 0, 1, 2).colorize(ink(0.04)),
-    ),
+    sm: shadow('out', 0, 2, 8).colorize(ink(0.06)),
     md: uniteShadows(
-      shadow('out', 0, 4, 12).colorize(ink(0.08)),
-      shadow('out', 0, 1, 3).colorize(ink(0.04)),
+      shadow('out', 0, 4, 6, -1).colorize(ink(0.1)),
+      shadow('out', 0, 2, 4, -2).colorize(ink(0.1)),
     ),
-    lg: uniteShadows(
-      shadow('out', 0, 12, 28).colorize(ink(0.1)),
-      shadow('out', 0, 2, 6).colorize(ink(0.05)),
-    ),
+    lg: shadow('out', 0, 4, 24).colorize(ink(0.12)),
     xl: uniteShadows(
-      shadow('out', 0, 24, 56).colorize(ink(0.14)),
-      shadow('out', 0, 4, 10).colorize(ink(0.06)),
+      shadow('out', 0, 12, 48).colorize(ink(0.16)),
+      shadow('out', 0, 4, 12).colorize(ink(0.08)),
     ),
+    brand: shadow('out', 0, 4, 24).colorize(brandGlow(0.34)),
     inset: shadow('in', 0, 1, 2).colorize(ink(0.06)),
   },
   /** Слои: header ниже drawer, drawer ниже модалки, тост поверх всего. */

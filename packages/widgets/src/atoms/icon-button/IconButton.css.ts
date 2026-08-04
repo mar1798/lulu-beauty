@@ -37,10 +37,11 @@ export const variant = styleVariants({
       },
     },
   },
+  /** Плавающая круглая кнопка референса: белая, отделяется тенью, а не рамкой. */
   solid: {
     backgroundColor: color.surface('base'),
     color: color.text('primary'),
-    borderColor: color.border('default'),
+    boxShadow: vars.shadow.lg,
     selectors: {
       '&:hover:not([disabled])': { backgroundColor: color.surface('muted') },
     },

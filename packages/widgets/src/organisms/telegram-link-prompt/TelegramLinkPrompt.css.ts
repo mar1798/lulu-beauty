@@ -1,14 +1,15 @@
 import { style } from '@vanilla-extract/css'
-import { border, color, font, rem } from '../../styling/lib'
+import { color, font, rem } from '../../styling/lib'
 import { flexColumn } from '../../styling/mixin'
 import { vars } from '../../styling/themes/contract.css'
 
+/** Марочная подложка остаётся — она и есть акцент; рамку заменила тень. */
 export const container = style({
   ...flexColumn(12),
-  padding: vars.space.md,
+  padding: vars.space.lg,
   backgroundColor: color.surface('soft'),
-  border: border(1, color.brand('200')),
-  borderRadius: vars.radius.lg,
+  borderRadius: vars.radius.xxl,
+  boxShadow: vars.shadow.sm,
 })
 
 export const steps = style({

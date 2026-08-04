@@ -18,8 +18,8 @@ export const media64 = style({
   aspectRatio: '4 / 5',
   overflow: 'hidden',
   backgroundColor: color.surface('sunken'),
-  border: border(1, color.border('subtle')),
-  borderRadius: vars.radius.md,
+  borderRadius: vars.radius.lg,
+  boxShadow: vars.shadow.sm,
 })
 
 export const placeholder = style({

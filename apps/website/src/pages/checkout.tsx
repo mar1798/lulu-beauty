@@ -4,8 +4,11 @@ import type { IOrder } from 'widgets/types'
 import { Alert, Button, Spinner, Text } from 'widgets/atoms'
 import { EmptyState } from 'widgets/molecules'
 import { CheckoutForm } from 'widgets/organisms'
+import { ITEM_FORMS, orderNumber } from 'widgets/molecules'
+import { pluralize } from 'widgets/utils'
 import { CartTemplate } from 'widgets/templates'
 import { SiteLayout } from '@/layouts/SiteLayout'
+import * as styles from '@/styles/layout.css'
 import { useAuth } from '@/contexts/AuthContext'
 import { useCart } from '@/contexts/CartContext'
 import { isApiError } from '@/services/apiErrors'
@@ -17,9 +20,6 @@ import { checkout } from '@/services/endpoints/orders'
  * После успеха бэкенд забирает позиции из корзины в заявку, поэтому корзина
  * перезагружается — иначе счётчик в шапке остался бы висеть.
  */
-/** Короткий номер заявки: полный UUID покупателю не нужен. */
-const ORDER_NUMBER_LENGTH = 8
-
 const CheckoutPage: React.FC = () => {
   const { user, isLoading: isAuthLoading } = useAuth()
   const { cart, isLoading, reload } = useCart()
@@ -52,12 +52,16 @@ const CheckoutPage: React.FC = () => {
 
           {/* `items.length` — число позиций, а не штук: складывать количества здесь незачем. */}
           <Text tone="secondary">
-            {`Номер заявки: ${order.id.slice(0, ORDER_NUMBER_LENGTH)} · позиций: ${order.items.length}`}
+            {`Номер заявки: ${orderNumber(order.id)} · ${pluralize(order.items.length, ITEM_FORMS)}`}
           </Text>
 
-          <Button link={{ href: '/catalog' }} variant="secondary">
-            Вернуться в каталог
-          </Button>
+          <div className={styles.actions}>
+            <Button link={{ href: `/orders/${order.id}` }}>Открыть заявку</Button>
+
+            <Button link={{ href: '/catalog' }} variant="secondary">
+              Вернуться в каталог
+            </Button>
+          </div>
         </>
       )
     }

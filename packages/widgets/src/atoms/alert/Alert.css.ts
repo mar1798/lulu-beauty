@@ -8,7 +8,7 @@ export const container = style({
   alignItems: 'flex-start',
   padding: `${vars.space.sm} ${vars.space.md}`,
   border: border(1, 'transparent'),
-  borderRadius: vars.radius.md,
+  borderRadius: vars.radius.xl,
 })
 
 export const tone = styleVariants({
@@ -37,7 +37,7 @@ export const tone = styleVariants({
 export const body = style(flexColumn(4))
 
 export const title = style({
-  font: font('15/22', 600),
+  font: font('16/24', 600),
 })
 
 export const message = style({

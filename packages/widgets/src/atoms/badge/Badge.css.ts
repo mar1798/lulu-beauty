@@ -7,7 +7,7 @@ export const container = style({
   alignItems: 'center',
   gap: rem(6),
   padding: `${rem(4)} ${rem(10)}`,
-  font: font('13/18', 500),
+  font: font('12/18', 500),
   borderRadius: vars.radius.pill,
   whiteSpace: 'nowrap',
 })

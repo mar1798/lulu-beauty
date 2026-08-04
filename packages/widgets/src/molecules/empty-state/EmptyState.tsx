@@ -8,15 +8,16 @@ import * as styles from './EmptyState.css'
 /**
  * Пустое состояние: ничего не нашлось, корзина пуста, заявок ещё нет.
  *
- * Заголовок — не `Heading` уровня 1: пустое состояние живёт внутри секции,
- * у которой уже есть свой заголовок, поэтому по умолчанию берётся третий
- * уровень и иерархия документа не рвётся.
+ * Заголовок по умолчанию второго уровня: пустое состояние встаёт прямо под
+ * `h1` страницы, и третий уровень давал бы пропуск h1 → h3 (axe: `heading-order`).
+ * Там, где блок вложен глубже, уровень задаётся явно через `level`.
  */
 export const EmptyState: FC<IEmptyStateProps & IBasicStyling> = ({
   title,
   description,
   icon,
   action,
+  level = 2,
   className,
 }) => (
   <div className={clsx(styles.container, className)}>
@@ -26,7 +27,7 @@ export const EmptyState: FC<IEmptyStateProps & IBasicStyling> = ({
       </span>
     )}
 
-    <Heading level={3} size="sm">
+    <Heading level={level} size="sm">
       {title}
     </Heading>
 

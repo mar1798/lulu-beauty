@@ -21,6 +21,6 @@ export const container = style({
 
 export const shape = styleVariants({
   text: { height: rem(14), borderRadius: vars.radius.xs },
-  block: { borderRadius: vars.radius.md },
+  block: { borderRadius: vars.radius.xl },
   circle: { borderRadius: vars.radius.circle },
 })

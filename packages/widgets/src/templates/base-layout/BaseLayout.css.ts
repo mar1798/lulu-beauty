@@ -26,7 +26,7 @@ export const skipLink = style({
   font: font('14/20', 500),
   color: color.text('inverse'),
   backgroundColor: color.neutral('900'),
-  borderRadius: vars.radius.sm,
+  borderRadius: vars.radius.pill,
   transform: 'translateY(-200%)',
   selectors: {
     '&:focus-visible': { transform: 'translateY(0)' },

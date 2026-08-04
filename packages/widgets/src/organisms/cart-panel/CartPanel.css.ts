@@ -24,9 +24,9 @@ export const items = style({
 export const summary = style({
   ...flexColumn(16),
   padding: vars.space.lg,
-  backgroundColor: color.surface('muted'),
-  border: border(1, color.border('subtle')),
-  borderRadius: vars.radius.lg,
+  backgroundColor: color.surface('base'),
+  borderRadius: vars.radius.xxl,
+  boxShadow: vars.shadow.md,
   ...media({
     lg: { position: 'sticky', top: vars.space.xxl },
   }),

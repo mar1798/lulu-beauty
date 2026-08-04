@@ -16,6 +16,8 @@
     "./types": "./src/types.ts",
     "./feed": "./src/stories/feed.ts",
     "./styling/lib": "./src/styling/lib/index.ts",
+    "./styling/mixin": "./src/styling/mixin/index.ts",
+    "./styling/theme": "./src/styling/themes/contract.css.ts",
     "./styling/properties": "./src/styling/properties.css.ts",
     "./styling/global.css": "./src/styling/global.css.ts",
     "./styling/preflight.css": "./src/styling/preflight.css.ts"
@@ -28,6 +30,12 @@
     "*": {
       "styling/lib": [
         "./src/styling/lib/index.ts"
+      ],
+      "styling/mixin": [
+        "./src/styling/mixin/index.ts"
+      ],
+      "styling/theme": [
+        "./src/styling/themes/contract.css.ts"
       ],
       "styling/properties": [
         "./src/styling/properties.css.ts"
@@ -63,15 +71,15 @@
   },
   "scripts": {
     "clear": "rimraf storybook-static && rimraf .turbo && rimraf tsconfig.tsbuildinfo",
-    "build": "barrelsby -DqS --exclude=stories --config ./.barrelsby.json",
-    "generate": "node ./tools/generate.js && barrelsby -DqS --exclude=stories --config ./.barrelsby.json",
+    "build": "barrelsby -DqS --exclude=stories --exclude=\\.test\\. --config ./.barrelsby.json",
+    "generate": "node ./tools/generate.js && barrelsby -DqS --exclude=stories --exclude=\\.test\\. --config ./.barrelsby.json",
     "lint": "eslint --config eslint.config.mjs ./",
     "types": "tsc --noEmit",
     "check": "tsc --noEmit && eslint --config eslint.config.mjs ./",
     "test": "vitest run",
     "storybook": "storybook dev -p 6006",
     "build-storybook": "storybook build",
-    "barrels": "barrelsby -DqS --exclude=stories --config ./.barrelsby.json"
+    "barrels": "barrelsby -DqS --exclude=stories --exclude=\\.test\\. --config ./.barrelsby.json"
   },
   "dependencies": {
     "clsx": "^2.1.1",

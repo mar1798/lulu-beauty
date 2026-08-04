@@ -29,8 +29,15 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    volumes:
+      # Загруженные фотографии товаров (`settings.upload_dir` = ./uploads от WORKDIR
+      # /app). Без тома они лежат в слое контейнера и пропадают при каждом
+      # `docker compose down`, тогда как строки product_images в БД остаются —
+      # каталог начинает показывать битые картинки.
+      - uploads:/app/uploads
     ports:
       - '3001:3001'
 
 volumes:
   pgdata:
+  uploads:

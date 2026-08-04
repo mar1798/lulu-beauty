@@ -4,7 +4,7 @@ import { vars } from '../../styling/themes/contract.css'
 
 export const container = style({
   ...flexColumn(24),
-  paddingBlock: vars.space.xl,
+  paddingBlock: vars.space.xxl,
 })
 
 export const head = style(flexColumn(6))

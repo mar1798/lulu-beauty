@@ -5,13 +5,14 @@ import { vars } from '../../styling/themes/contract.css'
 
 export const container = style(flexColumn(12))
 
+/** Главный кадр — «карточка, которой и является картинка»: 28px и мягкая тень. */
 export const main = style({
   position: 'relative',
   aspectRatio: '4 / 5',
   overflow: 'hidden',
-  backgroundColor: color.surface('sunken'),
-  border: border(1, color.border('subtle')),
-  borderRadius: vars.radius.xl,
+  backgroundColor: color.surface('base'),
+  borderRadius: vars.radius.xxl,
+  boxShadow: vars.shadow.md,
 })
 
 export const placeholder = style({
@@ -38,7 +39,7 @@ export const thumb = style([
     padding: 0,
     backgroundColor: color.surface('sunken'),
     border: border(2, 'transparent'),
-    borderRadius: vars.radius.md,
+    borderRadius: vars.radius.lg,
     cursor: 'pointer',
     transition: transition('border-color'),
     selectors: {

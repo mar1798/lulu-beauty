@@ -19,8 +19,8 @@ export const cell = style({
   font: font('22/28', 600),
   color: color.text('primary'),
   backgroundColor: color.surface('base'),
-  border: border(1, color.border('default')),
-  borderRadius: vars.radius.sm,
+  border: border(1, color.border('subtle')),
+  borderRadius: vars.radius.lg,
   transition: transition('border-color', 'box-shadow'),
   selectors: {
     '&:focus-visible': {

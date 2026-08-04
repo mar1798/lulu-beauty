@@ -3,9 +3,10 @@ import { media } from '../../styling/lib/media'
 import { flexColumn, flexRow } from '../../styling/mixin'
 import { vars } from '../../styling/themes/contract.css'
 
+/** Между крупными блоками каталога — 48px: макет должен «дышать». */
 export const container = style({
-  ...flexColumn(32),
-  paddingBlock: vars.space.xl,
+  ...flexColumn(48),
+  paddingBlock: vars.space.xxl,
 })
 
 export const head = style(flexColumn(8))

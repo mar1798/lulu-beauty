@@ -6,8 +6,9 @@ import { vars } from '../../styling/themes/contract.css'
 export const container = style({
   ...flexRow(0),
   alignItems: 'center',
-  border: border(1, color.border('default')),
+  border: border(1, color.border('subtle')),
   borderRadius: vars.radius.pill,
+  boxShadow: vars.shadow.sm,
   overflow: 'hidden',
   width: 'fit-content',
 })
@@ -39,7 +40,7 @@ export const button = style([
 export const value = style({
   minWidth: rem(40),
   textAlign: 'center',
-  font: font('15/22', 600),
+  font: font('16/24', 600),
   fontVariantNumeric: 'tabular-nums',
   color: color.text('primary'),
 })

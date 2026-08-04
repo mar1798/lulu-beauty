@@ -13,16 +13,21 @@ import { focusRing } from './focusRing'
 /** Минимальная высота контрола — 44px, нижняя граница комфортного тапа. */
 export const FIELD_HEIGHT = 44
 
+/**
+ * Поля — пилюли (`radius.pill`) с волосяной рамкой: референс не допускает
+ * прямых углов у контролов, стоящих в строке с текстом. Круглым краям нужны
+ * увеличенные горизонтальные отступы, иначе текст липнет к дуге.
+ */
 export function fieldControl(): StyleRule {
   return {
     width: '100%',
     minHeight: rem(FIELD_HEIGHT),
-    padding: `${vars.space.xs} ${vars.space.sm}`,
-    font: font('15/22'),
+    padding: `${vars.space.xs} ${vars.space.md}`,
+    font: font('16/24'),
     color: color.text('primary'),
     backgroundColor: color.surface('base'),
-    border: border(1, color.border('default')),
-    borderRadius: vars.radius.sm,
+    border: border(1, color.border('subtle')),
+    borderRadius: vars.radius.pill,
     transition: transition('border-color', 'box-shadow', 'background-color'),
     selectors: {
       '&:hover:not(:disabled)': {
@@ -53,11 +58,11 @@ export function fieldShell(): StyleRule {
     gap: vars.space.xs,
     width: '100%',
     minHeight: rem(FIELD_HEIGHT),
-    padding: `0 ${vars.space.sm}`,
+    padding: `0 ${vars.space.md}`,
     color: color.text('primary'),
     backgroundColor: color.surface('base'),
-    border: border(1, color.border('default')),
-    borderRadius: vars.radius.sm,
+    border: border(1, color.border('subtle')),
+    borderRadius: vars.radius.pill,
     transition: transition('border-color', 'box-shadow', 'background-color'),
     selectors: {
       '&:hover': { borderColor: color.border('strong') },
@@ -87,7 +92,7 @@ export function fieldInput(): CSSProperties {
     flex: 1,
     minWidth: 0,
     padding: 0,
-    font: font('15/22'),
+    font: font('16/24'),
     color: 'inherit',
     backgroundColor: 'transparent',
     border: 'none',
@@ -103,10 +108,10 @@ export function fieldLabel(): CSSProperties {
   }
 }
 
-/** Подсказка под полем. */
+/** Подсказка под полем. 12px — нижняя граница шкалы для вторичного текста. */
 export function fieldHint(): CSSProperties {
   return {
-    font: font('13/18'),
+    font: font('12/18'),
     color: color.text('muted'),
   }
 }
@@ -114,7 +119,7 @@ export function fieldHint(): CSSProperties {
 /** Текст ошибки под полем; читается скринридером через `aria-describedby`. */
 export function fieldError(): CSSProperties {
   return {
-    font: font('13/18', 500),
+    font: font('12/18', 500),
     color: color.text('danger'),
   }
 }

@@ -22,6 +22,7 @@ export const inner = style({
 export const logo = style([
   {
     font: font('22/28', 600, 'eloqua'),
+    letterSpacing: vars.tracking.tight,
     color: color.text('primary'),
     textDecoration: 'none',
     marginRight: 'auto',
@@ -42,7 +43,7 @@ export const nav = style({
 
 export const navLink = style([
   {
-    font: font('15/22', 500),
+    font: font('16/24', 500),
     color: color.text('secondary'),
     textDecoration: 'none',
     transition: transition('color'),
@@ -128,7 +129,7 @@ export const menuButton = style({
 export const notice = style({
   backgroundColor: color.background('soft'),
   color: color.brand('800'),
-  font: font('13/18', 500),
+  font: font('14/20', 500),
   textAlign: 'center',
   padding: `${rem(6)} ${vars.space.md}`,
 })

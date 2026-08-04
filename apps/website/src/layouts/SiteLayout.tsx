@@ -29,6 +29,7 @@ const FOOTER_COLUMNS: IFooterColumn[] = [
   {
     title: 'Аккаунт',
     links: [
+      { label: 'Профиль', link: { href: '/account' } },
       { label: 'Вход', link: { href: '/login' } },
       { label: 'Регистрация', link: { href: '/register' } },
     ],

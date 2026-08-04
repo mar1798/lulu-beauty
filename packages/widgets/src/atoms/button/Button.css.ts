@@ -30,29 +30,36 @@ export const fullWidth = style({
 
 export const size = styleVariants({
   sm: { minHeight: rem(36), padding: `0 ${vars.space.md}`, font: font('14/20', 500) },
-  md: { minHeight: rem(44), padding: `0 ${vars.space.lg}`, font: font('15/22', 500) },
-  lg: { minHeight: rem(52), padding: `0 ${vars.space.xl}`, font: font('16/24', 600) },
+  md: { minHeight: rem(44), padding: `0 ${vars.space.lg}`, font: font('16/24', 500) },
+  lg: { minHeight: rem(52), padding: `0 ${vars.space.xl}`, font: font('17/26', 600) },
 })
 
 export const variant = styleVariants({
+  /**
+   * Единственная заливка акцентом в системе. Тень подкрашена той же маркой
+   * (`shadow.brand`) — приём из референса: акцент читается и в подсветке.
+   */
   primary: {
     backgroundColor: color.brand('600'),
     color: color.text('inverse'),
+    boxShadow: vars.shadow.brand,
     selectors: {
       '&:hover:not([disabled]):not([aria-disabled="true"])': {
         backgroundColor: color.brand('700'),
       },
       '&:active:not([disabled])': { backgroundColor: color.brand('800') },
+      '&[disabled], &[aria-disabled="true"]': { boxShadow: vars.shadow.none },
     },
   },
   secondary: {
     backgroundColor: color.surface('base'),
     color: color.text('primary'),
-    borderColor: color.border('default'),
+    borderColor: color.border('subtle'),
+    boxShadow: vars.shadow.sm,
     selectors: {
       '&:hover:not([disabled]):not([aria-disabled="true"])': {
-        backgroundColor: color.surface('muted'),
         borderColor: color.border('strong'),
+        boxShadow: vars.shadow.lg,
       },
     },
   },

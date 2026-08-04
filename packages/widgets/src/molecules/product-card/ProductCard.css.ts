@@ -1,5 +1,5 @@
 import { style } from '@vanilla-extract/css'
-import { border, color, transition } from '../../styling/lib'
+import { color, transition } from '../../styling/lib'
 import { flexColumn, flexRow, focusVisibleRing } from '../../styling/mixin'
 import { vars } from '../../styling/themes/contract.css'
 
@@ -21,14 +21,22 @@ export const link = style([
  * Бокс под картинку: фиксированная пропорция держит сетку ровной, даже пока
  * изображение грузится, — иначе карточки прыгают по высоте.
  */
+/**
+ * Товар «плавает» на холсте: рамки нет, отделяет мягкая двухслойная тень,
+ * на наведении карточка приподнимается. Радиус — внутренний, карточный (20px).
+ */
 export const media = style({
   position: 'relative',
   display: 'block',
   aspectRatio: '4 / 5',
   overflow: 'hidden',
-  backgroundColor: color.surface('sunken'),
-  border: border(1, color.border('subtle')),
-  borderRadius: vars.radius.lg,
+  backgroundColor: color.surface('base'),
+  borderRadius: vars.radius.xl,
+  boxShadow: vars.shadow.md,
+  transition: transition('box-shadow'),
+  selectors: {
+    [`${link}:hover &`]: { boxShadow: vars.shadow.lg },
+  },
 })
 
 export const image = style({
@@ -51,9 +59,10 @@ export const placeholder = style({
 
 export const stockBadge = style({
   position: 'absolute',
-  left: vars.space.xs,
-  top: vars.space.xs,
+  left: vars.space.sm,
+  top: vars.space.sm,
   backgroundColor: color.surface('base'),
+  boxShadow: vars.shadow.sm,
 })
 
 export const footer = style({

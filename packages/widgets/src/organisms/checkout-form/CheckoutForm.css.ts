@@ -1,14 +1,14 @@
 import { style } from '@vanilla-extract/css'
-import { border, color } from '../../styling/lib'
+import { color } from '../../styling/lib'
 import { flexColumn, flexRow } from '../../styling/mixin'
 import { vars } from '../../styling/themes/contract.css'
 
 export const form = style({
   ...flexColumn(20),
-  padding: vars.space.lg,
+  padding: vars.space.xl,
   backgroundColor: color.surface('base'),
-  border: border(1, color.border('subtle')),
-  borderRadius: vars.radius.lg,
+  borderRadius: vars.radius.xxl,
+  boxShadow: vars.shadow.md,
 })
 
 export const totalRow = style({

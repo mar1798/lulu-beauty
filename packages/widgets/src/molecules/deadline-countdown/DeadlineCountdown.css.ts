@@ -31,6 +31,6 @@ export const placeholder = style({
   display: 'inline-block',
   width: rem(120),
   height: rem(20),
-  borderRadius: vars.radius.xs,
+  borderRadius: vars.radius.pill,
   backgroundColor: color.neutral('200'),
 })

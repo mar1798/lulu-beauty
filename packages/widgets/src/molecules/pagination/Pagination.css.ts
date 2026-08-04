@@ -22,7 +22,7 @@ export const page = style([
     color: color.text('secondary'),
     backgroundColor: 'transparent',
     border: border(1, 'transparent'),
-    borderRadius: vars.radius.sm,
+    borderRadius: vars.radius.pill,
     cursor: 'pointer',
     transition: transition('background-color', 'color', 'border-color'),
     selectors: {

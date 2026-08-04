@@ -17,11 +17,13 @@ createGlobalTheme(':root', vars, lightTheme)
 
 globalStyle(':root', {
   fontFamily: fontFamily('inter'),
+  /** Отрицательный трекинг по умолчанию — базовая подпись макета. */
+  letterSpacing: vars.tracking.body,
   vars: {
     [trnEasingVar]: 'ease-in-out',
     [trnDelayVar]: '0.22s',
     [animateVar]: '0',
-    [wrapperWidth]: min(calc('100vw').subtract(rem(40)), rem(1128)),
+    [wrapperWidth]: min(calc('100vw').subtract(rem(40)), rem(1200)),
     [wrapperPadding]: calc('100vw').subtract(wrapperWidth).divide(2).toString(),
   },
 })

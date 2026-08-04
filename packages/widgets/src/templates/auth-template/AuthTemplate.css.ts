@@ -1,5 +1,5 @@
 import { style } from '@vanilla-extract/css'
-import { border, color, rem } from '../../styling/lib'
+import { color, rem } from '../../styling/lib'
 import { flexColumn } from '../../styling/mixin'
 import { vars } from '../../styling/themes/contract.css'
 
@@ -18,9 +18,8 @@ export const card = style({
   maxWidth: rem(420),
   padding: vars.space.xl,
   backgroundColor: color.surface('base'),
-  border: border(1, color.border('subtle')),
-  borderRadius: vars.radius.xl,
-  boxShadow: vars.shadow.sm,
+  borderRadius: vars.radius.xxl,
+  boxShadow: vars.shadow.md,
 })
 
 export const head = style(flexColumn(6))
