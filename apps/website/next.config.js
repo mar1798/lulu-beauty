@@ -2,32 +2,35 @@ const { createVanillaExtractPlugin } = require('@vanilla-extract/next-plugin')
 const withPlugins = require('next-compose-plugins')
 const withVanillaExtract = createVanillaExtractPlugin()
 
-/**
- * Картинки товаров лежат на самом API (`PUBLIC_FILES_BASE_URL`, по умолчанию
- * `http://localhost:3001/files`). В проде это https и попадает под общий
- * wildcard ниже, а вот локальный http — нет, и `next/image` их бы заблокировал.
- * Поэтому хост API добавляется отдельным паттерном.
- * @returns {import('next').NextConfig['images']['remotePatterns']}
- */
-const apiFilesPatterns = () => {
-  try {
-    const { protocol, hostname, port } = new URL(
-      process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:3001'
-    )
-
-    if (protocol !== 'http:') {
-      return []
-    }
-
-    return [{ protocol: 'http', hostname, port, pathname: '/files/**' }]
-  } catch {
-    return []
-  }
-}
-
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   output: 'standalone',
+  /**
+   * Временно: главная страница появится отдельным шагом плана, а пока корень
+   * ведёт в каталог — иначе логотип в шапке упирается в 404.
+   * @returns {Promise<import('next').Redirect[]>}
+   */
+  async redirects() {
+    return [{ source: '/', destination: '/catalog', permanent: false }]
+  },
+  /**
+   * Картинки товаров лежат на API (`PUBLIC_FILES_BASE_URL`), но браузеру и
+   * `next/image` отдаются как **свои** — `/files/*`.
+   *
+   * Так пришлось сделать из-за Next 16: оптимизатор картинок отказывается
+   * ходить на хост, который резолвится в приватный IP («resolved to private
+   * ip»), поэтому `http://localhost:3001/files/*` не спасал никакой
+   * `remotePatterns` — только `images.dangerouslyAllowLocalIP`. Прокси через
+   * сам Next решает это без опасных флагов и заодно делает картинки
+   * same-origin в проде: адрес API наружу светить не нужно.
+   * Абсолютный адрес в относительный превращает адаптер `src/components/Image.tsx`.
+   * @returns {Promise<import('next').Rewrite[]>}
+   */
+  async rewrites() {
+    const apiBaseUrl = process.env.API_BASE_URL ?? 'http://localhost:3001'
+
+    return [{ source: '/files/:path*', destination: `${apiBaseUrl}/files/:path*` }]
+  },
   reactStrictMode: true,
   transpilePackages: ['widgets'],
   images: {
@@ -38,7 +41,6 @@ const nextConfig = {
         port: '',
         pathname: '**',
       },
-      ...apiFilesPatterns(),
     ],
     formats: ['image/avif', 'image/webp'],
   },

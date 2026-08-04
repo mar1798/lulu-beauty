@@ -1,0 +1,70 @@
+import clsx from 'clsx'
+import { type FC } from 'react'
+import type { IBasicStyling, IProductCardProps, IProductImage } from '../../types'
+import { IconBox } from '../../svg/icons'
+import { AppImage } from '../../atoms/app-image'
+import { AppLink } from '../../atoms/app-link'
+import { Badge } from '../../atoms/badge'
+import { Price } from '../../atoms/price'
+import { Text } from '../../atoms/text'
+import * as styles from './ProductCard.css'
+
+/**
+ * Карточка товара в сетке каталога.
+ *
+ * Кнопка «в корзину» приходит слотом `action`: класть её внутрь ссылки нельзя
+ * (интерактив внутри интерактива), а знать про корзину карточке незачем —
+ * состояние живёт в `apps/website`.
+ */
+
+/** Главная картинка — помеченная `isPrimary`, иначе первая по порядку. */
+export const primaryImage = (images: IProductImage[]): IProductImage | null =>
+  images.find(image => image.isPrimary) ?? images[0] ?? null
+
+const DEFAULT_SIZES = { fb: '100vw', sm: '50vw', lg: '25vw' } as const
+
+export const ProductCard: FC<IProductCardProps & IBasicStyling> = ({
+  product,
+  href,
+  sizes = DEFAULT_SIZES,
+  action,
+  className,
+}) => {
+  const image = primaryImage(product.images)
+
+  return (
+    <article className={clsx(styles.container, className)}>
+      <AppLink href={href} className={styles.link}>
+        <span className={styles.media}>
+          {image === null ? (
+            <span className={styles.placeholder}>
+              <IconBox />
+            </span>
+          ) : (
+            <AppImage
+              className={styles.image}
+              image={{ src: image.url, alt: image.alt ?? product.name }}
+              sizes={sizes}
+              fill={true}
+            />
+          )}
+
+          {!product.inStock && (
+            <Badge className={styles.stockBadge} tone="neutral">
+              Нет в наличии
+            </Badge>
+          )}
+        </span>
+
+        <Text weight="medium" clamp={2}>
+          {product.name}
+        </Text>
+      </AppLink>
+
+      <div className={styles.footer}>
+        <Price priceCents={product.priceCents} />
+        {action}
+      </div>
+    </article>
+  )
+}

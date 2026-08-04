@@ -5,10 +5,14 @@ import { Inter } from 'next/font/google'
 import localFont from 'next/font/local'
 import clsx from 'clsx'
 import React from 'react'
+import { ServicesContext } from 'widgets/contexts'
 import { AuthProvider } from '@/contexts/AuthContext'
+import { Link } from '@/components/Link'
+import { Image } from '@/components/Image'
+import { shell } from '@/styles/shell.css'
 
 const inter = Inter({
-  subsets: ['latin'],
+  subsets: ['latin', 'cyrillic'],
   variable: '--font-inter',
   display: 'swap',
 })
@@ -35,18 +39,28 @@ const eloqua = localFont({
   ],
 })
 
-const App: React.FC<AppProps> = ({
-  Component,
-  pageProps,
-}) => {
+/**
+ * Контейнер инъекции для `widgets`: библиотека не знает ни про `next/link`,
+ * ни про `next/image` — только про этот интерфейс. Storybook подкладывает
+ * сюда свои заглушки.
+ *
+ * Значение вынесено из рендера: пересоздание объекта на каждый рендер
+ * перерисовывало бы всё дерево виджетов.
+ */
+const services = {
+  services: {},
+  components: { Link, Image },
+} as const
+
+const App: React.FC<AppProps> = ({ Component, pageProps }) => {
   return (
-    <AuthProvider>
-      <main
-        className={clsx(inter.className, eloqua.className)}
-      >
-        <Component {...pageProps} />
-      </main>
-    </AuthProvider>
+    <ServicesContext.Provider initialState={services}>
+      <AuthProvider>
+        <div className={clsx(shell, inter.variable, eloqua.variable, inter.className)}>
+          <Component {...pageProps} />
+        </div>
+      </AuthProvider>
+    </ServicesContext.Provider>
   )
 }
 

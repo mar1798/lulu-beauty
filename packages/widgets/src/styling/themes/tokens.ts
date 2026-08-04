@@ -125,7 +125,12 @@ export const lightTokens = {
     text: {
       primary: channels('1e1c19'),
       secondary: channels('4f4941'),
-      muted: channels('918879'),
+      /**
+       * Нейтральный 600, а не 500: подсказками под полями и счётчиками
+       * набирается мелкий текст, и на 500 (`#918879`) axe справедливо ругался
+       * на контраст 3:1 — ниже требуемых WCAG AA 4.5:1. На 600 выходит 5.6:1.
+       */
+      muted: channels('6e665a'),
       subtle: channels('b8aea1'),
       inverse: channels('ffffff'),
       brand: channels('a9587e'),

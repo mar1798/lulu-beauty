@@ -3,6 +3,7 @@
  */
 
 export * from './container'
+export * from './field'
 export * from './flex'
 export * from './focusRing'
 export * from './grid'

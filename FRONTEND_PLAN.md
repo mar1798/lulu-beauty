@@ -1,0 +1,401 @@
+# План: фронтенд Lulu Beauty (`packages/widgets` + `apps/website`)
+
+Продолжение [`PLAN.md`](./PLAN.md) — этот файл раскрывает пп. **14–15** его раздела «Порядок реализации». Бэкенд (`apps/api`) описан там же; здесь только фронт.
+
+## Контекст
+
+Бэкенд `apps/api` реализован — пп. 1–13 и 16 в `PLAN.md` закрыты: auth с Telegram-OTP, каталог, импорт xlsx/csv, циклы-дедлайны, корзина, заявки, планировщик, экспорт в Excel. Открытыми остались общие типы, API-клиент и весь фронтенд.
+
+Фактическое состояние фронта на момент написания плана:
+
+- `packages/widgets/src/atoms` — **два атома**: `AppLink` и `AppImage`, оба тонкие обёртки над `ServicesContext`. Директорий `molecules/`, `organisms/`, `templates/`, `hooks/` не существует, хотя subpath'ы для них уже прописаны в `packages/widgets/package.json`.
+- `styling/themes/contract.css.ts` — контракт практически пуст: `color.neutral: {}` плюс два шрифта. При этом `styling/lib/*` богат (18 модулей: `rem`, `color`, `media`, `transition`, `shadow`, `border`, `nested`, `conditions`, …) и готов к переиспользованию; `styling/mixin/` содержит только `flex.ts`.
+- `apps/website/src/pages` — **только `_app.tsx`**, где уже настроены шрифты `Inter`/`Eloqua`. Нет ни страниц, ни `_document.tsx`, ни API-клиента.
+- Тестовых файлов в `packages/widgets/src` нет вообще.
+
+## Ключевые решения (утверждены с пользователем)
+
+- **Рендеринг:** гибрид — каталог и карточка товара через `getStaticProps` + ISR (ради SEO), корзина/заявки/админка — клиентский рендер.
+- **Хранение JWT:** `httpOnly`-cookie, выставляемые тонкими Next API routes (`/api/auth/*`); браузер никогда не видит токены.
+- **Админка:** полная, `/admin/*` в том же Next-приложении (товары, категории, картинки, импорт, календарь дедлайнов, заявки со сменой статуса, экспорт).
+- **Язык:** только русский, без i18n-библиотеки. Валюта KGS, таймзона `Asia/Bishkek` — как в `apps/api/app/config.py` (`CURRENCY`, `CYCLE_TIMEZONE`).
+- **Картинки:** расширить контракт `IImage`/`IImageComponentProps` под режим `fill` (см. §1.2) — API не отдаёт размеры картинок.
+- **Тесты widgets:** дописать шаблон теста в генератор и покрыть точечно компоненты с логикой (см. §1.9).
+
+## Расхождения с текущим кодом
+
+Найдены при сверке проекта с кодом. Каждое — реальная ловушка, в которую упрётся реализация, если не учесть заранее.
+
+1. ~~**Генератор не скаффолдит тест.**~~ — **закрыто на шаге 4**: в `tools/templates/react/component/` добавлен `__name__.test.tsx`, генератор выдаёт пять файлов. ~~Тестов в `src` нет → `npm test` падает с кодом 1 («No test files found»).~~ — **закрыто на шаге 1**: появился `src/styling/styling.test.ts`, `npm test` зелёный.
+2. **Генератор требует двух ручных дописываний на каждый компонент.** Шаблон `__name__.tsx` импортирует `I__name__Props` из `../../types`, а `story.stories.tsx` — `feed__name__` из `../../stories/feed`. Значит **на каждый сгенерированный компонент** нужно добавить интерфейс пропсов в `src/types.ts` и фабрику фикстуры в `src/stories/feed.ts` (рядом с существующими `feedImage`/`feedLink`), иначе `tsc --noEmit` краснеет сразу после генерации.
+3. ~~**`next/image` заблокирует картинки товаров.**~~ — **закрыто на шаге 5** (на шаге 2 закрывалось `remotePatterns`, но этого оказалось мало: Next 16 отказывается ходить за картинкой на хост, который резолвится в приватный IP, — «resolved to private ip», и `http://localhost:3001/files/*` не спасал ни один паттерн). Решение: рерайт `/files/:path*` → `${API_BASE_URL}/files/:path*` в `next.config.js` плюс нормализация абсолютного адреса в относительный в адаптере `src/components/Image.tsx`. Картинки стали same-origin — заодно в проде не нужно светить адрес API. Опасный флаг `images.dangerouslyAllowLocalIP` не понадобился.
+4. **Telegram deep-link с payload не сработает.** `apps/api/app/telegram/bot.py:21` — `@dispatcher.message(F.text == "/start")`, **точное** сравнение. Ссылка `t.me/<bot>?start=<nonce>` пришлёт текст `"/start <nonce>"`, который уйдёт в `handle_fallback` и вернёт «Send /start to link your phone number» без кнопки «поделиться контактом». `TelegramLinkPrompt` обязан вести на **чистый** `https://t.me/<TELEGRAM_BOT_USERNAME>`, без `?start=`.
+5. ~~**`GET /users/me` отсутствует.**~~ — **закрыто**, модуль `app/users/` реализован (`GET`/`PATCH /users/me`), см. `## Done` в `PLAN.md`.
+6. ~~**`apps/website` объявляет скрипт `barrels`, но `.barrelsby.json` в нём нет**~~ — **закрыто на шаге 2**: скрипт удалён, корневой `npm run barrels` гоняет только `widgets`.
+7. **`GET /products?category=` фильтрует по слагу, а не по id** (`ProductService.list_public(category_slug)`, `apps/api/app/catalog/service.py:76`), при этом `ProductResponse` отдаёт `categoryId`, а не вложенную категорию. Фронт обязан держать маппинг `id → slug` из `GET /categories`.
+
+## Нюансы контрактов API
+
+Подтверждено по коду роутеров; на эти детали легко наступить.
+
+- **camelCase-алиасы в `Query`/`Form` проставлены вручную и работают только там, где проставлены**: `GET /admin/orders?cycleId=&status=&page=&pageSize=`, `GET /admin/products?inStock=&includeDeleted=&pageSize=`, `GET /admin/export/orders?cycleId=`, поле формы `isPrimary` (`Form(default=False, alias="isPrimary")`). У **публичного** `GET /products` алиасов нет и параметры остаются snake_case: `category`, **`in_stock`**, `page`, **`page_size`** (плюс `q` — односложный, одинаков в обоих стилях). Расхождение осознанное: публичный контракт не меняли, чтобы не ломать уже пишущийся фронт. `alias_generator` из `CamelModel` на `Query`/`Form` не распространяется, только на тела запросов/ответов.
+- **`GET /products?page_size=` ограничен `le=100`** — `getStaticPaths` для `catalog/[slug]` обязан пагинировать в цикле, а не пытаться забрать все слаги одним запросом.
+- **`PATCH /cart/items/{id}` без активного цикла отдаёт `409 no_active_cycle`** (исправлено; раньше маскировалось под `404 cart_item_not_found`).
+- **`{id}` в `/cart/items/{id}` — это `productId`, а не id позиции корзины** (`app/cart/router.py`: `@router.patch("/items/{product_id}")`, `@router.delete("/items/{product_id}")`). Своего идентификатора у `CartItemResponse` нет вообще, поэтому `ICartItem` адресуется товаром — учесть в `CartContext` и `QuantityStepper` (шаг 7).
+- **`GET /cycles/active` отдаёт `404 no_active_cycle`**, когда активного цикла нет. Это нормальное состояние витрины, а не сбой — страницы обязаны рендериться и в нём.
+- **`POST /auth/logout` требует `refreshToken` в теле** — Next-route берёт его из cookie.
+- **`POST /auth/refresh` ротирует refresh-токен** (старый помечается `revoked_at`), значит прокси обязан переписывать **обе** cookie, а не только access.
+- **`POST /auth/register` и `POST /auth/login` токенов не возвращают** — только `{message, purpose}`; пара токенов приходит из `POST /auth/verify-otp`.
+- **Лимиты загрузки** (`apps/api/app/catalog/router.py`): картинки — 5 MB, `image/jpeg|image/png|image/webp`; файл импорта — 10 MB. `FileDropzone` валидирует ровно по ним.
+- **Значения enum:** `OrderStatus` = `PENDING|CONFIRMED|READY|COMPLETED|CANCELLED`, `CycleStatus` = `UPCOMING|ACTIVE|CLOSED`, `Role` = `CUSTOMER|ADMIN`, `OtpPurpose` = `REGISTER|LOGIN`.
+- **Машинные коды ошибок** приходят в `detail`: `no_active_cycle`, `cart_is_empty`, `cart_item_not_found`, `cycle_has_orders`, `cycle_not_found`, `deadline_must_be_future`, `slug_already_exists`, `product_not_found`, `product_image_not_found`, `category_not_found`, `order_not_found`, `user_not_found`, `otp_resend_too_soon`, `phone_not_verified`, `phone_already_registered`, `invalid_credentials`, `invalid_token`, `invalid_refresh_token`, `admin_only`, `not_authenticated`, `image_too_large`, `unsupported_image_type`, `import_file_too_large`.
+- **Форма ответов, изменённая под нужды фронта** (см. `## Done` в `PLAN.md`):
+  - `GET /admin/orders` отдаёт **`PageResponse`**, а не голый список, а его элементы — `AdminOrderResponse` с `customerName`/`customerPhone`. То же тело возвращает `PATCH /admin/orders/{id}/status`. Покупательские `GET /orders`, `GET /orders/{id}` и `POST /orders/checkout` остаются `OrderResponse` **без** полей покупателя.
+  - Позиции корзины и заявки несут `productSlug` и `productImageUrl` (у заявки — снапшот на момент чекаута, у корзины — актуальные значения товара). `productImageUrl` может быть `null`.
+  - Появились `GET /users/me` и `PATCH /users/me` (`{id, phone, name, role, phoneVerified, telegramLinked}`), `GET /admin/products` (`PageResponse[ProductResponse]`, `includeDeleted`), `POST /admin/products/{id}/restore`, поиск `GET /products?q=`.
+  - `GET /admin/export/orders` отдаёт `Content-Disposition` по RFC 5987 (`filename` + `filename*`) — для скачивания на клиенте имя файла нужно брать из `filename*`, иначе получится ASCII-фолбэк из дефисов.
+
+## Ключевой архитектурный принцип
+
+По `CLAUDE.md`: **`widgets` — строго презентационная библиотека**. Никакого `fetch`, никаких знаний об эндпоинтах, никакого хранения токенов.
+
+- **В `widgets`:** визуальные блоки (атомы → шаблоны), UI-хуки (раскрытие, таймер, брейкпоинты, focus-trap), UI-контексты (тосты, подтверждения), общие JSON-типы.
+- **В `apps/website`:** API-клиент, `AuthContext`/`CartContext`, все data-хуки, Next API routes, страницы.
+- Организмы `widgets` получают данные и колбэки **пропсами** (`products`, `onAddToCart`, `isPending`) — они не знают, откуда данные.
+
+```mermaid
+flowchart LR
+  subgraph B["браузер"]
+    P["страницы Next"]
+    W["widgets (только пропсы)"]
+    P --> W
+  end
+  subgraph N["Next-сервер"]
+    AR["/api/auth/* — ставит lb_at / lb_rt"]
+    PX["/api/proxy/[...path] — читает cookie,
+        добавляет Bearer, при 401 refresh+retry"]
+    SSG["getStaticProps / ISR"]
+  end
+  API["FastAPI :3001"]
+  P -- "приватные запросы (cookie)" --> PX --> API
+  P -- "формы входа" --> AR --> API
+  SSG -- "server-to-server" --> API
+  P -. "картинки /files/* напрямую" .-> API
+```
+
+---
+
+## Часть 1. `packages/widgets`
+
+### 1.1. Дизайн-токены (делать **первым** — от них зависит всё остальное)
+
+- **`styling/themes/contract.css.ts` + `light.css.ts`** — расширить контракт: `color` (`neutral.50…900`, `brand`/`accent` под бьюти-тематику, семантические `success`/`warning`/`danger`/`info`, `surface`/`background`/`text`/`border`), `radius`, `shadow`, `zIndex` (header/drawer/modal/toast), `space`. Ключи обоих файлов должны совпадать один в один — `createTheme` падает на несовпадении структуры.
+- **`styling/mixin/`** — добавить к существующему `flex.ts`: `grid.ts`, `truncate.ts` (line-clamp для названий товаров), `visuallyHidden.ts`, `focusRing.ts`, `container.ts` (обёртка по `wrapperWidth`/`wrapperPadding` из `properties.css.ts`).
+- `styling/lib/*` — **переиспользовать, не дублировать**: `rem`, `color`, `media` (работает с `src/breakpoints.ts`), `transition` (`trnDelayVar`/`trnEasingVar`), `shadow`, `border`, `nested`, `conditions`.
+- **Анимации:** установить `motion` (`npm install motion -w widgets`), импорт **только** из `motion/react`, не из устаревшего `framer-motion`. Нужен для Drawer/Modal/Toast/Accordion. Тайминги и easing брать через скилл `/motion` (`.claude/skills/motion/`), а не наугад; офлайновые `best-practices/` под скиллом работают и без MCP-сервера.
+- После правок темы: `npm run barrels -w widgets` (`mixin`/`lib` под barrelsby).
+
+### 1.2. Общие типы — `src/types.ts`
+
+Дописать в существующий файл. Subpath `widgets/types` уже есть в `exports`/`typesVersions`, манифест править **не нужно**. Все поля — **camelCase**, ровно как отдаёт бэк (`CamelModel`); enum — **строковые union-типы**, не TS enum:
+
+```ts
+type OrderStatus = 'PENDING' | 'CONFIRMED' | 'READY' | 'COMPLETED' | 'CANCELLED'
+type CycleStatus = 'UPCOMING' | 'ACTIVE' | 'CLOSED'
+type OtpPurpose  = 'REGISTER' | 'LOGIN'
+type Role        = 'CUSTOMER' | 'ADMIN'
+```
+
+Интерфейсы 1:1 со схемами `apps/api/app/*/schemas.py`:
+
+- `ICategory` — `id`, `name`, `slug`, `sortOrder`.
+- `IProductImage` — `id`, `url`, `alt`, `sortOrder`, `isPrimary`.
+- `IProduct` — `id`, `name`, `slug`, `description`, `priceCents`, `categoryId`, `inStock`, `images`.
+- `IPage<T>` — `items`, `total`, `page`, `pageSize`.
+- `ICartItem`/`ICart` — `cycleId`, `cycleDeadlineAt`, `items`, `totalCents`.
+- `IOrderItem`/`IOrder` — `id`, `cycleId`, `status`, `totalCents`, `note`, `createdAt`, `items`.
+- `IOrderCycle` — `id`, `deadlineAt`, `label`, `status`, `reminderSentAt`, `closedAt`.
+- `IAuthUser`, `IImportRowError` (`row`, `message`), `IImportSummary` (`created`, `updated`, `errors`).
+
+Даты — ISO-строки.
+
+**Правка контракта картинок.** API отдаёт у картинки только `url`/`alt`, а существующий `IImage` требует `width`/`height`. Решение: в `IImage` сделать `width`/`height` **необязательными**, в `IImageComponentProps` добавить `fill?: boolean`. Обе реализации `components.Image` обрабатывают ветку `fill`:
+
+- Storybook-заглушка (`src/stories/wrapper/components/Image.tsx`) — обычный `<img>` с `object-fit: cover`.
+- Адаптер сайта — `next/image` с `fill` + `sizes` внутри бокса с `aspect-ratio`.
+
+`feedImage` в `src/stories/feed.ts` остаётся с размерами; добавить `feedProductImage()` — без них.
+
+Туда же, в `types.ts`, кладутся интерфейсы пропсов всех новых компонентов (`IButtonProps`, `IProductCardProps`, …) — этого требует шаблон генератора (расхождение №2).
+
+### 1.3. Атомы
+
+Создавать **только** через `npm run generate -w widgets` → `Atom`, **никогда не создавать папки руками**.
+
+| Атом | Назначение |
+|---|---|
+| `Button` | варианты primary/secondary/ghost/danger, размеры, `isLoading`, иконки; ссылочный режим через `AppLink` |
+| `IconButton` | удалить позицию, закрыть модалку |
+| `Input` | текст/тел/пароль: label, error, hint, префикс |
+| `PasswordInput` | `Input` + переключатель видимости |
+| `PhoneInput` | маска `+996 …`, нормализация в E.164 под `PHONE_PATTERN` бэка (`apps/api/app/common/phone.py`) |
+| `OtpInput` | 6 ячеек, автопереход, вставка кода целиком |
+| `Textarea` | `note` при чекауте (max 2000), описание товара в админке |
+| `Select` | категория, статус заявки |
+| `Checkbox` / `Switch` | `inStock`-тумблер, фильтры |
+| `Badge` | статус заявки/цикла, «нет в наличии» |
+| `Price` | `priceCents` → `1 250 сом` через `Intl.NumberFormat('ru-RU')` |
+| `Spinner`, `Skeleton` | загрузка каталога/таблиц |
+| `Heading`, `Text` | типографика на токенах |
+| `Chip` | фильтр по категории |
+| `Alert` | ошибки API/форм |
+| `FileInput` | картинки товара, импорт xlsx/csv |
+| `Container` | ширина по `wrapperWidth` |
+| `Divider`, `VisuallyHidden`, `Portal` | вспомогательные (`Portal` — база для Modal/Drawer/Toast) |
+
+`AppLink`/`AppImage` уже есть — переиспользовать, а не дублировать.
+
+### 1.4. Молекулы
+
+`FormField` (label + control + error), `QuantityStepper` (`− n +`), `ProductCard`, `CartItemRow`, `CategoryFilter`, `Pagination` (под `IPage<T>`), `DeadlineCountdown` (на `useCountdown`), `EmptyState`, `Toast`, `Tabs`, `Breadcrumbs`, `ProductGallery` (главная картинка + миниатюры), `FileDropzone` (drag&drop + валидация типа/размера ровно по лимитам бэка), `StatusSelect`, `SearchField`.
+
+### 1.5. Организмы
+
+- **Каркас:** `Header` (лого, навигация, счётчик корзины, вход/профиль), `Footer`, `MobileMenu` (Drawer), `Modal`/`ConfirmDialog` (focus-trap, блокировка скролла), `ToastViewport`.
+- **Витрина:** `ProductGrid` (карточки + скелетоны + пустое состояние), `ProductDetails` (галерея + цена + наличие + добавление в корзину), `CartPanel` (позиции + итог + дедлайн цикла + «оформить»), `CheckoutForm` (`note` + подтверждение), `OrderList`/`OrderCard`.
+- **Авторизация:** `RegisterForm`, `LoginForm`, `OtpVerifyForm`, `TelegramLinkPrompt` — карточка с инструкцией «нажмите Start у бота и поделитесь контактом» плюс **чистая** ссылка `https://t.me/<TELEGRAM_BOT_USERNAME>` без `?start=` (расхождение №4). Это тот самый UI-флоу ожидания привязки, из-за отсутствия которого в шаге 6 бэкенда отложили nonce-deep-link.
+- **Админка:** `AdminProductsTable`, `AdminProductForm` (+ загрузка/удаление картинок, `isPrimary`), `AdminCategoriesPanel`, `AdminImportPanel` (dropzone + таблица `{created, updated, errors[{row, message}]}`), `AdminCycleCalendar` (сетка месяца, создание/перенос/удаление дедлайна, подсветка активного цикла), `AdminOrdersTable` (фильтр по циклу, смена статуса, кнопка экспорта).
+
+### 1.6. Шаблоны
+
+`BaseLayout` (Header + main + Footer), `CatalogTemplate` (фильтры + грид + пагинация), `ProductTemplate`, `CartTemplate`, `AuthTemplate` (узкая центрированная карточка), `AccountTemplate`, `AdminLayout` (сайдбар + контент), `ErrorTemplate` (404/500).
+
+### 1.7. Хуки `src/hooks/`
+
+Директории ещё нет, но barrelsby уже настроен на `./src/hooks`, а subpath `widgets/hooks` уже в манифесте. **Только UI, без API:**
+
+`useDisclosure`, `useCountdown(deadlineAt)` → `{days, hours, minutes, seconds, isExpired}`, `useMediaQuery`/`useBreakpoint` (на существующем `src/breakpoints.ts`), `useLockBodyScroll`, `useOnClickOutside`, `useFocusTrap`, `useDebouncedValue`, `useControllableState`, `useIsomorphicLayoutEffect`, `useToast` (потребитель `ToastContext`).
+
+### 1.8. Контексты `src/contexts/`
+
+- **`ServicesContext`** (уже есть, на `unmanagedContainer` из `src/utils/unstated.tsx`) — оставить как контейнер инъекции `Link`/`Image`; сайт прокидывает адаптеры поверх `next/link`/`next/image`, Storybook — заглушки из `src/stories/wrapper`.
+- **`ToastContext`** — очередь уведомлений (чистый UI).
+- **`ConfirmContext`** — императивный `confirm()` для опасных действий админки (удаление товара/цикла).
+- **`AuthContext`/`CartContext` — НЕ здесь**, они в `apps/website` (см. принцип выше).
+
+### 1.9. Обязательное сопровождение
+
+- Генератор даёт `*.tsx` + `*.css.ts` + `index.ts` + `story.stories.tsx`. **Дописать шаблон `__name__.test.tsx`** в `tools/templates/react/component/` и добавить `@testing-library/react` + `jsdom` в devDependencies `widgets`; `vite.config.ts` уже настроен на vitest, нужно только `test.environment: 'jsdom'`.
+- Точечные тесты — там, где есть логика: `PhoneInput` (нормализация в E.164), `OtpInput` (вставка/автопереход), `useCountdown`, `Price` (формат KGS), `Pagination`. Чисто презентационные компоненты проверяются Storybook'ом. Это же чинит красный `npm test` (расхождение №1).
+- **Storybook (`npm run storybook -w widgets`) — основной цикл разработки виджетов**; страницы сайта подключаются к уже отлаженным компонентам.
+- Новый публичный subpath требует правки **и** `exports`, **и** `typesVersions` в `packages/widgets/package.json`.
+- Перед новым нетривиальным компонентом — референс через **shadcn MCP** (`.mcp.json`), затем **ручной порт** разметки/поведения в vanilla-extract. Никаких `shadcn add`, никакого Tailwind.
+
+---
+
+## Часть 2. `apps/website`
+
+### 2.1. Конфиг и окружение
+
+- `.env.example` дополнить: `NEXT_PUBLIC_API_BASE_URL` (браузерный), `API_BASE_URL` (серверный — в Docker это `http://api:3001`), `NEXT_PUBLIC_TELEGRAM_BOT_USERNAME`, `AUTH_COOKIE_SECURE`.
+- `src/сonfig.ts` — файл существует, **имя с кириллической «с», не переименовывать**, чтобы не ломать импорты. Добавить ключи в `publicConfig` (паттерн `makeConfig` уже есть) и завести `serverConfig` для серверных переменных.
+- **`next.config.js`** — добавить в `images.remotePatterns` паттерн под http-хост API (расхождение №3), иначе картинки товаров в dev не отрендерятся.
+- Убрать неработающий скрипт `barrels` из `apps/website/package.json` (расхождение №6).
+
+### 2.2. Слой API — `src/services/`
+
+- **`api.ts`** — тонкий `fetch`-клиент: базовый URL, JSON, класс `ApiError {status, code, message}` и единый словарь «машинный код → русское сообщение» по списку из раздела «Нюансы контрактов API». Трансформаций регистра нет — бэк уже отдаёт camelCase.
+- **`endpoints/`** — по домену: `catalog.ts`, `cycles.ts`, `cart.ts`, `orders.ts`, `auth.ts`, `admin.ts`, `export.ts`; типы аргументов и возвратов импортируются из `widgets/types`.
+- Имена query/form-параметров брать буквально из роутеров: `cycleId` и `isPrimary` — camelCase; `category`, `in_stock`, `page`, `page_size` — как есть.
+
+### 2.3. Auth через httpOnly-cookie — Next API routes
+
+Бэк отдаёт `{accessToken, refreshToken}` в теле ответа `verify-otp`/`refresh`; браузер их видеть не должен.
+
+- `pages/api/auth/register.ts` | `login.ts` | `verify-otp.ts` — проксируют в `POST /auth/*`; при получении пары токенов ставят `httpOnly` + `SameSite=Lax` + `Secure` cookie (`lb_at`, `lb_rt`). `register`/`login` токенов не возвращают — только `{message, purpose}`.
+- `pages/api/auth/refresh.ts` — `POST /auth/refresh`, перезаписывает **обе** cookie (бэк ротирует refresh, старый становится невалиден).
+- `pages/api/auth/logout.ts` — `POST /auth/logout` с `refreshToken` из cookie + очистка cookie.
+- `pages/api/auth/me.ts` — текущий пользователь; зависит от `GET /users/me` на бэке (расхождение №5).
+- `pages/api/proxy/[...path].ts` — единая точка приватных запросов (`/cart`, `/orders`, `/admin/*`): читает `lb_at` из cookie, подставляет `Authorization: Bearer`, при `401` один раз пробует refresh и повторяет запрос, иначе чистит cookie. Экспорт xlsx проксируется потоком с сохранением `Content-Disposition`; загрузка картинок и импорт — multipart без буферизации файла в память.
+- Побочный плюс: браузер ходит только в Next, поэтому `CORS_ORIGIN` на бэке перестаёт быть на критическом пути (кроме статики `/files/*`), а SSG-сборка ходит в API server-to-server.
+
+### 2.4. Страницы (`src/pages`, Pages Router)
+
+**Публичные (SSG + ISR, `revalidate` ~60с):**
+
+- `index.tsx` — главная: активный цикл с таймером, подборка товаров, объяснение как работает заявка.
+- `catalog/index.tsx` — `getStaticProps` тянет `GET /categories` + первую страницу `GET /products`; фильтр по **слагу** категории и пагинация — через query-параметры с клиентской дозагрузкой.
+- `catalog/[slug].tsx` — карточка товара: `getStaticPaths` (`fallback: 'blocking'` — товары появляются через импорт xlsx) + `GET /products/{slug}`.
+
+Все `getStaticProps` оборачивать в try/catch: на `next build` API может быть недоступен, а `GET /cycles/active` штатно отдаёт 404 при отсутствии цикла. Падать сборкой из-за этого нельзя — рендерить пустое состояние и полагаться на `revalidate`.
+
+**Приватные (CSR через прокси):**
+
+- `cart.tsx` — корзина + таймер до дедлайна + переход к оформлению; состояния `no_active_cycle` и пустой корзины обрабатываются явно.
+- `checkout.tsx` — `note` + `POST /orders/checkout` → редирект на заявку.
+- `orders/index.tsx`, `orders/[id].tsx` — мои заявки (снапшот цен, не текущий каталог).
+- `account.tsx` — профиль (имя/телефон), выход.
+
+**Авторизация:** `login.tsx`, `register.tsx`, `verify-otp.tsx` (после register/login, `purpose` передаётся дальше), плюс блок привязки Telegram на странице OTP.
+
+**Админка `admin/*`** — гейт по `role === 'ADMIN'` в `getServerSideProps` (единственное исключение из SSG, чтобы не мигать содержимым): `index.tsx` (дашборд: активный цикл, число заявок), `products/index.tsx` · `products/new.tsx` · `products/[id].tsx`, `categories.tsx`, `import.tsx`, `cycles.tsx` (календарь), `orders/index.tsx` (+ экспорт).
+
+**Служебные:** `_document.tsx` (`<html lang="ru">`), `404.tsx`, `500.tsx`. `_app.tsx` — обернуть в `ServicesContext.Provider` (адаптеры `Link`/`Image` поверх `next/link`/`next/image`, по образцу `src/stories/wrapper/components/`), `ToastContext`, `AuthProvider`, `CartProvider`; шрифты там уже настроены, класс темы `lightThemeStyle` вешается на тот же `<main>`.
+
+### 2.5. Состояние и data-хуки (`src/contexts`, `src/hooks`)
+
+- **`AuthContext`** — `{user, isLoading, register, login, verifyOtp, logout}`; при монтировании дёргает `/api/auth/me`.
+- **`CartContext`** — `{cart, addItem, updateItem, removeItem, empty, itemCount}`; все методы бэка возвращают **полную `CartResponse`**, поэтому состояние просто заменяется ответом — отдельный ре-фетч не нужен. Оптимистичные апдейты — опционально.
+- **Data-хуки:** `useProducts`, `useActiveCycle`, `useOrders`, `useAdminOrders`, `useAdminProducts`, `useCycles`. Библиотеку кеширования (SWR/TanStack Query) **не тянем** на старте: публичные данные приходят из ISR, приватных экранов немного. Если ручной кеш начнёт разрастаться — вводить SWR отдельным решением.
+- **`src/utils/format.ts`** — цена (KGS), даты и дедлайны в `Asia/Bishkek`.
+
+---
+
+## Часть 3. Пробелы бэкенда, вскрытые при проектировании фронта
+
+**Закрыто** (реализовано в `apps/api`, подробности — в `## Done` в `PLAN.md`):
+
+1. ~~`GET /users/me` не существует~~ — модуль `app/users/` добавлен (`GET`/`PATCH /users/me`, поле `telegramLinked` для `TelegramLinkPrompt`).
+2. ~~Нет поиска по товарам~~ — `GET /products?q=` (`ILIKE` по названию, с экранированием `%`). `SearchField` бьёт в бэк, а не фильтрует загруженную страницу.
+3. ~~Бот отвечает по-английски~~ — тексты бота и уведомлений переведены; дедлайн в напоминании форматируется в `CYCLE_TIMEZONE`.
+4. ~~`PATCH /cart/items/{id}` маскирует `no_active_cycle`~~ — коды разведены (`409`/`404`).
+5. ~~`GET /admin/orders` не отдаёт покупателя~~ — `AdminOrderResponse` c `customerName`/`customerPhone`; там же пагинация и фильтр по статусу.
+6. ~~Позиции корзины и заявки без картинки и слага~~ — `productSlug`/`productImageUrl` (у заявки — снапшот).
+7. ~~Нет `GET /admin/products`~~ — админский листинг с `includeDeleted` + `POST /admin/products/{id}/restore`.
+
+**Остаётся открытым (осознанно):**
+
+8. **Нет state-machine статусов заявки** (сознательно, шаг 11) — админка показывает все значения `OrderStatus` в `Select` без ограничений на переходы. Требование появится с реальным UI.
+9. **Напоминание — одно на цикл.** `reminderSentAt` — флаг на `OrderCycle`, а не журнал по пользователям; UI не должен обещать «мы напомним каждому». Изменение потребовало бы правки модели данных.
+10. **`POST /admin/catalog/import` отдаёт 500 на нечитаемом файле** (найдено на шаге 3). `import_catalog` ловит только превышение размера; `ImportFileError` («не UTF-8», «битый xlsx», «неподдерживаемое расширение») из `CatalogImportService.import_file` наружу не перехватывается и уходит необработанным исключением. Ошибки **строк** при этом штатно возвращаются в `ImportSummaryResponse.errors`. Чинить на бэке (перехват в `422`) — правка на две строки, но она вне шага 3; до тех пор экран импорта на шаге 9 обязан внятно отрабатывать 500, а не только `errors[]`.
+
+---
+
+## Порядок реализации
+
+```mermaid
+flowchart TD
+  T["1. Токены: contract/light.css.ts,
+      миксины, motion"] --> A["4. Атомы + BaseLayout/Header/Footer
+      в Storybook"]
+  TY["2. types.ts (+fill), env,
+      сonfig.ts"] --> A
+  TY --> S["3. services/api.ts + endpoints,
+      Next API routes, AuthContext"]
+  U["0. GET /users/me на бэке"] --> S
+  A --> C["5. Витрина: ProductCard/Grid →
+      catalog/* на SSG+ISR"]
+  S --> C
+  S --> AU["6. Авторизация + TelegramLinkPrompt"]
+  AU --> CT["7. Корзина: CartContext,
+      DeadlineCountdown, checkout"]
+  C --> CT
+  CT --> O["8. Заявки покупателя + account"]
+  O --> AD["9. Админка: гейт → товары/категории →
+      импорт → циклы → заявки + экспорт"]
+  AD --> F["10. Полировка: скелетоны, ошибки,
+      404/500, анимации, a11y"]
+```
+
+0. ~~**`GET /users/me` на бэке**~~ — **сделано** вместе с остальными пробелами бэкенда (см. «Часть 3»), шаг 3 больше не заблокирован.
+1. Дизайн-токены: `contract.css.ts`/`light.css.ts`, новые миксины, установка `motion`.
+2. Типы в `widgets/src/types.ts` (включая правку `IImage`/`fill`) + `NEXT_PUBLIC_API_BASE_URL`/`API_BASE_URL` в `.env.example` и `сonfig.ts` (закрывает п. 14 `PLAN.md`).
+3. `apps/website/src/services/api.ts` + `endpoints/*` + Next API routes авторизации и прокси; `AuthContext`.
+4. Базовые атомы + `BaseLayout`/`Header`/`Footer` в Storybook (плюс шаблон теста в генераторе).
+5. Витрина: `ProductCard`/`ProductGrid`/`CatalogTemplate` → страницы `catalog/*` на SSG+ISR.
+6. Авторизация: формы + `verify-otp` + `TelegramLinkPrompt` → сквозной вход.
+7. Корзина: `CartContext`, `QuantityStepper`, `CartPanel`, `DeadlineCountdown`, checkout → заявка.
+8. Заявки покупателя (`orders/*`) + `account.tsx`.
+9. Админка: layout и гейт → товары/категории/картинки → импорт → календарь циклов → заявки + экспорт.
+10. Полировка: скелетоны, пустые состояния, ошибки API, 404/500, анимации через `/motion`, a11y-прогон Storybook-аддоном.
+
+## Критичные файлы
+
+- `packages/widgets/src/styling/themes/contract.css.ts` + `light.css.ts` — токены, от них зависит весь UI.
+- `packages/widgets/src/types.ts` — общие DTO и пропсы компонентов; сюда же правка `IImage`/`IImageComponentProps` под `fill`. Манифест править не нужно.
+- `packages/widgets/src/stories/feed.ts` — фикстура на каждый новый компонент, иначе сторис не компилируется.
+- `packages/widgets/tools/templates/react/component/` — сюда добавляется шаблон теста.
+- `packages/widgets/src/stories/wrapper/components/Image.tsx` — вторая реализация `components.Image`, обязана поддержать `fill`.
+- `packages/widgets/src/contexts/ServicesContext.ts` — инъекция `Link`/`Image` из Next.
+- `packages/widgets/package.json` — `exports` **и** `typesVersions` при новом subpath.
+- `apps/website/src/сonfig.ts` (кириллическая «с» в имени — не трогать) и `.env.example`.
+- `apps/website/next.config.js` — `images.remotePatterns` под http-хост API.
+- `apps/website/src/pages/_app.tsx` — провайдеры и тема поверх уже настроенных шрифтов.
+- `apps/website/src/pages/api/proxy/[...path].ts` — единственная точка, где access-токен встречается с запросом.
+
+## Проверка (end-to-end)
+
+1. `docker compose up --build` (API + БД) + `npm run dev` — сайт на 3000, API на 3001.
+2. `npm run storybook -w widgets` — все новые компоненты рендерятся изолированно, a11y-аддон без критичных нарушений.
+3. `npm run check` (tsc + eslint по `website`/`widgets`) и `npm test` — зелёные. **`npm test` красный на старте** (нет ни одного тест-файла) — чинится вместе с шаблоном теста на шаге 4. `apps/api` не затронут (вне npm-воркспейса).
+4. Сквозной сценарий покупателя: каталог отдаётся статикой (проверить `.next` / отсутствие клиентского запроса при первой отрисовке) → регистрация → Telegram `/start` + контакт → OTP → корзина → таймер до дедлайна → checkout → заявка видна в `/orders` со снапшотом цены (изменить цену в админке и убедиться, что заявка не поменялась).
+5. Проверка cookie: в DevTools `lb_at`/`lb_rt` помечены `HttpOnly` и недоступны из `document.cookie`; после `logout` приватные страницы редиректят на `/login`; протухший access молча обновляется через `/api/auth/refresh` (проверяется коротким `JWT_ACCESS_TTL_SECONDS`).
+6. Админка: вход владельцем (сид `OWNER_*`) → CRUD товара + загрузка картинки (`isPrimary` снимается с остальных) → импорт xlsx с заведомо битой строкой → summary показывает `created/updated/errors` с номерами строк → создание дедлайна в календаре → смена статуса заявки → экспорт xlsx скачивается и открывается. Покупательский аккаунт на `/admin/*` получает редирект, а не пустую страницу.
+7. Мобильная проверка на брейкпоинтах из `src/breakpoints.ts`: Drawer-меню, корзина, таблицы админки со скроллом по горизонтали.
+
+## Done
+
+<!-- Сюда по мере реализации добавляются записи о том, что фактически сделано, — как в PLAN.md. -->
+
+- **Шаг 1 — дизайн-токены, миксины, motion.**
+  - **`styling/themes/tokens.ts` (новый) — единственный источник правды по форме темы.** Контракт больше не дублирует значения руками: `contract.css.ts` = `createThemeContract(lightTokens)`, `light.css.ts` = `createTheme(vars, lightTokens)`. Проверено по исходникам `@vanilla-extract/css`: `createThemeContract` делает `walkObject` и значения листьев игнорирует (заменяет на `var(--…)`), так что передача реальных значений вместо `null` безопасна, зато расхождение ключей контракта и темы — то самое, на котором падает `createTheme`, — становится структурно невозможным. `light.css.ts` продолжает экспортировать `lightTheme` (его импортирует `global.css.ts`) и `lightThemeStyle`.
+  - **Импорты в `tokens.ts` только точечные** (`../lib/rem`, `../lib/shadow`), а не через бочку `../lib`: та тянет `lib/color.ts`, который импортирует `contract.css.ts` → получилось бы кольцо tokens → lib → color → contract → tokens, и `color`-геттер инициализировался бы (`Object.keys(vars.color)`) раньше, чем готов `vars`. По той же причине `prepColor` из `lib/color.ts` не переиспользован — в `tokens.ts` заведён локальный `channels()` (hex → `'R, G, B'`).
+  - **Палитра снята с `design-reference/`** (тёплый кремовый фон + пастельная лилово-розовая марка от Ronas, компоновка/типографика — от NŪMA): `neutral` `0…950` (тёплая серая), `brand` `50…900` (лилово-розовая), `accent` `50…900` (глина/песок), семантические `success`/`warning`/`danger`/`info` (`100/300/500/700`), плюс алиасные группы `surface`, `background`, `text`, `border`. Все цвета хранятся **каналами** `'R, G, B'` — этого требует существующий геттер `color()` из `lib/color.ts`, собирающий `rgb()`/`rgba()`. Не-цветовые группы: `radius` (включая `pill`/`circle`), `shadow` (`xs…xl` + `inset`, собраны через `lib/shadow.ts::shadow`/`uniteShadows`), `zIndex` (`header` < `drawer` < `overlay` < `modal` < `toast`), `space`.
+  - **Новые миксины** в `styling/mixin/`: `grid.ts` (`grid`, `gridAutoFit` — сетка товаров без медиа-запросов), `truncate.ts` (`truncate`, `lineClamp`), `visuallyHidden.ts`, `focusRing.ts` (`focusRing` + `focusVisibleRing` — по умолчанию через `:focus-visible`, чтобы кольцо не загоралось от мыши), `container.ts` (`container` на `wrapperWidth` + `containerPadding` на `wrapperPadding` для full-bleed секций). Барelsby перегенерирован.
+  - **`global.css.ts`** теперь реально использует токены: `html, body` получили `background: background.page` и `color: text.primary`, а пустая заглушка `color: ''` у `::placeholder` заменена на `text.muted`.
+  - **`motion` 12.43.0 установлен** в `widgets` (`npm install motion -w widgets`). Импортировать только из `motion/react`.
+  - **Расхождения, вскрытые при реализации** (все чинились здесь же, иначе блокировали бы шаг 4):
+    1. **`npm run barrels` падал с `ENOENT`** — `.barrelsby.json` перечисляет `./src/molecules`, `./src/organisms`, `./src/templates`, `./src/hooks`, которых не существует. Тот же `barrelsby` вызывается вторым шагом в `npm run generate`, то есть **генератор компонентов упал бы сразу после генерации любого компонента**. Директории созданы с `.gitkeep` (пустые барelsby пропускает молча и `index.ts` не создаёт — важно, потому что при `isolatedModules` пустой сгенерированный барель был бы невалиден, а положить туда `index.ts`-заглушку нельзя: barrelsby принимает её за исходник и пишет самоссылку `export * from './index'`).
+    2. **`.storybook/main.ts` был пустым файлом** — `storybook build` падал с `SB_CORE-SERVER_0003 (MissingBuilderError)`, то есть Storybook в репозитории не запускался никогда, хотя план объявляет его основным циклом разработки виджетов. Заполнен: `framework: @storybook/react-vite`, `stories: ../src/**/*.stories.@(ts|tsx)`, аддоны `links`/`a11y`; плагины (vanilla-extract, react, svgr) подхватываются из `vite.config.ts` пакета.
+    3. **`package-lock.json` был протухшим** — содержал воркспейс `apps/api` времён NestJS-прототипа со всем деревом Nest/Angular-зависимостей (`apps/api/package.json` давно удалён при переезде на Python). `npm install` их выкосил (лок похудел примерно на 6000 строк), а установленный `node_modules` разъехался с локом (`eslint-config-next` 15.5.20 против 16.2.10 в локе) и ронял `npm run check -w website` с `ERR_MODULE_NOT_FOUND`. Вылечено `npm ci` — после него лок и `node_modules` согласованы, `npm ci` (то, что гоняет CI) отрабатывает чисто.
+  - **Тесты**: `src/styling/styling.test.ts` + фикстура `src/styling/styling.smoke.css.ts` (лежит в `styling/`, а не в `styling/mixin/`, чтобы не уехать в бочку и в публичный API). Проверяет, что тема собирается, что пути листьев контракта и значений совпадают один в один, что каждый цвет — каналы `'R, G, B'` (инвариант, на котором держится `color()`), и что все миксины компилируются в валидный CSS. Это заодно закрывает **расхождение №1** в части «`npm test` падал с „No test files found“» — шаблон теста в генераторе по-прежнему за шагом 4.
+  - **Проверено**: `npm run check` зелёный (`tsc` + eslint по `website`/`widgets`; остаётся один довоенный warning `import/no-anonymous-default-export` в `apps/website/eslint.config.mjs`), `npm test` зелёный (4 теста), `npm run build -w website` собирается — в выданном CSS `:root` содержит все токены, а `body,html{background-color:rgb(var(…))}` и `::placeholder{color:rgb(var(…))}` резолвятся в `background.page`/`text.primary`/`text.muted`, `npm run build-storybook -w widgets` собирается. Тема прогнана через оба сборочных конвейера — webpack (Next) и vite (vitest/Storybook).
+- **Шаг 2 — общие типы, режим `fill` у картинок, конфиг и окружение сайта.**
+  - **`packages/widgets/src/types.ts`** дополнен DTO бэкенда: строковые union-типы `OrderStatus`/`CycleStatus`/`OtpPurpose`/`Role` (не TS enum), `IPage<T>`, `ICategory`, `IProductImage`, `IProduct`, `ICartItem`/`ICart`, `IOrderItem`/`IOrder`, `IOrderCycle`, `IAuthUser`, `IImportRowError`/`IImportSummary`. Сверх списка из §1.2 заведён **`IAdminOrder extends IOrder`** (`customerName`/`customerPhone`) — `AdminOrderResponse` документирован в «Нюансах контрактов», и без отдельного типа `AdminOrdersTable` на шаге 9 смешал бы покупательский и админский контракты. Идентификаторы — UUID-строки, даты — ISO-строки.
+  - **Найдено при сверке с роутерами**: у позиции корзины **нет собственного id**, `/cart/items/{…}` адресуется `productId` — зафиксировано в «Нюансах контрактов API» выше, влияет на шаг 7.
+  - **Режим `fill`**: в `IImage` поля `width`/`height` стали необязательными (у картинок товара их нет — API отдаёт только `url`/`alt`), в `IImageComponentProps` добавлен `fill?: boolean`. Storybook-заглушка `stories/wrapper/components/Image.tsx` в этом режиме гасит `width`/`height` и растягивается по родителю (`position: absolute; inset: 0; object-fit: cover`); адаптер `next/image` появится вместе с `_app.tsx` на шаге 5. В `stories/feed.ts` добавлен `feedProductImage()` — картинка без размеров; `feedImage(w, h)` остался как есть.
+  - **`apps/website/src/сonfig.ts`** (имя с кириллической «с» не трогали): в `publicConfig` добавлены `apiBaseUrl` (`NEXT_PUBLIC_API_BASE_URL`) и `telegramBotUsername` (`NEXT_PUBLIC_TELEGRAM_BOT_USERNAME`), заведён `serverConfig` (`API_BASE_URL`, `AUTH_COOKIE_SECURE`). `serverConfig` **бросает исключение при чтении из браузера**: Next подставляет в клиентский бандл только `NEXT_PUBLIC_*`, поэтому иначе серверные значения молча подменились бы дефолтами, и это всплыло бы уже как «прокси ходит не туда». `AUTH_COOKIE_SECURE` читается как `!== 'false'` — по умолчанию `Secure` включён, снимается только явным `false` для локального http.
+  - **`.env.example`** дополнен теми же четырьмя переменными с комментариями (включая напоминание про чистую ссылку `https://t.me/<username>` без `?start=`). Локальный `apps/website/.env` не трогали — дефолты в `сonfig.ts` указывают на `http://localhost:3001`, так что dev работает и без него.
+  - **Расхождение №3 закрыто**: `next.config.js` вычисляет паттерн для `next/image` из `NEXT_PUBLIC_API_BASE_URL` и добавляет его к `remotePatterns` только для http (`{protocol:'http', hostname, port, pathname:'/files/**'}`); битый URL или https дают пустой список, потому что https уже покрыт общим wildcard. **Расхождение №6 закрыто**: неработающий скрипт `barrels` удалён из `apps/website/package.json`, корневой `npm run barrels` снова зелёный.
+  - **Проверено**: `npm run check`, `npm test`, `npm run barrels` зелёные; `npm run build -w website` собирается, и в итоговом `.next/required-server-files.json` действительно лежит паттерн `http://localhost:3001/files/**`. Главное — **типы сверены с живой схемой API**: из `apps/api` снят `openapi.json` (`create_app().openapi()`, 40 схем) и скриптом сопоставлен с `types.ts` по именам полей, обязательности и nullable — 12 DTO, `IPage` и все 4 enum'а совпали один в один, лишних и недостающих полей нет.
+- **Шаг 3 — слой API, авторизация на httpOnly-cookie, прокси, `AuthContext`.**
+  - **`src/services/apiErrors.ts`** — `ApiError {status, code, fields}` и словарь машинный код → русский текст. Бэкенд русских текстов не знает вообще: он отвечает конвертом FastAPI `{"detail": "<код>"}`, поэтому словарь собран по всем `raise HTTPException(...)` в `apps/api` (auth/каталог/циклы/корзина/заявки) плюс запасные тексты по HTTP-статусу. 422 разбирается отдельно: `detail` — массив, из `loc` достаётся имя поля, и ошибки ложатся в `fields` для подсветки полей формы; `code` при этом `validation_error`. Недоступная сеть — тоже `ApiError` (`status: 0`, `network_error`), чтобы вызывающий код не разбирал два разных типа исключений.
+  - **`src/services/api.ts`** — тонкий клиент над `fetch` с двумя адресатами. `api` идёт в бэкенд: **из браузера — только через `/api/proxy/*`**, с сервера (`getStaticProps`/`getServerSideProps`/API routes) — напрямую по `API_BASE_URL`, без авторизации, то есть за публичными данными. `nextApi` бьёт в собственные ручки Next (`/api/auth/*`) и падает при вызове с сервера. `FormData` уходит без `Content-Type` (boundary ставит браузер), 204 отдаётся как `undefined`. Отдельно `download()` — скачивание бинарника с разбором `Content-Disposition` (RFC 5987 `filename*=UTF-8''` имеет приоритет над `filename=`).
+  - **`src/services/endpoints/*`** — `catalog`, `cycles`, `cart`, `orders`, `auth`, `admin`, `export`. Расхождение №7 зашито в сигнатуру: `IProductListParams.category` — **slug**, с комментарием; публичный список отправляет snake_case `in_stock`/`page_size`, админский — camelCase `inStock`/`includeDeleted`/`pageSize`, ровно как объявлено в роутерах. `getActiveCycleOrNull()` сворачивает `404 no_active_cycle` в `null` — для витрины «сбор закрыт» это нормальное состояние, а не ошибка.
+  - **`src/server/cookies.ts` + `src/server/apiFetch.ts`** — вся работа с JWT. Cookie `lb_at`/`lb_rt`: `HttpOnly`, `SameSite=Lax`, `Secure` по `AUTH_COOKIE_SECURE`, `Max-Age` = сроку refresh-токена (30 суток) **у обеих** — access протухает по `exp` внутри JWT, а не по сроку cookie. `Set-Cookie` дописывается, а не затирается. `fetchWithAuth` подставляет Bearer и обновляет пару токенов: **упреждающе** (декодирует `exp` из access без проверки подписи — это подсказка, а не проверка) и **реактивно** (повтор один раз после 401). Повтор разрешён только методам без тела: тело проксируется потоком и читается один раз. Провалившийся refresh снимает cookie.
+  - **`src/pages/api/auth/{register,login,verify-otp,refresh,logout,me}.ts`** — единственное место, где JWT существуют в открытом виде. `verify-otp` кладёт токены в cookie и **сразу возвращает профиль** (запрос `/users/me` делает сервер), поэтому после входа клиенту не нужен второй раунд. `logout` снимает cookie даже если бэкенд недоступен. `me` отвечает 401 для гостя — это штатный ответ, а не сбой.
+  - **`src/pages/api/proxy/[...path].ts`** — прозрачный прокси с `bodyParser: false`: тело идёт потоком (`duplex: 'half'`), поэтому загрузка картинок и импорт каталога не оседают в памяти Next. Наружу переносятся только нужные заголовки (в ответе — `content-type`, `content-disposition`, `cache-control`), ответ пишется через `pipeline`. Два решения по безопасности: `cookie` и `host` в бэкенд не пересылаются, а **путь `/auth/*` через прокси закрыт 404** — иначе ответ с парой JWT ушёл бы в браузер, ради чего вся схема и затевалась. Без cookie запрос уходит анонимным, а не отбивается 401: через тот же прокси ходит публичный каталог.
+  - **`src/contexts/AuthContext.tsx`** + провайдер в `_app.tsx` — `{user, isLoading, isAdmin, register, login, verifyOtp, updateProfile, logout, reload}`. Токенов в контексте нет и быть не может, состояние берётся из `/api/auth/me` при монтировании; 401 превращается в «гость». `register`/`login` возвращают `OtpPurpose` — он нужен второму шагу.
+  - **Проверено вживую** (`docker compose up` + `next dev`, curl с cookie-jar; после проверки контейнеры остановлены, страница-пробник удалена): анонимный каталог через прокси **200**; `/api/proxy/auth/login` → **404**; корзина и `/api/auth/me` без cookie → **401**; вход владельцем (`OWNER_*`, код OTP снят из логов контейнера) → `Set-Cookie` с `HttpOnly` на обеих cookie и профиль в ответе; `me`, `cart`, `admin/orders`, `admin/products?includeDeleted`, публичный `products?page_size=&in_stock=` — все 200; корзина POST/PATCH/DELETE по `productId` меняет позиции; 422 приходит массивом `detail` в том виде, который разбирает `apiErrors`; выгрузка xlsx через прокси байт-в-байт с валидным zip и **тем же** `Content-Disposition`, что отдаёт API напрямую; multipart-загрузка картинки потоком проходит (кириллица в `alt` цела), файл отдаётся с `/files/*`, удаление — 204.
+  - **Обновление токенов проверено обеими ветками**: нечитаемый `lb_at` → упреждающий refresh, ответ 200 и **новая пара** cookie; валидный по форме, но с чужой подписью `lb_at` → 401 от API → refresh → повтор → 200; протухший refresh (ротация уже забрала старый) → 401 **и снятие cookie**. `POST /api/auth/refresh` отдаёт 204 и ротирует обе cookie, `logout` их гасит, после чего `me`/`cart` снова 401, а каталог по-прежнему 200.
+  - **Обе ветки клиента проверены страницей-пробником**: `getServerSideProps` сходил в API напрямую (`server:1:UPCOMING`), а браузер после гидратации дёрнул `/api/proxy/products?page_size=2` через `api` и `/api/auth/me` через `nextApi` (`client:ok:2/7`, `auth:guest`) — без ошибок в консоли. `npm run check`, `npm test`, `npm run build -w website` зелёные; в сборке зарегистрированы все 7 новых ручек.
+  - **Найдено при реализации**: `POST /admin/catalog/import` возвращает 500 на нечитаемом файле — записано пунктом 10 в «Часть 3» (правка бэкенда, вне шага 3).
+- **Шаг 4 — тесты в генераторе, базовые атомы, `Header`/`Footer`/`BaseLayout`.**
+  - **Инфраструктура тестов (расхождение №1 закрыто).** В `tools/templates/react/component/` добавлен `__name__.test.tsx` — генератор теперь выдаёт пять файлов. В `widgets` установлены `@testing-library/react`, `@testing-library/user-event`, `@testing-library/jest-dom`, `jsdom`; `vite.config.ts` получил `test.environment: 'jsdom'` и `setupFiles`. Заведён `src/testing/`: `setup.ts` (матчеры jest-dom + `cleanup` между тестами) и `render.tsx` с `renderWidget` — тот же `StoryWrapper`, что и в Storybook, иначе любой компонент, дотягивающийся до `AppLink`/`AppImage`, падал бы на пустом `ServicesContext`. Шаблон теста рендерит компонент **той же фикстурой `feed…`, что и стори**, — расхождение «в Storybook работает, в тесте падает» становится невозможным.
+  - **Генератор гонялся неинтерактивно.** `generate-template-files` задаёт три вопроса подряд (тип, имя, путь), и обычный пайп не годится: select съедает весь буфер разом и принимает имя компонента за пункт списка. Ответы отправлялись с паузами (скрипт-обёртка в скретчпаде, в репозиторий не попал). Ни одна папка компонента руками не создавалась.
+  - **23 атома** по таблице §1.3: `Button`, `IconButton`, `Input`, `PasswordInput`, `PhoneInput`, `OtpInput`, `Textarea`, `Select`, `Checkbox`, `Switch`, `Badge`, `Price`, `Spinner`, `Skeleton`, `Heading`, `Text`, `Chip`, `Alert`, `FileInput`, `Container`, `Divider`, `VisuallyHidden`, `Portal`. Плюс организмы `Header`/`Footer` и шаблон `BaseLayout`. Все — на токенах и существующих миксинах, без единого «магического» цвета.
+  - **Новый миксин `styling/mixin/field.ts`** (`fieldControl`, `fieldShell`, `fieldInput`, `fieldInvalid`, `fieldLabel`, `fieldHint`, `fieldError`, `FIELD_HEIGHT`): одинаковую рамку носят четыре разных нативных элемента (`input`, `textarea`, `select`, кнопка выбора файла), а наследовать стили между атомами нечем. Две версии не случайно: `fieldControl` подсвечивается по `:focus-visible` на самом элементе, `fieldShell` — по `:focus-within` на обёртке, где рядом живут префикс/суффикс.
+  - **Иконки — инлайновый `src/svg/icons.tsx`**, а не `.svg` + svgr: иконок девять, все однотипные (`currentColor`, размер `1em`), и так они не тянут настройку загрузчика в каждого потребителя.
+  - **Решения по доступности, которые заметны в коде.** `IconButton.label` обязателен и уходит и в `aria-label`, и в скрытый текст. `Checkbox`/`Switch` держат настоящий `input`, спрятанный `visuallyHidden`, — подмена на `div role="checkbox"` стоила бы ручной поддержки клавиатуры. `Chip` сообщает выбор через `aria-pressed`, `Badge` умеет точку-индикатор — состояние не должно читаться только по цвету. `Alert` выбирает `role` по тону (`alert` для ошибки, `status` для остального). Ошибки и подсказки полей связаны с контролами через `aria-describedby`. `BaseLayout` начинается со ссылки «К содержимому».
+  - **Корзина в шапке — ссылка, а не кнопка.** Первый вариант вкладывал `IconButton` внутрь `AppLink`: `<button>` внутри `<a>` — невалидная разметка и интерактив внутри интерактива. Внешность иконочной кнопки повторена в стилях самой ссылки.
+  - **`PhoneInput` нормализует в E.164** (`+996555123456`) — ровно то, что проверяет `PHONE_PATTERN` на бэке. Код страны показан статичным префиксом и в значение поля не входит: так его нельзя стереть бэкспейсом. `0555123456`, `996555123456`, `+996 555 12 34 56` и `555123456` дают один результат. Национальная часть жёстко девять цифр даже при другом `dialCode` — осознанное ограничение, полноценный международный ввод потребовал бы таблицы форматов.
+  - **`OtpInput`** обрабатывает вставку в любую ячейку и разливает код по всем сразу (вставляют его почти всегда целиком из уведомления), плюс автопереход, стрелки и возврат по Backspace из пустой ячейки.
+  - **`Price`** форматирует копейки как `1 250 сом`. `Intl.NumberFormat` со `style: 'currency'` не подошёл: для KGS он даёт «1 250,00 KGS», а магазин говорит «сом».
+  - **Стори управляемых контролов держат состояние сами** (9 штук: поля, чекбокс, тумблер, чип) — иначе в Storybook, который план объявляет основным циклом разработки, в поле нельзя было бы ничего ввести. `Header`/`Footer`/`BaseLayout` переведены на `layout: 'fullscreen'`.
+  - **Проверено**: `npm run check`, `npm test` (53 теста в 27 файлах), `npm run build -w website`, `npm run build-storybook -w widgets` — зелёные. Генератор прогнан начисто (`Molecule ProbeMolecule`) и выдал все пять файлов, включая тест; заготовка удалена. Точечные тесты написаны там, где есть логика: `Price` (формат KGS, дробная часть, ноль), `PhoneInput` (нормализация из четырёх видов ввода, обрезка, чужой код страны, E.164 наружу), `OtpInput` (вставка целиком, отсев нецифр, автопереход, Backspace), `Portal` (рендер вне поддерева и в заданный контейнер — общий smoke-тест шаблона тут принципиально не годится).
+  - **Storybook прогнан в браузере**: собранная статика поднята локально, все **28 стори** проверены `axe` из аддона a11y прямо в preview-фрейме. Первый прогон дал **4 нарушения `color-contrast` (serious)** — подсказки под полями, счётчик символов, счётчик у чипа. Причина одна и та же: `text.muted` был нейтральным 500 (`#918879`) — контраст 3:1 на светлом фоне при требуемых 4.5:1. Починено в токене (нейтральный 600, `#6e665a`, 5.6:1), а у `Chip.count` убрана `opacity: 0.7`, которая смешивала текст с фоном, — вместо неё явный цвет. Повторный прогон: **28 из 28 без нарушений**.
+- **Шаг 5 — витрина: компоненты каталога и страницы `catalog/*` на SSG+ISR.**
+  - **Виджеты.** Молекулы `ProductCard`, `Pagination`, `CategoryFilter`, `EmptyState`, `SearchField`, `ProductGallery`, `Breadcrumbs`; организмы `ProductGrid`, `ProductDetails`; шаблоны `CatalogTemplate`, `ProductTemplate`; хук `useDebouncedValue`. Всё через генератор, все пропсы — в `types.ts`, все фикстуры — в `feed.ts`.
+  - **Кнопка «в корзину» везде оставлена слотом** (`action` у `ProductCard`/`ProductDetails`, `renderAction` у `ProductGrid`): класть её внутрь ссылки-карточки нельзя (интерактив внутри интерактива), а корзина — состояние сайта, не виджета. Слоты заполнятся на шаге 7.
+  - **`ProductGrid` держит три состояния** — скелетоны в пропорциях карточки (сетка не прыгает при подмене данных), пустое состояние слотом, товары. Сетка `auto-fill` без медиа-запросов: колонки считает ширина контейнера.
+  - **Товар без картинок — штатный случай** (после импорта xlsx их нет), поэтому и карточка, и галерея рисуют заглушку, а не пустой бокс.
+  - **Сайт.** Адаптеры `src/components/{Link,Image}.tsx` для `ServicesContext` — вторая реализация тех же заглушек, что в Storybook; `_app.tsx` их прокидывает. Обёртка приложения переведена с `<main>` на `<div>`: собственный `<main>` рисует `BaseLayout`, а два `<main>` — невалидная разметка. Добавлен `_document.tsx` с `lang="ru"`. Каркас публичных страниц — `src/layouts/SiteLayout.tsx`.
+  - **`catalog/index.tsx`** — `getStaticProps` (категории + первая страница товаров, `revalidate: 60`, всё в try/catch: недоступный API на сборке не должен её ронять). Категория и страница живут в query-параметрах (ссылку можно переслать), поиск — в состоянии компонента с дебаунсом: он меняется на каждый символ и засорял бы историю. Любой вид, кроме первой страницы без фильтров, догружается на клиенте — `getStaticProps` query-параметров не видит.
+  - **Загрузка описана ключом запроса, а не флагом.** Результат хранится вместе с ключом (`категория|страница|поиск`), «идёт загрузка» = «ответа на текущий ключ ещё нет». Так ответ на устаревший запрос не может перезаписать актуальный; попутно это единственный способ не звать `setState` синхронно в эффекте — иначе `react-hooks/set-state-in-effect` (он включён в конфиге) справедливо ругается.
+  - **`catalog/[slug].tsx`** — `getStaticPaths` с `fallback: 'blocking'` (товары появляются пачками через импорт, заранее все пути не собрать) и 404 вместо 500 на удалённый товар. Имя категории резолвится на сервере: у товара приходит только `categoryId`.
+  - **Временный редирект `/` → `/catalog`** в `next.config.js`: главная страница появится отдельным шагом, а логотип в шапке не должен упираться в 404.
+  - **Проверено вживую** (`docker compose up` + `next dev`, реальные товары в БД; после проверки контейнеры остановлены, тестовые данные удалены): каталог отдаётся статикой со списком товаров и счётчиком; фильтр по категории меняет адрес на `?category=<slug>` и список; поиск с дебаунсом находит по подстроке; страница товара собирается по слагу с хлебными крошками, именем категории, ценой и бейджем наличия; несуществующий слаг — 404; `/` — 307 на каталог; `<html lang="ru">` на месте.
+  - **Найдено и починено при проверке — два дефекта, которые не видны из кода.**
+    1. **Картинки товаров не грузились вообще.** Next 16 отказывается оптимизировать картинку с хоста, резолвящегося в приватный IP (`resolved to private ip`), — `remotePatterns` из шага 2 тут бессилен, `_next/image` отдавал 400. Вместо опасного `images.dangerouslyAllowLocalIP` сделан рерайт `/files/:path*` на API плюс нормализация абсолютного адреса в относительный в адаптере `Image`. Картинки стали same-origin: работает и локально, и в проде, где адрес API наружу светить не нужно. Расхождение №3 переписано.
+    2. **Две кнопки очистки в поиске** — WebKit рисует свой крестик у `type="search"` рядом с нашим суффиксом. Нативный погашен `::-webkit-search-cancel-button` в `Input`.
+  - **Проверено**: `npm run check`, `npm test` (78 тестов в 38 файлах), `npm run build -w website` (`/catalog` и `/catalog/[slug]` — SSG с `revalidate 1m`), `npm run build-storybook -w widgets`. Точечные тесты дописаны там, где логика: `Pagination` (счёт страниц, многоточия, границы) и `ProductCard` (выбор главной картинки, товар без фото, цена и адрес).

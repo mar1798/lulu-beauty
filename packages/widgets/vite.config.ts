@@ -16,5 +16,8 @@ export default defineConfig({
   ],
   test: {
     exclude: ['tools/**/*', 'node_modules/**/*'],
+    // Компонентные тесты рендерят в настоящий DOM (@testing-library/react).
+    environment: 'jsdom',
+    setupFiles: ['./src/testing/setup.ts'],
   },
 })
