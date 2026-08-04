@@ -9,7 +9,6 @@
     "lint": "eslint --config eslint.config.mjs .",
     "types": "tsc --noEmit",
     "check": "tsc --noEmit && eslint --config eslint.config.mjs .",
-    "barrels": "barrelsby -DqS --exclude=stories --config ./.barrelsby.json",
     "analyze": "ANALYZE=true npm run build"
   },
   "dependencies": {

@@ -1,6 +1,6 @@
 /* esl1t-disable @typescript-eslint/no-magic-numbers */
 import { createGlobalTheme, globalStyle } from '@vanilla-extract/css'
-import { font, fontFamily, important, min, rem } from './lib'
+import { color, font, fontFamily, important, min, rem } from './lib'
 import { vars } from './themes/contract.css'
 import { flexColumn } from './mixin'
 import { lightTheme } from './themes/light.css'
@@ -31,10 +31,12 @@ globalStyle('input:focus, textarea:focus, select:focus', {
 })
 
 globalStyle('input::placeholder,select::placeholder,textarea::placeholder,.placeholder', {
-  color: '',
+  color: color.text('muted'),
 })
 
 globalStyle('html, body', {
+  backgroundColor: color.background('page'),
+  color: color.text('primary'),
   minHeight: '100vh',
   scrollBehavior: 'smooth',
   scrollbarWidth: 'none',

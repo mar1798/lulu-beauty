@@ -17,6 +17,15 @@ export const feedImage = (w: number, h: number): IImage => ({
   height: h,
 })
 
+/**
+ * Картинка товара — без размеров, ровно как её отдаёт API (только `url`/`alt`).
+ * Рендерится в режиме `fill`, см. `IImageComponentProps`.
+ */
+export const feedProductImage = (): IImage => ({
+  src: faker.image.url({ width: 600, height: 750 }),
+  alt: faker.commerce.productName(),
+})
+
 export const feedLink = (src = 'https://google.com'): ILink => ({
   href: src,
   target: '_blank',
