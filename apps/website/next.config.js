@@ -6,14 +6,6 @@ const withVanillaExtract = createVanillaExtractPlugin()
 const nextConfig = {
   output: 'standalone',
   /**
-   * Временно: главная страница появится отдельным шагом плана, а пока корень
-   * ведёт в каталог — иначе логотип в шапке упирается в 404.
-   * @returns {Promise<import('next').Redirect[]>}
-   */
-  async redirects() {
-    return [{ source: '/', destination: '/catalog', permanent: false }]
-  },
-  /**
    * Картинки товаров лежат на API (`PUBLIC_FILES_BASE_URL`), но браузеру и
    * `next/image` отдаются как **свои** — `/files/*`.
    *

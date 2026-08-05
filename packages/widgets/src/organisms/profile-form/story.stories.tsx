@@ -19,3 +19,8 @@ Default.parameters = {
   layout: 'centered',
 }
 Default.args = feedProfileForm()
+
+/** Скелетон вместо спиннера: раскладка известна заранее, страница не прыгает. */
+export const Loading = Template.bind({})
+Loading.parameters = { layout: 'padded' }
+Loading.args = { ...feedProfileForm(), user: null, isLoading: true }

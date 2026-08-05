@@ -36,6 +36,7 @@ export const Image: React.FC<IBasicStyling & IImageComponentProps> = ({
   sizes,
   priority,
   fill,
+  onError,
 }) => {
   const hasSize = image.width !== undefined && image.height !== undefined
   const useFill = fill === true || !hasSize
@@ -48,6 +49,7 @@ export const Image: React.FC<IBasicStyling & IImageComponentProps> = ({
       title={image.title}
       sizes={extractSizes(sizes)}
       priority={priority}
+      onError={onError}
       {...(useFill
         ? { fill: true, style: { objectFit: 'cover' as const } }
         : { width: image.width, height: image.height })}

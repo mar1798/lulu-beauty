@@ -10,6 +10,7 @@ import {
   IAdminProductFormProps,
   IAdminProductsTableProps,
   IAlertProps,
+  IAppearProps,
   IAuthTemplateProps,
   IAuthUser,
   ICart,
@@ -32,16 +33,20 @@ import {
   IDeadlineCountdownProps,
   IDividerProps,
   IEmptyStateProps,
+  IErrorTemplateProps,
   IFileDropzoneProps,
   IFileInputProps,
   IFooterProps,
   IHeadingProps,
+  IHomeHeroProps,
+  IHomeTemplateProps,
   IHeaderProps,
   IIconButtonProps,
   IImage,
   IInputProps,
   ILink,
   ILoginFormProps,
+  IMobileMenuProps,
   IModalProps,
   IOrder,
   IOrderCardProps,
@@ -69,10 +74,12 @@ import {
   IQuantityStepperProps,
   IRegisterFormProps,
   ISearchFieldProps,
+  ISectionHeadingProps,
   ISelectProps,
   ISkeletonProps,
   ISpinnerProps,
   IStatusSelectProps,
+  IStepListProps,
   ISwitchProps,
   ITelegramLinkPromptProps,
   ITextProps,
@@ -224,6 +231,10 @@ export const feedChip = (): IChipProps => ({
   onToggle: noop,
 })
 
+export const feedAppear = (): IAppearProps => ({
+  children: 'Содержимое, вставшее на место скелетона',
+})
+
 export const feedAlert = (): IAlertProps => ({
   children: 'Проверьте правильность заполнения полей.',
   title: 'Не получилось сохранить',
@@ -270,6 +281,21 @@ export const feedHeader = (): IHeaderProps => ({
   notice: 'Приём заявок закрывается 12 августа',
 })
 
+export const feedMobileMenu = (): IMobileMenuProps => ({
+  isOpen: true,
+  onClose: noop,
+  navigation: [
+    { label: 'Каталог', link: { href: '/catalog' } },
+    { label: 'Мои заявки', link: { href: '/orders' } },
+  ],
+  user: { name: 'Айгуль', link: { href: '/account' } },
+  loginLink: { href: '/login' },
+  registerLink: { href: '/register' },
+  cartLink: { href: '/cart' },
+  cartCount: 3,
+  currentHref: '/catalog',
+})
+
 export const feedFooter = (): IFooterProps => ({
   columns: [
     {
@@ -295,6 +321,49 @@ export const feedBaseLayout = (): IBaseLayoutProps => ({
   header: 'Шапка',
   footer: 'Подвал',
   children: 'Содержимое страницы',
+})
+
+export const feedErrorTemplate = (): IErrorTemplateProps => ({
+  code: '404',
+  title: 'Страница не найдена',
+  description: 'Возможно, ссылка устарела или товар убрали из каталога.',
+})
+
+/* --- Главная --- */
+
+export const feedSectionHeading = (): ISectionHeadingProps => ({
+  eyebrow: 'Свежая подборка',
+  title: 'Что разбирают в этом сборе',
+  description: 'Состав каталога меняется перед каждым сбором.',
+})
+
+export const feedStepList = (): IStepListProps => ({
+  steps: [
+    {
+      title: 'Соберите корзину',
+      description: 'Каталог открыт всегда, а оформить заявку можно, пока идёт сбор.',
+    },
+    {
+      title: 'Оформите заявку',
+      description: 'Это не оплата: заявка уходит владельцу, цены фиксируются на момент отправки.',
+    },
+    {
+      title: 'Дождитесь звонка',
+      description: 'После закрытия сбора владелец свяжется с вами и подтвердит заказ.',
+    },
+  ],
+})
+
+export const feedHomeHero = (): IHomeHeroProps => ({
+  eyebrow: 'Сбор открыт',
+  title: 'Косметика и уход — заказом на всех',
+  description:
+    'Мы собираем общий заказ к дедлайну: чем больше набирается, тем выгоднее выходит доставка.',
+})
+
+export const feedHomeTemplate = (): IHomeTemplateProps => ({
+  hero: 'Сюда встаёт первый экран',
+  children: 'Сюда встают секции',
 })
 
 /* --- Витрина --- */
@@ -514,6 +583,7 @@ export const feedOrderItem = (overrides: Partial<IOrderItem> = {}): IOrderItem =
   const quantity = faker.number.int({ min: 1, max: 3 })
 
   return {
+    id: faker.string.uuid(),
     productId: product.id,
     productName: product.name,
     productSlug: product.slug,
@@ -536,6 +606,7 @@ export const feedOrder = (overrides: Partial<IOrder> = {}): IOrder => {
     note: null,
     createdAt: new Date(Date.now() - DAY_MS).toISOString(),
     items,
+    isEditable: true,
     ...overrides,
   }
 }

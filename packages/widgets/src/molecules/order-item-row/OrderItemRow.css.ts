@@ -51,6 +51,14 @@ export const meta = style({
   flexWrap: 'wrap',
 })
 
+/** Степпер и крестик в режиме правки — как в строке корзины. */
+export const controls = style({
+  ...flexRow(12),
+  alignItems: 'center',
+  flexWrap: 'wrap',
+  marginTop: vars.space.xs,
+})
+
 export const total = style({
   flexShrink: 0,
   textAlign: 'right',

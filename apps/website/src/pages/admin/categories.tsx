@@ -28,6 +28,7 @@ const AdminCategoriesPage: React.FC<IAdminPageProps> = () => {
   const load = useMemo(() => (): Promise<ICategory[]> => listCategories(), [])
 
   const { data, isLoading, error } = useAuthedRequest(
+    'admin-categories',
     load,
     'Не удалось загрузить категории.',
     version

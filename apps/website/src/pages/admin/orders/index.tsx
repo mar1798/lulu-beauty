@@ -4,14 +4,19 @@ import type { IAdminOrder, IOrderCycle, IPage, ISelectOption, OrderStatus } from
 import { Alert, Button, Select } from 'widgets/atoms'
 import { EmptyState, Pagination, orderStatusLabel } from 'widgets/molecules'
 import { AdminOrdersTable } from 'widgets/organisms'
-import { useToast } from 'widgets/contexts'
+import { useConfirm, useToast } from 'widgets/contexts'
 import { formatDate } from 'widgets/utils'
 import { IconDownload } from 'widgets/svg'
 import { AdminShell } from '@/layouts/AdminShell'
 import { useAuthedRequest } from '@/hooks/useAuthedRequest'
 import { requireAdmin, type IAdminPageProps } from '@/server/adminGate'
 import { isApiError } from '@/services/apiErrors'
-import { listAdminOrders, listCycles, updateOrderStatus } from '@/services/endpoints/admin'
+import {
+  deleteOrder,
+  listAdminOrders,
+  listCycles,
+  updateOrderStatus,
+} from '@/services/endpoints/admin'
 import { downloadOrdersExport } from '@/services/endpoints/export'
 import * as styles from '@/styles/admin.css'
 
@@ -44,6 +49,7 @@ interface IOrdersData {
 
 const AdminOrdersPage: React.FC<IAdminPageProps> = () => {
   const { notify } = useToast()
+  const { confirm } = useConfirm()
 
   const [cycleId, setCycleId] = useState(ALL)
   const [status, setStatus] = useState(ALL)
@@ -68,6 +74,7 @@ const AdminOrdersPage: React.FC<IAdminPageProps> = () => {
   )
 
   const { data, isLoading, error } = useAuthedRequest(
+    `admin-orders:${cycleId}:${status}:${page}`,
     load,
     'Не удалось загрузить заявки.',
     version
@@ -83,6 +90,36 @@ const AdminOrdersPage: React.FC<IAdminPageProps> = () => {
       setVersion(current => current + 1)
     } catch (cause: unknown) {
       const message = isApiError(cause) ? cause.message : 'Не удалось изменить статус.'
+
+      setActionError(message)
+      notify({ tone: 'danger', title: 'Не получилось', description: message })
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  const handleDelete = async (order: IAdminOrder): Promise<void> => {
+    const confirmed = await confirm({
+      title: 'Удалить заявку?',
+      description:
+        'Заявка исчезнет вместе с составом и не попадёт в выгрузки. Если покупатель просто передумал, ему хватит отмены — там заявка остаётся видна.',
+      confirmLabel: 'Удалить',
+      tone: 'danger',
+    })
+
+    if (!confirmed) {
+      return
+    }
+
+    setBusyId(order.id)
+    setActionError(null)
+
+    try {
+      await deleteOrder(order.id)
+      notify({ tone: 'success', title: 'Заявка удалена' })
+      setVersion(current => current + 1)
+    } catch (cause: unknown) {
+      const message = isApiError(cause) ? cause.message : 'Не удалось удалить заявку.'
 
       setActionError(message)
       notify({ tone: 'danger', title: 'Не получилось', description: message })
@@ -174,6 +211,9 @@ const AdminOrdersPage: React.FC<IAdminPageProps> = () => {
         buildProductHref={slug => `/catalog/${slug}`}
         onStatusChange={(order, next) => {
           void handleStatusChange(order, next)
+        }}
+        onDelete={order => {
+          void handleDelete(order)
         }}
         emptyState={
           <EmptyState

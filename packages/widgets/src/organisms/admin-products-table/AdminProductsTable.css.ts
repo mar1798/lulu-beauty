@@ -24,12 +24,16 @@ export const actionsCell = style(tableActionsCell())
 
 /**
  * Удалённая строка приглушена, но читаема: она нужна ровно для того, чтобы
- * её нашли и восстановили. Одной прозрачности мало — состояние дублируется
- * бейджем, потому что цвет не читается скринридером.
+ * её нашли и восстановили. Состояние дублируется бейджем — цвет и яркость
+ * скринридер не читает.
+ *
+ * Прозрачности на всей строке здесь **нет**, хотя раньше была: `opacity`
+ * смешивает с фоном и текст тоже, и слаг товара падал с 4.76:1 до 2.48:1
+ * (axe, serious). Приглушается только миниатюра и название — то, что и
+ * должно уходить на второй план, — а адрес, цена и бейдж остаются в полном
+ * цвете. Ровно та же правка, что была сделана прошлым шагом в календаре.
  */
-export const deletedRow = style({
-  opacity: 0.62,
-})
+export const deletedRow = style({})
 
 export const product = style({
   ...flexRow(12),
@@ -49,6 +53,10 @@ export const thumb = style({
   backgroundColor: color.surface('sunken'),
   borderRadius: vars.radius.md,
   color: color.text('subtle'),
+  selectors: {
+    /* Картинка — единственное, что здесь можно гасить прозрачностью: текста в ней нет. */
+    [`${deletedRow} &`]: { opacity: 0.5 },
+  },
 })
 
 export const thumbIcon = style({
@@ -73,6 +81,8 @@ export const name = style([
     transition: transition('color'),
     selectors: {
       '&:hover': { color: color.text('brand') },
+      /* Название удалённого товара — приглушённым цветом, а не прозрачностью: 4.76:1. */
+      [`${deletedRow} &`]: { color: color.text('muted') },
     },
   },
   focusVisibleRing(),

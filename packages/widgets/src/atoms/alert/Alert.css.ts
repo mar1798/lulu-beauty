@@ -44,6 +44,12 @@ export const message = style({
   font: font('14/20'),
 })
 
+export const action = style({
+  ...flexRow(8),
+  flexWrap: 'wrap',
+  marginTop: vars.space.xs,
+})
+
 export const close = style({
   marginLeft: 'auto',
   marginTop: rem(-4),

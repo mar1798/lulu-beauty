@@ -1,6 +1,7 @@
 import clsx from 'clsx'
 import { type FC } from 'react'
 import type { IBasicStyling, IProductGridProps } from '../../types'
+import { Appear } from '../../atoms/appear'
 import { Skeleton } from '../../atoms/skeleton'
 import { ProductCard } from '../../molecules/product-card'
 import * as styles from './ProductGrid.css'
@@ -43,16 +44,23 @@ export const ProductGrid: FC<IProductGridProps & IBasicStyling> = ({
     return <>{emptyState}</>
   }
 
+  /*
+    Ключ появления — состав страницы: подмена скелетона товарами и переход на
+    другую страницу каталога проигрывают проявление, а перерисовка от кнопки
+    «в корзину» — нет. Иначе сетка мигала бы на каждое действие.
+  */
   return (
-    <div className={clsx(styles.container, className)}>
-      {products.map(product => (
-        <ProductCard
-          key={product.id}
-          product={product}
-          href={buildHref(product)}
-          action={renderAction?.(product)}
-        />
-      ))}
-    </div>
+    <Appear appearKey={products.map(product => product.id).join()}>
+      <div className={clsx(styles.container, className)}>
+        {products.map(product => (
+          <ProductCard
+            key={product.id}
+            product={product}
+            href={buildHref(product)}
+            action={renderAction?.(product)}
+          />
+        ))}
+      </div>
+    </Appear>
   )
 }

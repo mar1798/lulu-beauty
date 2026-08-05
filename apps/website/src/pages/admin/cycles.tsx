@@ -56,6 +56,7 @@ const AdminCyclesPage: React.FC<ICyclesPageProps> = ({ today, initialMonth }) =>
   )
 
   const { data, isLoading, error } = useAuthedRequest(
+    'admin-cycles',
     load,
     'Не удалось загрузить сборы.',
     version

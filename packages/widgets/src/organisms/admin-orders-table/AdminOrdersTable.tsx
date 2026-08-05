@@ -1,7 +1,9 @@
 import clsx from 'clsx'
 import { Fragment, type FC, useState } from 'react'
 import type { IAdminOrdersTableProps, IBasicStyling } from '../../types'
+import { IconTrash } from '../../svg/icons'
 import { AppLink } from '../../atoms/app-link'
+import { IconButton } from '../../atoms/icon-button'
 import { Price } from '../../atoms/price'
 import { Skeleton } from '../../atoms/skeleton'
 import { StatusSelect } from '../../molecules/status-select'
@@ -23,11 +25,15 @@ import * as styles from './AdminOrdersTable.css'
 const DEFAULT_SKELETON_ROWS = 5
 const ORDER_NUMBER_LENGTH = 8
 
+/** Заявка, покупатель, состав, сумма, статус — колонка действий необязательна. */
+const BASE_COLUMNS = 5
+
 const orderNumber = (id: string): string => id.slice(0, ORDER_NUMBER_LENGTH).toUpperCase()
 
 export const AdminOrdersTable: FC<IAdminOrdersTableProps & IBasicStyling> = ({
   orders,
   onStatusChange,
+  onDelete,
   buildProductHref,
   isLoading = false,
   skeletonRows = DEFAULT_SKELETON_ROWS,
@@ -49,6 +55,9 @@ export const AdminOrdersTable: FC<IAdminOrdersTableProps & IBasicStyling> = ({
     return <>{emptyState}</>
   }
 
+  /* Колонка действий необязательна, а `colSpan` у скелетонов и состава — нет. */
+  const columnCount = onDelete === undefined ? BASE_COLUMNS : BASE_COLUMNS + 1
+
   return (
     <div className={clsx(styles.wrap, className)}>
       <table className={styles.table}>
@@ -69,6 +78,11 @@ export const AdminOrdersTable: FC<IAdminOrdersTableProps & IBasicStyling> = ({
             <th className={styles.headCell} scope="col">
               Статус
             </th>
+            {onDelete !== undefined && (
+              <th className={styles.headCell} scope="col">
+                Действия
+              </th>
+            )}
           </tr>
         </thead>
 
@@ -77,7 +91,7 @@ export const AdminOrdersTable: FC<IAdminOrdersTableProps & IBasicStyling> = ({
             ? Array.from({ length: skeletonRows }, (_, index) => (
                 // eslint-disable-next-line react/no-array-index-key
                 <tr key={index}>
-                  <td className={styles.cell} colSpan={5}>
+                  <td className={styles.cell} colSpan={columnCount}>
                     <Skeleton height={40} shape="block" />
                   </td>
                 </tr>
@@ -136,11 +150,26 @@ export const AdminOrdersTable: FC<IAdminOrdersTableProps & IBasicStyling> = ({
                           }}
                         />
                       </td>
+
+                      {onDelete !== undefined && (
+                        <td className={styles.cell}>
+                          <IconButton
+                            icon={<IconTrash />}
+                            label={`Удалить заявку № ${orderNumber(order.id)}`}
+                            variant="danger"
+                            size="sm"
+                            disabled={busyId === order.id}
+                            onClick={() => {
+                              onDelete(order)
+                            }}
+                          />
+                        </td>
+                      )}
                     </tr>
 
                     {isExpanded && (
                       <tr className={styles.detailsRow}>
-                        <td className={styles.detailsCell} colSpan={5}>
+                        <td className={styles.detailsCell} colSpan={columnCount}>
                           <ul className={styles.items}>
                             {order.items.map(item => (
                               <li key={`${item.productSlug}-${item.productName}`} className={styles.item}>

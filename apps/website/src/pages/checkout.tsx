@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import Head from 'next/head'
 import type { IOrder } from 'widgets/types'
-import { Alert, Button, Spinner, Text } from 'widgets/atoms'
+import { Alert, Button, Text } from 'widgets/atoms'
 import { EmptyState } from 'widgets/molecules'
 import { CheckoutForm } from 'widgets/organisms'
 import { ITEM_FORMS, orderNumber } from 'widgets/molecules'
@@ -66,11 +66,9 @@ const CheckoutPage: React.FC = () => {
       )
     }
 
-    if (isAuthLoading || (user !== null && isLoading)) {
-      return <Spinner label="Загружаем корзину" />
-    }
+    const isCartLoading = isAuthLoading || (user !== null && isLoading)
 
-    if (user === null) {
+    if (user === null && !isAuthLoading) {
       return (
         <EmptyState
           title="Нужен вход"
@@ -80,7 +78,7 @@ const CheckoutPage: React.FC = () => {
       )
     }
 
-    if (cart === null || cart.items.length === 0) {
+    if (!isCartLoading && (cart === null || cart.items.length === 0)) {
       return (
         <EmptyState
           title="Оформлять нечего"
@@ -90,7 +88,7 @@ const CheckoutPage: React.FC = () => {
       )
     }
 
-    if (cart.cycleId === null) {
+    if (!isCartLoading && cart !== null && cart.cycleId === null) {
       return (
         <Alert tone="warning" title="Приём заявок закрыт">
           Сейчас нет открытого сбора. Корзина сохранится до следующего.
@@ -98,11 +96,16 @@ const CheckoutPage: React.FC = () => {
       )
     }
 
+    /*
+      Пока корзина грузится, форма рисуется скелетоном в своей же раскладке:
+      спиннер сменился бы формой другой высоты, и страница дёрнулась бы.
+    */
     return (
       <CheckoutForm
-        totalCents={cart.totalCents}
-        itemCount={cart.items.reduce((sum, item) => sum + item.quantity, 0)}
-        deadlineAt={cart.cycleDeadlineAt}
+        totalCents={cart?.totalCents ?? 0}
+        itemCount={cart?.items.reduce((sum, item) => sum + item.quantity, 0) ?? 0}
+        deadlineAt={cart?.cycleDeadlineAt ?? null}
+        isLoading={isCartLoading}
         isSubmitting={isSubmitting}
         error={error}
         onSubmit={note => {

@@ -3,7 +3,7 @@ import Head from 'next/head'
 import { useRouter } from 'next/router'
 import type { GetStaticProps } from 'next'
 import type { ICategory, IPage, IProduct } from 'widgets/types'
-import { Alert } from 'widgets/atoms'
+import { Alert, Button } from 'widgets/atoms'
 import { useDebouncedValue } from 'widgets/hooks'
 import { CategoryFilter, EmptyState, Pagination, SearchField } from 'widgets/molecules'
 import { ProductGrid } from 'widgets/organisms'
@@ -73,14 +73,22 @@ const CatalogPage: React.FC<ICatalogPageProps> = ({ categories, initial }) => {
   const [search, setSearch] = useState('')
   const debouncedSearch = useDebouncedValue(search)
 
-  const isDefaultView = categorySlug === null && pageNumber === 1 && debouncedSearch === ''
+  /*
+    Вид по умолчанию уже отрисован статикой — второй запрос за тем же не нужен.
+    Исключение: `initial === null`, то есть на сборке API был недоступен. Тогда
+    статики нет вовсе, и её нужно догрузить в браузере, иначе до следующей
+    ревалидации посетитель видит пустой каталог вместо товаров.
+  */
+  const isDefaultView =
+    categorySlug === null && pageNumber === 1 && debouncedSearch === '' && initial !== null
 
   /**
    * Ключ запроса. Результат хранится вместе с ключом, а не отдельным флагом
    * загрузки: так ответ на устаревший запрос не может перезаписать актуальный,
    * а «идёт загрузка» — это просто «ответ на текущий ключ ещё не пришёл».
    */
-  const requestKey = `${categorySlug ?? ''}|${pageNumber}|${debouncedSearch}`
+  const [attempt, setAttempt] = useState(0)
+  const requestKey = `${categorySlug ?? ''}|${pageNumber}|${debouncedSearch}|${attempt}`
   const [result, setResult] = useState<IFetchedPage | null>(null)
 
   useEffect(() => {
@@ -209,7 +217,22 @@ const CatalogPage: React.FC<ICatalogPageProps> = ({ categories, initial }) => {
             }
           />
         ) : (
-          <Alert tone="danger" title="Каталог не загрузился">
+          <Alert
+            tone="danger"
+            title="Каталог не загрузился"
+            /* Повтор меняет ключ запроса — эффект выше уходит за товарами заново. */
+            action={
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => {
+                  setAttempt(current => current + 1)
+                }}
+              >
+                Повторить
+              </Button>
+            }
+          >
             {error}
           </Alert>
         )}

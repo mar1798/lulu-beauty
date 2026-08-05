@@ -1,17 +1,25 @@
-import React, { useMemo } from 'react'
+import React, { useMemo, useState } from 'react'
 import Head from 'next/head'
 import { useRouter } from 'next/router'
 import type { IOrder, IOrderCycle } from 'widgets/types'
-import { Alert, Button, Spinner } from 'widgets/atoms'
+import { Alert, Button } from 'widgets/atoms'
 import { EmptyState } from 'widgets/molecules'
 import { OrderDetails } from 'widgets/organisms'
+import { useConfirm, useToast } from 'widgets/contexts'
 import { AccountTemplate } from 'widgets/templates'
 import { SiteLayout } from '@/layouts/SiteLayout'
 import { ACCOUNT_NAVIGATION } from '@/layouts/accountNavigation'
 import { useAuth } from '@/contexts/AuthContext'
 import { useAuthedRequest } from '@/hooks/useAuthedRequest'
+import { isApiError } from '@/services/apiErrors'
 import { getActiveCycleOrNull } from '@/services/endpoints/cycles'
-import { getMyOrder } from '@/services/endpoints/orders'
+import {
+  cancelMyOrder,
+  getMyOrder,
+  removeMyOrderItem,
+  updateMyOrderItemQuantity,
+  updateMyOrderNote,
+} from '@/services/endpoints/orders'
 
 /**
  * Одна заявка покупателя.
@@ -20,18 +28,31 @@ import { getMyOrder } from '@/services/endpoints/orders'
  * поэтому «не найдена» и «не ваша» здесь намеренно один и тот же экран:
  * подтверждать существование чужой заявки незачем.
  *
+ * Правка состава доступна, пока сбор открыт и владелец не подтвердил заявку;
+ * решает это бэкенд и присылает в `isEditable`. После каждой правки заявка
+ * перечитывается целиком (`version`), а не правится на месте: сумму и сам
+ * `isEditable` считает сервер — дедлайн мог пройти между двумя нажатиями.
+ *
  * Активный сбор запрашивается отдельно — у `OrderResponse` есть только
  * `cycleId`, а публичной ручки «цикл по id» на бэкенде нет.
  */
 
 const NOT_FOUND = 404
 
+const productHref = (slug: string): string => `/catalog/${slug}`
+
 const OrderPage: React.FC = () => {
   const router = useRouter()
   const { user, isLoading: isAuthLoading } = useAuth()
+  const { notify } = useToast()
+  const { confirm } = useConfirm()
 
   const userId = user?.id ?? null
   const orderId = typeof router.query.id === 'string' ? router.query.id : null
+
+  const [version, setVersion] = useState(0)
+  const [isBusy, setIsBusy] = useState(false)
+  const [actionError, setActionError] = useState<string | null>(null)
 
   const loadOrder = useMemo(
     () =>
@@ -45,12 +66,60 @@ const OrderPage: React.FC = () => {
   )
 
   const { data: order, isLoading, error, status } = useAuthedRequest(
+    `order:${userId ?? ''}:${orderId ?? ''}`,
     loadOrder,
-    'Не удалось загрузить заявку.'
+    'Не удалось загрузить заявку.',
+    version
   )
 
   // Сбор — справочная деталь: его ошибку молча игнорируем, заявка важнее.
-  const { data: cycle } = useAuthedRequest(loadCycle, '')
+  const { data: cycle } = useAuthedRequest(`active-cycle:${userId ?? ''}`, loadCycle, '')
+
+  const runAction = async (action: () => Promise<unknown>, success: string): Promise<void> => {
+    setIsBusy(true)
+    setActionError(null)
+
+    try {
+      await action()
+      setVersion(current => current + 1)
+      notify({ tone: 'success', title: success })
+    } catch (cause: unknown) {
+      /*
+        Отдельная ветка под 409: между открытием страницы и нажатием мог
+        пройти дедлайн или владелец мог подтвердить заявку. Общего «что-то
+        пошло не так» тут мало — человеку нужно понять, что правка закрылась.
+      */
+      const message = isApiError(cause)
+        ? cause.message
+        : 'Действие не выполнено. Попробуйте ещё раз.'
+
+      setActionError(message)
+      notify({ tone: 'danger', title: 'Не получилось', description: message })
+      // Перечитываем: заявка на экране уже разошлась с тем, что на сервере.
+      setVersion(current => current + 1)
+    } finally {
+      setIsBusy(false)
+    }
+  }
+
+  const handleCancel = async (): Promise<void> => {
+    if (orderId === null) {
+      return
+    }
+
+    const confirmed = await confirm({
+      title: 'Отменить заявку?',
+      description:
+        'Владелец увидит, что вы передумали. Оформить новую заявку можно, пока сбор открыт.',
+      confirmLabel: 'Отменить заявку',
+      cancelLabel: 'Оставить',
+      tone: 'danger',
+    })
+
+    if (confirmed) {
+      await runAction(() => cancelMyOrder(orderId), 'Заявка отменена')
+    }
+  }
 
   const content = (): React.ReactNode => {
     if (user === null && !isAuthLoading) {
@@ -63,8 +132,9 @@ const OrderPage: React.FC = () => {
       )
     }
 
+    // Скелетон в раскладке карточки заявки — она известна до ответа.
     if (isAuthLoading || isLoading || orderId === null) {
-      return <Spinner label="Загружаем заявку" />
+      return <OrderDetails order={null} isLoading={true} buildProductHref={productHref} />
     }
 
     if (status === NOT_FOUND) {
@@ -79,7 +149,26 @@ const OrderPage: React.FC = () => {
 
     if (error !== null || order === null) {
       return (
-        <Alert tone="danger" title="Не получилось">
+        <Alert
+          tone="danger"
+          title="Не получилось"
+          /*
+            Повтор — та же перезагрузка, что после правки: чаще всего сюда
+            приводит оборванная сеть, и уводить человека со страницы, чтобы
+            он вернулся тем же адресом, незачем.
+          */
+          action={
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={() => {
+                setVersion(current => current + 1)
+              }}
+            >
+              Повторить
+            </Button>
+          }
+        >
           {error ?? 'Не удалось загрузить заявку.'}
         </Alert>
       )
@@ -88,8 +177,25 @@ const OrderPage: React.FC = () => {
     return (
       <OrderDetails
         order={order}
-        buildProductHref={slug => `/catalog/${slug}`}
+        buildProductHref={productHref}
         isCurrentCycle={cycle !== null && cycle.id === order.cycleId}
+        onItemQuantityChange={(itemId, quantity) => {
+          void runAction(
+            () => updateMyOrderItemQuantity(order.id, itemId, quantity),
+            'Количество изменено'
+          )
+        }}
+        onItemRemove={itemId => {
+          void runAction(() => removeMyOrderItem(order.id, itemId), 'Позиция убрана')
+        }}
+        onNoteSave={note => {
+          void runAction(() => updateMyOrderNote(order.id, note), 'Комментарий сохранён')
+        }}
+        onCancel={() => {
+          void handleCancel()
+        }}
+        isBusy={isBusy}
+        error={actionError}
       />
     )
   }
@@ -103,7 +209,16 @@ const OrderPage: React.FC = () => {
 
       <AccountTemplate
         title="Заявка"
-        summary="Поданную заявку изменить нельзя — по вопросам к составу владелец свяжется с вами."
+        /*
+          Подпись раздела следует за состоянием заявки: обещать правку над
+          подтверждённой заявкой — врать, а над правимой молчать о ней —
+          прятать единственное действие, ради которого сюда и заходят.
+        */
+        summary={
+          order?.isEditable === true
+            ? 'Пока сбор открыт и заявка не подтверждена, состав можно поменять.'
+            : 'Состав и цены сохранены такими, какими были в момент оформления.'
+        }
         navigation={ACCOUNT_NAVIGATION}
         currentHref="/orders"
       >

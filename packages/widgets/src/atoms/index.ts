@@ -5,6 +5,7 @@
 export * from './alert/index'
 export * from './app-image/index'
 export * from './app-link/index'
+export * from './appear/index'
 export * from './badge/index'
 export * from './button/index'
 export * from './checkbox/index'

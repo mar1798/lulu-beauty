@@ -25,6 +25,7 @@ export const Image: React.FC<IBasicStyling & IImageComponentProps> = ({
   image,
   priority,
   fill,
+  onError,
 }) => (
   <img
     className={className}
@@ -37,5 +38,6 @@ export const Image: React.FC<IBasicStyling & IImageComponentProps> = ({
     sizes={extractSizes(sizes)}
     style={fill === true ? fillStyle : undefined}
     title={image.title}
+    onError={onError}
   />
 )

@@ -1,7 +1,7 @@
 import React from 'react'
 import Head from 'next/head'
 import { useRouter } from 'next/router'
-import { Button, Spinner } from 'widgets/atoms'
+import { Button } from 'widgets/atoms'
 import { EmptyState } from 'widgets/molecules'
 import { CartPanel } from 'widgets/organisms'
 import { CartTemplate } from 'widgets/templates'
@@ -23,11 +23,9 @@ const CartPage: React.FC = () => {
   const { cart, isLoading, isBusy, error, updateItem, removeItem } = useCart()
 
   const content = (): React.ReactNode => {
-    if (isAuthLoading || (user !== null && isLoading)) {
-      return <Spinner label="Загружаем корзину" />
-    }
-
-    if (user === null) {
+    // Пока сессия не проверена, «войдите» показывать нельзя: у залогиненного
+    // это была бы вспышка чужого экрана вместо его корзины.
+    if (user === null && !isAuthLoading) {
       return (
         <EmptyState
           title="Корзина у каждого своя"
@@ -40,6 +38,9 @@ const CartPage: React.FC = () => {
     return (
       <CartPanel
         cart={cart}
+        // Скелетон, а не спиннер: раскладка корзины известна заранее, и
+        // подменять её кружком значит переложить страницу дважды.
+        isLoading={isAuthLoading || isLoading}
         isBusy={isBusy}
         error={error}
         buildProductHref={slug => `/catalog/${slug}`}

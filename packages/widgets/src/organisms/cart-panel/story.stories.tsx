@@ -19,3 +19,8 @@ Default.parameters = {
   layout: 'padded',
 }
 Default.args = feedCartPanel()
+
+/** Скелетон вместо спиннера: раскладка известна заранее, страница не прыгает. */
+export const Loading = Template.bind({})
+Loading.parameters = Default.parameters
+Loading.args = { ...feedCartPanel(), cart: null, isLoading: true }

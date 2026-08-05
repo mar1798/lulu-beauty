@@ -5,6 +5,7 @@ import { Alert } from '../../atoms/alert'
 import { Button } from '../../atoms/button'
 import { Divider } from '../../atoms/divider'
 import { Price } from '../../atoms/price'
+import { Skeleton } from '../../atoms/skeleton'
 import { Text } from '../../atoms/text'
 import { CartItemRow } from '../../molecules/cart-item-row'
 import { DeadlineCountdown } from '../../molecules/deadline-countdown'
@@ -19,17 +20,56 @@ import * as styles from './CartPanel.css'
  *
  * Пустая корзина и «сбора нет» — разные состояния и разные подсказки.
  */
+
+const DEFAULT_SKELETON_ROWS = 2
+
 export const CartPanel: FC<ICartPanelProps & IBasicStyling> = ({
   cart,
   buildProductHref,
   onQuantityChange,
   onRemove,
   onCheckout,
+  isLoading = false,
+  skeletonRows = DEFAULT_SKELETON_ROWS,
   isBusy = false,
   error,
   emptyState,
   className,
 }) => {
+  /*
+    Скелетон повторяет раскладку корзины (позиции + итог сбоку), а не
+    подменяет её спиннером: иначе после ответа страница перекладывается
+    целиком, и человек теряет место, куда собирался нажать.
+  */
+  if (isLoading) {
+    return (
+      <div className={clsx(styles.container, className)} aria-busy={true}>
+        <div className={styles.items}>
+          {Array.from({ length: skeletonRows }, (_, index) => (
+            // eslint-disable-next-line react/no-array-index-key
+            <div key={index} className={styles.skeletonRow}>
+              {/* Ширина пропсом, а не классом: `Skeleton` ставит её инлайном. */}
+              <Skeleton shape="block" width={64} className={styles.skeletonThumb} />
+
+              <div className={styles.skeletonLines}>
+                <Skeleton width="60%" />
+                <Skeleton width="35%" height={14} />
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className={styles.summary}>
+          <Skeleton width="50%" height={20} />
+          <Skeleton width="100%" height={14} />
+          <Divider />
+          <Skeleton width="40%" height={24} />
+          <Skeleton shape="block" width="100%" height={48} />
+        </div>
+      </div>
+    )
+  }
+
   if (cart === null || cart.items.length === 0) {
     return <>{emptyState}</>
   }

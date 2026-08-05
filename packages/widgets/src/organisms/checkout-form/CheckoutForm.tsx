@@ -5,6 +5,7 @@ import { Alert } from '../../atoms/alert'
 import { Button } from '../../atoms/button'
 import { Divider } from '../../atoms/divider'
 import { Price } from '../../atoms/price'
+import { Skeleton } from '../../atoms/skeleton'
 import { Text } from '../../atoms/text'
 import { Textarea } from '../../atoms/textarea'
 import { DeadlineCountdown } from '../../molecules/deadline-countdown'
@@ -25,6 +26,7 @@ export const CheckoutForm: FC<ICheckoutFormProps & IBasicStyling> = ({
   itemCount,
   deadlineAt = null,
   onSubmit,
+  isLoading = false,
   isSubmitting = false,
   error,
   className,
@@ -34,6 +36,28 @@ export const CheckoutForm: FC<ICheckoutFormProps & IBasicStyling> = ({
   const handleSubmit = (event: FormEvent<HTMLFormElement>): void => {
     event.preventDefault()
     onSubmit(note.trim() === '' ? null : note.trim())
+  }
+
+  /*
+    Скелетон повторяет ту же карточку: таймер, итог, поле комментария и
+    кнопка. Так после ответа не переставляется ничего, кроме содержимого.
+  */
+  if (isLoading) {
+    return (
+      <div className={clsx(styles.form, className)} aria-busy={true}>
+        <Skeleton shape="block" width="100%" height={72} />
+
+        <div className={styles.totalRow}>
+          <Skeleton width="35%" height={20} />
+          <Skeleton width="25%" height={24} />
+        </div>
+
+        <Divider />
+
+        <Skeleton shape="block" width="100%" height={132} />
+        <Skeleton shape="block" width="100%" height={48} />
+      </div>
+    )
   }
 
   return (

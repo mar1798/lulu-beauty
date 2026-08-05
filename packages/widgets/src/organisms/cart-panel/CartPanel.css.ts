@@ -32,6 +32,25 @@ export const summary = style({
   }),
 })
 
+/** Повторяет геометрию `CartItemRow`: миниатюра 64px и две строки текста. */
+export const skeletonRow = style({
+  ...flexRow(16),
+  alignItems: 'flex-start',
+  paddingBlock: vars.space.md,
+  borderBottom: border(1, color.border('subtle')),
+})
+
+export const skeletonThumb = style({
+  flexShrink: 0,
+  aspectRatio: '4 / 5',
+})
+
+export const skeletonLines = style({
+  ...flexColumn(10),
+  flex: 1,
+  minWidth: 0,
+})
+
 export const totalRow = style({
   ...flexRow(12),
   alignItems: 'baseline',

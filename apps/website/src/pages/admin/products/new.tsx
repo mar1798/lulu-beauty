@@ -26,6 +26,7 @@ const AdminProductCreatePage: React.FC<IAdminPageProps> = () => {
 
   const load = useMemo(() => (): Promise<ICategory[]> => listCategories(), [])
   const { data: categories, isLoading } = useAuthedRequest(
+    'admin-categories',
     load,
     'Не удалось загрузить категории.'
   )

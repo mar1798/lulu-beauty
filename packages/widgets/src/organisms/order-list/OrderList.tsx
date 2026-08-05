@@ -1,6 +1,7 @@
 import clsx from 'clsx'
 import { type FC } from 'react'
 import type { IBasicStyling, IOrderListProps } from '../../types'
+import { Appear } from '../../atoms/appear'
 import { Skeleton } from '../../atoms/skeleton'
 import { OrderCard } from '../../molecules/order-card'
 import * as styles from './OrderList.css'
@@ -41,13 +42,16 @@ export const OrderList: FC<IOrderListProps & IBasicStyling> = ({
     return <>{emptyState}</>
   }
 
+  /* Появление проигрывается на смену состава — не на каждую перерисовку. */
   return (
-    <ul className={clsx(styles.container, className)}>
-      {orders.map(order => (
-        <li key={order.id}>
-          <OrderCard order={order} href={buildHref(order)} className={styles.card} />
-        </li>
-      ))}
-    </ul>
+    <Appear appearKey={orders.map(order => order.id).join()}>
+      <ul className={clsx(styles.container, className)}>
+        {orders.map(order => (
+          <li key={order.id}>
+            <OrderCard order={order} href={buildHref(order)} className={styles.card} />
+          </li>
+        ))}
+      </ul>
+    </Appear>
   )
 }

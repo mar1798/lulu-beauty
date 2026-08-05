@@ -32,6 +32,7 @@ def test_order_status_update_round_trips_enum() -> None:
 
 def test_order_item_response_product_id_can_be_none() -> None:
     response = OrderItemResponse(
+        id=uuid.uuid4(),
         product_id=None,
         product_name="Deleted product",
         product_slug="deleted-product",

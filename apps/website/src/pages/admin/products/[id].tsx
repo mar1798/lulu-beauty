@@ -70,6 +70,7 @@ const AdminProductPage: React.FC<IAdminPageProps> = () => {
   )
 
   const { data, isLoading, error, status } = useAuthedRequest(
+    `admin-product:${productId ?? ''}`,
     load,
     'Не удалось загрузить товар.',
     version

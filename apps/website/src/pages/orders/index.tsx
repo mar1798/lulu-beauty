@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react'
+import React, { useMemo, useState } from 'react'
 import Head from 'next/head'
 import type { IOrder } from 'widgets/types'
 import { Alert, Button } from 'widgets/atoms'
@@ -22,13 +22,21 @@ const OrdersPage: React.FC = () => {
   const { user, isLoading: isAuthLoading } = useAuth()
   const userId = user?.id ?? null
 
-  // Замыкание пересоздаётся при смене аккаунта — чужие заявки не залипнут.
+  // Счётчик повторов: та же перезагрузка, что после мутации в админке.
+  const [attempt, setAttempt] = useState(0)
+
   const load = useMemo(
     () => (userId === null ? null : (): Promise<IOrder[]> => listMyOrders()),
     [userId]
   )
 
-  const { data: orders, isLoading, error } = useAuthedRequest(load, 'Не удалось загрузить заявки.')
+  // Ключ с идентификатором аккаунта — чужие заявки не залипнут при смене входа.
+  const { data: orders, isLoading, error } = useAuthedRequest(
+    `orders:${userId ?? ''}`,
+    load,
+    'Не удалось загрузить заявки.',
+    attempt
+  )
 
   const content = (): React.ReactNode => {
     // Пока сессия не проверена, «войдите» показывать нельзя: у залогиненного
@@ -45,7 +53,21 @@ const OrdersPage: React.FC = () => {
 
     if (error !== null) {
       return (
-        <Alert tone="danger" title="Не получилось">
+        <Alert
+          tone="danger"
+          title="Не получилось"
+          action={
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={() => {
+                setAttempt(current => current + 1)
+              }}
+            >
+              Повторить
+            </Button>
+          }
+        >
           {error}
         </Alert>
       )

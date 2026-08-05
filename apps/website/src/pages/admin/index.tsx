@@ -45,7 +45,7 @@ const loadOverview = async (): Promise<IOverview> => {
 
 const AdminOverviewPage: React.FC<IAdminPageProps> = ({ user }) => {
   const load = useMemo(() => loadOverview, [])
-  const { data, isLoading, error } = useAuthedRequest(load, 'Не удалось загрузить сводку.')
+  const { data, isLoading, error } = useAuthedRequest('admin-overview', load, 'Не удалось загрузить сводку.')
 
   return (
     <AdminShell title="Обзор" summary={`Вы вошли как ${user.name}.`}>

@@ -1,4 +1,5 @@
 import uuid
+from datetime import UTC, datetime
 
 from sqlalchemy import Select, delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -8,6 +9,7 @@ from app.auth.models import User
 from app.cart.models import Cart, CartItem
 from app.catalog.images import primary_image_url
 from app.catalog.models import Product
+from app.cycles.models import OrderCycle
 from app.cycles.service import CyclesService
 from app.orders.models import Order, OrderItem, OrderStatus
 
@@ -22,6 +24,21 @@ class EmptyCartError(Exception):
 
 class OrderNotFoundError(Exception):
     pass
+
+
+class OrderNotEditableError(Exception):
+    """The customer's window has closed: the cycle deadline passed, or the owner moved
+
+    the order out of PENDING and has already started buying against it.
+    """
+
+
+class OrderItemNotFoundError(Exception):
+    pass
+
+
+class LastOrderItemError(Exception):
+    """Removing the only line would leave an order with nothing in it — cancel it instead."""
 
 
 class OrdersService:
@@ -92,6 +109,96 @@ class OrdersService:
         if order is None:
             raise OrderNotFoundError
         return order
+
+    async def editable_map(self, orders: list[Order]) -> dict[uuid.UUID, bool]:
+        """Which of these orders the customer may still edit — one query for the whole page.
+
+        The rule lives here, not in the frontend: it needs the cycle deadline, which the
+        order itself doesn't carry, and both the API guard and the UI must agree on it.
+        """
+        cycle_ids = {order.cycle_id for order in orders}
+        if not cycle_ids:
+            return {}
+
+        result = await self._session.execute(
+            select(OrderCycle.id, OrderCycle.deadline_at).where(OrderCycle.id.in_(cycle_ids))
+        )
+        deadlines = {cycle_id: deadline for cycle_id, deadline in result.all()}
+        now = datetime.now(UTC)
+
+        return {
+            order.id: order.status == OrderStatus.PENDING
+            and (deadline := deadlines.get(order.cycle_id)) is not None
+            and deadline > now
+            for order in orders
+        }
+
+    async def _get_editable(self, user_id: uuid.UUID, order_id: uuid.UUID) -> Order:
+        order = await self.get_for_user(user_id, order_id)
+        editable = await self.editable_map([order])
+        if not editable[order.id]:
+            raise OrderNotEditableError
+        return order
+
+    @staticmethod
+    def _recalculate_total(order: Order) -> None:
+        order.total_cents = sum(
+            item.product_price_cents * item.quantity for item in order.items
+        )
+
+    @staticmethod
+    def _find_item(order: Order, item_id: uuid.UUID) -> OrderItem:
+        for item in order.items:
+            if item.id == item_id:
+                return item
+        raise OrderItemNotFoundError
+
+    async def set_item_quantity(
+        self, user_id: uuid.UUID, order_id: uuid.UUID, item_id: uuid.UUID, quantity: int
+    ) -> Order:
+        order = await self._get_editable(user_id, order_id)
+        item = self._find_item(order, item_id)
+
+        item.quantity = quantity
+        self._recalculate_total(order)
+        await self._session.flush()
+        return order
+
+    async def remove_item(
+        self, user_id: uuid.UUID, order_id: uuid.UUID, item_id: uuid.UUID
+    ) -> Order:
+        order = await self._get_editable(user_id, order_id)
+        item = self._find_item(order, item_id)
+        if len(order.items) == 1:
+            raise LastOrderItemError
+
+        order.items.remove(item)
+        self._recalculate_total(order)
+        await self._session.flush()
+        return order
+
+    async def update_note(
+        self, user_id: uuid.UUID, order_id: uuid.UUID, note: str | None
+    ) -> Order:
+        order = await self._get_editable(user_id, order_id)
+        order.note = note
+        await self._session.flush()
+        return order
+
+    async def cancel(self, user_id: uuid.UUID, order_id: uuid.UUID) -> Order:
+        """Customer-side "delete": the owner keeps seeing the order, marked CANCELLED."""
+        order = await self._get_editable(user_id, order_id)
+        order.status = OrderStatus.CANCELLED
+        await self._session.flush()
+        return order
+
+    async def delete(self, order_id: uuid.UUID) -> None:
+        """Owner-side delete — really removes the order; items cascade with it."""
+        order = await self._session.get(Order, order_id)
+        if order is None:
+            raise OrderNotFoundError
+
+        await self._session.delete(order)
 
     def _admin_query(
         self, cycle_id: uuid.UUID | None, status: OrderStatus | None

@@ -180,3 +180,11 @@ export const updateOrderStatus = (
   status: OrderStatus
 ): Promise<IAdminOrder> =>
   api.patch(`/admin/orders/${encodeURIComponent(orderId)}/status`, { body: { status } })
+
+/**
+ * Удаление заявки владельцем — настоящее, в отличие от покупательской отмены
+ * (`POST /orders/{id}/cancel`): заявка уходит из базы вместе с позициями и
+ * пропадает из выгрузок за прошлые сборы.
+ */
+export const deleteOrder = (orderId: string): Promise<void> =>
+  api.remove(`/admin/orders/${encodeURIComponent(orderId)}`)

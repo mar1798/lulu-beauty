@@ -1,5 +1,5 @@
 import { style } from '@vanilla-extract/css'
-import { color } from '../../styling/lib'
+import { border, color } from '../../styling/lib'
 import { flexColumn, flexRow } from '../../styling/mixin'
 import { vars } from '../../styling/themes/contract.css'
 
@@ -29,12 +29,49 @@ export const note = style({
   borderRadius: vars.radius.xl,
 })
 
+export const noteActions = style({
+  ...flexRow(8),
+  alignItems: 'center',
+  flexWrap: 'wrap',
+  marginTop: vars.space.xs,
+})
+
 export const items = style({
   ...flexColumn(0),
+})
+
+/**
+ * Отмена стоит после итога и отделена линией: это самое разрушительное
+ * действие на экране, и попасть в него случайно, целясь в степпер, нельзя.
+ */
+export const footer = style({
+  ...flexColumn(12),
+  alignItems: 'flex-start',
+  paddingTop: vars.space.md,
+  borderTop: border(1, color.border('subtle')),
 })
 
 export const totalRow = style({
   ...flexRow(12),
   alignItems: 'baseline',
   justifyContent: 'space-between',
+})
+
+/** Скелетон позиции повторяет геометрию `OrderItemRow`: миниатюра и две строки. */
+export const skeletonRow = style({
+  ...flexRow(16),
+  alignItems: 'flex-start',
+  paddingBlock: vars.space.md,
+  borderBottom: border(1, color.border('subtle')),
+})
+
+export const skeletonThumb = style({
+  flexShrink: 0,
+  aspectRatio: '4 / 5',
+})
+
+export const skeletonLines = style({
+  ...flexColumn(10),
+  flex: 1,
+  minWidth: 0,
 })

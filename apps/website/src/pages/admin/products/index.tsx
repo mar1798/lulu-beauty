@@ -65,6 +65,7 @@ const AdminProductsPage: React.FC<IAdminPageProps> = () => {
   )
 
   const { data, isLoading, error } = useAuthedRequest(
+    `admin-products:${query}:${categorySlug ?? ''}:${includeDeleted}:${page}`,
     load,
     'Не удалось загрузить товары.',
     version

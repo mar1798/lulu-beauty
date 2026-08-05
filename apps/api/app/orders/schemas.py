@@ -15,7 +15,18 @@ class OrderStatusUpdateRequest(CamelModel):
     status: OrderStatus
 
 
+class OrderNoteUpdateRequest(CamelModel):
+    note: str | None = Field(default=None, max_length=2000)
+
+
+class OrderItemQuantityRequest(CamelModel):
+    # Same floor as the cart: dropping to zero is "remove", and that has its own endpoint,
+    # so a 0 here is a mistake worth reporting rather than a silent deletion.
+    quantity: int = Field(ge=1, le=999)
+
+
 class OrderItemResponse(CamelModel):
+    id: uuid.UUID
     product_id: uuid.UUID | None
     product_name: str
     product_slug: str
@@ -33,6 +44,10 @@ class OrderResponse(CamelModel):
     note: str | None
     created_at: datetime
     items: list[OrderItemResponse]
+    # Whether the customer may still change this order: PENDING and the cycle still open.
+    # Computed here so the UI doesn't re-derive a rule it can't fully see — the deadline
+    # lives on the cycle, not on the order.
+    is_editable: bool = False
 
 
 class AdminOrderResponse(OrderResponse):

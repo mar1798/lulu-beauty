@@ -11,6 +11,11 @@ export interface ILink {
   target?: React.HTMLAttributeAnchorTarget
   ['aria-label']?: string
   legacy?: boolean
+  /**
+   * Переход остаётся переходом — обработчик нужен тому, что должно закрыться
+   * вместе с ним (мобильное меню). Навигацию он не подменяет и не отменяет.
+   */
+  onClick?: () => void
 }
 export interface ILinkedLabel {
   label: string
@@ -53,6 +58,12 @@ export interface IImageComponentProps {
    * или `aspect-ratio`.
    */
   fill?: boolean
+  /**
+   * Файл не отдался. Нужен там, где адрес картинки — снапшот и может
+   * «повиснуть»: позиция заявки хранит `productImageUrl` на момент
+   * оформления, а сам файл владелец волен удалить вместе с товаром.
+   */
+  onError?: () => void
 }
 
 /* ------------------------------------------------------------------ *
@@ -139,6 +150,8 @@ export interface ICart {
  * `productId` — `null`, если товар с тех пор удалён.
  */
 export interface IOrderItem {
+  /** Идентификатор строки заявки: правка и удаление адресуются им, а не товаром. */
+  id: string
   productId: string | null
   productName: string
   productSlug: string
@@ -156,6 +169,12 @@ export interface IOrder {
   note: string | null
   createdAt: string
   items: IOrderItem[]
+  /**
+   * Покупатель ещё может править эту заявку: статус `PENDING` и сбор не закрыт.
+   * Считает бэкенд — дедлайн лежит на сборе, а не на заявке, и правило должно
+   * быть одно на API и на UI.
+   */
+  isEditable: boolean
 }
 
 /**
@@ -404,10 +423,26 @@ export interface IChipProps {
   onToggle: (isSelected: boolean) => void
 }
 
+export interface IAppearProps {
+  children: ReactNode
+  /**
+   * Смена ключа проигрывает появление заново. Нужна там, где содержимое
+   * подменяется без размонтирования — страница каталога, список заявок.
+   */
+  appearKey?: string
+  /** Задержка в секундах: блоки одной страницы можно пустить лесенкой. */
+  delay?: number
+}
+
 export interface IAlertProps {
   children: ReactNode
   title?: string
   tone?: 'info' | 'success' | 'warning' | 'danger'
+  /**
+   * Действие внутри сообщения: «повторить» у неудачной загрузки. Стоит под
+   * текстом, а не сбоку — иначе на узком экране кнопка сжимает сам текст.
+   */
+  action?: ReactNode
   onClose?: () => void
 }
 
@@ -467,6 +502,22 @@ export interface IHeaderProps {
   onMenuClick?: () => void
 }
 
+export interface IMobileMenuProps {
+  isOpen: boolean
+  onClose: () => void
+  navigation: ILinkedLabel[]
+  /** `null` — гость: вместо профиля показывается вход и регистрация. */
+  user?: IHeaderUser | null
+  loginLink: ILink
+  registerLink?: ILink
+  cartLink: ILink
+  cartCount?: number
+  /** Текущий путь — тот же `aria-current`, что и в шапке. */
+  currentHref?: string
+  /** Слот под выход из аккаунта: сама панель ничего про сессию не знает. */
+  footer?: ReactNode
+}
+
 export interface IFooterColumn {
   title: string
   links: ILinkedLabel[]
@@ -481,6 +532,48 @@ export interface IFooterProps {
 export interface IBaseLayoutProps {
   header: ReactNode
   footer: ReactNode
+  children: ReactNode
+}
+
+/* --- Главная --- */
+
+export interface ISectionHeadingProps {
+  /** Надзаголовок капителью: «Свежая подборка», «Как это работает». */
+  eyebrow?: string
+  title: string
+  description?: string
+  /** Уровень для структуры документа; на внешность не влияет. */
+  level?: IHeadingLevel
+  /** Ссылка вбок: «весь каталог». */
+  action?: ReactNode
+}
+
+export interface IStep {
+  title: string
+  description: string
+}
+
+export interface IStepListProps {
+  steps: IStep[]
+}
+
+export interface IHomeHeroProps {
+  /** Надзаголовок: имя ближайшего сбора или «Сбор закрыт». */
+  eyebrow?: string
+  title: string
+  description?: string
+  /** Кнопки: «в каталог», «войти». */
+  actions?: ReactNode
+  /**
+   * Врезка сбоку: таймер до дедлайна или сообщение, что открытого сбора нет.
+   * Отдельным слотом, потому что сбор — данные сайта, а не шаблона.
+   */
+  aside?: ReactNode
+}
+
+export interface IHomeTemplateProps {
+  hero: ReactNode
+  /** Секции: подборка товаров, «как это работает». Каждая — свой слот. */
   children: ReactNode
 }
 
@@ -652,6 +745,12 @@ export interface ICartPanelProps {
   onQuantityChange: (productId: string, quantity: number) => void
   onRemove: (productId: string) => void
   onCheckout: () => void
+  /**
+   * Первая загрузка корзины: рисуются скелетоны в её раскладке. Отличается
+   * от `isBusy` — тот про запрос поверх уже показанной корзины.
+   */
+  isLoading?: boolean
+  skeletonRows?: number
   isBusy?: boolean
   error?: string | null
   /** Показывается и на пустой корзине, и когда корзины ещё нет. */
@@ -664,6 +763,8 @@ export interface ICheckoutFormProps {
   deadlineAt?: string | null
   /** `null` — комментарий не заполнен; ровно это ждёт `CheckoutRequest`. */
   onSubmit: (note: string | null) => void
+  /** Корзина ещё грузится: скелетон в раскладке формы. */
+  isLoading?: boolean
   isSubmitting?: boolean
   error?: string | null
 }
@@ -688,6 +789,18 @@ export interface IOrderItemRowProps {
    * вести ссылке некуда, а название остаётся видно.
    */
   href: string | null
+  /**
+   * Управление количеством и удалением. Обе отсутствуют — строка только для
+   * чтения: так заявка выглядит после дедлайна и у владельца в админке.
+   */
+  onQuantityChange?: (quantity: number) => void
+  onRemove?: () => void
+  /**
+   * Единственную позицию убрать нельзя — бэкенд ответит отказом. Кнопка
+   * остаётся видимой, но заблокированной, с подсказкой отменить заявку целиком.
+   */
+  canRemove?: boolean
+  isBusy?: boolean
 }
 
 export interface IOrderCardProps {
@@ -704,14 +817,34 @@ export interface IOrderListProps {
 }
 
 export interface IOrderDetailsProps {
-  order: IOrder
+  /** `null` — заявки ещё нет: вместе с `isLoading` рисуется скелетон. */
+  order: IOrder | null
+  /** Первая загрузка: скелетон в раскладке карточки. */
+  isLoading?: boolean
+  skeletonRows?: number
   buildProductHref: (productSlug: string) => string
   /** Заявка относится к ещё открытому сбору — состав можно обсудить с владельцем. */
   isCurrentCycle?: boolean
+  /**
+   * Правка состава. Показывается, только когда переданы обработчики **и**
+   * `order.isEditable`: одного флага мало (в админке правки нет), одних
+   * обработчиков — тоже (после дедлайна бэкенд откажет).
+   */
+  onItemQuantityChange?: (itemId: string, quantity: number) => void
+  onItemRemove?: (itemId: string) => void
+  /** Сохранение комментария. `null` очищает его. */
+  onNoteSave?: (note: string | null) => void
+  /** Отмена заявки покупателем: заявка не исчезает, а получает статус «Отменена». */
+  onCancel?: () => void
+  isBusy?: boolean
+  error?: string | null
 }
 
 export interface IProfileFormProps {
-  user: IAuthUser
+  /** `null` — профиль ещё грузится; вместе с `isLoading` рисуется скелетон. */
+  user: IAuthUser | null
+  /** Первая загрузка профиля: скелетон в раскладке формы. */
+  isLoading?: boolean
   /** Телефон менять нельзя: он же логин и цель OTP. Наружу уходит только имя. */
   onSubmit: (name: string) => void
   isSubmitting?: boolean
@@ -729,6 +862,24 @@ export interface IAccountTemplateProps {
   /** Текущий путь — для `aria-current` в навигации раздела. */
   currentHref?: string
   children: ReactNode
+}
+
+export interface IErrorTemplateProps {
+  /**
+   * Код ответа крупной цифрой. Необязателен: тем же шаблоном рисуется и
+   * экран без кода — например, «раздел временно недоступен».
+   */
+  code?: string
+  title: string
+  description?: string
+  /** Кнопки «в каталог», «повторить». */
+  actions?: ReactNode
+  /**
+   * Подробности для владельца: текст ошибки, идентификатор запроса.
+   * Покупателю в них смысла нет, поэтому это отдельный приглушённый блок,
+   * а не часть описания.
+   */
+  details?: ReactNode
 }
 
 /* --- Модальный слой, подтверждения, уведомления --- */
@@ -939,6 +1090,12 @@ export interface IAdminCycleCalendarProps {
 export interface IAdminOrdersTableProps {
   orders: IAdminOrder[]
   onStatusChange: (order: IAdminOrder, status: OrderStatus) => void
+  /**
+   * Удаление у владельца — настоящее, в отличие от покупательской отмены:
+   * заявка исчезает и из списка, и из выгрузок. Без обработчика колонка
+   * действий не рендерится вовсе.
+   */
+  onDelete?: (order: IAdminOrder) => void
   buildProductHref: (productSlug: string) => string
   isLoading?: boolean
   skeletonRows?: number

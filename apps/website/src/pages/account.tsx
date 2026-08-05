@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import Head from 'next/head'
 import { useRouter } from 'next/router'
-import { Button, Spinner, Text } from 'widgets/atoms'
+import { Button, Text } from 'widgets/atoms'
 import { EmptyState } from 'widgets/molecules'
 import { ProfileForm, TelegramLinkPrompt } from 'widgets/organisms'
 import { AccountTemplate } from 'widgets/templates'
@@ -54,8 +54,21 @@ const AccountPage: React.FC = () => {
   }
 
   const content = (): React.ReactNode => {
+    /*
+      Скелетон в раскладке формы: спиннер сменился бы блоком другой высоты.
+      Обработчик тот же самый — в этом состоянии формы ещё нет и нажимать
+      нечего, а заводить ради него пустышку смысла нет.
+    */
     if (isLoading) {
-      return <Spinner label="Загружаем профиль" />
+      return (
+        <ProfileForm
+          user={null}
+          isLoading={true}
+          onSubmit={name => {
+            void handleSubmit(name)
+          }}
+        />
+      )
     }
 
     if (user === null) {
