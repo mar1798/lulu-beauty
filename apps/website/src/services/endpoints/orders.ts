@@ -21,6 +21,21 @@ export const getMyOrder = (orderId: string): Promise<IOrder> =>
  * пересчитывает сервер, и полагаться на локальный пересчёт нельзя.
  */
 
+/**
+ * Добавление товара в уже поданную заявку. Корзина тут не при чём: она
+ * копится под **следующую** заявку, и положенное в неё эту не изменит.
+ *
+ * Снапшот снимается в момент добавления — новая позиция встаёт по текущей
+ * цене каталога, а уже лежащие в заявке сохраняют свою. Товар, который в
+ * заявке уже есть, сливается со своей строкой, а не заводит вторую.
+ */
+export const addMyOrderItem = (
+  orderId: string,
+  productId: string,
+  quantity: number = 1
+): Promise<IOrder> =>
+  api.post(`/orders/${encodeURIComponent(orderId)}/items`, { body: { productId, quantity } })
+
 export const updateMyOrderItemQuantity = (
   orderId: string,
   itemId: string,
@@ -40,3 +55,15 @@ export const updateMyOrderNote = (orderId: string, note: string | null): Promise
 /** Отмена — покупательский аналог удаления: заявка остаётся видна владельцу. */
 export const cancelMyOrder = (orderId: string): Promise<IOrder> =>
   api.post(`/orders/${encodeURIComponent(orderId)}/cancel`)
+
+/**
+ * Возврат отменённой заявки. Отмена обратима, пока сбор открыт: заявка
+ * возвращается в «Ожидает подтверждения» тем же составом и с теми же ценами —
+ * отмена их не трогала.
+ *
+ * Право на возврат считает бэкенд и отдаёт в `isRestorable`; при отказе
+ * приходит 409 `order_not_restorable` — либо дедлайн уже прошёл, либо
+ * возвращать нечего.
+ */
+export const restoreMyOrder = (orderId: string): Promise<IOrder> =>
+  api.post(`/orders/${encodeURIComponent(orderId)}/restore`)

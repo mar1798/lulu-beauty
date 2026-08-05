@@ -4,19 +4,22 @@ import { useRouter } from 'next/router'
 import type { IOrder, IOrderCycle } from 'widgets/types'
 import { Alert, Button } from 'widgets/atoms'
 import { EmptyState } from 'widgets/molecules'
-import { OrderDetails } from 'widgets/organisms'
+import { OrderDetails, ProductPicker } from 'widgets/organisms'
 import { useConfirm, useToast } from 'widgets/contexts'
 import { AccountTemplate } from 'widgets/templates'
 import { SiteLayout } from '@/layouts/SiteLayout'
 import { ACCOUNT_NAVIGATION } from '@/layouts/accountNavigation'
 import { useAuth } from '@/contexts/AuthContext'
 import { useAuthedRequest } from '@/hooks/useAuthedRequest'
+import { useProductSearch } from '@/hooks/useProductSearch'
 import { isApiError } from '@/services/apiErrors'
 import { getActiveCycleOrNull } from '@/services/endpoints/cycles'
 import {
+  addMyOrderItem,
   cancelMyOrder,
   getMyOrder,
   removeMyOrderItem,
+  restoreMyOrder,
   updateMyOrderItemQuantity,
   updateMyOrderNote,
 } from '@/services/endpoints/orders'
@@ -28,10 +31,18 @@ import {
  * поэтому «не найдена» и «не ваша» здесь намеренно один и тот же экран:
  * подтверждать существование чужой заявки незачем.
  *
- * Правка состава доступна, пока сбор открыт и владелец не подтвердил заявку;
+ * Правка состава — количество, удаление позиций, добавление товара и
+ * комментарий — доступна, пока сбор открыт и владелец не подтвердил заявку;
  * решает это бэкенд и присылает в `isEditable`. После каждой правки заявка
  * перечитывается целиком (`version`), а не правится на месте: сумму и сам
  * `isEditable` считает сервер — дедлайн мог пройти между двумя нажатиями.
+ *
+ * Товар добавляется прямо в заявку (`POST /orders/{id}/items`), а не через
+ * корзину: корзина копится под следующую заявку и эту не изменила бы.
+ *
+ * Отмена обратима, пока сбор открыт (`isRestorable`, `POST /orders/{id}/restore`):
+ * состав и цены отмена не трогает, поэтому возврат — это смена статуса, а не
+ * повторное оформление.
  *
  * Активный сбор запрашивается отдельно — у `OrderResponse` есть только
  * `cycleId`, а публичной ручки «цикл по id» на бэкенде нет.
@@ -53,6 +64,8 @@ const OrderPage: React.FC = () => {
   const [version, setVersion] = useState(0)
   const [isBusy, setIsBusy] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
+
+  const search = useProductSearch()
 
   const loadOrder = useMemo(
     () =>
@@ -110,7 +123,8 @@ const OrderPage: React.FC = () => {
     const confirmed = await confirm({
       title: 'Отменить заявку?',
       description:
-        'Владелец увидит, что вы передумали. Оформить новую заявку можно, пока сбор открыт.',
+        'Владелец увидит, что вы передумали. Пока сбор открыт, отмену можно отозвать — ' +
+        'заявка вернётся тем же составом.',
       confirmLabel: 'Отменить заявку',
       cancelLabel: 'Оставить',
       tone: 'danger',
@@ -119,6 +133,23 @@ const OrderPage: React.FC = () => {
     if (confirmed) {
       await runAction(() => cancelMyOrder(orderId), 'Заявка отменена')
     }
+  }
+
+  /*
+    Подпись раздела следует за состоянием заявки: обещать правку над
+    подтверждённой заявкой — врать, а над правимой или возвратимой молчать —
+    прятать единственное действие, ради которого сюда и заходят.
+  */
+  const summary = (): string => {
+    if (order?.isEditable === true) {
+      return 'Пока сбор открыт и заявка не подтверждена, состав можно поменять — в том числе добавить товар.'
+    }
+
+    if (order?.isRestorable === true) {
+      return 'Заявка отменена, но сбор ещё открыт — её можно вернуть в работу.'
+    }
+
+    return 'Состав и цены сохранены такими, какими были в момент оформления.'
   }
 
   const content = (): React.ReactNode => {
@@ -188,11 +219,38 @@ const OrderPage: React.FC = () => {
         onItemRemove={itemId => {
           void runAction(() => removeMyOrderItem(order.id, itemId), 'Позиция убрана')
         }}
+        /*
+          Добавление товара прямо в заявку, а не через корзину: корзина копится
+          под следующий сбор, и положенное в неё эту заявку не изменило бы.
+        */
+        addItem={
+          <ProductPicker
+            query={search.query}
+            onQueryChange={search.setQuery}
+            products={search.products}
+            isSearching={search.isSearching}
+            error={search.error}
+            addedProductIds={order.items
+              .map(item => item.productId)
+              .filter((productId): productId is string => productId !== null)}
+            onAdd={productId => {
+              void runAction(() => addMyOrderItem(order.id, productId), 'Товар добавлен')
+            }}
+            isBusy={isBusy}
+          />
+        }
         onNoteSave={note => {
           void runAction(() => updateMyOrderNote(order.id, note), 'Комментарий сохранён')
         }}
         onCancel={() => {
           void handleCancel()
+        }}
+        /*
+          Возврат без подтверждения — в отличие от отмены: он ничего не рушит,
+          а чинит, и лишний диалог тут только мешал бы исправить промах.
+        */
+        onRestore={() => {
+          void runAction(() => restoreMyOrder(order.id), 'Заявка снова в работе')
         }}
         isBusy={isBusy}
         error={actionError}
@@ -209,16 +267,7 @@ const OrderPage: React.FC = () => {
 
       <AccountTemplate
         title="Заявка"
-        /*
-          Подпись раздела следует за состоянием заявки: обещать правку над
-          подтверждённой заявкой — врать, а над правимой молчать о ней —
-          прятать единственное действие, ради которого сюда и заходят.
-        */
-        summary={
-          order?.isEditable === true
-            ? 'Пока сбор открыт и заявка не подтверждена, состав можно поменять.'
-            : 'Состав и цены сохранены такими, какими были в момент оформления.'
-        }
+        summary={summary()}
         navigation={ACCOUNT_NAVIGATION}
         currentHref="/orders"
       >

@@ -87,6 +87,75 @@ describe('OrderDetails', () => {
     expect(screen.getByRole('button', { name: 'Отменить заявку' })).toBeEnabled()
   })
 
+  it('слот добавления живёт по тем же двум условиям, что и правка', () => {
+    const addItem = <div>Добавить товар</div>
+
+    const { rerender } = renderWidget(
+      <OrderDetails
+        {...feedOrderDetails()}
+        order={feedOrder({ isEditable: true })}
+        onItemQuantityChange={vi.fn()}
+        addItem={addItem}
+      />
+    )
+    expect(screen.getByText('Добавить товар')).toBeInTheDocument()
+
+    // Тот же слот у закрытой заявки: показывать его — обещать невыполнимое.
+    rerender(
+      <OrderDetails
+        {...feedOrderDetails()}
+        order={feedOrder({ isEditable: false })}
+        onItemQuantityChange={vi.fn()}
+        addItem={addItem}
+      />
+    )
+    expect(screen.queryByText('Добавить товар')).not.toBeInTheDocument()
+  })
+
+  it('зовёт возврат у отменённой заявки, пока сбор открыт', async () => {
+    const onRestore = vi.fn()
+    const user = userEvent.setup()
+
+    renderWidget(
+      <OrderDetails
+        {...feedOrderDetails()}
+        order={feedOrder({ status: 'CANCELLED', isEditable: false, isRestorable: true })}
+        onRestore={onRestore}
+      />
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Вернуть заявку' }))
+    expect(onRestore).toHaveBeenCalledTimes(1)
+  })
+
+  it('после дедлайна возврата не предлагает — и не зовёт обсудить правку', () => {
+    renderWidget(
+      <OrderDetails
+        {...feedOrderDetails()}
+        order={feedOrder({ status: 'CANCELLED', isEditable: false, isRestorable: false })}
+        isCurrentCycle={true}
+        onRestore={vi.fn()}
+      />
+    )
+
+    expect(screen.queryByRole('button', { name: 'Вернуть заявку' })).not.toBeInTheDocument()
+    expect(screen.getByText(/Изменить её уже нельзя/)).toBeInTheDocument()
+  })
+
+  it('возвратимой заявке не говорит, что менять уже нечего', () => {
+    renderWidget(
+      <OrderDetails
+        {...feedOrderDetails()}
+        order={feedOrder({ status: 'CANCELLED', isEditable: false, isRestorable: true })}
+        isCurrentCycle={true}
+        onRestore={vi.fn()}
+      />
+    )
+
+    expect(screen.queryByText(/Изменить её уже нельзя/)).not.toBeInTheDocument()
+    expect(screen.getByText(/можно вернуть тем же составом/)).toBeInTheDocument()
+  })
+
   it('сохраняет комментарий обрезанным, а пустой отправляет как null', async () => {
     const onNoteSave = vi.fn()
     const user = userEvent.setup()

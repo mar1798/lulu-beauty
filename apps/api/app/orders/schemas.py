@@ -19,10 +19,23 @@ class OrderNoteUpdateRequest(CamelModel):
     note: str | None = Field(default=None, max_length=2000)
 
 
+MAX_ITEM_QUANTITY = 999
+
+
 class OrderItemQuantityRequest(CamelModel):
     # Same floor as the cart: dropping to zero is "remove", and that has its own endpoint,
     # so a 0 here is a mistake worth reporting rather than a silent deletion.
-    quantity: int = Field(ge=1, le=999)
+    quantity: int = Field(ge=1, le=MAX_ITEM_QUANTITY)
+
+
+class OrderItemAddRequest(CamelModel):
+    """A product added to an order that's already been placed — not through the cart.
+
+    The cart belongs to the *next* order; adding there would leave this one unchanged.
+    """
+
+    product_id: uuid.UUID
+    quantity: int = Field(default=1, ge=1, le=MAX_ITEM_QUANTITY)
 
 
 class OrderItemResponse(CamelModel):
@@ -48,6 +61,9 @@ class OrderResponse(CamelModel):
     # Computed here so the UI doesn't re-derive a rule it can't fully see — the deadline
     # lives on the cycle, not on the order.
     is_editable: bool = False
+    # The other side of the same deadline: a cancellation the customer can still walk
+    # back, i.e. CANCELLED and the cycle still open. Never true together with is_editable.
+    is_restorable: bool = False
 
 
 class AdminOrderResponse(OrderResponse):

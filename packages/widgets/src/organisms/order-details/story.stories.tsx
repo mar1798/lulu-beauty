@@ -1,6 +1,6 @@
 import type { StoryFn, Meta } from '@storybook/react'
 import { OrderDetails } from '.'
-import { feedOrderDetails } from '../../stories/feed'
+import { feedOrder, feedOrderDetails } from '../../stories/feed'
 import { StoryWrapper } from '../../stories/wrapper'
 
 export default {
@@ -19,6 +19,15 @@ Default.parameters = {
   layout: 'centered',
 }
 Default.args = feedOrderDetails()
+
+/** Отменённая заявка при открытом сборе: отмена обратима, а не окончательна. */
+export const Cancelled = Template.bind({})
+Cancelled.parameters = { layout: 'centered' }
+Cancelled.args = {
+  ...feedOrderDetails(),
+  order: feedOrder({ status: 'CANCELLED', isEditable: false, isRestorable: true }),
+  onRestore: () => undefined,
+}
 
 /** Скелетон вместо спиннера: раскладка известна заранее, страница не прыгает. */
 export const Loading = Template.bind({})

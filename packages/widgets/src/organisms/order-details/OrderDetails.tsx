@@ -1,5 +1,5 @@
 import clsx from 'clsx'
-import { type FC, useState } from 'react'
+import { type FC, type ReactNode, useState } from 'react'
 import type { IBasicStyling, IOrderDetailsProps } from '../../types'
 import { formatDateTime } from '../../utils/datetime'
 import { pluralize } from '../../utils/plural'
@@ -23,7 +23,12 @@ import * as styles from './OrderDetails.css'
  * подтверждения»: это `order.isEditable`, считает его бэкенд. Одного флага
  * мало — нужны ещё обработчики: та же карточка без них рендерится в режиме
  * чтения. Позиции — снапшот цен на момент оформления, и правка количества
- * его не пересматривает.
+ * его не пересматривает; товар, добавленный позже (слот `addItem`), встаёт
+ * в заявку по цене на момент добавления — своей.
+ *
+ * Отмена — не точка: пока сбор открыт, её можно отозвать (`order.isRestorable`,
+ * тот же дедлайн с другой стороны). Отменённая заявка сохраняет состав и цены,
+ * поэтому возврат ничего не пересобирает — он меняет только статус.
  *
  * Комментарий правится отдельной кнопкой, а не по каждому нажатию клавиши:
  * иначе на каждую букву уходил бы PATCH.
@@ -41,8 +46,10 @@ export const OrderDetails: FC<IOrderDetailsProps & IBasicStyling> = ({
   isCurrentCycle = false,
   onItemQuantityChange,
   onItemRemove,
+  addItem,
   onNoteSave,
   onCancel,
+  onRestore,
   isBusy = false,
   error = null,
   className,
@@ -112,6 +119,44 @@ export const OrderDetails: FC<IOrderDetailsProps & IBasicStyling> = ({
   }
 
   const isEditable = order.isEditable && onItemQuantityChange !== undefined
+  const isRestorable = order.isRestorable && onRestore !== undefined
+
+  /*
+    Подпись под шапкой отвечает ровно на один вопрос: что с этой заявкой можно
+    сделать сейчас. Поэтому ветки исключают друг друга, а не складываются —
+    сказать отменённой заявке «изменить уже нельзя», когда её можно вернуть,
+    значит закрыть человеку единственный оставшийся выход.
+  */
+  const notice = (): ReactNode => {
+    if (isEditable) {
+      return (
+        <Text size="sm" tone="secondary">
+          Состав можно поменять, пока сбор открыт и заявка не подтверждена. Цены прежних
+          позиций остаются такими, какими были при оформлении; добавленный сейчас товар
+          встанет по текущей.
+        </Text>
+      )
+    }
+
+    if (isRestorable) {
+      return (
+        <Text size="sm" tone="secondary">
+          Заявка отменена, но сбор ещё открыт — её можно вернуть тем же составом и по тем
+          же ценам. Оформлять заново не нужно.
+        </Text>
+      )
+    }
+
+    if (isCurrentCycle) {
+      return (
+        <Text size="sm" tone="secondary">
+          Заявка относится к текущему сбору. Изменить её уже нельзя — напишите владельцу.
+        </Text>
+      )
+    }
+
+    return null
+  }
 
   return (
     <div className={clsx(styles.container, className)}>
@@ -129,18 +174,7 @@ export const OrderDetails: FC<IOrderDetailsProps & IBasicStyling> = ({
         <OrderStatusBadge status={order.status} />
       </div>
 
-      {isEditable ? (
-        <Text size="sm" tone="secondary">
-          Состав можно поменять, пока сбор открыт и заявка не подтверждена. Цены остаются
-          такими, какими были при оформлении.
-        </Text>
-      ) : (
-        isCurrentCycle && (
-          <Text size="sm" tone="secondary">
-            Заявка относится к текущему сбору. Изменить её уже нельзя — напишите владельцу.
-          </Text>
-        )
-      )}
+      {notice()}
 
       {error !== null && (
         <Alert tone="danger" title="Не получилось">
@@ -226,6 +260,12 @@ export const OrderDetails: FC<IOrderDetailsProps & IBasicStyling> = ({
         ))}
       </div>
 
+      {/*
+        Добавление стоит между составом и итогом: это продолжение состава, и
+        оно должно попасть в поле зрения раньше, чем сумма, которую поменяет.
+      */}
+      {isEditable && addItem}
+
       <div className={styles.totalRow}>
         <Text weight="medium">{`Итого · ${pluralize(order.items.length, ITEM_FORMS)}`}</Text>
         <Price priceCents={order.totalCents} size="lg" />
@@ -235,9 +275,26 @@ export const OrderDetails: FC<IOrderDetailsProps & IBasicStyling> = ({
         <div className={styles.footer}>
           <Text size="sm" tone="muted">
             Отменённая заявка остаётся видна владельцу — он поймёт, что вы передумали.
+            Передумать обратно можно, пока сбор открыт.
           </Text>
           <Button variant="danger" disabled={isBusy} onClick={onCancel}>
             Отменить заявку
+          </Button>
+        </div>
+      )}
+
+      {/*
+        Возврат стоит на месте отмены и такой же кнопкой — это одно решение,
+        просто повёрнутое обратно. Кнопка обычная, не `danger`: возвращать
+        заявку не страшно, страшно было отменять.
+      */}
+      {isRestorable && (
+        <div className={styles.footer}>
+          <Text size="sm" tone="muted">
+            Ничего не потеряно: состав и цены сохранены такими, какими были при оформлении.
+          </Text>
+          <Button disabled={isBusy} onClick={onRestore}>
+            Вернуть заявку
           </Button>
         </div>
       )}

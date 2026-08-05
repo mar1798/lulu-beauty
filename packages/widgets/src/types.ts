@@ -175,6 +175,12 @@ export interface IOrder {
    * быть одно на API и на UI.
    */
   isEditable: boolean
+  /**
+   * Обратная сторона того же дедлайна: заявка отменена (`CANCELLED`), но сбор
+   * ещё открыт — отмену можно отозвать. Вместе с `isEditable` истинным не
+   * бывает: заявка либо в работе, либо отменена.
+   */
+  isRestorable: boolean
 }
 
 /**
@@ -832,12 +838,44 @@ export interface IOrderDetailsProps {
    */
   onItemQuantityChange?: (itemId: string, quantity: number) => void
   onItemRemove?: (itemId: string) => void
+  /**
+   * Слот под добавление товара (`ProductPicker`): показывается на тех же двух
+   * условиях, что и правка. Поиском по каталогу занимается страница — карточка
+   * заявки в API не ходит.
+   */
+  addItem?: ReactNode
   /** Сохранение комментария. `null` очищает его. */
   onNoteSave?: (note: string | null) => void
   /** Отмена заявки покупателем: заявка не исчезает, а получает статус «Отменена». */
   onCancel?: () => void
+  /**
+   * Возврат отменённой заявки в работу. Показывается по `order.isRestorable`:
+   * пока сбор открыт, отмена — обратимое решение, и оформлять всё заново ради
+   * неё не нужно.
+   */
+  onRestore?: () => void
   isBusy?: boolean
   error?: string | null
+}
+
+export interface IProductPickerProps {
+  query: string
+  onQueryChange: (query: string) => void
+  /**
+   * Найденные товары. `null` — результатов ещё нет: либо не искали, либо идёт
+   * первый запрос (вместе с `isSearching` рисуется скелетон).
+   */
+  products: IProduct[] | null
+  isSearching?: boolean
+  /** Товары, которые уже есть в заявке: добавление сольётся с их строкой. */
+  addedProductIds?: string[]
+  onAdd: (productId: string) => void
+  isBusy?: boolean
+  /** Поиск не отдался. Отличается от пустого ответа: искать стоит ещё раз. */
+  error?: string | null
+  label?: string
+  /** Подсказка под пустым поиском — объясняет, куда попадёт найденный товар. */
+  hint?: string
 }
 
 export interface IProfileFormProps {

@@ -8,13 +8,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.cart.models import CartItem
 from app.cart.service import CartService
 from app.orders.models import Order, OrderItem, OrderStatus
+from app.orders.schemas import MAX_ITEM_QUANTITY
 from app.orders.service import (
     EmptyCartError,
     LastOrderItemError,
     NoActiveCycleError,
     OrderNotEditableError,
     OrderNotFoundError,
+    OrderNotRestorableError,
     OrdersService,
+    ProductNotFoundError,
 )
 from tests.integration.factories import (
     make_cycle,
@@ -195,9 +198,11 @@ async def _order_with_items(
 async def test_new_order_is_editable(db_session: AsyncSession) -> None:
     user_id, order = await _order_with_items(db_session)
 
-    editable = await OrdersService(db_session).editable_map([order])
+    flags = await OrdersService(db_session).customer_flags([order])
 
-    assert editable[order.id] is True
+    assert flags[order.id].is_editable is True
+    # Nothing to restore: the order was never cancelled.
+    assert flags[order.id].is_restorable is False
 
 
 async def test_order_is_not_editable_once_owner_moved_it_off_pending(
@@ -207,9 +212,9 @@ async def test_order_is_not_editable_once_owner_moved_it_off_pending(
     order.status = OrderStatus.CONFIRMED
     await db_session.flush()
 
-    editable = await OrdersService(db_session).editable_map([order])
+    flags = await OrdersService(db_session).customer_flags([order])
 
-    assert editable[order.id] is False
+    assert flags[order.id].is_editable is False
 
 
 async def test_order_is_not_editable_after_the_deadline(db_session: AsyncSession) -> None:
@@ -222,9 +227,9 @@ async def test_order_is_not_editable_after_the_deadline(db_session: AsyncSession
     cycle.deadline_at = datetime.now(UTC) - timedelta(minutes=1)
     await db_session.flush()
 
-    editable = await OrdersService(db_session).editable_map([order])
+    flags = await OrdersService(db_session).customer_flags([order])
 
-    assert editable[order.id] is False
+    assert flags[order.id].is_editable is False
 
 
 async def test_set_item_quantity_recalculates_the_total(db_session: AsyncSession) -> None:
@@ -253,6 +258,82 @@ async def test_set_item_quantity_keeps_the_snapshot_price(db_session: AsyncSessi
 
     assert updated.items[0].product_price_cents == 1000
     assert updated.total_cents == 2000
+
+
+async def test_add_item_appends_a_line_and_recalculates(db_session: AsyncSession) -> None:
+    user_id, order = await _order_with_items(db_session, lines=1)
+    product = await make_product(db_session, name="Forgotten Cream", price_cents=2500)
+    await make_product_image(db_session, product, url="http://x/new.jpg", is_primary=True)
+    service = OrdersService(db_session)
+
+    updated = await service.add_item(user_id, order.id, product.id, 2)
+
+    assert len(updated.items) == 2
+    added = next(item for item in updated.items if item.product_id == product.id)
+    assert added.product_name == "Forgotten Cream"
+    assert added.product_slug == product.slug
+    assert added.product_image_url == "http://x/new.jpg"
+    assert added.product_price_cents == 2500
+    assert added.quantity == 2
+    assert updated.total_cents == 1000 + 5000
+
+
+async def test_add_item_merges_into_the_line_that_is_already_there(
+    db_session: AsyncSession,
+) -> None:
+    """One line per product, as at checkout — a second row would be the owner's problem."""
+    user_id, order = await _order_with_items(db_session, lines=1, quantity=2)
+    service = OrdersService(db_session)
+    product_id = order.items[0].product_id
+    assert product_id is not None
+
+    updated = await service.add_item(user_id, order.id, product_id, 3)
+
+    assert len(updated.items) == 1
+    assert updated.items[0].quantity == 5
+    assert updated.total_cents == 5000
+
+
+async def test_add_item_prices_the_new_line_from_the_current_catalog(
+    db_session: AsyncSession,
+) -> None:
+    """The old line keeps its checkout price; the new one joins at today's."""
+    user_id, order = await _order_with_items(db_session, lines=1)
+    later = await make_product(db_session, name="Later", price_cents=3000)
+    service = OrdersService(db_session)
+
+    updated = await service.add_item(user_id, order.id, later.id, 1)
+
+    prices = {item.product_name: item.product_price_cents for item in updated.items}
+    assert prices == {"Product 0": 1000, "Later": 3000}
+
+
+async def test_add_item_clamps_the_merged_quantity_to_the_ceiling(
+    db_session: AsyncSession,
+) -> None:
+    user_id, order = await _order_with_items(db_session, lines=1, quantity=998)
+    service = OrdersService(db_session)
+    product_id = order.items[0].product_id
+    assert product_id is not None
+
+    updated = await service.add_item(user_id, order.id, product_id, 5)
+
+    assert updated.items[0].quantity == MAX_ITEM_QUANTITY
+
+
+async def test_add_item_refuses_a_soft_deleted_product(db_session: AsyncSession) -> None:
+    user_id, order = await _order_with_items(db_session, lines=1)
+    gone = await make_product(db_session, name="Gone", deleted_at=datetime.now(UTC))
+
+    with pytest.raises(ProductNotFoundError):
+        await OrdersService(db_session).add_item(user_id, order.id, gone.id, 1)
+
+
+async def test_add_item_refuses_a_product_that_never_existed(db_session: AsyncSession) -> None:
+    user_id, order = await _order_with_items(db_session, lines=1)
+
+    with pytest.raises(ProductNotFoundError):
+        await OrdersService(db_session).add_item(user_id, order.id, uuid.uuid4(), 1)
 
 
 async def test_remove_item_drops_the_line_and_recalculates(db_session: AsyncSession) -> None:
@@ -295,6 +376,8 @@ async def test_editing_a_confirmed_order_is_refused(db_session: AsyncSession) ->
         await service.update_note(user_id, order.id, "too late")
     with pytest.raises(OrderNotEditableError):
         await service.cancel(user_id, order.id)
+    with pytest.raises(OrderNotEditableError):
+        await service.add_item(user_id, order.id, uuid.uuid4(), 1)
 
 
 async def test_update_note_replaces_it_and_accepts_clearing(db_session: AsyncSession) -> None:
@@ -315,9 +398,90 @@ async def test_cancel_marks_the_order_and_closes_further_editing(
 
     assert cancelled.status == OrderStatus.CANCELLED
     # The order stays visible to the owner, but the customer can no longer touch it.
-    assert (await service.editable_map([cancelled]))[order.id] is False
+    assert (await service.customer_flags([cancelled]))[order.id].is_editable is False
     with pytest.raises(OrderNotEditableError):
         await service.cancel(user_id, order.id)
+
+
+async def test_a_cancelled_order_is_restorable_while_the_cycle_collects(
+    db_session: AsyncSession,
+) -> None:
+    user_id, order = await _order_with_items(db_session)
+    service = OrdersService(db_session)
+
+    cancelled = await service.cancel(user_id, order.id)
+
+    flags = (await service.customer_flags([cancelled]))[order.id]
+    assert flags.is_restorable is True
+    assert flags.is_editable is False
+
+
+async def test_restore_puts_the_order_back_with_its_lines_and_total(
+    db_session: AsyncSession,
+) -> None:
+    user_id, order = await _order_with_items(db_session, lines=2)
+    service = OrdersService(db_session)
+    total_before = order.total_cents
+    await service.cancel(user_id, order.id)
+
+    restored = await service.restore(user_id, order.id)
+
+    assert restored.status == OrderStatus.PENDING
+    # Cancelling never touched the lines, so restoring has nothing to rebuild.
+    assert len(restored.items) == 2
+    assert restored.total_cents == total_before
+    # And the order is editable again — restoring is the exact inverse of cancelling.
+    assert (await service.customer_flags([restored]))[order.id].is_editable is True
+
+
+async def test_restore_of_an_order_that_was_never_cancelled_is_refused(
+    db_session: AsyncSession,
+) -> None:
+    user_id, order = await _order_with_items(db_session)
+
+    with pytest.raises(OrderNotRestorableError):
+        await OrdersService(db_session).restore(user_id, order.id)
+
+
+async def test_restore_after_the_deadline_is_refused(db_session: AsyncSession) -> None:
+    user = await make_user(db_session)
+    cycle = await make_cycle(db_session)
+    product = await make_product(db_session)
+    await CartService(db_session).add_item(user.id, product.id, 1)
+    order = await OrdersService(db_session).checkout(user.id, note=None)
+    service = OrdersService(db_session)
+    await service.cancel(user.id, order.id)
+
+    cycle.deadline_at = datetime.now(UTC) - timedelta(minutes=1)
+    await db_session.flush()
+
+    assert (await service.customer_flags([order]))[order.id].is_restorable is False
+    with pytest.raises(OrderNotRestorableError):
+        await service.restore(user.id, order.id)
+
+
+async def test_restoring_someone_elses_order_is_a_not_found(db_session: AsyncSession) -> None:
+    user_id, order = await _order_with_items(db_session)
+    service = OrdersService(db_session)
+    await service.cancel(user_id, order.id)
+    stranger = await make_user(db_session)
+
+    with pytest.raises(OrderNotFoundError):
+        await service.restore(stranger.id, order.id)
+
+
+async def test_a_finished_order_is_neither_editable_nor_restorable(
+    db_session: AsyncSession,
+) -> None:
+    """COMPLETED is the owner's word about a real purchase — no way back from it."""
+    _, order = await _order_with_items(db_session)
+    order.status = OrderStatus.COMPLETED
+    await db_session.flush()
+
+    flags = (await OrdersService(db_session).customer_flags([order]))[order.id]
+
+    assert flags.is_editable is False
+    assert flags.is_restorable is False
 
 
 async def test_admin_delete_removes_the_order_and_its_items(db_session: AsyncSession) -> None:

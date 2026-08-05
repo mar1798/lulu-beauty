@@ -1,4 +1,5 @@
 import uuid
+from dataclasses import dataclass
 from datetime import UTC, datetime
 
 from sqlalchemy import Select, delete, func, select
@@ -12,6 +13,7 @@ from app.catalog.models import Product
 from app.cycles.models import OrderCycle
 from app.cycles.service import CyclesService
 from app.orders.models import Order, OrderItem, OrderStatus
+from app.orders.schemas import MAX_ITEM_QUANTITY
 
 
 class NoActiveCycleError(Exception):
@@ -39,6 +41,30 @@ class OrderItemNotFoundError(Exception):
 
 class LastOrderItemError(Exception):
     """Removing the only line would leave an order with nothing in it — cancel it instead."""
+
+
+class ProductNotFoundError(Exception):
+    """No live product behind the id — it was soft-deleted between the search and the click."""
+
+
+class OrderNotRestorableError(Exception):
+    """Nothing to undo, or the window to undo it in has closed.
+
+    Either the order isn't CANCELLED at all, or the cycle deadline has passed and the
+    owner is already buying against the list this order is no longer on.
+    """
+
+
+@dataclass(frozen=True)
+class OrderFlags:
+    """What the customer may still do with an order.
+
+    Both answers hang off the same fact — whether the cycle deadline has passed — so
+    they're computed together, from one query, and travel to the UI together.
+    """
+
+    is_editable: bool
+    is_restorable: bool
 
 
 class OrdersService:
@@ -110,33 +136,43 @@ class OrdersService:
             raise OrderNotFoundError
         return order
 
-    async def editable_map(self, orders: list[Order]) -> dict[uuid.UUID, bool]:
-        """Which of these orders the customer may still edit — one query for the whole page.
-
-        The rule lives here, not in the frontend: it needs the cycle deadline, which the
-        order itself doesn't carry, and both the API guard and the UI must agree on it.
-        """
+    async def _open_cycle_ids(self, orders: list[Order]) -> set[uuid.UUID]:
+        """Of the cycles behind these orders, the ones still collecting — one query."""
         cycle_ids = {order.cycle_id for order in orders}
         if not cycle_ids:
-            return {}
+            return set()
 
         result = await self._session.execute(
-            select(OrderCycle.id, OrderCycle.deadline_at).where(OrderCycle.id.in_(cycle_ids))
+            select(OrderCycle.id).where(
+                OrderCycle.id.in_(cycle_ids), OrderCycle.deadline_at > datetime.now(UTC)
+            )
         )
-        deadlines = {cycle_id: deadline for cycle_id, deadline in result.all()}
-        now = datetime.now(UTC)
+        return set(result.scalars().all())
+
+    async def customer_flags(self, orders: list[Order]) -> dict[uuid.UUID, OrderFlags]:
+        """What the customer may still do with each of these orders — one query per page.
+
+        The rules live here, not in the frontend: they need the cycle deadline, which the
+        order itself doesn't carry, and the API guards and the UI must agree on them.
+        """
+        open_cycles = await self._open_cycle_ids(orders)
 
         return {
-            order.id: order.status == OrderStatus.PENDING
-            and (deadline := deadlines.get(order.cycle_id)) is not None
-            and deadline > now
+            order.id: OrderFlags(
+                is_editable=order.status == OrderStatus.PENDING
+                and order.cycle_id in open_cycles,
+                is_restorable=order.status == OrderStatus.CANCELLED
+                and order.cycle_id in open_cycles,
+            )
             for order in orders
         }
 
+    async def _flags_for(self, order: Order) -> OrderFlags:
+        return (await self.customer_flags([order]))[order.id]
+
     async def _get_editable(self, user_id: uuid.UUID, order_id: uuid.UUID) -> Order:
         order = await self.get_for_user(user_id, order_id)
-        editable = await self.editable_map([order])
-        if not editable[order.id]:
+        if not (await self._flags_for(order)).is_editable:
             raise OrderNotEditableError
         return order
 
@@ -152,6 +188,48 @@ class OrdersService:
             if item.id == item_id:
                 return item
         raise OrderItemNotFoundError
+
+    async def add_item(
+        self, user_id: uuid.UUID, order_id: uuid.UUID, product_id: uuid.UUID, quantity: int
+    ) -> Order:
+        """Add a product to an order that's already been placed.
+
+        The snapshot is taken now, from the current catalog — this line joins the order
+        today, so today's price is the one the customer is agreeing to. Lines that were
+        already there keep the price they were checked out with.
+        """
+        order = await self._get_editable(user_id, order_id)
+
+        result = await self._session.execute(
+            select(Product)
+            .where(Product.id == product_id, Product.deleted_at.is_(None))
+            .options(selectinload(Product.images))
+        )
+        product = result.scalar_one_or_none()
+        if product is None:
+            raise ProductNotFoundError
+
+        existing = next((item for item in order.items if item.product_id == product.id), None)
+        if existing is not None:
+            # One line per product, as at checkout: a second row for the same thing would
+            # be the owner's problem to reconcile by hand. The clamp is a ceiling, not a
+            # rule worth an error — nobody means 1000 of anything here.
+            existing.quantity = min(existing.quantity + quantity, MAX_ITEM_QUANTITY)
+        else:
+            order.items.append(
+                OrderItem(
+                    product_id=product.id,
+                    product_name=product.name,
+                    product_slug=product.slug,
+                    product_image_url=primary_image_url(product.images),
+                    product_price_cents=product.price_cents,
+                    quantity=quantity,
+                )
+            )
+
+        self._recalculate_total(order)
+        await self._session.flush()
+        return order
 
     async def set_item_quantity(
         self, user_id: uuid.UUID, order_id: uuid.UUID, item_id: uuid.UUID, quantity: int
@@ -189,6 +267,26 @@ class OrdersService:
         """Customer-side "delete": the owner keeps seeing the order, marked CANCELLED."""
         order = await self._get_editable(user_id, order_id)
         order.status = OrderStatus.CANCELLED
+        await self._session.flush()
+        return order
+
+    async def restore(self, user_id: uuid.UUID, order_id: uuid.UUID) -> Order:
+        """Undo a cancellation while the cycle is still collecting.
+
+        Cancelling is something the customer does to themselves, and nothing is bought
+        against a cancelled order — so putting it back costs the owner nothing as long
+        as the deadline hasn't passed. The order returns to PENDING exactly as it was:
+        cancelling never touched the lines or their snapshot prices.
+
+        The order doesn't record *who* cancelled it, so an owner-side cancellation is
+        restorable too. That's deliberate: the owner's way of making an order stay gone
+        is deleting it, not leaving it in a status the customer can walk out of.
+        """
+        order = await self.get_for_user(user_id, order_id)
+        if not (await self._flags_for(order)).is_restorable:
+            raise OrderNotRestorableError
+
+        order.status = OrderStatus.PENDING
         await self._session.flush()
         return order
 

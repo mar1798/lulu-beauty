@@ -70,6 +70,7 @@ import {
   IProductGalleryProps,
   IProductGridProps,
   IProductImage,
+  IProductPickerProps,
   IProductTemplateProps,
   IQuantityStepperProps,
   IRegisterFormProps,
@@ -607,6 +608,7 @@ export const feedOrder = (overrides: Partial<IOrder> = {}): IOrder => {
     createdAt: new Date(Date.now() - DAY_MS).toISOString(),
     items,
     isEditable: true,
+    isRestorable: false,
     ...overrides,
   }
 }
@@ -650,6 +652,13 @@ export const feedOrderDetails = (): IOrderDetailsProps => ({
   order: feedOrder({ note: 'Позвоните после 18:00, пожалуйста.' }),
   buildProductHref: slug => `/catalog/${slug}`,
   isCurrentCycle: true,
+})
+
+export const feedProductPicker = (): IProductPickerProps => ({
+  query: 'сыв',
+  onQueryChange: noop,
+  products: [feedProduct(), feedProduct(), feedProduct({ inStock: false })],
+  onAdd: noop,
 })
 
 export const feedProfileForm = (): IProfileFormProps => ({
