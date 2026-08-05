@@ -101,6 +101,12 @@ export interface IProduct {
   categoryId: string | null
   inStock: boolean
   images: IProductImage[]
+  /**
+   * Метка мягкого удаления. В публичных списках всегда `null` — удалённые
+   * товары туда не попадают; в админском листинге с `includeDeleted=true`
+   * это единственный способ отличить удалённую строку от живой.
+   */
+  deletedAt: string | null
 }
 
 /**
@@ -245,7 +251,7 @@ export interface IInputProps {
   hint?: string
   /** Непустая строка включает состояние ошибки и `aria-invalid`. */
   error?: string | null
-  type?: 'text' | 'tel' | 'email' | 'password' | 'number' | 'search'
+  type?: 'text' | 'tel' | 'email' | 'password' | 'number' | 'search' | 'time'
   placeholder?: string
   autoComplete?: string
   inputMode?: 'text' | 'tel' | 'email' | 'numeric' | 'decimal' | 'search' | 'url'
@@ -312,6 +318,11 @@ export interface ISelectProps {
   id?: string
   name?: string
   label?: string
+  /**
+   * Подпись для скринридера там, где видимой подписи нет: в строке таблицы её
+   * роль играет заголовок колонки, и дублировать её у каждого поля незачем.
+   */
+  ariaLabel?: string
   hint?: string
   error?: string | null
   placeholder?: string
@@ -718,4 +729,219 @@ export interface IAccountTemplateProps {
   /** Текущий путь — для `aria-current` в навигации раздела. */
   currentHref?: string
   children: ReactNode
+}
+
+/* --- Модальный слой, подтверждения, уведомления --- */
+
+export interface IModalProps {
+  isOpen: boolean
+  onClose: () => void
+  /** Обязателен: диалог без имени скринридер объявляет как «диалог». */
+  title: string
+  children: ReactNode
+  /** Кнопки внизу: подтвердить/отменить, сохранить. */
+  footer?: ReactNode
+  size?: 'sm' | 'md' | 'lg'
+  /** Закрытие по клику мимо окна. Отключается там, где форма не должна теряться. */
+  isDismissable?: boolean
+}
+
+export interface IConfirmDialogProps {
+  isOpen: boolean
+  title: string
+  description?: ReactNode
+  confirmLabel?: string
+  cancelLabel?: string
+  /** `danger` — для необратимых действий: удаление товара, категории, сбора. */
+  tone?: 'danger' | 'primary'
+  isBusy?: boolean
+  onConfirm: () => void
+  onCancel: () => void
+}
+
+export type IToastTone = 'info' | 'success' | 'danger'
+
+export interface IToast {
+  id: string
+  tone: IToastTone
+  title: string
+  description?: string
+}
+
+export interface IToastProps {
+  toast: IToast
+  onDismiss: (id: string) => void
+}
+
+export interface IToastViewportProps {
+  toasts: IToast[]
+  onDismiss: (id: string) => void
+}
+
+/* --- Загрузка файлов и статусы --- */
+
+/**
+ * Drag&drop-загрузка одного файла. Ограничения задаются явно и повторяют
+ * лимиты бэкенда (`apps/api/app/catalog/router.py`): картинки — 5 MB и
+ * `image/jpeg|png|webp`, файл импорта — 10 MB и `.xlsx`/`.csv`.
+ */
+export interface IFileDropzoneProps {
+  onSelect: (file: File) => void
+  /** Атрибут `accept` нативного выбора файла. */
+  accept?: string
+  /** Разрешённые MIME-типы; пусто — не проверять. */
+  allowedTypes?: string[]
+  /** Разрешённые расширения с точкой (`.xlsx`) — для файлов, чей MIME непредсказуем. */
+  allowedExtensions?: string[]
+  maxBytes?: number
+  label?: string
+  hint?: string
+  /** Ошибка снаружи (ответ сервера); ошибки лимитов дропзона считает сама. */
+  error?: string | null
+  disabled?: boolean
+  buttonLabel?: string
+}
+
+export interface IStatusSelectProps {
+  value: OrderStatus
+  onChange: (status: OrderStatus) => void
+  label?: string
+  /** Подпись остаётся для скринридера, но не занимает место в строке таблицы. */
+  isLabelHidden?: boolean
+  disabled?: boolean
+}
+
+/* --- Админка --- */
+
+export interface IAdminNavItem extends ILinkedLabel {
+  icon?: ReactNode
+}
+
+export interface IAdminLayoutProps {
+  title: string
+  summary?: string
+  navigation: IAdminNavItem[]
+  currentHref?: string
+  /** Кнопки раздела: «Добавить товар», «Скачать выгрузку». */
+  actions?: ReactNode
+  children: ReactNode
+}
+
+export interface IAdminProductsTableProps {
+  products: IProduct[]
+  /** Название категории по её id: у товара приходит только `categoryId`. */
+  categoryNames: Record<string, string>
+  buildEditHref: (product: IProduct) => string
+  onDelete: (product: IProduct) => void
+  onRestore: (product: IProduct) => void
+  isLoading?: boolean
+  skeletonRows?: number
+  /** id товара, по которому идёт запрос: блокирует кнопки только этой строки. */
+  busyId?: string | null
+  emptyState?: ReactNode
+}
+
+export interface IAdminProductValues {
+  name: string
+  slug: string
+  description: string
+  priceCents: number
+  categoryId: string | null
+  inStock: boolean
+}
+
+export interface IProductImageUpload {
+  file: File
+  alt: string
+  isPrimary: boolean
+}
+
+export interface IAdminProductFormProps {
+  categories: ICategory[]
+  /** Редактирование; `undefined` — создание нового товара. */
+  product?: IProduct
+  onSubmit: (values: IAdminProductValues) => void
+  isSubmitting?: boolean
+  error?: string | null
+  /**
+   * Картинки есть только у сохранённого товара: загружать их некуда, пока
+   * у него нет id. При создании блок не рендерится.
+   */
+  images?: IProductImage[]
+  onImageUpload?: (upload: IProductImageUpload) => void
+  onImageDelete?: (image: IProductImage) => void
+  isImageBusy?: boolean
+  imageError?: string | null
+  /** Слот под удаление/восстановление товара. */
+  footer?: ReactNode
+}
+
+export interface IAdminCategoryValues {
+  name: string
+  slug: string
+  sortOrder: number
+}
+
+export interface IAdminCategoriesPanelProps {
+  categories: ICategory[]
+  onCreate: (values: IAdminCategoryValues) => void
+  onUpdate: (category: ICategory, values: IAdminCategoryValues) => void
+  onDelete: (category: ICategory) => void
+  isLoading?: boolean
+  /** Идёт запрос: контролы блокируются целиком, порядок строк может измениться. */
+  isBusy?: boolean
+  error?: string | null
+}
+
+export interface IAdminImportPanelProps {
+  onImport: (file: File) => void
+  isImporting?: boolean
+  /** Итог последнего импорта; `null`/`undefined` — импорта ещё не было. */
+  summary?: IImportSummary | null
+  /** Ошибка запроса. Ошибки строк приходят внутри `summary.errors`. */
+  error?: string | null
+}
+
+/** Черновик сбора в календарных величинах магазина (таймзона `Asia/Bishkek`). */
+export interface ICycleDraft {
+  /** `YYYY-MM-DD`. */
+  date: string
+  /** `HH:MM`. */
+  time: string
+  label: string
+}
+
+export interface IAdminCycleCalendarProps {
+  cycles: IOrderCycle[]
+  /** Показываемый месяц, `YYYY-MM`. */
+  month: string
+  onMonthChange: (month: string) => void
+  onCreate: (draft: ICycleDraft) => void
+  onUpdate: (cycle: IOrderCycle, draft: ICycleDraft) => void
+  onDelete: (cycle: IOrderCycle) => void
+  /**
+   * id сбора, который бэкенд отдаёт как активный. Считается не по полю
+   * `status`, а по ближайшему будущему дедлайну — `status` переставляет
+   * планировщик, и до его прогона он отстаёт от факта.
+   */
+  activeCycleId?: string | null
+  /**
+   * Сегодняшняя дата в таймзоне магазина, `YYYY-MM-DD`. Приходит пропсом,
+   * а не считается внутри: админка рендерится на сервере, и вычисленное
+   * в компоненте «сегодня» разошлось бы с гидратацией на границе суток.
+   */
+  today?: string
+  isLoading?: boolean
+  isBusy?: boolean
+  error?: string | null
+}
+
+export interface IAdminOrdersTableProps {
+  orders: IAdminOrder[]
+  onStatusChange: (order: IAdminOrder, status: OrderStatus) => void
+  buildProductHref: (productSlug: string) => string
+  isLoading?: boolean
+  skeletonRows?: number
+  busyId?: string | null
+  emptyState?: ReactNode
 }

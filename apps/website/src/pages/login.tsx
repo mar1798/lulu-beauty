@@ -10,6 +10,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import { useRedirectIfAuthenticated } from '@/hooks/useRedirectIfAuthenticated'
 import { isApiError } from '@/services/apiErrors'
 import { savePendingOtp } from '@/utils/otpSession'
+import { safeRedirectPath } from '@/utils/redirect'
 
 /**
  * Вход. Пара логин/пароль проверяется бэкендом, но сессию не открывает:
@@ -18,7 +19,9 @@ import { savePendingOtp } from '@/utils/otpSession'
 const LoginPage: React.FC = () => {
   const router = useRouter()
   const { login } = useAuth()
-  const isRedirecting = useRedirectIfAuthenticated()
+  // Сюда уводит гейт админки: `/admin/*` у гостя даёт `/login?next=/admin/...`.
+  const next = safeRedirectPath(router.query.next)
+  const isRedirecting = useRedirectIfAuthenticated(next)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -29,7 +32,7 @@ const LoginPage: React.FC = () => {
     try {
       const purpose = await login(values)
 
-      savePendingOtp({ phone: values.phone, purpose })
+      savePendingOtp({ phone: values.phone, purpose, next })
       await router.push('/verify-otp')
     } catch (cause: unknown) {
       setError(isApiError(cause) ? cause.message : 'Не удалось войти. Попробуйте ещё раз.')

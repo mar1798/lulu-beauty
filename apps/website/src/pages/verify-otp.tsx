@@ -9,6 +9,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import { isApiError } from '@/services/apiErrors'
 import { publicConfig } from '@/сonfig'
 import { clearPendingOtp, readPendingOtp } from '@/utils/otpSession'
+import { safeRedirectPath } from '@/utils/redirect'
 
 /**
  * Подтверждение кода — второй и обязательный шаг и входа, и регистрации.
@@ -51,7 +52,8 @@ const VerifyOtpPage: React.FC = () => {
     try {
       await verifyOtp({ phone: pending.phone, code, purpose: pending.purpose })
       clearPendingOtp()
-      await router.replace('/catalog')
+      // Вход мог начаться с закрытой страницы — возвращаем туда, а не в каталог.
+      await router.replace(safeRedirectPath(pending.next))
     } catch (cause: unknown) {
       setError(isApiError(cause) ? cause.message : 'Не удалось подтвердить код.')
       setIsSubmitting(false)

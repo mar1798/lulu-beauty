@@ -1,4 +1,3 @@
-import type { NextApiRequest, NextApiResponse } from 'next'
 import { serverConfig } from '@/сonfig'
 
 /**
@@ -6,6 +5,22 @@ import { serverConfig } from '@/сonfig'
  * Браузерный JS их не видит: `document.cookie` для httpOnly пуст, а прокси
  * подставляет `Authorization` уже на сервере.
  */
+
+/**
+ * Типы запроса и ответа описаны структурно, а не как `NextApiRequest`/
+ * `NextApiResponse`: те же cookie читает и переставляет `getServerSideProps`,
+ * где приходят «голые» `IncomingMessage`/`ServerResponse`. Через `Pick<>`
+ * это не выразить — у `ServerResponse.setHeader` возвращаемый `this` уже
+ * другой, и присваивание не проходит по типам.
+ */
+export interface ICookieRequest {
+  cookies: Partial<Record<string, string>>
+}
+
+export interface ICookieResponse {
+  getHeader: (name: string) => number | string | string[] | undefined
+  setHeader: (name: string, value: string | string[]) => unknown
+}
 
 export const ACCESS_COOKIE = 'lb_at'
 export const REFRESH_COOKIE = 'lb_rt'
@@ -40,7 +55,7 @@ const serialize = (name: string, value: string, maxAge: number): string => {
 }
 
 /** Дописывает `Set-Cookie`, не затирая уже выставленные заголовки ответа. */
-const appendSetCookie = (res: NextApiResponse, cookies: string[]): void => {
+const appendSetCookie = (res: ICookieResponse, cookies: string[]): void => {
   const existing = res.getHeader('Set-Cookie')
   const before = Array.isArray(existing)
     ? existing
@@ -51,18 +66,18 @@ const appendSetCookie = (res: NextApiResponse, cookies: string[]): void => {
   res.setHeader('Set-Cookie', [...before, ...cookies])
 }
 
-export const setAuthCookies = (res: NextApiResponse, tokens: IAuthTokens): void => {
+export const setAuthCookies = (res: ICookieResponse, tokens: IAuthTokens): void => {
   appendSetCookie(res, [
     serialize(ACCESS_COOKIE, tokens.accessToken, MAX_AGE_SECONDS),
     serialize(REFRESH_COOKIE, tokens.refreshToken, MAX_AGE_SECONDS),
   ])
 }
 
-export const clearAuthCookies = (res: NextApiResponse): void => {
+export const clearAuthCookies = (res: ICookieResponse): void => {
   appendSetCookie(res, [serialize(ACCESS_COOKIE, '', 0), serialize(REFRESH_COOKIE, '', 0)])
 }
 
-export const readAuthTokens = (req: NextApiRequest): Partial<IAuthTokens> => ({
+export const readAuthTokens = (req: ICookieRequest): Partial<IAuthTokens> => ({
   accessToken: req.cookies[ACCESS_COOKIE],
   refreshToken: req.cookies[REFRESH_COOKIE],
 })

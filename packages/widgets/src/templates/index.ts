@@ -3,6 +3,7 @@
  */
 
 export * from './account-template/index'
+export * from './admin-layout/index'
 export * from './auth-template/index'
 export * from './base-layout/index'
 export * from './cart-template/index'

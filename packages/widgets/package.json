@@ -11,6 +11,7 @@
     "./organisms": "./src/organisms/index.ts",
     "./templates": "./src/templates/index.ts",
     "./contexts": "./src/contexts/index.ts",
+    "./svg": "./src/svg/icons.tsx",
     "./hooks": "./src/hooks/index.ts",
     "./utils": "./src/utils/index.ts",
     "./types": "./src/types.ts",
@@ -66,6 +67,9 @@
       ],
       "feed": [
         "./src/stories/feed.ts"
+      ],
+      "svg": [
+        "./src/svg/icons.tsx"
       ]
     }
   },

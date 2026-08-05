@@ -1,4 +1,4 @@
-import type { NextApiRequest, NextApiResponse } from 'next'
+import type { NextApiResponse } from 'next'
 import type { Readable } from 'node:stream'
 import { serverConfig } from '@/сonfig'
 import {
@@ -8,6 +8,8 @@ import {
   readAuthTokens,
   setAuthCookies,
   type IAuthTokens,
+  type ICookieRequest,
+  type ICookieResponse,
 } from './cookies'
 
 /** Вызовы бэкенда с сервера Next: и анонимные, и с подстановкой Bearer из cookie. */
@@ -94,8 +96,8 @@ const sendApi = async (
 
 /** Меняет пару токенов по refresh-cookie и переставляет cookie в ответе. */
 export const refreshTokens = async (
-  req: NextApiRequest,
-  res: NextApiResponse
+  req: ICookieRequest,
+  res: ICookieResponse
 ): Promise<string> => {
   const { refreshToken } = readAuthTokens(req)
 
@@ -134,8 +136,8 @@ export interface IAuthedFetchOptions {
 }
 
 export const fetchWithAuth = async (
-  req: NextApiRequest,
-  res: NextApiResponse,
+  req: ICookieRequest,
+  res: ICookieResponse,
   path: string,
   search: string,
   request: IApiRequest,

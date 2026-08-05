@@ -43,3 +43,150 @@ export const formatDateTime = (iso: string): string => {
 
   return new Intl.DateTimeFormat(LOCALE, { ...DATE_OPTIONS, ...TIME_OPTIONS }).format(date)
 }
+
+/* ------------------------------------------------------------------ *
+ * Календарные величины магазина.
+ *
+ * Календарь дедлайнов оперирует не мгновениями, а датой и временем «по
+ * магазину»: владелец назначает сбор на «14 августа, 20:00» в Бишкеке,
+ * а бэкенду нужен ISO-мгновение. Обе стороны перевода живут здесь, чтобы
+ * смещение считалось одним способом.
+ * ------------------------------------------------------------------ */
+
+const PARTS_OPTIONS: Intl.DateTimeFormatOptions = {
+  timeZone: TIME_ZONE,
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit',
+  second: '2-digit',
+  hour12: false,
+}
+
+interface IStoreParts {
+  /** `YYYY-MM-DD`. */
+  date: string
+  /** `HH:MM`. */
+  time: string
+}
+
+const partsOf = (date: Date): Record<string, string> => {
+  const result: Record<string, string> = {}
+
+  for (const part of new Intl.DateTimeFormat('en-GB', PARTS_OPTIONS).formatToParts(date)) {
+    result[part.type] = part.value
+  }
+
+  return result
+}
+
+/** Мгновение → дата и время в таймзоне магазина. */
+export const toStoreParts = (iso: string): IStoreParts | null => {
+  const date = new Date(iso)
+
+  if (!isValid(date)) {
+    return null
+  }
+
+  const parts = partsOf(date)
+  // `hour12: false` в некоторых движках даёт «24» вместо «00» для полуночи.
+  const hour = parts.hour === '24' ? '00' : parts.hour
+
+  return {
+    date: `${parts.year}-${parts.month}-${parts.day}`,
+    time: `${hour}:${parts.minute}`,
+  }
+}
+
+const MINUTE_MS = 60 * 1000
+
+/**
+ * Смещение таймзоны магазина в миллисекундах для конкретного мгновения.
+ * Считается через `Intl`, а не константой `+06:00`: константа врёт, если
+ * магазин однажды переедет в зону с переводом часов.
+ */
+const offsetAt = (utcMs: number): number => {
+  const parts = partsOf(new Date(utcMs))
+  const asUtc = Date.UTC(
+    Number(parts.year),
+    Number(parts.month) - 1,
+    Number(parts.day),
+    Number(parts.hour) % 24,
+    Number(parts.minute),
+    Number(parts.second)
+  )
+
+  return asUtc - utcMs
+}
+
+/**
+ * Дата и время «по магазину» → ISO-мгновение для бэкенда.
+ *
+ * Смещение уточняется вторым проходом: первый берёт его для неверного
+ * мгновения, и на переводе часов ошибся бы на час. Пустая строка — если
+ * дата или время не разбираются.
+ */
+export const storeIso = (date: string, time: string): string => {
+  const [year, month, day] = date.split('-').map(Number)
+  const [hour, minute] = time.split(':').map(Number)
+
+  if ([year, month, day, hour, minute].some(part => !Number.isFinite(part))) {
+    return ''
+  }
+
+  const wallMs = Date.UTC(year, month - 1, day, hour, minute)
+  const firstGuess = wallMs - offsetAt(wallMs)
+  const exact = wallMs - offsetAt(firstGuess)
+
+  return new Date(exact).toISOString()
+}
+
+/** «август 2026» для заголовка календаря; на входе `YYYY-MM`. */
+export const formatMonth = (month: string): string => {
+  const date = new Date(`${month}-01T12:00:00Z`)
+
+  if (!isValid(date)) {
+    return ''
+  }
+
+  return new Intl.DateTimeFormat(LOCALE, {
+    timeZone: 'UTC',
+    month: 'long',
+    year: 'numeric',
+  }).format(date)
+}
+
+/** Соседний месяц: `shiftMonth('2026-01', -1) === '2025-12'`. */
+export const shiftMonth = (month: string, delta: number): string => {
+  const [year, index] = month.split('-').map(Number)
+
+  if (!Number.isFinite(year) || !Number.isFinite(index)) {
+    return month
+  }
+
+  const shifted = new Date(Date.UTC(year, index - 1 + delta, 1))
+
+  return `${shifted.getUTCFullYear()}-${String(shifted.getUTCMonth() + 1).padStart(2, '0')}`
+}
+
+/** Текущие дата и месяц по магазину. Только для серверного/клиентского кода, не для рендера. */
+export const storeToday = (): IStoreParts & { month: string } => {
+  const parts = toStoreParts(new Date().toISOString()) ?? { date: '', time: '' }
+
+  return { ...parts, month: parts.date.slice(0, 'YYYY-MM'.length) }
+}
+
+/** Смещение таймзоны магазина, `+06:00` — для подписи под полем времени. */
+export const storeOffsetLabel = (): string => {
+  /*
+    Округление обязательно: `offsetAt` сравнивает мгновение с разложением до
+    секунд, поэтому на «сыром» `Date.now()` остаток миллисекунд превращал
+    подпись в «UTC+05:59.99021666666664».
+  */
+  const minutes = Math.round(offsetAt(Date.now()) / MINUTE_MS)
+  const sign = minutes < 0 ? '-' : '+'
+  const absolute = Math.abs(minutes)
+
+  return `${sign}${String(Math.floor(absolute / 60)).padStart(2, '0')}:${String(absolute % 60).padStart(2, '0')}`
+}

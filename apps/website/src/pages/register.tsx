@@ -11,6 +11,7 @@ import { useRedirectIfAuthenticated } from '@/hooks/useRedirectIfAuthenticated'
 import { isApiError } from '@/services/apiErrors'
 import { publicConfig } from '@/сonfig'
 import { savePendingOtp } from '@/utils/otpSession'
+import { safeRedirectPath } from '@/utils/redirect'
 
 /**
  * Регистрация. Инструкция по Telegram стоит рядом с формой, а не только на
@@ -20,7 +21,9 @@ import { savePendingOtp } from '@/utils/otpSession'
 const RegisterPage: React.FC = () => {
   const router = useRouter()
   const { register } = useAuth()
-  const isRedirecting = useRedirectIfAuthenticated()
+  // Регистрация тоже может начаться с закрытой страницы — адрес возврата тот же.
+  const next = safeRedirectPath(router.query.next)
+  const isRedirecting = useRedirectIfAuthenticated(next)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -31,7 +34,7 @@ const RegisterPage: React.FC = () => {
     try {
       const purpose = await register(values)
 
-      savePendingOtp({ phone: values.phone, purpose })
+      savePendingOtp({ phone: values.phone, purpose, next })
       await router.push('/verify-otp')
     } catch (cause: unknown) {
       setError(

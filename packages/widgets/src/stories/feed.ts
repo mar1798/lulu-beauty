@@ -1,6 +1,14 @@
 import faker from './faker'
 import {
   IAccountTemplateProps,
+  IAdminCategoriesPanelProps,
+  IAdminCycleCalendarProps,
+  IAdminImportPanelProps,
+  IAdminLayoutProps,
+  IAdminOrder,
+  IAdminOrdersTableProps,
+  IAdminProductFormProps,
+  IAdminProductsTableProps,
   IAlertProps,
   IAuthTemplateProps,
   IAuthUser,
@@ -19,10 +27,12 @@ import {
   ICheckoutFormProps,
   ICheckboxProps,
   IChipProps,
+  IConfirmDialogProps,
   IContainerProps,
   IDeadlineCountdownProps,
   IDividerProps,
   IEmptyStateProps,
+  IFileDropzoneProps,
   IFileInputProps,
   IFooterProps,
   IHeadingProps,
@@ -32,8 +42,10 @@ import {
   IInputProps,
   ILink,
   ILoginFormProps,
+  IModalProps,
   IOrder,
   IOrderCardProps,
+  IOrderCycle,
   IOrderDetailsProps,
   IOrderItem,
   IOrderItemRowProps,
@@ -60,10 +72,13 @@ import {
   ISelectProps,
   ISkeletonProps,
   ISpinnerProps,
+  IStatusSelectProps,
   ISwitchProps,
   ITelegramLinkPromptProps,
   ITextProps,
   ITextareaProps,
+  IToastProps,
+  IToastViewportProps,
   IVisuallyHiddenProps,
 } from '../types'
 
@@ -311,6 +326,7 @@ export const feedProduct = (overrides: Partial<IProduct> = {}): IProduct => ({
   categoryId: faker.string.uuid(),
   inStock: true,
   images: [feedProductImageDto(true, 0), feedProductImageDto(false, 1)],
+  deletedAt: null,
   ...overrides,
 })
 
@@ -579,4 +595,184 @@ export const feedAccountTemplate = (): IAccountTemplateProps => ({
   ],
   currentHref: '/orders',
   children: 'Сюда встаёт содержимое раздела',
+})
+
+/* --- Модальный слой, подтверждения, уведомления --- */
+
+export const feedModal = (): IModalProps => ({
+  isOpen: true,
+  onClose: noop,
+  title: 'Удалить товар?',
+  children: 'Товар пропадёт из каталога, но останется в уже оформленных заявках.',
+})
+
+export const feedConfirmDialog = (): IConfirmDialogProps => ({
+  isOpen: true,
+  title: 'Удалить категорию?',
+  description: 'Товары этой категории останутся в каталоге, но потеряют её.',
+  onConfirm: noop,
+  onCancel: noop,
+})
+
+export const feedToast = (): IToastProps => ({
+  toast: {
+    id: 'toast-1',
+    tone: 'success',
+    title: 'Товар сохранён',
+    description: 'Изменения уже видны в каталоге.',
+  },
+  onDismiss: noop,
+})
+
+export const feedToastViewport = (): IToastViewportProps => ({
+  toasts: [
+    { id: 'toast-1', tone: 'success', title: 'Товар сохранён' },
+    { id: 'toast-2', tone: 'info', title: 'Фотография загружена', description: 'Стала главной.' },
+    { id: 'toast-3', tone: 'danger', title: 'Не удалось удалить сбор', description: 'В нём есть заявки.' },
+  ],
+  onDismiss: noop,
+})
+
+/* --- Загрузка файлов и статусы --- */
+
+const MB = 1024 * 1024
+
+export const feedFileDropzone = (): IFileDropzoneProps => ({
+  onSelect: noop,
+  label: 'Файл xlsx или csv',
+  accept: '.xlsx,.csv',
+  allowedExtensions: ['.xlsx', '.csv'],
+  maxBytes: 10 * MB,
+  hint: 'До 10 МБ. Первая строка — заголовки колонок.',
+})
+
+export const feedStatusSelect = (): IStatusSelectProps => ({
+  value: 'PENDING',
+  onChange: noop,
+})
+
+/* --- Админка --- */
+
+export const feedAdminLayout = (): IAdminLayoutProps => ({
+  title: 'Товары',
+  summary: 'Каталог, категории и фотографии.',
+  navigation: [
+    { label: 'Обзор', link: { href: '/admin' } },
+    { label: 'Товары', link: { href: '/admin/products' } },
+    { label: 'Категории', link: { href: '/admin/categories' } },
+    { label: 'Заявки', link: { href: '/admin/orders' } },
+  ],
+  currentHref: '/admin/products',
+  children: 'Сюда встаёт содержимое раздела',
+})
+
+const feedCategorySet = (): ICategory[] => [
+  feedCategory('Уход за кожей'),
+  feedCategory('Макияж'),
+  feedCategory('Волосы'),
+]
+
+export const feedAdminProductsTable = (): IAdminProductsTableProps => {
+  const categories = feedCategorySet()
+  const products = [
+    feedProduct({ categoryId: categories[0].id }),
+    feedProduct({ categoryId: categories[1].id, inStock: false }),
+    feedProduct({
+      categoryId: null,
+      images: [],
+      deletedAt: new Date(Date.now() - DAY_MS).toISOString(),
+    }),
+  ]
+
+  return {
+    products,
+    categoryNames: Object.fromEntries(categories.map(category => [category.id, category.name])),
+    buildEditHref: product => `/admin/products/${product.id}`,
+    onDelete: noop,
+    onRestore: noop,
+  }
+}
+
+export const feedAdminProductForm = (): IAdminProductFormProps => {
+  const categories = feedCategorySet()
+  const product = feedProduct({ categoryId: categories[0].id })
+
+  return {
+    categories,
+    product,
+    onSubmit: noop,
+    images: product.images,
+    onImageUpload: noop,
+    onImageDelete: noop,
+  }
+}
+
+export const feedAdminCategoriesPanel = (): IAdminCategoriesPanelProps => ({
+  categories: feedCategorySet(),
+  onCreate: noop,
+  onUpdate: noop,
+  onDelete: noop,
+})
+
+export const feedAdminImportPanel = (): IAdminImportPanelProps => ({
+  onImport: noop,
+  summary: {
+    created: 12,
+    updated: 3,
+    errors: [
+      { row: 4, message: "invalid price: 'дорого'" },
+      { row: 9, message: "unknown category slug: 'parfum'" },
+    ],
+  },
+})
+
+/** Даты фиксированы относительно «сейчас», чтобы сбор всегда попадал в текущий месяц. */
+export const feedAdminCycleCalendar = (): IAdminCycleCalendarProps => {
+  const now = new Date()
+  const month = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}`
+  const active: IOrderCycle = {
+    id: faker.string.uuid(),
+    deadlineAt: new Date(Date.now() + 3 * DAY_MS).toISOString(),
+    label: 'Сбор на август',
+    status: 'ACTIVE',
+    reminderSentAt: null,
+    closedAt: null,
+  }
+
+  return {
+    cycles: [
+      active,
+      {
+        id: faker.string.uuid(),
+        deadlineAt: new Date(Date.now() + 20 * DAY_MS).toISOString(),
+        label: 'Следующий сбор',
+        status: 'UPCOMING',
+        reminderSentAt: null,
+        closedAt: null,
+      },
+    ],
+    month,
+    onMonthChange: noop,
+    onCreate: noop,
+    onUpdate: noop,
+    onDelete: noop,
+    activeCycleId: active.id,
+  }
+}
+
+export const feedAdminOrder = (overrides: Partial<IAdminOrder> = {}): IAdminOrder => ({
+  ...feedOrder(),
+  customerName: faker.person.fullName(),
+  customerPhone: '+996555123456',
+  ...overrides,
+})
+
+export const feedAdminOrdersTable = (): IAdminOrdersTableProps => ({
+  orders: [
+    feedAdminOrder({ note: 'Позвоните после 18:00.' }),
+    feedAdminOrder({ status: 'CONFIRMED' }),
+    feedAdminOrder({ status: 'COMPLETED' }),
+  ],
+  onStatusChange: noop,
+  buildProductHref: slug => `/catalog/${slug}`,
 })

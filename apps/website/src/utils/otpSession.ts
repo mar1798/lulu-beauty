@@ -14,6 +14,12 @@ const STORAGE_KEY = 'lb_pending_otp'
 export interface IPendingOtp {
   phone: string
   purpose: OtpPurpose
+  /**
+   * Куда вернуть после подтверждения. Нужен, когда вход начался с закрытой
+   * страницы (`/admin/*` уводит гостя на `/login?next=…`): после кода человек
+   * должен оказаться там, куда шёл, а не в каталоге.
+   */
+  next?: string
 }
 
 /**
@@ -38,13 +44,13 @@ const parse = (raw: string | null): IPendingOtp | null => {
       return null
     }
 
-    const { phone, purpose } = value as Partial<IPendingOtp>
+    const { phone, purpose, next } = value as Partial<IPendingOtp>
 
     if (typeof phone !== 'string' || (purpose !== 'LOGIN' && purpose !== 'REGISTER')) {
       return null
     }
 
-    return { phone, purpose }
+    return { phone, purpose, next: typeof next === 'string' ? next : undefined }
   } catch {
     return null
   }

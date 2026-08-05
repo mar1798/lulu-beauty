@@ -3,8 +3,10 @@
  */
 
 export * from './datetime'
+export * from './motion'
 export * from './plural'
 export * from './responsive'
 export * from './sizes'
+export * from './slug'
 export * from './unstated'
 export * from './validation'

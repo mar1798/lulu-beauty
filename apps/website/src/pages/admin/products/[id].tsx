@@ -1,0 +1,291 @@
+import React, { useMemo, useState } from 'react'
+import type { GetServerSideProps } from 'next'
+import { useRouter } from 'next/router'
+import type {
+  IAdminProductValues,
+  ICategory,
+  IProduct,
+  IProductImage,
+  IProductImageUpload,
+} from 'widgets/types'
+import { Alert, Button, Skeleton } from 'widgets/atoms'
+import { EmptyState } from 'widgets/molecules'
+import { AdminProductForm } from 'widgets/organisms'
+import { useConfirm, useToast } from 'widgets/contexts'
+import { AdminShell } from '@/layouts/AdminShell'
+import { useAuthedRequest } from '@/hooks/useAuthedRequest'
+import { requireAdmin, type IAdminPageProps } from '@/server/adminGate'
+import { isApiError } from '@/services/apiErrors'
+import {
+  deleteProduct,
+  deleteProductImage,
+  getAdminProduct,
+  restoreProduct,
+  updateProduct,
+  uploadProductImage,
+} from '@/services/endpoints/admin'
+import { listCategories } from '@/services/endpoints/catalog'
+
+/**
+ * Карточка товара: поля и фотографии.
+ *
+ * Загрузка и удаление фотографии перезагружают товар целиком: `isPrimary`
+ * снимается с остальных на бэкенде, и локально пересчитать это — значит
+ * повторить его логику второй раз и однажды разойтись с ней.
+ *
+ * Удалённый товар не редиректит и не прячется: он открывается как обычно, но
+ * сверху висит предупреждение и кнопка восстановления. Иначе ссылка из списка
+ * удалённых вела бы в никуда.
+ */
+
+const NOT_FOUND = 404
+
+interface IProductData {
+  product: IProduct
+  categories: ICategory[]
+}
+
+const AdminProductPage: React.FC<IAdminPageProps> = () => {
+  const router = useRouter()
+  const { notify } = useToast()
+  const { confirm } = useConfirm()
+
+  const productId = typeof router.query.id === 'string' ? router.query.id : null
+
+  const [version, setVersion] = useState(0)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [formError, setFormError] = useState<string | null>(null)
+  const [isImageBusy, setIsImageBusy] = useState(false)
+  const [imageError, setImageError] = useState<string | null>(null)
+
+  const load = useMemo(
+    () =>
+      productId === null
+        ? null
+        : async (): Promise<IProductData> => ({
+            product: await getAdminProduct(productId),
+            categories: await listCategories(),
+          }),
+    [productId]
+  )
+
+  const { data, isLoading, error, status } = useAuthedRequest(
+    load,
+    'Не удалось загрузить товар.',
+    version
+  )
+
+  const product = data?.product ?? null
+
+  const handleSubmit = async (values: IAdminProductValues): Promise<void> => {
+    if (productId === null) {
+      return
+    }
+
+    setIsSubmitting(true)
+    setFormError(null)
+
+    try {
+      await updateProduct(productId, {
+        name: values.name,
+        slug: values.slug,
+        description: values.description === '' ? null : values.description,
+        priceCents: values.priceCents,
+        categoryId: values.categoryId,
+        inStock: values.inStock,
+      })
+
+      notify({ tone: 'success', title: 'Товар сохранён' })
+      setVersion(current => current + 1)
+    } catch (cause: unknown) {
+      setFormError(isApiError(cause) ? cause.message : 'Не удалось сохранить товар.')
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  const runImageAction = async (action: () => Promise<unknown>, success: string): Promise<void> => {
+    setIsImageBusy(true)
+    setImageError(null)
+
+    try {
+      await action()
+      notify({ tone: 'success', title: success })
+      setVersion(current => current + 1)
+    } catch (cause: unknown) {
+      setImageError(isApiError(cause) ? cause.message : 'Не удалось изменить фотографии.')
+    } finally {
+      setIsImageBusy(false)
+    }
+  }
+
+  const handleImageUpload = (upload: IProductImageUpload): void => {
+    if (productId === null) {
+      return
+    }
+
+    void runImageAction(
+      () =>
+        uploadProductImage(productId, {
+          file: upload.file,
+          alt: upload.alt === '' ? undefined : upload.alt,
+          isPrimary: upload.isPrimary,
+        }),
+      'Фотография загружена'
+    )
+  }
+
+  const handleImageDelete = async (image: IProductImage): Promise<void> => {
+    if (productId === null) {
+      return
+    }
+
+    const confirmed = await confirm({
+      title: 'Удалить фотографию?',
+      description: 'Файл пропадёт из каталога сразу.',
+      confirmLabel: 'Удалить',
+    })
+
+    if (confirmed) {
+      await runImageAction(
+        () => deleteProductImage(productId, image.id),
+        'Фотография удалена'
+      )
+    }
+  }
+
+  const handleDelete = async (): Promise<void> => {
+    if (product === null) {
+      return
+    }
+
+    const confirmed = await confirm({
+      title: 'Удалить товар?',
+      description: `«${product.name}» пропадёт из каталога. В уже оформленных заявках он останется.`,
+      confirmLabel: 'Удалить',
+    })
+
+    if (!confirmed) {
+      return
+    }
+
+    try {
+      await deleteProduct(product.id)
+      notify({ tone: 'success', title: 'Товар удалён' })
+      await router.push('/admin/products')
+    } catch (cause: unknown) {
+      setFormError(isApiError(cause) ? cause.message : 'Не удалось удалить товар.')
+    }
+  }
+
+  const handleRestore = async (): Promise<void> => {
+    if (product === null) {
+      return
+    }
+
+    try {
+      await restoreProduct(product.id)
+      notify({ tone: 'success', title: 'Товар восстановлен' })
+      setVersion(current => current + 1)
+    } catch (cause: unknown) {
+      setFormError(isApiError(cause) ? cause.message : 'Не удалось восстановить товар.')
+    }
+  }
+
+  const content = (): React.ReactNode => {
+    if (status === NOT_FOUND) {
+      return (
+        <EmptyState
+          title="Товар не найден"
+          description="Возможно, его удалили насовсем или ссылка устарела."
+          action={<Button link={{ href: '/admin/products' }}>К списку товаров</Button>}
+        />
+      )
+    }
+
+    if (error !== null) {
+      return (
+        <Alert tone="danger" title="Не получилось">
+          {error}
+        </Alert>
+      )
+    }
+
+    if (isLoading || product === null) {
+      return <Skeleton height={420} shape="block" />
+    }
+
+    return (
+      <>
+        {product.deletedAt !== null && (
+          <Alert tone="warning" title="Товар удалён">
+            Покупатели его не видят. Восстановите — и он вернётся в каталог.
+          </Alert>
+        )}
+
+        <AdminProductForm
+          // Ключ по версии: после сохранения форма должна показать ответ бэкенда
+          // (нормализованный slug, обрезанное описание), а не то, что было набрано.
+          key={version}
+          categories={data?.categories ?? []}
+          product={product}
+          isSubmitting={isSubmitting}
+          error={formError}
+          images={product.images}
+          isImageBusy={isImageBusy}
+          imageError={imageError}
+          onSubmit={values => {
+            void handleSubmit(values)
+          }}
+          onImageUpload={handleImageUpload}
+          onImageDelete={image => {
+            void handleImageDelete(image)
+          }}
+          footer={
+            product.deletedAt === null ? (
+              <Button
+                variant="danger"
+                onClick={() => {
+                  void handleDelete()
+                }}
+              >
+                Удалить товар
+              </Button>
+            ) : (
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  void handleRestore()
+                }}
+              >
+                Восстановить
+              </Button>
+            )
+          }
+        />
+      </>
+    )
+  }
+
+  return (
+    <AdminShell
+      title={product?.name ?? 'Товар'}
+      summary={product === null ? undefined : `/catalog/${product.slug}`}
+      actions={
+        <Button variant="secondary" link={{ href: '/admin/products' }}>
+          К списку
+        </Button>
+      }
+    >
+      {content()}
+    </AdminShell>
+  )
+}
+
+export const getServerSideProps: GetServerSideProps<IAdminPageProps> = async context => {
+  const gate = await requireAdmin<IAdminPageProps>(context)
+
+  return gate.redirect ?? { props: { user: gate.user } }
+}
+
+export default AdminProductPage

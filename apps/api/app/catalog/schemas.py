@@ -1,4 +1,5 @@
 import uuid
+from datetime import datetime
 
 from pydantic import Field
 
@@ -43,6 +44,10 @@ class ProductResponse(CamelModel):
     category_id: uuid.UUID | None
     in_stock: bool
     images: list[ProductImageResponse]
+    # Soft-delete marker. Public listings never surface deleted products, so this is
+    # always None there; the admin listing with includeDeleted=true needs it to tell
+    # a deleted row from a live one (there is no other signal in the payload).
+    deleted_at: datetime | None
 
 
 class ProductCreateRequest(CamelModel):

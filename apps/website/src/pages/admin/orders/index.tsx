@@ -1,0 +1,204 @@
+import React, { useMemo, useState } from 'react'
+import type { GetServerSideProps } from 'next'
+import type { IAdminOrder, IOrderCycle, IPage, ISelectOption, OrderStatus } from 'widgets/types'
+import { Alert, Button, Select } from 'widgets/atoms'
+import { EmptyState, Pagination, orderStatusLabel } from 'widgets/molecules'
+import { AdminOrdersTable } from 'widgets/organisms'
+import { useToast } from 'widgets/contexts'
+import { formatDate } from 'widgets/utils'
+import { IconDownload } from 'widgets/svg'
+import { AdminShell } from '@/layouts/AdminShell'
+import { useAuthedRequest } from '@/hooks/useAuthedRequest'
+import { requireAdmin, type IAdminPageProps } from '@/server/adminGate'
+import { isApiError } from '@/services/apiErrors'
+import { listAdminOrders, listCycles, updateOrderStatus } from '@/services/endpoints/admin'
+import { downloadOrdersExport } from '@/services/endpoints/export'
+import * as styles from '@/styles/admin.css'
+
+/**
+ * Заявки покупателей: фильтр по сбору и статусу, смена статуса, выгрузка.
+ *
+ * Выгрузка качается через `fetch`, а не обычной ссылкой: ручка админская,
+ * и отказ (403, 500) на ссылке превратился бы в скачанный файл с текстом
+ * ошибки внутри. Имя файла берётся из `Content-Disposition` — там RFC 5987,
+ * то есть кириллица в имени переживает прокси.
+ */
+
+const PAGE_SIZE = 20
+const ALL = ''
+
+const STATUS_OPTIONS: ISelectOption[] = [
+  { value: ALL, label: 'Любой статус' },
+  ...(['PENDING', 'CONFIRMED', 'READY', 'COMPLETED', 'CANCELLED'] as OrderStatus[]).map(
+    status => ({ value: status, label: orderStatusLabel(status) })
+  ),
+]
+
+const cycleLabel = (cycle: IOrderCycle): string =>
+  `${cycle.label ?? 'Без подписи'} — ${formatDate(cycle.deadlineAt)}`
+
+interface IOrdersData {
+  page: IPage<IAdminOrder>
+  cycles: IOrderCycle[]
+}
+
+const AdminOrdersPage: React.FC<IAdminPageProps> = () => {
+  const { notify } = useToast()
+
+  const [cycleId, setCycleId] = useState(ALL)
+  const [status, setStatus] = useState(ALL)
+  const [page, setPage] = useState(1)
+  const [version, setVersion] = useState(0)
+  const [busyId, setBusyId] = useState<string | null>(null)
+  const [actionError, setActionError] = useState<string | null>(null)
+  const [isExporting, setIsExporting] = useState(false)
+
+  const load = useMemo(
+    () =>
+      async (): Promise<IOrdersData> => ({
+        page: await listAdminOrders({
+          cycleId: cycleId === ALL ? undefined : cycleId,
+          status: status === ALL ? undefined : (status as OrderStatus),
+          page,
+          pageSize: PAGE_SIZE,
+        }),
+        cycles: await listCycles(),
+      }),
+    [cycleId, status, page]
+  )
+
+  const { data, isLoading, error } = useAuthedRequest(
+    load,
+    'Не удалось загрузить заявки.',
+    version
+  )
+
+  const handleStatusChange = async (order: IAdminOrder, next: OrderStatus): Promise<void> => {
+    setBusyId(order.id)
+    setActionError(null)
+
+    try {
+      await updateOrderStatus(order.id, next)
+      notify({ tone: 'success', title: 'Статус изменён', description: orderStatusLabel(next) })
+      setVersion(current => current + 1)
+    } catch (cause: unknown) {
+      const message = isApiError(cause) ? cause.message : 'Не удалось изменить статус.'
+
+      setActionError(message)
+      notify({ tone: 'danger', title: 'Не получилось', description: message })
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  const handleExport = async (): Promise<void> => {
+    setIsExporting(true)
+    setActionError(null)
+
+    try {
+      const { blob, filename } = await downloadOrdersExport(cycleId === ALL ? undefined : cycleId)
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+
+      link.href = url
+      link.download = filename ?? 'orders.xlsx'
+      document.body.append(link)
+      link.click()
+      link.remove()
+      // Отзываем сразу: браузер уже забрал содержимое, а ссылка держала бы blob в памяти.
+      URL.revokeObjectURL(url)
+    } catch (cause: unknown) {
+      const message = isApiError(cause) ? cause.message : 'Не удалось выгрузить заявки.'
+
+      setActionError(message)
+      notify({ tone: 'danger', title: 'Выгрузка не выполнена', description: message })
+    } finally {
+      setIsExporting(false)
+    }
+  }
+
+  const cycleOptions: ISelectOption[] = [
+    { value: ALL, label: 'Все сборы' },
+    ...(data?.cycles ?? []).map(cycle => ({ value: cycle.id, label: cycleLabel(cycle) })),
+  ]
+
+  return (
+    <AdminShell
+      title="Заявки"
+      summary="Состав и цены — снимок на момент оформления, они не меняются вслед за каталогом."
+      actions={
+        <Button
+          variant="secondary"
+          iconStart={<IconDownload />}
+          isLoading={isExporting}
+          onClick={() => {
+            void handleExport()
+          }}
+        >
+          Выгрузить в Excel
+        </Button>
+      }
+    >
+      <div className={styles.filtersWide}>
+        <Select
+          label="Сбор"
+          value={cycleId}
+          options={cycleOptions}
+          onChange={next => {
+            setCycleId(next)
+            setPage(1)
+          }}
+        />
+
+        <Select
+          label="Статус"
+          value={status}
+          options={STATUS_OPTIONS}
+          onChange={next => {
+            setStatus(next)
+            setPage(1)
+          }}
+        />
+      </div>
+
+      {(error ?? actionError) !== null && (
+        <Alert tone="danger" title="Не получилось">
+          {error ?? actionError}
+        </Alert>
+      )}
+
+      <AdminOrdersTable
+        orders={data?.page.items ?? []}
+        isLoading={isLoading}
+        busyId={busyId}
+        buildProductHref={slug => `/catalog/${slug}`}
+        onStatusChange={(order, next) => {
+          void handleStatusChange(order, next)
+        }}
+        emptyState={
+          <EmptyState
+            title="Заявок нет"
+            description="С выбранными фильтрами ничего не нашлось. Попробуйте выбрать другой сбор или статус."
+          />
+        }
+      />
+
+      {data !== null && data.page.total > PAGE_SIZE && (
+        <Pagination
+          page={data.page.page}
+          pageSize={data.page.pageSize}
+          total={data.page.total}
+          onChange={setPage}
+        />
+      )}
+    </AdminShell>
+  )
+}
+
+export const getServerSideProps: GetServerSideProps<IAdminPageProps> = async context => {
+  const gate = await requireAdmin<IAdminPageProps>(context)
+
+  return gate.redirect ?? { props: { user: gate.user } }
+}
+
+export default AdminOrdersPage

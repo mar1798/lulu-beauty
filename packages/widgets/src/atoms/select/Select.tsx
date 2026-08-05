@@ -18,6 +18,7 @@ export const Select: FC<ISelectProps & IBasicStyling> = ({
   id,
   name,
   label,
+  ariaLabel,
   hint,
   error,
   placeholder,
@@ -51,6 +52,7 @@ export const Select: FC<ISelectProps & IBasicStyling> = ({
           value={value}
           disabled={disabled}
           required={required}
+          aria-label={label === undefined ? ariaLabel : undefined}
           aria-invalid={hasError}
           aria-describedby={describedBy}
           onChange={event => onChange(event.target.value)}

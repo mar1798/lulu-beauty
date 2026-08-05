@@ -1,6 +1,6 @@
 import { style } from '@vanilla-extract/css'
 import { border, color, font, rem, transition } from '../../styling/lib'
-import { fieldHint, flexRow, focusRing, visuallyHidden } from '../../styling/mixin'
+import { fieldHint, flexColumn, flexRow, focusRing, visuallyHidden } from '../../styling/mixin'
 import { vars } from '../../styling/themes/contract.css'
 
 export const container = style({
@@ -39,9 +39,12 @@ export const box = style({
   },
 })
 
-export const body = style({
-  display: 'block',
-})
+/**
+ * Колонка, а не `display: block`: подпись и подсказка — инлайновые `span`,
+ * и в блоке они склеивались в одну строку («Сделать главнойГлавная
+ * показывается…»). Заметно только когда `hint` действительно передан.
+ */
+export const body = style(flexColumn(2))
 
 export const label = style({
   font: font('16/24'),

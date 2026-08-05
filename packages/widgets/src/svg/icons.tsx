@@ -108,3 +108,63 @@ export const IconUser: FC<IBasicStyling> = ({ className }) => (
     <path d="M4.5 20a7.5 7.5 0 0 1 15 0" />
   </svg>
 )
+
+export const IconPlus: FC<IBasicStyling> = ({ className }) => (
+  <svg {...base} className={className}>
+    <path d="M12 5v14M5 12h14" />
+  </svg>
+)
+
+export const IconTrash: FC<IBasicStyling> = ({ className }) => (
+  <svg {...base} className={className}>
+    <path d="M4 7h16M10 4h4M6 7l1 12.5a1.5 1.5 0 0 0 1.5 1.5h7a1.5 1.5 0 0 0 1.5-1.5L18 7" />
+    <path d="M10.5 11v6M13.5 11v6" />
+  </svg>
+)
+
+export const IconPencil: FC<IBasicStyling> = ({ className }) => (
+  <svg {...base} className={className}>
+    <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4 11.5-11.5Z" />
+  </svg>
+)
+
+/** Восстановление мягко удалённого товара. */
+export const IconRestore: FC<IBasicStyling> = ({ className }) => (
+  <svg {...base} className={className}>
+    <path d="M4 12a8 8 0 1 0 2.4-5.7" />
+    <path d="M4 4v4h4" />
+  </svg>
+)
+
+export const IconDownload: FC<IBasicStyling> = ({ className }) => (
+  <svg {...base} className={className}>
+    <path d="M12 3v12M7.5 10.5 12 15l4.5-4.5" />
+    <path d="M4 20h16" />
+  </svg>
+)
+
+export const IconCalendar: FC<IBasicStyling> = ({ className }) => (
+  <svg {...base} className={className}>
+    <rect x="3.5" y="5" width="17" height="15.5" rx="2.5" />
+    <path d="M3.5 9.5h17M8 3v4M16 3v4" />
+  </svg>
+)
+
+export const IconStar: FC<IBasicStyling> = ({ className }) => (
+  <svg {...base} className={className}>
+    <path d="m12 3.5 2.6 5.4 5.9.8-4.3 4.1 1 5.9-5.2-2.8-5.2 2.8 1-5.9L3.5 9.7l5.9-.8L12 3.5Z" />
+  </svg>
+)
+
+export const IconTags: FC<IBasicStyling> = ({ className }) => (
+  <svg {...base} className={className}>
+    <path d="M3.5 11V4.5H10L20 14.5 13.5 21 3.5 11Z" />
+    <circle cx="7.25" cy="8.25" r="1.25" />
+  </svg>
+)
+
+export const IconChart: FC<IBasicStyling> = ({ className }) => (
+  <svg {...base} className={className}>
+    <path d="M4 20V10M10 20V4M16 20v-7M22 20H2" />
+  </svg>
+)
