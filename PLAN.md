@@ -149,7 +149,7 @@ STORAGE_DRIVER=local  UPLOAD_DIR=./uploads  PUBLIC_FILES_BASE_URL=http://localho
 3. ~~SQLAlchemy-модели всех сущностей (User/RefreshToken/OtpCode/Category/Product/ProductImage/Cart/CartItem/OrderCycle/Order/OrderItem) + первая содержательная Alembic-миграция~~ — готово.
 4. ~~Расширить `Settings`/`.env.example` (JWT/OTP/Telegram/Owner/Cycle/Storage), скрипт сида владельца~~ — готово.
 5. ~~Ядро Auth (register/login/refresh, argon2, JWT-зависимости, dependency для роли ADMIN) — сначала OTP в консоль/лог~~ — готово.
-6. ~~Telegram-бот (`/start` + привязка контакта), подключить OtpService + напоминания~~ — готово.
+6. ~~Telegram-бот (`/start` + привязка контакта), подключить OtpService + напоминания~~ — готово. Дальнейшее развитие бота (уведомления о заявках/циклах, команды, webhook, Login Widget, Mini App) — отдельный план в [`TELEGRAM_PLAN.md`](./TELEGRAM_PLAN.md).
 7. ~~Каталог (Category+Product CRUD, загрузка картинок через StorageService, публичное чтение)~~ — готово.
 8. ~~Импорт (xlsx/csv → upsert + summary)~~ — готово.
 9. ~~Циклы (CRUD календаря, get_active_cycle)~~ — готово.

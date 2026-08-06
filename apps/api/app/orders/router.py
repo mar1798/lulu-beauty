@@ -1,6 +1,6 @@
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import CurrentUser, get_current_user, require_admin
@@ -30,6 +30,7 @@ from app.orders.service import (
     OrdersService,
     ProductNotFoundError,
 )
+from app.telegram.notify import notify_new_order, notify_order_status
 
 router = APIRouter(tags=["orders"])
 
@@ -94,6 +95,7 @@ def _admin_order_response(order: Order, customer: User | None) -> AdminOrderResp
 )
 async def checkout(
     body: CheckoutRequest,
+    background_tasks: BackgroundTasks,
     session: AsyncSession = Depends(get_session),
     current_user: CurrentUser = Depends(get_current_user),
 ) -> OrderResponse:
@@ -107,6 +109,7 @@ async def checkout(
 
     response = await _one_order_response(service, order)
     await session.commit()
+    background_tasks.add_task(notify_new_order, order.id)
     return response
 
 
@@ -301,17 +304,20 @@ async def list_orders_admin(
 async def update_order_status(
     order_id: uuid.UUID,
     body: OrderStatusUpdateRequest,
+    background_tasks: BackgroundTasks,
     session: AsyncSession = Depends(get_session),
     _admin: CurrentUser = Depends(require_admin),
 ) -> AdminOrderResponse:
     service = OrdersService(session)
     try:
-        order = await service.update_status(order_id, body.status)
+        order, changed = await service.update_status(order_id, body.status)
     except OrderNotFoundError as error:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "order_not_found") from error
 
     customers = await service.load_customers([order])
     await session.commit()
+    if changed:
+        background_tasks.add_task(notify_order_status, order.id)
     return _admin_order_response(order, customers.get(order.user_id))
 
 

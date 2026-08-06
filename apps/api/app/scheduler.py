@@ -6,6 +6,7 @@ from app.auth.otp_service import OtpService
 from app.config import settings
 from app.cycles.scheduler_service import CycleSchedulerService
 from app.db import async_session
+from app.telegram.notify import notify_cycle_closed
 
 logger = logging.getLogger("app.scheduler")
 
@@ -22,10 +23,16 @@ async def _run_reminder_sweep() -> None:
 
 async def _run_deadline_sweep() -> None:
     async with async_session() as session:
-        closed = await CycleSchedulerService(session).sweep_deadlines()
+        closures = await CycleSchedulerService(session).sweep_deadlines()
         await session.commit()
-    if closed:
-        logger.info("Deadline sweep closed %d cycle(s)", closed)
+        # After the commit, not inside the sweep: a summary of a close that then rolled
+        # back would send the owner shopping against a cycle still collecting orders.
+        for closure in closures:
+            await notify_cycle_closed(
+                session, closure.cycle, closure.orders_count, closure.total_cents
+            )
+    if closures:
+        logger.info("Deadline sweep closed %d cycle(s)", len(closures))
 
 
 async def _run_otp_cleanup() -> None:

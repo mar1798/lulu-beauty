@@ -1,15 +1,29 @@
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.models import User
 from app.cart.models import Cart, CartItem
 from app.cycles.models import CycleStatus, OrderCycle
-from app.orders.models import Order
-from app.telegram.bot import notifications_service
+from app.orders.models import Order, OrderStatus
+from app.telegram.client import notifications_service
 
 REMINDER_WINDOW = timedelta(hours=24)
+
+
+@dataclass(frozen=True)
+class CycleClosure:
+    """A cycle that just closed, with the tally the owner needs to start buying.
+
+    Counted here, where the closing transaction is, but reported back rather than sent:
+    the summary must not go out before the commit that produced it (see telegram/notify).
+    """
+
+    cycle: OrderCycle
+    orders_count: int
+    total_cents: int
 
 
 class CycleSchedulerService:
@@ -60,7 +74,7 @@ class CycleSchedulerService:
             )
         return len(users)
 
-    async def sweep_deadlines(self) -> int:
+    async def sweep_deadlines(self) -> list[CycleClosure]:
         now = datetime.now(UTC)
         result = await self._session.execute(
             select(OrderCycle).where(
@@ -70,17 +84,16 @@ class CycleSchedulerService:
         )
         cycles = list(result.scalars().all())
 
-        for cycle in cycles:
-            await self._close_cycle(cycle, now)
+        closures = [await self._close_cycle(cycle, now) for cycle in cycles]
         # Always resync, not just when a cycle closed this tick: otherwise a cycle created
         # without any other cycle expiring at the same moment would show UPCOMING forever,
         # even though get_active_cycle() already treats it as the active one.
         await self._activate_next_upcoming(now)
 
         await self._session.flush()
-        return len(cycles)
+        return closures
 
-    async def _close_cycle(self, cycle: OrderCycle, now: datetime) -> None:
+    async def _close_cycle(self, cycle: OrderCycle, now: datetime) -> CycleClosure:
         checked_out_user_ids = select(Order.user_id).where(Order.cycle_id == cycle.id)
         result = await self._session.execute(
             select(Cart.id).where(
@@ -96,6 +109,20 @@ class CycleSchedulerService:
 
         cycle.status = CycleStatus.CLOSED
         cycle.closed_at = now
+        return await self._tally(cycle)
+
+    async def _tally(self, cycle: OrderCycle) -> CycleClosure:
+        """What the owner now has to buy. Cancelled orders are excluded — they're the one
+        thing on the list that isn't going to be purchased."""
+        row = (
+            await self._session.execute(
+                select(
+                    func.count(Order.id),
+                    func.coalesce(func.sum(Order.total_cents), 0),
+                ).where(Order.cycle_id == cycle.id, Order.status != OrderStatus.CANCELLED)
+            )
+        ).one()
+        return CycleClosure(cycle=cycle, orders_count=row[0], total_cents=row[1])
 
     async def _activate_next_upcoming(self, now: datetime) -> None:
         result = await self._session.execute(

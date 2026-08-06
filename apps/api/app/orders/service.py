@@ -346,7 +346,15 @@ class OrdersService:
         result = await self._session.execute(select(User).where(User.id.in_(user_ids)))
         return {user.id: user for user in result.scalars().all()}
 
-    async def update_status(self, order_id: uuid.UUID, new_status: OrderStatus) -> Order:
+    async def update_status(
+        self, order_id: uuid.UUID, new_status: OrderStatus
+    ) -> tuple[Order, bool]:
+        """Returns the order and whether the status actually moved.
+
+        The owner's UI lets them press the status they're already on, and re-sending
+        "готова к выдаче" to the customer every time they do would train them to ignore
+        the bot. Only the service can tell — the caller never sees the previous value.
+        """
         result = await self._session.execute(
             select(Order).options(selectinload(Order.items)).where(Order.id == order_id)
         )
@@ -354,6 +362,7 @@ class OrdersService:
         if order is None:
             raise OrderNotFoundError
 
+        changed = order.status != new_status
         order.status = new_status
         await self._session.flush()
-        return order
+        return order, changed

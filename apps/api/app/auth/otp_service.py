@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth.models import OtpCode, OtpPurpose, User
 from app.auth.security import generate_otp_code, hash_password, verify_password
 from app.config import settings
-from app.telegram.bot import notifications_service
+from app.telegram.client import notifications_service
 
 RESEND_INTERVAL_SECONDS = 30
 

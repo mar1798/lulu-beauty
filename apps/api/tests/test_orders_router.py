@@ -1,5 +1,6 @@
 import uuid
 from collections.abc import Iterator
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -9,7 +10,7 @@ from app.auth.dependencies import CurrentUser, require_admin
 from app.auth.models import Role
 from app.db import get_session
 from app.main import app
-from app.orders.models import OrderStatus
+from app.orders.models import Order, OrderStatus
 
 
 @pytest.fixture
@@ -72,3 +73,63 @@ async def test_list_orders_admin_returns_pagination_envelope(client: AsyncClient
             response = await c.get("/admin/orders")
 
     assert response.json() == {"items": [], "total": 0, "page": 1, "pageSize": 20}
+
+
+@pytest.fixture
+def committing_client() -> Iterator[AsyncClient]:
+    """Same as `client`, for the routes that commit — those need a session to commit on."""
+    app.dependency_overrides[get_session] = lambda: AsyncMock()
+    app.dependency_overrides[require_admin] = lambda: CurrentUser(id=uuid.uuid4(), role=Role.ADMIN)
+    try:
+        yield AsyncClient(transport=ASGITransport(app=app), base_url="http://test")
+    finally:
+        app.dependency_overrides.clear()
+
+
+def _order(status: OrderStatus) -> Order:
+    order = Order(
+        id=uuid.uuid4(),
+        user_id=uuid.uuid4(),
+        cycle_id=uuid.uuid4(),
+        status=status,
+        total_cents=1000,
+        note=None,
+    )
+    order.created_at = datetime.now(UTC)
+    order.items = []
+    return order
+
+
+async def _patch_status(
+    client: AsyncClient, order: Order, *, changed: bool
+) -> AsyncMock:
+    with (
+        patch("app.orders.router.OrdersService") as mock_service_cls,
+        patch("app.orders.router.notify_order_status", new_callable=AsyncMock) as notify,
+    ):
+        service = mock_service_cls.return_value
+        service.update_status = AsyncMock(return_value=(order, changed))
+        service.load_customers = AsyncMock(return_value={})
+        async with client as c:
+            response = await c.patch(
+                f"/admin/orders/{order.id}/status", json={"status": order.status.value}
+            )
+
+    assert response.status_code == 200
+    return notify
+
+
+async def test_status_update_notifies_the_customer(committing_client: AsyncClient) -> None:
+    notify = await _patch_status(committing_client, _order(OrderStatus.READY), changed=True)
+
+    notify.assert_awaited_once()
+
+
+async def test_status_update_stays_silent_when_the_status_did_not_move(
+    committing_client: AsyncClient,
+) -> None:
+    """The owner's UI lets them press the status the order is already on; re-announcing
+    "готова к выдаче" every time would train the customer to ignore the bot."""
+    notify = await _patch_status(committing_client, _order(OrderStatus.READY), changed=False)
+
+    notify.assert_not_awaited()

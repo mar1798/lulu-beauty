@@ -11,6 +11,10 @@ class Settings(BaseSettings):
 
     environment: Literal["development", "test", "production"] = "development"
     cors_origin: str = "http://localhost:3000"
+    # Where the bot's link buttons point. Same host as cors_origin in practice, but kept
+    # apart on purpose: one is a security boundary, the other is a public address, and
+    # the day the site sits behind a CDN they stop being the same string.
+    website_base_url: str = "http://localhost:3000"
 
     jwt_access_secret: str
     jwt_access_ttl_seconds: int = 900

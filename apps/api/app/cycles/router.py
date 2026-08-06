@@ -1,6 +1,6 @@
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import CurrentUser, require_admin
@@ -13,6 +13,7 @@ from app.cycles.service import (
     PastDeadlineError,
 )
 from app.db import get_session
+from app.telegram.notify import notify_cycle_opened
 
 router = APIRouter(tags=["cycles"])
 
@@ -50,6 +51,7 @@ async def list_cycles(
 )
 async def create_cycle(
     body: CycleCreateRequest,
+    background_tasks: BackgroundTasks,
     session: AsyncSession = Depends(get_session),
     _admin: CurrentUser = Depends(require_admin),
 ) -> OrderCycleResponse:
@@ -61,6 +63,10 @@ async def create_cycle(
         ) from error
 
     await session.commit()
+    # In the background, and with its own session: the announcement is a throttled
+    # fan-out over every linked customer, and the owner shouldn't sit through it to find
+    # out whether their cycle was created.
+    background_tasks.add_task(notify_cycle_opened, cycle.id)
     return _cycle_response(cycle)
 
 

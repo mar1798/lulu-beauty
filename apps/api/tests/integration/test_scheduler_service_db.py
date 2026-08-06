@@ -74,9 +74,9 @@ async def test_sweep_deadlines_closes_cycle_and_clears_abandoned_carts_only(
     cycle.deadline_at = datetime.now(UTC) - timedelta(seconds=1)
     await db_session.flush()
 
-    closed_count = await CycleSchedulerService(db_session).sweep_deadlines()
+    closures = await CycleSchedulerService(db_session).sweep_deadlines()
 
-    assert closed_count == 1
+    assert len(closures) == 1
     await db_session.refresh(cycle)
     assert cycle.status == CycleStatus.CLOSED
     assert cycle.closed_at is not None
@@ -87,6 +87,33 @@ async def test_sweep_deadlines_closes_cycle_and_clears_abandoned_carts_only(
     # The already-checked-out order is untouched.
     reloaded_order = await OrdersService(db_session).get_for_user(checked_out_user.id, order.id)
     assert len(reloaded_order.items) == 1
+
+
+async def test_sweep_deadlines_tallies_what_the_owner_has_to_buy(
+    db_session: AsyncSession,
+) -> None:
+    """The closing summary is the owner's shopping list — a cancelled order is the one
+    thing on it that isn't going to be bought."""
+    buyer = await make_user(db_session)
+    quitter = await make_user(db_session)
+    cycle = await make_cycle(db_session, deadline_at=datetime.now(UTC) + timedelta(seconds=1))
+    product = await make_product(db_session, price_cents=1000)
+
+    orders = OrdersService(db_session)
+    await CartService(db_session).add_item(buyer.id, product.id, 3)
+    await orders.checkout(buyer.id, note=None)
+    await CartService(db_session).add_item(quitter.id, product.id, 5)
+    cancelled = await orders.checkout(quitter.id, note=None)
+    await orders.cancel(quitter.id, cancelled.id)
+
+    cycle.deadline_at = datetime.now(UTC) - timedelta(seconds=1)
+    await db_session.flush()
+
+    closures = await CycleSchedulerService(db_session).sweep_deadlines()
+
+    assert len(closures) == 1
+    assert closures[0].orders_count == 1
+    assert closures[0].total_cents == 3000
 
 
 async def test_sweep_deadlines_activates_next_upcoming_cycle_every_tick(
