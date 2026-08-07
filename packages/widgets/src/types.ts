@@ -76,7 +76,7 @@ export interface IImageComponentProps {
 
 export type OrderStatus = 'PENDING' | 'CONFIRMED' | 'READY' | 'COMPLETED' | 'CANCELLED'
 export type CycleStatus = 'UPCOMING' | 'ACTIVE' | 'CLOSED'
-export type OtpPurpose = 'REGISTER' | 'LOGIN'
+export type OtpPurpose = 'REGISTER' | 'LOGIN' | 'RESET_PASSWORD'
 export type Role = 'CUSTOMER' | 'ADMIN'
 
 /** Конверт пагинации: `GET /products`, `GET /admin/products`, `GET /admin/orders`. */
@@ -260,7 +260,7 @@ export interface IIconButtonProps {
   icon: ReactNode
   /** Обязателен: иконка без подписи для скринридера пуста. */
   label: string
-  variant?: 'ghost' | 'solid' | 'danger'
+  variant?: 'ghost' | 'solid' | 'danger' | 'primary'
   size?: IControlSize
   type?: 'button' | 'submit' | 'reset'
   disabled?: boolean
@@ -398,6 +398,8 @@ export interface ISkeletonProps {
   width?: number | string
   height?: number | string
   shape?: 'text' | 'block' | 'circle'
+  /** `brand` — розовый пульс для витринных мест (сетка каталога). */
+  tone?: 'neutral' | 'brand'
 }
 
 export type IHeadingLevel = 1 | 2 | 3 | 4 | 5 | 6
@@ -703,6 +705,32 @@ export interface IRegisterFormProps {
 
 export interface IOtpVerifyFormProps {
   onSubmit: (code: string) => void
+  isSubmitting?: boolean
+  error?: string | null
+  /** Например, «Код отправлен на +996 555 12 34 56». */
+  hint?: string
+  /** Слот «запросить новый код» — способ повтора зависит от страницы. */
+  resendAction?: ReactNode
+}
+
+export interface IForgotPasswordValues {
+  /** E.164 — в этом виде его отдаёт `PhoneInput` и ждёт бэкенд. */
+  phone: string
+}
+
+export interface IForgotPasswordFormProps {
+  onSubmit: (values: IForgotPasswordValues) => void
+  isSubmitting?: boolean
+  error?: string | null
+}
+
+export interface IResetPasswordValues {
+  code: string
+  password: string
+}
+
+export interface IResetPasswordFormProps {
+  onSubmit: (values: IResetPasswordValues) => void
   isSubmitting?: boolean
   error?: string | null
   /** Например, «Код отправлен на +996 555 12 34 56». */

@@ -6,6 +6,7 @@ import { AppLink, Spinner, Text } from 'widgets/atoms'
 import { LoginForm } from 'widgets/organisms'
 import { AuthTemplate } from 'widgets/templates'
 import { SiteLayout } from '@/layouts/SiteLayout'
+import * as authFooterStyles from '@/styles/authFooter.css'
 import { useAuth } from '@/contexts/AuthContext'
 import { useRedirectIfAuthenticated } from '@/hooks/useRedirectIfAuthenticated'
 import { isApiError } from '@/services/apiErrors'
@@ -51,9 +52,14 @@ const LoginPage: React.FC = () => {
         title="Вход"
         subtitle="Введите телефон и пароль — код подтверждения придёт в Telegram."
         footer={
-          <Text size="sm" tone="secondary">
-            Ещё нет аккаунта? <AppLink href="/register">Зарегистрироваться</AppLink>
-          </Text>
+          <div className={authFooterStyles.stack}>
+            <Text size="sm" tone="secondary">
+              Ещё нет аккаунта? <AppLink href="/register">Зарегистрироваться</AppLink>
+            </Text>
+            <Text size="sm" tone="secondary">
+              <AppLink href="/forgot-password">Забыли пароль?</AppLink>
+            </Text>
+          </div>
         }
       >
         {isRedirecting ? (

@@ -18,6 +18,16 @@ class LoginRequest(CamelModel):
     password: str
 
 
+class ForgotPasswordRequest(CamelModel):
+    phone: str = Field(pattern=PHONE_PATTERN)
+
+
+class ResetPasswordRequest(CamelModel):
+    phone: str = Field(pattern=PHONE_PATTERN)
+    code: str = Field(pattern=OTP_CODE_PATTERN)
+    new_password: str = Field(min_length=8, max_length=255)
+
+
 class VerifyOtpRequest(CamelModel):
     phone: str = Field(pattern=PHONE_PATTERN)
     code: str = Field(pattern=OTP_CODE_PATTERN)

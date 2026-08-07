@@ -1,7 +1,7 @@
 import uuid
 from datetime import UTC, datetime
 
-from app.auth.models import User
+from app.auth.models import OtpPurpose, User
 from app.cart.schemas import CartItemResponse, CartResponse
 from app.cycles.models import OrderCycle
 from app.orders.models import Order, OrderItem, OrderStatus
@@ -39,6 +39,12 @@ def _order(
         for index in range(items)
     ]
     return order
+
+
+def test_otp_names_the_purpose_the_code_is_for() -> None:
+    assert "регистрации" in messages.otp("123456", OtpPurpose.REGISTER)
+    assert "входа" in messages.otp("123456", OtpPurpose.LOGIN)
+    assert "смены пароля" in messages.otp("123456", OtpPurpose.RESET_PASSWORD)
 
 
 def test_format_price_matches_the_sites_price_atom() -> None:

@@ -21,7 +21,7 @@ import * as styles from './ProductCard.css'
 export const primaryImage = (images: IProductImage[]): IProductImage | null =>
   images.find(image => image.isPrimary) ?? images[0] ?? null
 
-const DEFAULT_SIZES = { fb: '100vw', sm: '50vw', lg: '25vw' } as const
+const DEFAULT_SIZES = { fb: '50vw', sm: '50vw', lg: '25vw' } as const
 
 export const ProductCard: FC<IProductCardProps & IBasicStyling> = ({
   product,
@@ -56,13 +56,13 @@ export const ProductCard: FC<IProductCardProps & IBasicStyling> = ({
           )}
         </span>
 
-        <Text weight="medium" clamp={2}>
+        <Text size="sm" weight="medium" clamp={2}>
           {product.name}
         </Text>
       </AppLink>
 
       <div className={styles.footer}>
-        <Price priceCents={product.priceCents} />
+        <Price size="sm" priceCents={product.priceCents} />
         {action}
       </div>
     </article>

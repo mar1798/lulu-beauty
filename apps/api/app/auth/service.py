@@ -72,6 +72,24 @@ class AuthService:
 
         return await self._issue_tokens(user)
 
+    async def forgot_password(self, phone: str) -> None:
+        user = await self._get_user_by_phone(phone)
+        if user is None:
+            raise UserNotFoundError
+
+        await self._otp.send(user, OtpPurpose.RESET_PASSWORD)
+
+    async def reset_password(self, phone: str, code: str, new_password: str) -> TokenResponse:
+        user = await self._get_user_by_phone(phone)
+        if user is None:
+            raise UserNotFoundError
+
+        await self._otp.verify(user, code, OtpPurpose.RESET_PASSWORD)
+
+        user.password_hash = hash_password(new_password)
+
+        return await self._issue_tokens(user)
+
     async def refresh(self, refresh_token: str) -> TokenResponse:
         try:
             payload = token_service.decode_refresh_token(refresh_token)

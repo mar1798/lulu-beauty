@@ -53,4 +53,15 @@ export const variant = styleVariants({
       '&:hover:not([disabled])': { backgroundColor: color.danger('100') },
     },
   },
+  /** Единственная заливка акцентом — как у `Button` variant="primary". */
+  primary: {
+    backgroundColor: color.brand('600'),
+    color: color.text('inverse'),
+    boxShadow: vars.shadow.brand,
+    selectors: {
+      '&:hover:not([disabled])': { backgroundColor: color.brand('700') },
+      '&:active:not([disabled])': { backgroundColor: color.brand('800') },
+      '&[disabled]': { boxShadow: vars.shadow.none },
+    },
+  },
 })

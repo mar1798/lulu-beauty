@@ -6,6 +6,7 @@ import { vars } from '../../styling/themes/contract.css'
 export const container = style({
   ...flexColumn(12),
   height: '100%',
+  borderRadius: vars.radius.xl,
 })
 
 export const link = style([

@@ -4,11 +4,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth.models import OtpPurpose
 from app.auth.otp_service import OtpInvalidError, OtpResendTooSoonError
 from app.auth.schemas import (
+    ForgotPasswordRequest,
     LoginRequest,
     LogoutRequest,
     OtpSentResponse,
     RefreshRequest,
     RegisterRequest,
+    ResetPasswordRequest,
     TokenResponse,
     VerifyOtpRequest,
 )
@@ -56,6 +58,41 @@ async def login(
 
     await session.commit()
     return OtpSentResponse(message="otp_sent", purpose=OtpPurpose.LOGIN)
+
+
+@router.post("/forgot-password", response_model=OtpSentResponse)
+async def forgot_password(
+    body: ForgotPasswordRequest, session: AsyncSession = Depends(get_session)
+) -> OtpSentResponse:
+    service = AuthService(session)
+    try:
+        await service.forgot_password(body.phone)
+    except UserNotFoundError as error:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "user_not_found") from error
+    except OtpResendTooSoonError as error:
+        raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, "otp_resend_too_soon") from error
+
+    await session.commit()
+    return OtpSentResponse(message="otp_sent", purpose=OtpPurpose.RESET_PASSWORD)
+
+
+@router.post("/reset-password", response_model=TokenResponse)
+async def reset_password(
+    body: ResetPasswordRequest, session: AsyncSession = Depends(get_session)
+) -> TokenResponse:
+    service = AuthService(session)
+    try:
+        tokens = await service.reset_password(body.phone, body.code, body.new_password)
+    except UserNotFoundError as error:
+        await session.commit()
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "user_not_found") from error
+    except OtpInvalidError as error:
+        # Persist the attempts increment from the failed check even though we reject the request.
+        await session.commit()
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(error)) from error
+
+    await session.commit()
+    return tokens
 
 
 @router.post("/verify-otp", response_model=TokenResponse)

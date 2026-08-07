@@ -18,6 +18,7 @@ class Role(enum.StrEnum):
 class OtpPurpose(enum.StrEnum):
     REGISTER = "REGISTER"
     LOGIN = "LOGIN"
+    RESET_PASSWORD = "RESET_PASSWORD"
 
 
 class User(UUIDPrimaryKeyMixin, TimestampMixin, Base):

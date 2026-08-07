@@ -89,7 +89,12 @@ ORDER_STATUS_LABEL = {
 
 
 def otp(code: str, purpose: OtpPurpose) -> str:
-    action = "регистрации" if purpose is OtpPurpose.REGISTER else "входа"
+    if purpose is OtpPurpose.REGISTER:
+        action = "регистрации"
+    elif purpose is OtpPurpose.RESET_PASSWORD:
+        action = "смены пароля"
+    else:
+        action = "входа"
     return f"Код подтверждения {action} в Lulu Beauty: {code}"
 
 

@@ -10,13 +10,17 @@ const pulse = keyframes({
 
 export const container = style({
   display: 'block',
-  backgroundColor: color.neutral('200'),
   animation: `${pulse} 1.4s ease-in-out infinite`,
   ...media({
     preferReducedMotion: {
       animation: 'none',
     },
   }),
+})
+
+export const tone = styleVariants({
+  neutral: { backgroundColor: color.neutral('200') },
+  brand: { backgroundColor: color.brand('100') },
 })
 
 export const shape = styleVariants({

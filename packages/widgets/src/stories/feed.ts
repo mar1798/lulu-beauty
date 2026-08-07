@@ -37,6 +37,7 @@ import {
   IFileDropzoneProps,
   IFileInputProps,
   IFooterProps,
+  IForgotPasswordFormProps,
   IHeadingProps,
   IHomeHeroProps,
   IHomeTemplateProps,
@@ -74,6 +75,7 @@ import {
   IProductTemplateProps,
   IQuantityStepperProps,
   IRegisterFormProps,
+  IResetPasswordFormProps,
   ISearchFieldProps,
   ISectionHeadingProps,
   ISelectProps,
@@ -493,6 +495,15 @@ export const feedRegisterForm = (): IRegisterFormProps => ({
 })
 
 export const feedOtpVerifyForm = (): IOtpVerifyFormProps => ({
+  onSubmit: noop,
+  hint: 'Код отправлен на +996 555 12 34 56',
+})
+
+export const feedForgotPasswordForm = (): IForgotPasswordFormProps => ({
+  onSubmit: noop,
+})
+
+export const feedResetPasswordForm = (): IResetPasswordFormProps => ({
   onSubmit: noop,
   hint: 'Код отправлен на +996 555 12 34 56',
 })

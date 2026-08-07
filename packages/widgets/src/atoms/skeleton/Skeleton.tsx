@@ -14,10 +14,11 @@ export const Skeleton: FC<ISkeletonProps & IBasicStyling> = ({
   width = '100%',
   height,
   shape = 'text',
+  tone = 'neutral',
   className,
 }) => (
   <span
-    className={clsx(styles.container, styles.shape[shape], className)}
+    className={clsx(styles.container, styles.tone[tone], styles.shape[shape], className)}
     style={{ width, height }}
     aria-hidden={true}
   />

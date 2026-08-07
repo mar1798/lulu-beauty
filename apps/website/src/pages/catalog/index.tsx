@@ -1,6 +1,7 @@
-import React, { useCallback, useEffect, useState } from 'react'
+import React, { useCallback, useState } from 'react'
 import Head from 'next/head'
 import { useRouter } from 'next/router'
+import useSWR from 'swr'
 import type { GetStaticProps } from 'next'
 import type { ICategory, IPage, IProduct } from 'widgets/types'
 import { Alert, Button } from 'widgets/atoms'
@@ -22,20 +23,16 @@ import { listCategories, listProducts } from '@/services/endpoints/catalog'
  * компонента: он меняется на каждый символ и засорял бы историю браузера.
  *
  * `getStaticProps` не имеет доступа к query-параметрам, поэтому любой вид,
- * отличный от первой страницы без фильтров, догружается на клиенте.
+ * отличный от первой страницы без фильтров, догружается на клиенте — через
+ * `useSWR`: он кеширует уже увиденные страницы/категории по ключу, так что
+ * возврат к ним не мигает скелетоном, а первый показ дефолтного вида
+ * подхватывает статику через `fallbackData` вместо повторного запроса.
  */
 
 const PAGE_SIZE = 24
 
 /** Каталог меняется импортом xlsx, минута устаревания приемлема. */
 const REVALIDATE_SECONDS = 60
-
-interface IFetchedPage {
-  /** Ключ запроса, ответом на который является эта страница. */
-  key: string
-  page: IPage<IProduct> | null
-  error: string | null
-}
 
 interface ICatalogPageProps {
   categories: ICategory[]
@@ -65,6 +62,16 @@ const firstQueryValue = (value: string | string[] | undefined): string | null =>
   return value ?? null
 }
 
+type ICatalogKey = readonly [tag: 'catalog-products', category: string | null, q: string, page: number]
+
+const fetchCatalogPage = async ([, category, q, page]: ICatalogKey): Promise<IPage<IProduct>> =>
+  listProducts({
+    category: category ?? undefined,
+    q: q === '' ? undefined : q,
+    page,
+    pageSize: PAGE_SIZE,
+  })
+
 const CatalogPage: React.FC<ICatalogPageProps> = ({ categories, initial }) => {
   const router = useRouter()
   const categorySlug = firstQueryValue(router.query.category)
@@ -73,64 +80,27 @@ const CatalogPage: React.FC<ICatalogPageProps> = ({ categories, initial }) => {
   const [search, setSearch] = useState('')
   const debouncedSearch = useDebouncedValue(search)
 
-  /*
-    Вид по умолчанию уже отрисован статикой — второй запрос за тем же не нужен.
-    Исключение: `initial === null`, то есть на сборке API был недоступен. Тогда
-    статики нет вовсе, и её нужно догрузить в браузере, иначе до следующей
-    ревалидации посетитель видит пустой каталог вместо товаров.
-  */
-  const isDefaultView =
-    categorySlug === null && pageNumber === 1 && debouncedSearch === '' && initial !== null
+  const isDefaultParams = categorySlug === null && pageNumber === 1 && debouncedSearch === ''
 
-  /**
-   * Ключ запроса. Результат хранится вместе с ключом, а не отдельным флагом
-   * загрузки: так ответ на устаревший запрос не может перезаписать актуальный,
-   * а «идёт загрузка» — это просто «ответ на текущий ключ ещё не пришёл».
-   */
-  const [attempt, setAttempt] = useState(0)
-  const requestKey = `${categorySlug ?? ''}|${pageNumber}|${debouncedSearch}|${attempt}`
-  const [result, setResult] = useState<IFetchedPage | null>(null)
+  const {
+    data: page,
+    error: fetchError,
+    isLoading,
+    mutate,
+  } = useSWR<IPage<IProduct>>(['catalog-products', categorySlug, debouncedSearch, pageNumber], fetchCatalogPage, {
+    // Первая страница без фильтров уже пришла статикой — подставляем её, а не гоняем повторный запрос.
+    fallbackData: isDefaultParams && initial !== null ? initial : undefined,
+    revalidateOnFocus: false,
+  })
 
-  useEffect(() => {
-    // Вид по умолчанию уже отрисован статикой — второй запрос за тем же не нужен.
-    if (isDefaultView) {
-      return
-    }
+  const error =
+    fetchError === undefined
+      ? null
+      : isApiError(fetchError)
+        ? fetchError.message
+        : 'Не удалось загрузить каталог.'
 
-    let isActive = true
-
-    listProducts({
-      category: categorySlug ?? undefined,
-      q: debouncedSearch === '' ? undefined : debouncedSearch,
-      page: pageNumber,
-      pageSize: PAGE_SIZE,
-    })
-      .then(loaded => {
-        if (isActive) {
-          setResult({ key: requestKey, page: loaded, error: null })
-        }
-      })
-      .catch((cause: unknown) => {
-        if (isActive) {
-          setResult({
-            key: requestKey,
-            page: null,
-            error: isApiError(cause) ? cause.message : 'Не удалось загрузить каталог.',
-          })
-        }
-      })
-
-    return () => {
-      isActive = false
-    }
-  }, [requestKey, isDefaultView, categorySlug, pageNumber, debouncedSearch])
-
-  const isFresh = result !== null && result.key === requestKey
-  const page = isDefaultView ? initial : isFresh ? result.page : null
-  const error = isDefaultView || !isFresh ? null : result.error
-  const isLoading = !isDefaultView && !isFresh
-
-  /** Категория и страница — в адресе; `shallow`, потому что данные тянет эффект выше. */
+  /** Категория и страница — в адресе; `shallow`, потому что данные тянет `useSWR` выше. */
   const updateQuery = useCallback(
     (next: { category?: string | null; page?: number }) => {
       const query: Record<string, string> = {}
@@ -177,11 +147,7 @@ const CatalogPage: React.FC<ICatalogPageProps> = ({ categories, initial }) => {
 
       <CatalogTemplate
         title="Каталог"
-        summary={
-          isLoading || page === null
-            ? undefined
-            : `Найдено товаров: ${total}`
-        }
+        summary={isLoading || page === undefined ? undefined : `Найдено товаров: ${total}`}
         filter={
           categories.length === 0 ? undefined : (
             <CategoryFilter
@@ -207,7 +173,9 @@ const CatalogPage: React.FC<ICatalogPageProps> = ({ categories, initial }) => {
             isLoading={isLoading}
             buildHref={product => `/catalog/${product.slug}`}
             renderAction={product =>
-              product.inStock ? <AddToCartButton productId={product.id} /> : null
+              product.inStock ? (
+                <AddToCartButton productId={product.id} iconOnMobile={true} />
+              ) : null
             }
             emptyState={
               <EmptyState
@@ -220,13 +188,12 @@ const CatalogPage: React.FC<ICatalogPageProps> = ({ categories, initial }) => {
           <Alert
             tone="danger"
             title="Каталог не загрузился"
-            /* Повтор меняет ключ запроса — эффект выше уходит за товарами заново. */
             action={
               <Button
                 size="sm"
                 variant="secondary"
                 onClick={() => {
-                  setAttempt(current => current + 1)
+                  void mutate()
                 }}
               >
                 Повторить

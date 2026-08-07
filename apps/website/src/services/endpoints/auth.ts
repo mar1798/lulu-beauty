@@ -31,6 +31,16 @@ export interface IVerifyOtpInput {
   purpose: OtpPurpose
 }
 
+export interface IForgotPasswordInput {
+  phone: string
+}
+
+export interface IResetPasswordInput {
+  phone: string
+  code: string
+  newPassword: string
+}
+
 export const register = (input: IRegisterInput): Promise<IOtpSent> =>
   nextApi.post('/auth/register', { body: input })
 
@@ -40,6 +50,13 @@ export const login = (input: ILoginInput): Promise<IOtpSent> =>
 /** Успешная проверка кода сразу ставит cookie и возвращает готовый профиль. */
 export const verifyOtp = (input: IVerifyOtpInput): Promise<IAuthUser> =>
   nextApi.post('/auth/verify-otp', { body: input })
+
+export const forgotPassword = (input: IForgotPasswordInput): Promise<IOtpSent> =>
+  nextApi.post('/auth/forgot-password', { body: input })
+
+/** Как и `verifyOtp`, сразу ставит cookie и возвращает готовый профиль. */
+export const resetPassword = (input: IResetPasswordInput): Promise<IAuthUser> =>
+  nextApi.post('/auth/reset-password', { body: input })
 
 export const logout = (): Promise<void> => nextApi.post('/auth/logout')
 

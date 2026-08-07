@@ -46,7 +46,10 @@ const parse = (raw: string | null): IPendingOtp | null => {
 
     const { phone, purpose, next } = value as Partial<IPendingOtp>
 
-    if (typeof phone !== 'string' || (purpose !== 'LOGIN' && purpose !== 'REGISTER')) {
+    if (
+      typeof phone !== 'string' ||
+      (purpose !== 'LOGIN' && purpose !== 'REGISTER' && purpose !== 'RESET_PASSWORD')
+    ) {
       return null
     }
 

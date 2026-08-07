@@ -2,14 +2,18 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useS
 import type { IAuthUser, OtpPurpose } from 'widgets/types'
 import { isApiError } from '@/services/apiErrors'
 import {
+  forgotPassword as forgotPasswordRequest,
   getMe,
   login as loginRequest,
   logout as logoutRequest,
   register as registerRequest,
+  resetPassword as resetPasswordRequest,
   updateProfile as updateProfileRequest,
   verifyOtp as verifyOtpRequest,
+  type IForgotPasswordInput,
   type ILoginInput,
   type IRegisterInput,
+  type IResetPasswordInput,
   type IVerifyOtpInput,
 } from '@/services/endpoints/auth'
 
@@ -30,6 +34,8 @@ export interface IAuthContextValue {
   register: (input: IRegisterInput) => Promise<OtpPurpose>
   login: (input: ILoginInput) => Promise<OtpPurpose>
   verifyOtp: (input: IVerifyOtpInput) => Promise<IAuthUser>
+  forgotPassword: (input: IForgotPasswordInput) => Promise<OtpPurpose>
+  resetPassword: (input: IResetPasswordInput) => Promise<IAuthUser>
   updateProfile: (name: string) => Promise<IAuthUser>
   logout: () => Promise<void>
   reload: () => Promise<void>
@@ -109,6 +115,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return verified
   }, [])
 
+  const forgotPassword = useCallback(
+    async (input: IForgotPasswordInput): Promise<OtpPurpose> =>
+      (await forgotPasswordRequest(input)).purpose,
+    []
+  )
+
+  const resetPassword = useCallback(async (input: IResetPasswordInput): Promise<IAuthUser> => {
+    const verified = await resetPasswordRequest(input)
+
+    setUser(verified)
+
+    return verified
+  }, [])
+
   const updateProfile = useCallback(async (name: string): Promise<IAuthUser> => {
     const updated = await updateProfileRequest(name)
 
@@ -133,11 +153,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       register,
       login,
       verifyOtp,
+      forgotPassword,
+      resetPassword,
       updateProfile,
       logout,
       reload,
     }),
-    [user, isLoading, register, login, verifyOtp, updateProfile, logout, reload]
+    [
+      user,
+      isLoading,
+      register,
+      login,
+      verifyOtp,
+      forgotPassword,
+      resetPassword,
+      updateProfile,
+      logout,
+      reload,
+    ]
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

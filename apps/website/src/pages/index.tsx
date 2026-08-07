@@ -126,7 +126,9 @@ const HomePage: React.FC<IHomePageProps> = ({ cycle, featured }) => (
             products={featured}
             buildHref={product => `/catalog/${product.slug}`}
             renderAction={product =>
-              product.inStock ? <AddToCartButton productId={product.id} /> : null
+              product.inStock ? (
+                <AddToCartButton productId={product.id} iconOnMobile={true} />
+              ) : null
             }
           />
         </section>

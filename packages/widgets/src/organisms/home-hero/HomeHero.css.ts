@@ -38,7 +38,8 @@ export const eyebrow = style({
 })
 
 export const actions = style({
-  ...flexRow(12),
+  display: 'flex',
+  gap: rem(12),
   flexWrap: 'wrap',
   marginTop: vars.space.xs,
 })
