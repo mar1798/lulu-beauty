@@ -1,5 +1,6 @@
-import React, { useMemo, useState } from 'react'
+import React from 'react'
 import Head from 'next/head'
+import useSWR from 'swr'
 import type { IOrder } from 'widgets/types'
 import { Alert, Button } from 'widgets/atoms'
 import { EmptyState } from 'widgets/molecules'
@@ -8,8 +9,9 @@ import { AccountTemplate } from 'widgets/templates'
 import { SiteLayout } from '@/layouts/SiteLayout'
 import { ACCOUNT_NAVIGATION } from '@/layouts/accountNavigation'
 import { useAuth } from '@/contexts/AuthContext'
-import { useAuthedRequest } from '@/hooks/useAuthedRequest'
+import { isApiError } from '@/services/apiErrors'
 import { listMyOrders } from '@/services/endpoints/orders'
+import { ordersKey } from '@/services/swrKeys'
 
 /**
  * Мои заявки.
@@ -22,21 +24,20 @@ const OrdersPage: React.FC = () => {
   const { user, isLoading: isAuthLoading } = useAuth()
   const userId = user?.id ?? null
 
-  // Счётчик повторов: та же перезагрузка, что после мутации в админке.
-  const [attempt, setAttempt] = useState(0)
-
-  const load = useMemo(
-    () => (userId === null ? null : (): Promise<IOrder[]> => listMyOrders()),
-    [userId]
-  )
-
   // Ключ с идентификатором аккаунта — чужие заявки не залипнут при смене входа.
-  const { data: orders, isLoading, error } = useAuthedRequest(
-    `orders:${userId ?? ''}`,
-    load,
-    'Не удалось загрузить заявки.',
-    attempt
-  )
+  const {
+    data: orders,
+    isLoading,
+    error: fetchError,
+    mutate,
+  } = useSWR<IOrder[]>(userId === null ? null : ordersKey(userId), () => listMyOrders())
+
+  const error =
+    fetchError === undefined
+      ? null
+      : isApiError(fetchError)
+        ? fetchError.message
+        : 'Не удалось загрузить заявки.'
 
   const content = (): React.ReactNode => {
     // Пока сессия не проверена, «войдите» показывать нельзя: у залогиненного
@@ -61,7 +62,7 @@ const OrdersPage: React.FC = () => {
               size="sm"
               variant="secondary"
               onClick={() => {
-                setAttempt(current => current + 1)
+                void mutate()
               }}
             >
               Повторить

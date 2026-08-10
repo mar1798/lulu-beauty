@@ -1,6 +1,8 @@
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
+import React, { createContext, useCallback, useContext, useMemo, useState } from 'react'
+import useSWR from 'swr'
 import type { ICart } from 'widgets/types'
 import { isApiError } from '@/services/apiErrors'
+import { cartKey } from '@/services/swrKeys'
 import {
   addCartItem,
   emptyCart,
@@ -41,12 +43,6 @@ export interface ICartContextValue {
 
 const CartContext = createContext<ICartContextValue | null>(null)
 
-interface ILoadedCart {
-  /** Чья это корзина: ответ на запрос предыдущего пользователя не должен пережить смену аккаунта. */
-  userId: string
-  cart: ICart | null
-}
-
 const messageOf = (cause: unknown, fallback: string): string =>
   isApiError(cause) ? cause.message : fallback
 
@@ -54,39 +50,17 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const { user } = useAuth()
   const userId = user?.id ?? null
 
-  const [loaded, setLoaded] = useState<ILoadedCart | null>(null)
   const [isBusy, setIsBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const isFresh = loaded !== null && loaded.userId === userId
+  const {
+    data,
+    isLoading,
+    mutate: swrMutate,
+  } = useSWR<ICart>(userId === null ? null : cartKey(userId), getCart)
 
-  useEffect(() => {
-    if (userId === null) {
-      return
-    }
-
-    let isActive = true
-
-    getCart()
-      .then(result => {
-        if (isActive) {
-          setLoaded({ userId, cart: result })
-        }
-      })
-      .catch((cause: unknown) => {
-        if (isActive) {
-          setLoaded({ userId, cart: null })
-          setError(messageOf(cause, 'Не удалось загрузить корзину.'))
-        }
-      })
-
-    return () => {
-      isActive = false
-    }
-  }, [userId])
-
-  /** Общая обёртка изменений: блокировка, замена состояния ответом, разбор ошибки. */
-  const mutate = useCallback(
+  /** Общая обёртка изменений: блокировка, замена кеша ответом, разбор ошибки. */
+  const runMutation = useCallback(
     async (action: () => Promise<ICart>, fallback: string): Promise<void> => {
       if (userId === null) {
         return
@@ -96,53 +70,53 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setError(null)
 
       try {
-        setLoaded({ userId, cart: await action() })
+        await swrMutate(action(), { revalidate: false })
       } catch (cause: unknown) {
         setError(messageOf(cause, fallback))
       } finally {
         setIsBusy(false)
       }
     },
-    [userId]
+    [userId, swrMutate]
   )
 
   const addItem = useCallback(
     (productId: string, quantity = 1) =>
-      mutate(() => addCartItem(productId, quantity), 'Не удалось добавить товар.'),
-    [mutate]
+      runMutation(() => addCartItem(productId, quantity), 'Не удалось добавить товар.'),
+    [runMutation]
   )
 
   const updateItem = useCallback(
     (productId: string, quantity: number) =>
-      mutate(() => updateCartItem(productId, quantity), 'Не удалось изменить количество.'),
-    [mutate]
+      runMutation(() => updateCartItem(productId, quantity), 'Не удалось изменить количество.'),
+    [runMutation]
   )
 
   const removeItem = useCallback(
     (productId: string) =>
-      mutate(() => removeCartItem(productId), 'Не удалось убрать товар.'),
-    [mutate]
+      runMutation(() => removeCartItem(productId), 'Не удалось убрать товар.'),
+    [runMutation]
   )
 
   const empty = useCallback(
-    () => mutate(() => emptyCart(), 'Не удалось очистить корзину.'),
-    [mutate]
+    () => runMutation(() => emptyCart(), 'Не удалось очистить корзину.'),
+    [runMutation]
   )
 
   const reload = useCallback(
-    () => mutate(() => getCart(), 'Не удалось загрузить корзину.'),
-    [mutate]
+    () => runMutation(() => getCart(), 'Не удалось загрузить корзину.'),
+    [runMutation]
   )
 
   const clearError = useCallback(() => setError(null), [])
 
-  const cart = userId === null || !isFresh ? null : loaded.cart
+  const cart = userId === null ? null : (data ?? null)
 
   const value = useMemo<ICartContextValue>(
     () => ({
       cart,
       itemCount: cart?.items.reduce((sum, item) => sum + item.quantity, 0) ?? 0,
-      isLoading: userId !== null && !isFresh,
+      isLoading: userId !== null && isLoading,
       isBusy,
       error,
       addItem,
@@ -152,7 +126,7 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
       reload,
       clearError,
     }),
-    [cart, userId, isFresh, isBusy, error, addItem, updateItem, removeItem, empty, reload, clearError]
+    [cart, userId, isLoading, isBusy, error, addItem, updateItem, removeItem, empty, reload, clearError]
   )
 
   return <CartContext.Provider value={value}>{children}</CartContext.Provider>

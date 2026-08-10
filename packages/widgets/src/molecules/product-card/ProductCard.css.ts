@@ -3,47 +3,54 @@ import { color, transition } from '../../styling/lib'
 import { flexColumn, flexRow, focusVisibleRing } from '../../styling/mixin'
 import { vars } from '../../styling/themes/contract.css'
 
+/**
+ * Карточка — две части: фотография сверху (некрупная, без своей тени) и
+ * карточный блок снизу (тень + радиус), где живут тэги, название и цена.
+ * На наведении приподнимается весь блок — сигнал даёт `container`, а не
+ * отдельная ссылка внутри него.
+ */
 export const container = style({
-  ...flexColumn(12),
+  ...flexColumn(10),
+  position: 'relative',
   height: '100%',
-  borderRadius: vars.radius.xl,
 })
 
+/**
+ * Растянутая ссылка: `::after` перекрывает всю карточку (вплоть до фото),
+ * поэтому клик работает где угодно, а не только по тексту заголовка.
+ * У `footer` z-index выше — кнопка «в корзину» остаётся кликабельной поверх.
+ */
 export const link = style([
   {
-    ...flexColumn(10),
+    ...flexColumn(8),
     textDecoration: 'none',
     color: 'inherit',
+    selectors: {
+      // `container` (не `link`) — позиционированный предок, поэтому оверлей растягивается на всю карточку.
+      '&::after': {
+        content: '',
+        position: 'absolute',
+        inset: 0,
+      },
+    },
   },
   focusVisibleRing(),
 ])
 
-/**
- * Бокс под картинку: фиксированная пропорция держит сетку ровной, даже пока
- * изображение грузится, — иначе карточки прыгают по высоте.
- */
-/**
- * Товар «плавает» на холсте: рамки нет, отделяет мягкая двухслойная тень,
- * на наведении карточка приподнимается. Радиус — внутренний, карточный (20px).
- */
+/** Бокс под картинку: фиксированная пропорция держит сетку ровной, даже пока изображение грузится. */
 export const media = style({
   position: 'relative',
   display: 'block',
-  aspectRatio: '4 / 5',
+  aspectRatio: '1 / 1',
   overflow: 'hidden',
   backgroundColor: color.surface('base'),
-  borderRadius: vars.radius.xl,
-  boxShadow: vars.shadow.md,
-  transition: transition('box-shadow'),
-  selectors: {
-    [`${link}:hover &`]: { boxShadow: vars.shadow.lg },
-  },
+  borderRadius: vars.radius.lg,
 })
 
 export const image = style({
   transition: transition('transform'),
   selectors: {
-    [`${link}:hover &`]: { transform: 'scale(1.03)' },
+    [`${container}:hover &`]: { transform: 'scale(1.03)' },
   },
 })
 
@@ -66,9 +73,38 @@ export const stockBadge = style({
   boxShadow: vars.shadow.sm,
 })
 
+/** Карточный блок под фотографией: тень + радиус отделяют его от холста. */
+export const body = style({
+  ...flexColumn(10),
+  flexGrow: 1,
+  padding: vars.space.md,
+  borderRadius: vars.radius.xl,
+  backgroundColor: color.surface('base'),
+  boxShadow: vars.shadow.md,
+  transition: transition('box-shadow'),
+  selectors: {
+    [`${container}:hover &`]: { boxShadow: vars.shadow.lg },
+  },
+})
+
+export const tags = style({
+  ...flexRow(6),
+  flexWrap: 'wrap',
+})
+
 export const footer = style({
   ...flexRow(12),
   alignItems: 'center',
   justifyContent: 'space-between',
   marginTop: 'auto',
+})
+
+/**
+ * Слот действия (кнопка «в корзину») поднят над оверлеем растянутой ссылки —
+ * иначе клик по кнопке улетал бы как переход на страницу товара. Остальной
+ * футер (цена) намеренно остаётся под оверлеем: клик по ней тоже ведёт на товар.
+ */
+export const action = style({
+  position: 'relative',
+  zIndex: 1,
 })

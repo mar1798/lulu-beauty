@@ -56,6 +56,7 @@ export interface IProductInput {
   name: string
   slug: string
   description?: string | null
+  brand?: string | null
   priceCents: number
   categoryId?: string | null
   inStock?: boolean

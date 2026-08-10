@@ -1,5 +1,6 @@
 import React, { useState } from 'react'
 import type { GetServerSideProps } from 'next'
+import { mutate as globalMutate } from 'swr'
 import type { IImportSummary } from 'widgets/types'
 import { AdminImportPanel } from 'widgets/organisms'
 import { useToast } from 'widgets/contexts'
@@ -7,6 +8,7 @@ import { AdminShell } from '@/layouts/AdminShell'
 import { requireAdmin, type IAdminPageProps } from '@/server/adminGate'
 import { isApiError } from '@/services/apiErrors'
 import { importCatalog } from '@/services/endpoints/admin'
+import { categoriesKey, isAdminProductsKey } from '@/services/swrKeys'
 
 /**
  * Импорт каталога из xlsx/csv.
@@ -34,6 +36,9 @@ const AdminImportPage: React.FC<IAdminPageProps> = () => {
       const result = await importCatalog(file)
 
       setSummary(result)
+      // Импорт может завести категории и поменять любой товар разом — точечно не угадать.
+      void globalMutate(categoriesKey)
+      void globalMutate(isAdminProductsKey)
 
       /*
         Ошибка с номером строки `0` — это отказ по всему файлу (не UTF-8,

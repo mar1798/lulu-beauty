@@ -40,6 +40,7 @@ class ProductResponse(CamelModel):
     name: str
     slug: str
     description: str | None
+    brand: str | None
     price_cents: int
     category_id: uuid.UUID | None
     in_stock: bool
@@ -54,6 +55,7 @@ class ProductCreateRequest(CamelModel):
     name: str = Field(min_length=1, max_length=255)
     slug: str = Field(min_length=1, max_length=255, pattern=SLUG_PATTERN)
     description: str | None = None
+    brand: str | None = Field(default=None, max_length=255)
     price_cents: int = Field(ge=0)
     category_id: uuid.UUID | None = None
     in_stock: bool = True
@@ -63,6 +65,7 @@ class ProductUpdateRequest(CamelModel):
     name: str | None = Field(default=None, min_length=1, max_length=255)
     slug: str | None = Field(default=None, min_length=1, max_length=255, pattern=SLUG_PATTERN)
     description: str | None = None
+    brand: str | None = Field(default=None, max_length=255)
     price_cents: int | None = Field(default=None, ge=0)
     category_id: uuid.UUID | None = None
     in_stock: bool | None = None

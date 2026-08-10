@@ -1,15 +1,16 @@
-import React, { useMemo, useState } from 'react'
+import React, { useState } from 'react'
+import useSWR, { mutate as globalMutate } from 'swr'
 import type { GetServerSideProps } from 'next'
 import type { ICycleDraft, IOrderCycle } from 'widgets/types'
 import { AdminCycleCalendar } from 'widgets/organisms'
 import { useConfirm, useToast } from 'widgets/contexts'
 import { storeIso, storeToday } from 'widgets/utils'
 import { AdminShell } from '@/layouts/AdminShell'
-import { useAuthedRequest } from '@/hooks/useAuthedRequest'
 import { requireAdmin, type IAdminPageProps } from '@/server/adminGate'
 import { isApiError } from '@/services/apiErrors'
 import { createCycle, deleteCycle, listCycles, updateCycle } from '@/services/endpoints/admin'
 import { getActiveCycleOrNull } from '@/services/endpoints/cycles'
+import { activeCycleKey, cyclesKey } from '@/services/swrKeys'
 
 /**
  * Календарь дедлайнов.
@@ -32,35 +33,33 @@ interface ICyclesPageProps extends IAdminPageProps {
   initialMonth: string
 }
 
-interface ICyclesData {
-  cycles: IOrderCycle[]
-  activeId: string | null
-}
-
 const AdminCyclesPage: React.FC<ICyclesPageProps> = ({ today, initialMonth }) => {
   const { notify } = useToast()
   const { confirm } = useConfirm()
 
   const [month, setMonth] = useState(initialMonth)
-  const [version, setVersion] = useState(0)
   const [isBusy, setIsBusy] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
 
-  const load = useMemo(
-    () =>
-      async (): Promise<ICyclesData> => ({
-        cycles: await listCycles(),
-        activeId: (await getActiveCycleOrNull())?.id ?? null,
-      }),
-    []
+  const {
+    data: cycles,
+    isLoading: isCyclesLoading,
+    error: cyclesError,
+    mutate: mutateCycles,
+  } = useSWR<IOrderCycle[]>(cyclesKey, () => listCycles())
+
+  // Общий ключ с обзором (`/admin`): дедлайн, назначенный здесь, виден там без перезахода.
+  const { data: activeCycle, isLoading: isActiveLoading } = useSWR(activeCycleKey, () =>
+    getActiveCycleOrNull()
   )
 
-  const { data, isLoading, error } = useAuthedRequest(
-    'admin-cycles',
-    load,
-    'Не удалось загрузить сборы.',
-    version
-  )
+  const isLoading = isCyclesLoading || isActiveLoading
+  const error =
+    cyclesError === undefined
+      ? null
+      : isApiError(cyclesError)
+        ? cyclesError.message
+        : 'Не удалось загрузить сборы.'
 
   const run = async (action: () => Promise<unknown>, success: string): Promise<void> => {
     setIsBusy(true)
@@ -69,7 +68,8 @@ const AdminCyclesPage: React.FC<ICyclesPageProps> = ({ today, initialMonth }) =>
     try {
       await action()
       notify({ tone: 'success', title: success })
-      setVersion(current => current + 1)
+      await mutateCycles()
+      void globalMutate(activeCycleKey)
     } catch (cause: unknown) {
       const message = isApiError(cause) ? cause.message : 'Действие не выполнено.'
 
@@ -102,10 +102,10 @@ const AdminCyclesPage: React.FC<ICyclesPageProps> = ({ today, initialMonth }) =>
       summary="Дедлайн закрывает приём заявок: после него корзины покупателей очищаются, а открытым становится следующий сбор."
     >
       <AdminCycleCalendar
-        cycles={data?.cycles ?? []}
+        cycles={cycles ?? []}
         month={month}
         today={today}
-        activeCycleId={data?.activeId ?? null}
+        activeCycleId={activeCycle?.id ?? null}
         isLoading={isLoading}
         isBusy={isBusy}
         error={error ?? actionError}

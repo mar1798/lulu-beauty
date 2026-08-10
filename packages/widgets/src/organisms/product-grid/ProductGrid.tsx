@@ -19,6 +19,7 @@ const DEFAULT_SKELETON_COUNT = 8
 export const ProductGrid: FC<IProductGridProps & IBasicStyling> = ({
   products,
   buildHref,
+  categoryNames,
   isLoading = false,
   skeletonCount = DEFAULT_SKELETON_COUNT,
   emptyState,
@@ -57,6 +58,9 @@ export const ProductGrid: FC<IProductGridProps & IBasicStyling> = ({
             key={product.id}
             product={product}
             href={buildHref(product)}
+            categoryName={
+              product.categoryId === null ? null : categoryNames?.[product.categoryId]
+            }
             action={renderAction?.(product)}
           />
         ))}

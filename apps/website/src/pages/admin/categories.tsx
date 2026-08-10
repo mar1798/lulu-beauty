@@ -1,14 +1,15 @@
-import React, { useMemo, useState } from 'react'
+import React, { useState } from 'react'
+import useSWR from 'swr'
 import type { GetServerSideProps } from 'next'
 import type { IAdminCategoryValues, ICategory } from 'widgets/types'
 import { AdminCategoriesPanel } from 'widgets/organisms'
 import { useConfirm, useToast } from 'widgets/contexts'
 import { AdminShell } from '@/layouts/AdminShell'
-import { useAuthedRequest } from '@/hooks/useAuthedRequest'
 import { requireAdmin, type IAdminPageProps } from '@/server/adminGate'
 import { isApiError } from '@/services/apiErrors'
 import { createCategory, deleteCategory, updateCategory } from '@/services/endpoints/admin'
 import { listCategories } from '@/services/endpoints/catalog'
+import { categoriesKey } from '@/services/swrKeys'
 
 /**
  * Категории каталога.
@@ -21,18 +22,22 @@ const AdminCategoriesPage: React.FC<IAdminPageProps> = () => {
   const { notify } = useToast()
   const { confirm } = useConfirm()
 
-  const [version, setVersion] = useState(0)
   const [isBusy, setIsBusy] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
 
-  const load = useMemo(() => (): Promise<ICategory[]> => listCategories(), [])
+  const {
+    data,
+    isLoading,
+    error: fetchError,
+    mutate,
+  } = useSWR<ICategory[]>(categoriesKey, () => listCategories())
 
-  const { data, isLoading, error } = useAuthedRequest(
-    'admin-categories',
-    load,
-    'Не удалось загрузить категории.',
-    version
-  )
+  const error =
+    fetchError === undefined
+      ? null
+      : isApiError(fetchError)
+        ? fetchError.message
+        : 'Не удалось загрузить категории.'
 
   const run = async (action: () => Promise<unknown>, success: string): Promise<void> => {
     setIsBusy(true)
@@ -41,7 +46,7 @@ const AdminCategoriesPage: React.FC<IAdminPageProps> = () => {
     try {
       await action()
       notify({ tone: 'success', title: success })
-      setVersion(current => current + 1)
+      await mutate()
     } catch (cause: unknown) {
       const message = isApiError(cause) ? cause.message : 'Действие не выполнено.'
 

@@ -1,5 +1,5 @@
 import clsx from 'clsx'
-import { type FC, type FormEvent, useId, useState } from 'react'
+import { type ChangeEvent, type FC, type FormEvent, useEffect, useId, useMemo, useRef, useState } from 'react'
 import type {
   IAdminProductFormProps,
   IAdminProductValues,
@@ -7,7 +7,7 @@ import type {
   IProductImage,
   ISelectOption,
 } from '../../types'
-import { IconStar, IconTrash } from '../../svg/icons'
+import { IconStar, IconTrash, IconUpload } from '../../svg/icons'
 import { Alert } from '../../atoms/alert'
 import { AppImage } from '../../atoms/app-image'
 import { Badge } from '../../atoms/badge'
@@ -35,9 +35,14 @@ import * as styles from './AdminProductForm.css'
  * остаётся редактируемым: как только владелец правит его руками, автоподстановка
  * выключается — иначе она затирала бы правку на каждом нажатии в названии.
  *
- * Главную фотографию нельзя переназначить у уже загруженной: у бэкенда есть
- * только загрузка (`isPrimary` в форме) и удаление, ручки «сделать главной»
- * нет. Поэтому флажок стоит рядом с загрузкой, а не у каждой карточки.
+ * У бэкенда нет ручки «сделать главной» — только загрузка (`isPrimary` в
+ * форме) и удаление. Поэтому у уже загруженных фото флажок для новой не
+ * помогает: «Заменить» на главной карточке эмулирует переназначение —
+ * грузит новый файл с `isPrimary: true` и следом удаляет старый.
+ *
+ * При создании товара фото грузить некуда: у него нет id. Поэтому вместо
+ * галереи — один выбор файла, который улетает вместе с остальными полями
+ * по сабмиту (см. `IAdminProductValues.image`).
  */
 
 const IMAGE_MAX_BYTES = 5 * 1024 * 1024
@@ -68,6 +73,7 @@ export const AdminProductForm: FC<IAdminProductFormProps & IBasicStyling> = ({
   images,
   onImageUpload,
   onImageDelete,
+  onImageReplace,
   isImageBusy = false,
   imageError,
   footer,
@@ -77,6 +83,7 @@ export const AdminProductForm: FC<IAdminProductFormProps & IBasicStyling> = ({
   const [slug, setSlug] = useState(product?.slug ?? '')
   const [isSlugTouched, setIsSlugTouched] = useState(product !== undefined)
   const [description, setDescription] = useState(product?.description ?? '')
+  const [brand, setBrand] = useState(product?.brand ?? '')
   const [price, setPrice] = useState(product === undefined ? '' : priceToInput(product.priceCents))
   const [categoryId, setCategoryId] = useState(product?.categoryId ?? '')
   const [inStock, setInStock] = useState(product?.inStock ?? true)
@@ -85,6 +92,41 @@ export const AdminProductForm: FC<IAdminProductFormProps & IBasicStyling> = ({
   const [imageAlt, setImageAlt] = useState('')
   const [isNextPrimary, setIsNextPrimary] = useState(false)
   const mediaTitleId = useId()
+  const createMediaTitleId = useId()
+
+  // Фото при создании: грузить некуда, пока у товара нет id, поэтому файл
+  // копится локально и уезжает вместе с остальными полями по сабмиту.
+  const [pendingImage, setPendingImage] = useState<File | null>(null)
+  const [pendingImageAlt, setPendingImageAlt] = useState('')
+  const pendingImagePreview = useMemo(
+    () => (pendingImage === null ? null : URL.createObjectURL(pendingImage)),
+    [pendingImage]
+  )
+
+  useEffect(
+    () => () => {
+      if (pendingImagePreview !== null) {
+        URL.revokeObjectURL(pendingImagePreview)
+      }
+    },
+    [pendingImagePreview]
+  )
+
+  // Замена главного фото: скрытый инпут переиспользуется для любой карточки,
+  // на которую нажали «Заменить» — id хранится тут, пока не пришёл выбор файла.
+  const [replacingImage, setReplacingImage] = useState<IProductImage | null>(null)
+  const replaceInputRef = useRef<HTMLInputElement>(null)
+
+  const handleReplaceFileChange = (event: ChangeEvent<HTMLInputElement>): void => {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+
+    if (file !== undefined && replacingImage !== null && onImageReplace !== undefined) {
+      onImageReplace(replacingImage, file)
+    }
+
+    setReplacingImage(null)
+  }
 
   const priceCents = parsePrice(price)
 
@@ -113,9 +155,11 @@ export const AdminProductForm: FC<IAdminProductFormProps & IBasicStyling> = ({
       name: name.trim(),
       slug: slug.trim(),
       description: description.trim(),
+      brand: brand.trim(),
       priceCents,
       categoryId: categoryId === '' ? null : categoryId,
       inStock,
+      image: pendingImage === null ? null : { file: pendingImage, alt: pendingImageAlt.trim() },
     }
 
     onSubmit(values)
@@ -175,6 +219,13 @@ export const AdminProductForm: FC<IAdminProductFormProps & IBasicStyling> = ({
           />
         </div>
 
+        <Input
+          label="Производитель"
+          value={brand}
+          hint="Показывается тэгом в каталоге и на странице товара, например Round Lab."
+          onChange={setBrand}
+        />
+
         <Textarea
           label="Описание"
           value={description}
@@ -192,6 +243,58 @@ export const AdminProductForm: FC<IAdminProductFormProps & IBasicStyling> = ({
           {footer}
         </div>
       </form>
+
+      {product === undefined && (
+        <section className={styles.mediaPanel} aria-labelledby={createMediaTitleId}>
+          <Heading level={2} size="sm" id={createMediaTitleId}>
+            Фотография
+          </Heading>
+
+          {pendingImage === null ? (
+            <FileDropzone
+              label="Фото товара"
+              accept={IMAGE_TYPES.join(',')}
+              allowedTypes={IMAGE_TYPES}
+              maxBytes={IMAGE_MAX_BYTES}
+              hint="JPEG, PNG или WebP, до 5 МБ. Необязательно — можно добавить и позже."
+              buttonLabel="Выбрать фотографию"
+              onSelect={setPendingImage}
+            />
+          ) : (
+            <>
+              <div className={styles.thumb}>
+                {pendingImagePreview !== null && (
+                  <AppImage
+                    className={styles.thumbImage}
+                    image={{ src: pendingImagePreview, alt: pendingImageAlt || name }}
+                    sizes={IMAGE_SIZES}
+                    fill={true}
+                  />
+                )}
+
+                <IconButton
+                  className={styles.thumbDelete}
+                  icon={<IconTrash />}
+                  label="Убрать фотографию"
+                  size="sm"
+                  variant="danger"
+                  onClick={() => {
+                    setPendingImage(null)
+                    setPendingImageAlt('')
+                  }}
+                />
+              </div>
+
+              <Input
+                label="Описание фотографии (alt)"
+                value={pendingImageAlt}
+                hint="Что на снимке — необязательно."
+                onChange={setPendingImageAlt}
+              />
+            </>
+          )}
+        </section>
+      )}
 
       {images !== undefined && onImageUpload !== undefined && onImageDelete !== undefined && (
         <section className={styles.mediaPanel} aria-labelledby={mediaTitleId}>
@@ -220,6 +323,21 @@ export const AdminProductForm: FC<IAdminProductFormProps & IBasicStyling> = ({
                     </Badge>
                   )}
 
+                  {image.isPrimary && onImageReplace !== undefined && (
+                    <IconButton
+                      className={styles.thumbReplace}
+                      icon={<IconUpload />}
+                      label="Заменить главное фото"
+                      size="sm"
+                      variant="solid"
+                      disabled={isImageBusy}
+                      onClick={() => {
+                        setReplacingImage(image)
+                        replaceInputRef.current?.click()
+                      }}
+                    />
+                  )}
+
                   <IconButton
                     className={styles.thumbDelete}
                     icon={<IconTrash />}
@@ -234,6 +352,18 @@ export const AdminProductForm: FC<IAdminProductFormProps & IBasicStyling> = ({
                 </li>
               ))}
             </ul>
+          )}
+
+          {onImageReplace !== undefined && (
+            <input
+              ref={replaceInputRef}
+              className={styles.hiddenInput}
+              type="file"
+              accept={IMAGE_TYPES.join(',')}
+              aria-hidden="true"
+              tabIndex={-1}
+              onChange={handleReplaceFileChange}
+            />
           )}
 
           <Input

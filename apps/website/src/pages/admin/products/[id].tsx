@@ -1,19 +1,13 @@
-import React, { useMemo, useState } from 'react'
+import React, { useState } from 'react'
 import type { GetServerSideProps } from 'next'
 import { useRouter } from 'next/router'
-import type {
-  IAdminProductValues,
-  ICategory,
-  IProduct,
-  IProductImage,
-  IProductImageUpload,
-} from 'widgets/types'
+import useSWR, { mutate as globalMutate } from 'swr'
+import type { IAdminProductValues, IProductImage, IProductImageUpload } from 'widgets/types'
 import { Alert, Button, Skeleton } from 'widgets/atoms'
 import { EmptyState } from 'widgets/molecules'
 import { AdminProductForm } from 'widgets/organisms'
 import { useConfirm, useToast } from 'widgets/contexts'
 import { AdminShell } from '@/layouts/AdminShell'
-import { useAuthedRequest } from '@/hooks/useAuthedRequest'
 import { requireAdmin, type IAdminPageProps } from '@/server/adminGate'
 import { isApiError } from '@/services/apiErrors'
 import {
@@ -25,6 +19,7 @@ import {
   uploadProductImage,
 } from '@/services/endpoints/admin'
 import { listCategories } from '@/services/endpoints/catalog'
+import { adminProductKey, categoriesKey, isAdminProductsKey } from '@/services/swrKeys'
 
 /**
  * Карточка товара: поля и фотографии.
@@ -40,11 +35,6 @@ import { listCategories } from '@/services/endpoints/catalog'
 
 const NOT_FOUND = 404
 
-interface IProductData {
-  product: IProduct
-  categories: ICategory[]
-}
-
 const AdminProductPage: React.FC<IAdminPageProps> = () => {
   const router = useRouter()
   const { notify } = useToast()
@@ -52,31 +42,33 @@ const AdminProductPage: React.FC<IAdminPageProps> = () => {
 
   const productId = typeof router.query.id === 'string' ? router.query.id : null
 
-  const [version, setVersion] = useState(0)
+  // Ключ формы: после сохранения форма должна показать ответ бэкенда
+  // (нормализованный slug, обрезанное описание), а не то, что было набрано.
+  const [saveVersion, setSaveVersion] = useState(0)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
   const [isImageBusy, setIsImageBusy] = useState(false)
   const [imageError, setImageError] = useState<string | null>(null)
 
-  const load = useMemo(
-    () =>
-      productId === null
-        ? null
-        : async (): Promise<IProductData> => ({
-            product: await getAdminProduct(productId),
-            categories: await listCategories(),
-          }),
-    [productId]
+  const {
+    data: product,
+    isLoading,
+    error: fetchError,
+    mutate,
+  } = useSWR(productId === null ? null : adminProductKey(productId), () =>
+    getAdminProduct(productId as string)
   )
 
-  const { data, isLoading, error, status } = useAuthedRequest(
-    `admin-product:${productId ?? ''}`,
-    load,
-    'Не удалось загрузить товар.',
-    version
-  )
+  const error =
+    fetchError === undefined
+      ? null
+      : isApiError(fetchError)
+        ? fetchError.message
+        : 'Не удалось загрузить товар.'
+  const status = isApiError(fetchError) ? fetchError.status : null
 
-  const product = data?.product ?? null
+  // Общий ключ с «Категориями» (`/admin/categories`): правка там видна тут без перезагрузки.
+  const { data: categories } = useSWR(categoriesKey, () => listCategories())
 
   const handleSubmit = async (values: IAdminProductValues): Promise<void> => {
     if (productId === null) {
@@ -91,13 +83,15 @@ const AdminProductPage: React.FC<IAdminPageProps> = () => {
         name: values.name,
         slug: values.slug,
         description: values.description === '' ? null : values.description,
+        brand: values.brand === '' ? null : values.brand,
         priceCents: values.priceCents,
         categoryId: values.categoryId,
         inStock: values.inStock,
       })
 
       notify({ tone: 'success', title: 'Товар сохранён' })
-      setVersion(current => current + 1)
+      await mutate()
+      setSaveVersion(current => current + 1)
     } catch (cause: unknown) {
       setFormError(isApiError(cause) ? cause.message : 'Не удалось сохранить товар.')
     } finally {
@@ -112,7 +106,8 @@ const AdminProductPage: React.FC<IAdminPageProps> = () => {
     try {
       await action()
       notify({ tone: 'success', title: success })
-      setVersion(current => current + 1)
+      await mutate()
+      setSaveVersion(current => current + 1)
     } catch (cause: unknown) {
       setImageError(isApiError(cause) ? cause.message : 'Не удалось изменить фотографии.')
     } finally {
@@ -155,8 +150,23 @@ const AdminProductPage: React.FC<IAdminPageProps> = () => {
     }
   }
 
+  const handleImageReplace = (previous: IProductImage, file: File): void => {
+    if (productId === null) {
+      return
+    }
+
+    void runImageAction(async () => {
+      await uploadProductImage(productId, {
+        file,
+        alt: previous.alt ?? undefined,
+        isPrimary: true,
+      })
+      await deleteProductImage(productId, previous.id)
+    }, 'Главное фото заменено')
+  }
+
   const handleDelete = async (): Promise<void> => {
-    if (product === null) {
+    if (product === undefined) {
       return
     }
 
@@ -173,6 +183,8 @@ const AdminProductPage: React.FC<IAdminPageProps> = () => {
     try {
       await deleteProduct(product.id)
       notify({ tone: 'success', title: 'Товар удалён' })
+      // Список товаров ещё не смонтирован — инвалидируем все его варианты фильтров разом.
+      void globalMutate(isAdminProductsKey)
       await router.push('/admin/products')
     } catch (cause: unknown) {
       setFormError(isApiError(cause) ? cause.message : 'Не удалось удалить товар.')
@@ -180,14 +192,15 @@ const AdminProductPage: React.FC<IAdminPageProps> = () => {
   }
 
   const handleRestore = async (): Promise<void> => {
-    if (product === null) {
+    if (product === undefined) {
       return
     }
 
     try {
       await restoreProduct(product.id)
       notify({ tone: 'success', title: 'Товар восстановлен' })
-      setVersion(current => current + 1)
+      await mutate()
+      setSaveVersion(current => current + 1)
     } catch (cause: unknown) {
       setFormError(isApiError(cause) ? cause.message : 'Не удалось восстановить товар.')
     }
@@ -212,7 +225,7 @@ const AdminProductPage: React.FC<IAdminPageProps> = () => {
       )
     }
 
-    if (isLoading || product === null) {
+    if (isLoading || product === undefined) {
       return <Skeleton height={420} shape="block" />
     }
 
@@ -225,10 +238,8 @@ const AdminProductPage: React.FC<IAdminPageProps> = () => {
         )}
 
         <AdminProductForm
-          // Ключ по версии: после сохранения форма должна показать ответ бэкенда
-          // (нормализованный slug, обрезанное описание), а не то, что было набрано.
-          key={version}
-          categories={data?.categories ?? []}
+          key={saveVersion}
+          categories={categories ?? []}
           product={product}
           isSubmitting={isSubmitting}
           error={formError}
@@ -242,6 +253,7 @@ const AdminProductPage: React.FC<IAdminPageProps> = () => {
           onImageDelete={image => {
             void handleImageDelete(image)
           }}
+          onImageReplace={handleImageReplace}
           footer={
             product.deletedAt === null ? (
               <Button
@@ -271,7 +283,7 @@ const AdminProductPage: React.FC<IAdminPageProps> = () => {
   return (
     <AdminShell
       title={product?.name ?? 'Товар'}
-      summary={product === null ? undefined : `/catalog/${product.slug}`}
+      summary={product === undefined ? undefined : `/catalog/${product.slug}`}
       actions={
         <Button variant="secondary" link={{ href: '/admin/products' }}>
           К списку

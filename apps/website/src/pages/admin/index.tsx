@@ -1,14 +1,16 @@
-import React, { useMemo } from 'react'
+import React from 'react'
+import useSWR from 'swr'
 import type { GetServerSideProps } from 'next'
-import type { IOrderCycle, OrderStatus } from 'widgets/types'
+import type { OrderStatus } from 'widgets/types'
 import { Alert, Badge, Button, Skeleton, Text } from 'widgets/atoms'
 import { DeadlineCountdown, orderStatusLabel } from 'widgets/molecules'
 import { formatDateTime } from 'widgets/utils'
 import { AdminShell } from '@/layouts/AdminShell'
-import { useAuthedRequest } from '@/hooks/useAuthedRequest'
 import { requireAdmin, type IAdminPageProps } from '@/server/adminGate'
+import { isApiError } from '@/services/apiErrors'
 import { listAdminOrders } from '@/services/endpoints/admin'
 import { getActiveCycleOrNull } from '@/services/endpoints/cycles'
+import { activeCycleKey, adminOverviewKey } from '@/services/swrKeys'
 import * as styles from '@/styles/admin.css'
 
 /**
@@ -18,34 +20,46 @@ import * as styles from '@/styles/admin.css'
  * загруженных заявок: на второй странице список уже неполон, и «12 заявок»
  * превратилось бы в «20 на этой странице». Пять коротких запросов дешевле
  * выкачивания всех заявок ради счёта.
+ *
+ * Активный сбор — общий ключ с `/admin/cycles`: правка дедлайна там сразу
+ * видна здесь без захода на эту страницу заново.
  */
 
 const STATUSES: OrderStatus[] = ['PENDING', 'CONFIRMED', 'READY', 'COMPLETED', 'CANCELLED']
 
-interface IOverview {
-  cycle: IOrderCycle | null
-  counts: Record<OrderStatus, number>
-}
-
-const loadOverview = async (): Promise<IOverview> => {
-  const cycle = await getActiveCycleOrNull()
+const loadCounts = async (cycleId: string | undefined): Promise<Record<OrderStatus, number>> => {
   const totals = await Promise.all(
     STATUSES.map(status =>
-      listAdminOrders({ status, cycleId: cycle?.id, pageSize: 1 }).then(page => page.total)
+      listAdminOrders({ status, cycleId, pageSize: 1 }).then(page => page.total)
     )
   )
 
-  return {
-    cycle,
-    counts: Object.fromEntries(
-      STATUSES.map((status, index) => [status, totals[index]])
-    ) as Record<OrderStatus, number>,
-  }
+  return Object.fromEntries(STATUSES.map((status, index) => [status, totals[index]])) as Record<
+    OrderStatus,
+    number
+  >
 }
 
 const AdminOverviewPage: React.FC<IAdminPageProps> = ({ user }) => {
-  const load = useMemo(() => loadOverview, [])
-  const { data, isLoading, error } = useAuthedRequest('admin-overview', load, 'Не удалось загрузить сводку.')
+  const {
+    data: cycleData,
+    isLoading: isCycleLoading,
+    error: cycleError,
+  } = useSWR(activeCycleKey, () => getActiveCycleOrNull())
+  const cycle = cycleData ?? null
+
+  const { data: counts, isLoading: isCountsLoading } = useSWR(
+    isCycleLoading ? null : adminOverviewKey(cycle?.id ?? null),
+    () => loadCounts(cycle?.id)
+  )
+
+  const isLoading = isCycleLoading || isCountsLoading
+  const error =
+    cycleError === undefined
+      ? null
+      : isApiError(cycleError)
+        ? cycleError.message
+        : 'Не удалось загрузить сводку.'
 
   return (
     <AdminShell title="Обзор" summary={`Вы вошли как ${user.name}.`}>
@@ -58,9 +72,9 @@ const AdminOverviewPage: React.FC<IAdminPageProps> = ({ user }) => {
       <section className={styles.panel}>
         <Text weight="semibold">Текущий сбор</Text>
 
-        {isLoading ? (
+        {isCycleLoading ? (
           <Skeleton height={72} shape="block" />
-        ) : data?.cycle == null ? (
+        ) : cycle == null ? (
           <>
             <Text tone="secondary" size="sm">
               Открытого сбора нет: покупатели видят каталог, но оформить заявку не могут.
@@ -70,13 +84,13 @@ const AdminOverviewPage: React.FC<IAdminPageProps> = ({ user }) => {
         ) : (
           <>
             <div className={styles.cycleHead}>
-              <Text weight="medium">{data.cycle.label ?? 'Без подписи'}</Text>
+              <Text weight="medium">{cycle.label ?? 'Без подписи'}</Text>
               <Badge tone="brand" withDot={true}>
-                до {formatDateTime(data.cycle.deadlineAt)}
+                до {formatDateTime(cycle.deadlineAt)}
               </Badge>
             </div>
 
-            <DeadlineCountdown deadlineAt={data.cycle.deadlineAt} />
+            <DeadlineCountdown deadlineAt={cycle.deadlineAt} />
             <Button variant="secondary" link={{ href: '/admin/cycles' }}>
               Открыть календарь
             </Button>
@@ -86,16 +100,11 @@ const AdminOverviewPage: React.FC<IAdminPageProps> = ({ user }) => {
 
       <section className={styles.panel}>
         {/*
-          Пока данные не пришли, `data` — `null`, и «нет сбора» от «ещё не
-          знаем» неотличимо: без этой ветки заголовок успевал соврать
-          «Заявки за всё время» на каждой загрузке.
+          Пока сбор не пришёл, показывать «Заявки за всё время» рано —
+          заголовок соврал бы на каждой загрузке.
         */}
         <Text weight="semibold">
-          {isLoading
-            ? 'Заявки'
-            : data?.cycle == null
-              ? 'Заявки за всё время'
-              : 'Заявки текущего сбора'}
+          {isCycleLoading ? 'Заявки' : cycle == null ? 'Заявки за всё время' : 'Заявки текущего сбора'}
         </Text>
 
         {isLoading ? (
@@ -104,7 +113,7 @@ const AdminOverviewPage: React.FC<IAdminPageProps> = ({ user }) => {
           <div className={styles.counters}>
             {STATUSES.map(status => (
               <div key={status} className={styles.counter}>
-                <span className={styles.counterValue}>{data?.counts[status] ?? 0}</span>
+                <span className={styles.counterValue}>{counts?.[status] ?? 0}</span>
                 <span className={styles.counterLabel}>{orderStatusLabel(status)}</span>
               </div>
             ))}

@@ -86,3 +86,23 @@ export const thumbDelete = style({
   insetBlockEnd: vars.space.xxs,
   backgroundColor: color.surface('base'),
 })
+
+export const thumbReplace = style({
+  position: 'absolute',
+  insetInlineStart: vars.space.xxs,
+  insetBlockEnd: vars.space.xxs,
+  backgroundColor: color.surface('base'),
+})
+
+/** Настоящий инпут для замены фото скрыт: клик по нему запускает `IconButton`. */
+export const hiddenInput = style({
+  position: 'absolute',
+  width: 1,
+  height: 1,
+  padding: 0,
+  margin: -1,
+  overflow: 'hidden',
+  clip: 'rect(0, 0, 0, 0)',
+  whiteSpace: 'nowrap',
+  border: 0,
+})

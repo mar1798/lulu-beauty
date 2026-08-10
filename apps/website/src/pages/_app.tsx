@@ -5,6 +5,7 @@ import { Inter } from 'next/font/google'
 import localFont from 'next/font/local'
 import clsx from 'clsx'
 import React from 'react'
+import { SWRConfig } from 'swr'
 import { ConfirmProvider, ServicesContext, ToastProvider } from 'widgets/contexts'
 import { AuthProvider } from '@/contexts/AuthContext'
 import { CartProvider } from '@/contexts/CartContext'
@@ -53,26 +54,35 @@ const services = {
   components: { Link, Image },
 } as const
 
+/**
+ * `revalidateOnFocus: false` — на весь `useSWR` в приложении: каталог меняется
+ * импортом xlsx, а не в реальном времени, и повторный запрос при возврате
+ * фокуса окна только дёргал бы интерфейс без пользы.
+ */
+const swrConfig = { revalidateOnFocus: false } as const
+
 const App: React.FC<AppProps> = ({ Component, pageProps }) => {
   return (
-    <ServicesContext.Provider initialState={services}>
-      {/*
-        Тосты и подтверждения — над данными: подтверждение удаления нужно и
-        корзине, и админке, а уведомление об успехе переживает переход между
-        страницами внутри раздела.
-      */}
-      <ToastProvider>
-        <ConfirmProvider>
-          <AuthProvider>
-            <CartProvider>
-              <div className={clsx(shell, inter.variable, eloqua.variable, inter.className)}>
-                <Component {...pageProps} />
-              </div>
-            </CartProvider>
-          </AuthProvider>
-        </ConfirmProvider>
-      </ToastProvider>
-    </ServicesContext.Provider>
+    <SWRConfig value={swrConfig}>
+      <ServicesContext.Provider initialState={services}>
+        {/*
+          Тосты и подтверждения — над данными: подтверждение удаления нужно и
+          корзине, и админке, а уведомление об успехе переживает переход между
+          страницами внутри раздела.
+        */}
+        <ToastProvider>
+          <ConfirmProvider>
+            <AuthProvider>
+              <CartProvider>
+                <div className={clsx(shell, inter.variable, eloqua.variable, inter.className)}>
+                  <Component {...pageProps} />
+                </div>
+              </CartProvider>
+            </AuthProvider>
+          </ConfirmProvider>
+        </ToastProvider>
+      </ServicesContext.Provider>
+    </SWRConfig>
   )
 }
 

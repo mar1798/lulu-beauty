@@ -1,6 +1,8 @@
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
+import React, { createContext, useCallback, useContext, useMemo } from 'react'
+import useSWR from 'swr'
 import type { IAuthUser, OtpPurpose } from 'widgets/types'
 import { isApiError } from '@/services/apiErrors'
+import { meKey } from '@/services/swrKeys'
 import {
   forgotPassword as forgotPasswordRequest,
   getMe,
@@ -59,43 +61,12 @@ const loadUser = async (): Promise<IAuthUser | null> => {
 }
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<IAuthUser | null>(null)
-  const [isLoading, setIsLoading] = useState(true)
+  const { data, isLoading, mutate } = useSWR<IAuthUser | null>(meKey, loadUser)
+  const user = data ?? null
 
   const reload = useCallback(async (): Promise<void> => {
-    setIsLoading(true)
-
-    try {
-      setUser(await loadUser())
-    } finally {
-      setIsLoading(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    let active = true
-
-    loadUser()
-      .then(loaded => {
-        if (active) {
-          setUser(loaded)
-        }
-      })
-      .catch(() => {
-        if (active) {
-          setUser(null)
-        }
-      })
-      .finally(() => {
-        if (active) {
-          setIsLoading(false)
-        }
-      })
-
-    return () => {
-      active = false
-    }
-  }, [])
+    await mutate()
+  }, [mutate])
 
   const register = useCallback(
     async (input: IRegisterInput): Promise<OtpPurpose> => (await registerRequest(input)).purpose,
@@ -107,13 +78,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     []
   )
 
-  const verifyOtp = useCallback(async (input: IVerifyOtpInput): Promise<IAuthUser> => {
-    const verified = await verifyOtpRequest(input)
+  const verifyOtp = useCallback(
+    async (input: IVerifyOtpInput): Promise<IAuthUser> => {
+      const verified = await verifyOtpRequest(input)
 
-    setUser(verified)
+      await mutate(verified, { revalidate: false })
 
-    return verified
-  }, [])
+      return verified
+    },
+    [mutate]
+  )
 
   const forgotPassword = useCallback(
     async (input: IForgotPasswordInput): Promise<OtpPurpose> =>
@@ -121,29 +95,35 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     []
   )
 
-  const resetPassword = useCallback(async (input: IResetPasswordInput): Promise<IAuthUser> => {
-    const verified = await resetPasswordRequest(input)
+  const resetPassword = useCallback(
+    async (input: IResetPasswordInput): Promise<IAuthUser> => {
+      const verified = await resetPasswordRequest(input)
 
-    setUser(verified)
+      await mutate(verified, { revalidate: false })
 
-    return verified
-  }, [])
+      return verified
+    },
+    [mutate]
+  )
 
-  const updateProfile = useCallback(async (name: string): Promise<IAuthUser> => {
-    const updated = await updateProfileRequest(name)
+  const updateProfile = useCallback(
+    async (name: string): Promise<IAuthUser> => {
+      const updated = await updateProfileRequest(name)
 
-    setUser(updated)
+      await mutate(updated, { revalidate: false })
 
-    return updated
-  }, [])
+      return updated
+    },
+    [mutate]
+  )
 
   const logout = useCallback(async (): Promise<void> => {
     try {
       await logoutRequest()
     } finally {
-      setUser(null)
+      await mutate(null, { revalidate: false })
     }
-  }, [])
+  }, [mutate])
 
   const value = useMemo<IAuthContextValue>(
     () => ({

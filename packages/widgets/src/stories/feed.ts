@@ -394,6 +394,7 @@ export const feedProduct = (overrides: Partial<IProduct> = {}): IProduct => ({
   name: faker.commerce.productName(),
   slug: faker.lorem.slug(3),
   description: faker.commerce.productDescription(),
+  brand: faker.company.name(),
   priceCents: faker.number.int({ min: PRICE_MIN, max: PRICE_MAX }),
   categoryId: faker.string.uuid(),
   inStock: true,
@@ -405,7 +406,7 @@ export const feedProduct = (overrides: Partial<IProduct> = {}): IProduct => ({
 export const feedProductCard = (): IProductCardProps => {
   const product = feedProduct()
 
-  return { product, href: `/catalog/${product.slug}` }
+  return { product, href: `/catalog/${product.slug}`, categoryName: 'Уход за кожей' }
 }
 
 export const feedPagination = (): IPaginationProps => ({
@@ -453,15 +454,21 @@ export const feedBreadcrumbs = (): IBreadcrumbsProps => ({
   current: faker.commerce.productName(),
 })
 
-export const feedProductGrid = (): IProductGridProps => ({
-  products: [
-    feedProduct(),
-    feedProduct(),
-    feedProduct({ inStock: false }),
-    feedProduct({ images: [] }),
-  ],
-  buildHref: product => `/catalog/${product.slug}`,
-})
+export const feedProductGrid = (): IProductGridProps => {
+  const category = feedCategory('Уход за кожей')
+  const products = [
+    feedProduct({ categoryId: category.id }),
+    feedProduct({ categoryId: category.id }),
+    feedProduct({ categoryId: category.id, inStock: false }),
+    feedProduct({ categoryId: category.id, images: [] }),
+  ]
+
+  return {
+    products,
+    buildHref: product => `/catalog/${product.slug}`,
+    categoryNames: { [category.id]: category.name },
+  }
+}
 
 export const feedProductDetails = (): IProductDetailsProps => ({
   product: feedProduct(),

@@ -170,6 +170,7 @@ class CatalogImportService:
         price_cents = parse_price_cents(row.get("price"))
         in_stock = parse_in_stock(row.get("in_stock"))
         description = row.get("description", "").strip() or None
+        brand = row.get("brand", "").strip() or None
 
         category_id = None
         category_slug = row.get("category", "").strip()
@@ -183,6 +184,7 @@ class CatalogImportService:
             "name": name,
             "slug": slug,
             "description": description,
+            "brand": brand,
             "price_cents": price_cents,
             "in_stock": in_stock,
             "category_id": category_id,

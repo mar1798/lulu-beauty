@@ -1,7 +1,8 @@
-import React, { useMemo, useState } from 'react'
+import React, { useState } from 'react'
 import Head from 'next/head'
 import { useRouter } from 'next/router'
-import type { IOrder, IOrderCycle } from 'widgets/types'
+import useSWR, { mutate as globalMutate } from 'swr'
+import type { IOrder } from 'widgets/types'
 import { Alert, Button } from 'widgets/atoms'
 import { EmptyState } from 'widgets/molecules'
 import { OrderDetails, ProductPicker } from 'widgets/organisms'
@@ -10,7 +11,6 @@ import { AccountTemplate } from 'widgets/templates'
 import { SiteLayout } from '@/layouts/SiteLayout'
 import { ACCOUNT_NAVIGATION } from '@/layouts/accountNavigation'
 import { useAuth } from '@/contexts/AuthContext'
-import { useAuthedRequest } from '@/hooks/useAuthedRequest'
 import { useProductSearch } from '@/hooks/useProductSearch'
 import { isApiError } from '@/services/apiErrors'
 import { getActiveCycleOrNull } from '@/services/endpoints/cycles'
@@ -23,6 +23,7 @@ import {
   updateMyOrderItemQuantity,
   updateMyOrderNote,
 } from '@/services/endpoints/orders'
+import { activeCycleKey, ordersKey, orderKey } from '@/services/swrKeys'
 
 /**
  * Одна заявка покупателя.
@@ -34,8 +35,10 @@ import {
  * Правка состава — количество, удаление позиций, добавление товара и
  * комментарий — доступна, пока сбор открыт и владелец не подтвердил заявку;
  * решает это бэкенд и присылает в `isEditable`. После каждой правки заявка
- * перечитывается целиком (`version`), а не правится на месте: сумму и сам
+ * перечитывается целиком (`mutate()`), а не правится на месте: сумму и сам
  * `isEditable` считает сервер — дедлайн мог пройти между двумя нажатиями.
+ * Список заявок (`/orders`) ревалидируется тем же действием — той же
+ * заявке там не пришлось бы ждать отдельного захода на страницу.
  *
  * Товар добавляется прямо в заявку (`POST /orders/{id}/items`), а не через
  * корзину: корзина копится под следующую заявку и эту не изменила бы.
@@ -61,32 +64,33 @@ const OrderPage: React.FC = () => {
   const userId = user?.id ?? null
   const orderId = typeof router.query.id === 'string' ? router.query.id : null
 
-  const [version, setVersion] = useState(0)
   const [isBusy, setIsBusy] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
 
   const search = useProductSearch()
 
-  const loadOrder = useMemo(
-    () =>
-      userId === null || orderId === null ? null : (): Promise<IOrder> => getMyOrder(orderId),
-    [userId, orderId]
+  const {
+    data: order,
+    isLoading,
+    error: fetchError,
+    mutate,
+  } = useSWR<IOrder>(
+    userId === null || orderId === null ? null : orderKey(userId, orderId),
+    () => getMyOrder(orderId as string)
   )
 
-  const loadCycle = useMemo(
-    () => (userId === null ? null : (): Promise<IOrderCycle | null> => getActiveCycleOrNull()),
-    [userId]
-  )
-
-  const { data: order, isLoading, error, status } = useAuthedRequest(
-    `order:${userId ?? ''}:${orderId ?? ''}`,
-    loadOrder,
-    'Не удалось загрузить заявку.',
-    version
-  )
+  const error =
+    fetchError === undefined
+      ? null
+      : isApiError(fetchError)
+        ? fetchError.message
+        : 'Не удалось загрузить заявку.'
+  const status = isApiError(fetchError) ? fetchError.status : null
 
   // Сбор — справочная деталь: его ошибку молча игнорируем, заявка важнее.
-  const { data: cycle } = useAuthedRequest(`active-cycle:${userId ?? ''}`, loadCycle, '')
+  const { data: cycle = null } = useSWR(userId === null ? null : activeCycleKey, () =>
+    getActiveCycleOrNull()
+  )
 
   const runAction = async (action: () => Promise<unknown>, success: string): Promise<void> => {
     setIsBusy(true)
@@ -94,7 +98,12 @@ const OrderPage: React.FC = () => {
 
     try {
       await action()
-      setVersion(current => current + 1)
+      await mutate()
+
+      if (userId !== null) {
+        void globalMutate(ordersKey(userId))
+      }
+
       notify({ tone: 'success', title: success })
     } catch (cause: unknown) {
       /*
@@ -109,7 +118,7 @@ const OrderPage: React.FC = () => {
       setActionError(message)
       notify({ tone: 'danger', title: 'Не получилось', description: message })
       // Перечитываем: заявка на экране уже разошлась с тем, что на сервере.
-      setVersion(current => current + 1)
+      await mutate()
     } finally {
       setIsBusy(false)
     }
@@ -178,7 +187,7 @@ const OrderPage: React.FC = () => {
       )
     }
 
-    if (error !== null || order === null) {
+    if (error !== null || order === undefined) {
       return (
         <Alert
           tone="danger"
@@ -193,7 +202,7 @@ const OrderPage: React.FC = () => {
               size="sm"
               variant="secondary"
               onClick={() => {
-                setVersion(current => current + 1)
+                void mutate()
               }}
             >
               Повторить

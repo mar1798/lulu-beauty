@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react'
+import React, { useCallback, useMemo, useState } from 'react'
 import Head from 'next/head'
 import { useRouter } from 'next/router'
 import useSWR from 'swr'
@@ -90,7 +90,9 @@ const CatalogPage: React.FC<ICatalogPageProps> = ({ categories, initial }) => {
   } = useSWR<IPage<IProduct>>(['catalog-products', categorySlug, debouncedSearch, pageNumber], fetchCatalogPage, {
     // Первая страница без фильтров уже пришла статикой — подставляем её, а не гоняем повторный запрос.
     fallbackData: isDefaultParams && initial !== null ? initial : undefined,
-    revalidateOnFocus: false,
+    // Смена категории/страницы не должна перекрашивать сетку в скелетон:
+    // прошлая страница остаётся на экране, пока грузится следующая.
+    keepPreviousData: true,
   })
 
   const error =
@@ -134,6 +136,10 @@ const CatalogPage: React.FC<ICatalogPageProps> = ({ categories, initial }) => {
 
   const products = page?.items ?? []
   const total = page?.total ?? 0
+  const categoryNames = useMemo(
+    () => Object.fromEntries(categories.map(category => [category.id, category.name])),
+    [categories]
+  )
 
   return (
     <SiteLayout>
@@ -172,6 +178,7 @@ const CatalogPage: React.FC<ICatalogPageProps> = ({ categories, initial }) => {
             products={products}
             isLoading={isLoading}
             buildHref={product => `/catalog/${product.slug}`}
+            categoryNames={categoryNames}
             renderAction={product =>
               product.inStock ? (
                 <AddToCartButton productId={product.id} iconOnMobile={true} />

@@ -1,5 +1,6 @@
 import React, { useState } from 'react'
 import Head from 'next/head'
+import { mutate as globalMutate } from 'swr'
 import type { IOrder } from 'widgets/types'
 import { Alert, Button, Text } from 'widgets/atoms'
 import { EmptyState } from 'widgets/molecules'
@@ -13,12 +14,14 @@ import { useAuth } from '@/contexts/AuthContext'
 import { useCart } from '@/contexts/CartContext'
 import { isApiError } from '@/services/apiErrors'
 import { checkout } from '@/services/endpoints/orders'
+import { ordersKey } from '@/services/swrKeys'
 
 /**
  * Оформление заявки.
  *
  * После успеха бэкенд забирает позиции из корзины в заявку, поэтому корзина
- * перезагружается — иначе счётчик в шапке остался бы висеть.
+ * перезагружается — иначе счётчик в шапке остался бы висеть. Список заявок
+ * тоже ревалидируется, чтобы новая заявка была видна на `/orders` сразу.
  */
 const CheckoutPage: React.FC = () => {
   const { user, isLoading: isAuthLoading } = useAuth()
@@ -35,6 +38,10 @@ const CheckoutPage: React.FC = () => {
     try {
       setOrder(await checkout(note ?? undefined))
       await reload()
+
+      if (user !== null) {
+        void globalMutate(ordersKey(user.id))
+      }
     } catch (cause: unknown) {
       setError(isApiError(cause) ? cause.message : 'Не удалось отправить заявку.')
     } finally {

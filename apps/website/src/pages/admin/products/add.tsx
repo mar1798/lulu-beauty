@@ -1,35 +1,33 @@
-import React, { useMemo, useState } from 'react'
+import React, { useState } from 'react'
 import type { GetServerSideProps } from 'next'
-import { useRouter } from 'next/router'
-import type { IAdminProductValues, ICategory } from 'widgets/types'
+import useSWR, { mutate as globalMutate } from 'swr'
+import type { IAdminProductValues } from 'widgets/types'
 import { Alert, Button, Skeleton } from 'widgets/atoms'
 import { AdminProductForm } from 'widgets/organisms'
 import { useToast } from 'widgets/contexts'
 import { AdminShell } from '@/layouts/AdminShell'
-import { useAuthedRequest } from '@/hooks/useAuthedRequest'
 import { requireAdmin, type IAdminPageProps } from '@/server/adminGate'
 import { isApiError } from '@/services/apiErrors'
-import { createProduct } from '@/services/endpoints/admin'
+import { createProduct, uploadProductImage } from '@/services/endpoints/admin'
 import { listCategories } from '@/services/endpoints/catalog'
+import { categoriesKey, isAdminProductsKey } from '@/services/swrKeys'
 
 /**
  * Создание товара.
  *
- * Фотографии здесь не загружаются: их некуда прикрепить, пока у товара нет
- * id. После создания уводим на карточку товара — там блок фотографий уже есть.
+ * Никакого редиректа на карточку: страница — конвейер добавления, и после
+ * успеха форма просто сбрасывается в чистое состояние (через `key`), чтобы
+ * тут же можно было добавить следующий товар. Фото — необязательное поле
+ * формы; если оно выбрано, грузится вторым запросом сразу после создания
+ * товара (id появляется только в ответе на первый).
  */
 const AdminProductCreatePage: React.FC<IAdminPageProps> = () => {
-  const router = useRouter()
   const { notify } = useToast()
+  const [formVersion, setFormVersion] = useState(0)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const load = useMemo(() => (): Promise<ICategory[]> => listCategories(), [])
-  const { data: categories, isLoading } = useAuthedRequest(
-    'admin-categories',
-    load,
-    'Не удалось загрузить категории.'
-  )
+  const { data: categories, isLoading } = useSWR(categoriesKey, () => listCategories())
 
   const handleSubmit = async (values: IAdminProductValues): Promise<void> => {
     setIsSubmitting(true)
@@ -40,15 +38,35 @@ const AdminProductCreatePage: React.FC<IAdminPageProps> = () => {
         name: values.name,
         slug: values.slug,
         description: values.description === '' ? null : values.description,
+        brand: values.brand === '' ? null : values.brand,
         priceCents: values.priceCents,
         categoryId: values.categoryId,
         inStock: values.inStock,
       })
 
-      notify({ tone: 'success', title: 'Товар создан', description: 'Добавьте фотографии.' })
-      await router.replace(`/admin/products/${product.id}`)
+      if (values.image !== null) {
+        try {
+          await uploadProductImage(product.id, {
+            file: values.image.file,
+            alt: values.image.alt === '' ? undefined : values.image.alt,
+            isPrimary: true,
+          })
+        } catch {
+          notify({
+            tone: 'info',
+            title: 'Товар создан, но фото не загрузилось',
+            description: 'Добавьте его на карточке товара.',
+          })
+        }
+      }
+
+      notify({ tone: 'success', title: 'Товар создан', description: values.name })
+      // Список товаров ещё не смонтирован — инвалидируем все его варианты фильтров разом.
+      void globalMutate(isAdminProductsKey)
+      setFormVersion(current => current + 1)
     } catch (cause: unknown) {
       setError(isApiError(cause) ? cause.message : 'Не удалось создать товар.')
+    } finally {
       setIsSubmitting(false)
     }
   }
@@ -56,7 +74,7 @@ const AdminProductCreatePage: React.FC<IAdminPageProps> = () => {
   return (
     <AdminShell
       title="Новый товар"
-      summary="Фотографии добавляются после создания — им нужен уже сохранённый товар."
+      summary="После сохранения форма очищается — можно сразу добавить следующий товар."
       actions={
         <Button variant="secondary" link={{ href: '/admin/products' }}>
           К списку
@@ -67,13 +85,14 @@ const AdminProductCreatePage: React.FC<IAdminPageProps> = () => {
         <Skeleton height={320} shape="block" />
       ) : (
         <>
-          {categories === null && (
+          {categories === undefined && (
             <Alert tone="warning" title="Категории не загрузились">
               Товар можно создать и без категории — добавите её позже.
             </Alert>
           )}
 
           <AdminProductForm
+            key={formVersion}
             categories={categories ?? []}
             isSubmitting={isSubmitting}
             error={error}

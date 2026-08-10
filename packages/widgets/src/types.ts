@@ -107,6 +107,7 @@ export interface IProduct {
   name: string
   slug: string
   description: string | null
+  brand: string | null
   priceCents: number
   /** Публичный `GET /products?category=` фильтрует по **слагу**, а не по id — маппинг держит фронт. */
   categoryId: string | null
@@ -590,6 +591,8 @@ export interface IHomeTemplateProps {
 export interface IProductCardProps {
   product: IProduct
   href: string
+  /** Название категории: у товара приходит только `categoryId`. */
+  categoryName?: string | null
   sizes?: ISizes
   /** Слот под «в корзину»: внутрь ссылки-карточки кнопку класть нельзя. */
   action?: ReactNode
@@ -642,6 +645,8 @@ export interface IBreadcrumbsProps {
 export interface IProductGridProps {
   products: IProduct[]
   buildHref: (product: IProduct) => string
+  /** Название категории по её id: у товара приходит только `categoryId`. */
+  categoryNames?: Record<string, string>
   isLoading?: boolean
   skeletonCount?: number
   /** Что показать, когда ничего не нашлось. */
@@ -1058,13 +1063,22 @@ export interface IAdminProductsTableProps {
   emptyState?: ReactNode
 }
 
+/** Фото, выбранное при создании товара — грузится вместе с ним, отдельного id ещё нет. */
+export interface IAdminProductPendingImage {
+  file: File
+  alt: string
+}
+
 export interface IAdminProductValues {
   name: string
   slug: string
   description: string
+  brand: string
   priceCents: number
   categoryId: string | null
   inStock: boolean
+  /** `null` в режиме редактирования и когда при создании фото не выбрано. */
+  image: IAdminProductPendingImage | null
 }
 
 export interface IProductImageUpload {
@@ -1082,11 +1096,14 @@ export interface IAdminProductFormProps {
   error?: string | null
   /**
    * Картинки есть только у сохранённого товара: загружать их некуда, пока
-   * у него нет id. При создании блок не рендерится.
+   * у него нет id. При создании вместо галереи показывается один выбор фото
+   * (см. `IAdminProductValues.image`), который уходит вместе с сабмитом.
    */
   images?: IProductImage[]
   onImageUpload?: (upload: IProductImageUpload) => void
   onImageDelete?: (image: IProductImage) => void
+  /** Заменить главное фото одним действием: новая загрузка + удаление старого. */
+  onImageReplace?: (previous: IProductImage, file: File) => void
   isImageBusy?: boolean
   imageError?: string | null
   /** Слот под удаление/восстановление товара. */

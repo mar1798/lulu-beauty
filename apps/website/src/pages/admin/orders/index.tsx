@@ -1,6 +1,7 @@
-import React, { useMemo, useState } from 'react'
+import React, { useState } from 'react'
+import useSWR, { mutate as globalMutate } from 'swr'
 import type { GetServerSideProps } from 'next'
-import type { IAdminOrder, IOrderCycle, IPage, ISelectOption, OrderStatus } from 'widgets/types'
+import type { IAdminOrder, IOrderCycle, ISelectOption, OrderStatus } from 'widgets/types'
 import { Alert, Button, Select } from 'widgets/atoms'
 import { EmptyState, Pagination, orderStatusLabel } from 'widgets/molecules'
 import { AdminOrdersTable } from 'widgets/organisms'
@@ -8,7 +9,6 @@ import { useConfirm, useToast } from 'widgets/contexts'
 import { formatDate } from 'widgets/utils'
 import { IconDownload } from 'widgets/svg'
 import { AdminShell } from '@/layouts/AdminShell'
-import { useAuthedRequest } from '@/hooks/useAuthedRequest'
 import { requireAdmin, type IAdminPageProps } from '@/server/adminGate'
 import { isApiError } from '@/services/apiErrors'
 import {
@@ -18,6 +18,7 @@ import {
   updateOrderStatus,
 } from '@/services/endpoints/admin'
 import { downloadOrdersExport } from '@/services/endpoints/export'
+import { adminOrdersKey, cyclesKey, isAdminOverviewKey } from '@/services/swrKeys'
 import * as styles from '@/styles/admin.css'
 
 /**
@@ -42,11 +43,6 @@ const STATUS_OPTIONS: ISelectOption[] = [
 const cycleLabel = (cycle: IOrderCycle): string =>
   `${cycle.label ?? 'Без подписи'} — ${formatDate(cycle.deadlineAt)}`
 
-interface IOrdersData {
-  page: IPage<IAdminOrder>
-  cycles: IOrderCycle[]
-}
-
 const AdminOrdersPage: React.FC<IAdminPageProps> = () => {
   const { notify } = useToast()
   const { confirm } = useConfirm()
@@ -54,31 +50,37 @@ const AdminOrdersPage: React.FC<IAdminPageProps> = () => {
   const [cycleId, setCycleId] = useState(ALL)
   const [status, setStatus] = useState(ALL)
   const [page, setPage] = useState(1)
-  const [version, setVersion] = useState(0)
   const [busyId, setBusyId] = useState<string | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
   const [isExporting, setIsExporting] = useState(false)
 
-  const load = useMemo(
+  const {
+    data,
+    isLoading,
+    error: fetchError,
+    mutate,
+  } = useSWR(
+    adminOrdersKey(cycleId, status, page),
     () =>
-      async (): Promise<IOrdersData> => ({
-        page: await listAdminOrders({
-          cycleId: cycleId === ALL ? undefined : cycleId,
-          status: status === ALL ? undefined : (status as OrderStatus),
-          page,
-          pageSize: PAGE_SIZE,
-        }),
-        cycles: await listCycles(),
+      listAdminOrders({
+        cycleId: cycleId === ALL ? undefined : cycleId,
+        status: status === ALL ? undefined : (status as OrderStatus),
+        page,
+        pageSize: PAGE_SIZE,
       }),
-    [cycleId, status, page]
+    // Смена фильтра/страницы не должна сбрасывать таблицу в скелетон.
+    { keepPreviousData: true }
   )
 
-  const { data, isLoading, error } = useAuthedRequest(
-    `admin-orders:${cycleId}:${status}:${page}`,
-    load,
-    'Не удалось загрузить заявки.',
-    version
-  )
+  // Общий ключ со «Сборами» (`/admin/cycles`): список в фильтре не отстаёт от календаря.
+  const { data: cycles } = useSWR(cyclesKey, () => listCycles())
+
+  const error =
+    fetchError === undefined
+      ? null
+      : isApiError(fetchError)
+        ? fetchError.message
+        : 'Не удалось загрузить заявки.'
 
   const handleStatusChange = async (order: IAdminOrder, next: OrderStatus): Promise<void> => {
     setBusyId(order.id)
@@ -87,7 +89,8 @@ const AdminOrdersPage: React.FC<IAdminPageProps> = () => {
     try {
       await updateOrderStatus(order.id, next)
       notify({ tone: 'success', title: 'Статус изменён', description: orderStatusLabel(next) })
-      setVersion(current => current + 1)
+      await mutate()
+      void globalMutate(isAdminOverviewKey)
     } catch (cause: unknown) {
       const message = isApiError(cause) ? cause.message : 'Не удалось изменить статус.'
 
@@ -117,7 +120,8 @@ const AdminOrdersPage: React.FC<IAdminPageProps> = () => {
     try {
       await deleteOrder(order.id)
       notify({ tone: 'success', title: 'Заявка удалена' })
-      setVersion(current => current + 1)
+      await mutate()
+      void globalMutate(isAdminOverviewKey)
     } catch (cause: unknown) {
       const message = isApiError(cause) ? cause.message : 'Не удалось удалить заявку.'
 
@@ -156,7 +160,7 @@ const AdminOrdersPage: React.FC<IAdminPageProps> = () => {
 
   const cycleOptions: ISelectOption[] = [
     { value: ALL, label: 'Все сборы' },
-    ...(data?.cycles ?? []).map(cycle => ({ value: cycle.id, label: cycleLabel(cycle) })),
+    ...(cycles ?? []).map(cycle => ({ value: cycle.id, label: cycleLabel(cycle) })),
   ]
 
   return (
@@ -205,7 +209,7 @@ const AdminOrdersPage: React.FC<IAdminPageProps> = () => {
       )}
 
       <AdminOrdersTable
-        orders={data?.page.items ?? []}
+        orders={data?.items ?? []}
         isLoading={isLoading}
         busyId={busyId}
         buildProductHref={slug => `/catalog/${slug}`}
@@ -223,13 +227,8 @@ const AdminOrdersPage: React.FC<IAdminPageProps> = () => {
         }
       />
 
-      {data !== null && data.page.total > PAGE_SIZE && (
-        <Pagination
-          page={data.page.page}
-          pageSize={data.page.pageSize}
-          total={data.page.total}
-          onChange={setPage}
-        />
+      {data !== undefined && data.total > PAGE_SIZE && (
+        <Pagination page={data.page} pageSize={data.pageSize} total={data.total} onChange={setPage} />
       )}
     </AdminShell>
   )

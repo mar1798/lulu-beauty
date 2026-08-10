@@ -1,6 +1,7 @@
-import React, { useMemo, useState } from 'react'
+import React, { useState } from 'react'
+import useSWR from 'swr'
 import type { GetServerSideProps } from 'next'
-import type { ICategory, IPage, IProduct } from 'widgets/types'
+import type { IProduct } from 'widgets/types'
 import { Alert, Button, Switch } from 'widgets/atoms'
 import { CategoryFilter, EmptyState, Pagination, SearchField } from 'widgets/molecules'
 import { AdminProductsTable } from 'widgets/organisms'
@@ -8,11 +9,11 @@ import { useConfirm, useToast } from 'widgets/contexts'
 import { useDebouncedValue } from 'widgets/hooks'
 import { IconPlus } from 'widgets/svg'
 import { AdminShell } from '@/layouts/AdminShell'
-import { useAuthedRequest } from '@/hooks/useAuthedRequest'
 import { requireAdmin, type IAdminPageProps } from '@/server/adminGate'
 import { isApiError } from '@/services/apiErrors'
 import { deleteProduct, listAdminProducts, restoreProduct } from '@/services/endpoints/admin'
 import { listCategories } from '@/services/endpoints/catalog'
+import { adminProductsKey, categoriesKey } from '@/services/swrKeys'
 import * as styles from '@/styles/admin.css'
 
 /**
@@ -29,11 +30,6 @@ import * as styles from '@/styles/admin.css'
 
 const PAGE_SIZE = 20
 
-interface IProductsData {
-  page: IPage<IProduct>
-  categories: ICategory[]
-}
-
 const AdminProductsPage: React.FC<IAdminPageProps> = () => {
   const { notify } = useToast()
   const { confirm } = useConfirm()
@@ -42,38 +38,42 @@ const AdminProductsPage: React.FC<IAdminPageProps> = () => {
   const [categorySlug, setCategorySlug] = useState<string | null>(null)
   const [includeDeleted, setIncludeDeleted] = useState(false)
   const [page, setPage] = useState(1)
-  const [version, setVersion] = useState(0)
   const [busyId, setBusyId] = useState<string | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
 
   // Поиск меняется на каждый символ — в запрос он уходит с задержкой.
   const query = useDebouncedValue(search, 300)
 
-  const load = useMemo(
+  const {
+    data,
+    isLoading,
+    error: fetchError,
+    mutate,
+  } = useSWR(
+    adminProductsKey(query, categorySlug ?? '', includeDeleted, page),
     () =>
-      async (): Promise<IProductsData> => ({
-        page: await listAdminProducts({
-          q: query === '' ? undefined : query,
-          category: categorySlug ?? undefined,
-          includeDeleted,
-          page,
-          pageSize: PAGE_SIZE,
-        }),
-        categories: await listCategories(),
+      listAdminProducts({
+        q: query === '' ? undefined : query,
+        category: categorySlug ?? undefined,
+        includeDeleted,
+        page,
+        pageSize: PAGE_SIZE,
       }),
-    [query, categorySlug, includeDeleted, page]
+    // Смена фильтра/страницы не должна сбрасывать таблицу в скелетон.
+    { keepPreviousData: true }
   )
 
-  const { data, isLoading, error } = useAuthedRequest(
-    `admin-products:${query}:${categorySlug ?? ''}:${includeDeleted}:${page}`,
-    load,
-    'Не удалось загрузить товары.',
-    version
-  )
+  // Общий ключ с «Категориями» (`/admin/categories`): правка там видна тут без перезагрузки.
+  const { data: categories } = useSWR(categoriesKey, () => listCategories())
 
-  const categoryNames = Object.fromEntries(
-    (data?.categories ?? []).map(category => [category.id, category.name])
-  )
+  const error =
+    fetchError === undefined
+      ? null
+      : isApiError(fetchError)
+        ? fetchError.message
+        : 'Не удалось загрузить товары.'
+
+  const categoryNames = Object.fromEntries((categories ?? []).map(category => [category.id, category.name]))
 
   const runAction = async (
     product: IProduct,
@@ -86,7 +86,7 @@ const AdminProductsPage: React.FC<IAdminPageProps> = () => {
     try {
       await action()
       notify({ tone: 'success', title: success, description: product.name })
-      setVersion(current => current + 1)
+      await mutate()
     } catch (cause: unknown) {
       const message = isApiError(cause) ? cause.message : 'Действие не выполнено.'
 
@@ -114,7 +114,7 @@ const AdminProductsPage: React.FC<IAdminPageProps> = () => {
       title="Товары"
       summary="Каталог целиком: и то, что видят покупатели, и удалённое."
       actions={
-        <Button link={{ href: '/admin/products/new' }} iconStart={<IconPlus />}>
+        <Button link={{ href: '/admin/products/add' }} iconStart={<IconPlus />}>
           Добавить товар
         </Button>
       }
@@ -139,50 +139,57 @@ const AdminProductsPage: React.FC<IAdminPageProps> = () => {
         />
       </div>
 
-      <CategoryFilter
-        categories={data?.categories ?? []}
-        selectedSlug={categorySlug}
-        onSelect={next => {
-          setCategorySlug(next)
-          setPage(1)
-        }}
-      />
-
-      {(error ?? actionError) !== null && (
-        <Alert tone="danger" title="Не получилось">
-          {error ?? actionError}
-        </Alert>
-      )}
-
-      <AdminProductsTable
-        products={data?.page.items ?? []}
-        categoryNames={categoryNames}
-        buildEditHref={product => `/admin/products/${product.id}`}
-        isLoading={isLoading}
-        busyId={busyId}
-        onDelete={product => {
-          void handleDelete(product)
-        }}
-        onRestore={product => {
-          void runAction(product, () => restoreProduct(product.id), 'Товар восстановлен')
-        }}
-        emptyState={
-          <EmptyState
-            title="Товаров не нашлось"
-            description="Измените фильтры или добавьте первый товар — вручную либо импортом из xlsx."
-            action={<Button link={{ href: '/admin/products/new' }}>Добавить товар</Button>}
+      <div className={styles.productsLayout}>
+        <aside className={styles.categorySidebar}>
+          <span className={styles.categorySidebarTitle}>Категория</span>
+          <CategoryFilter
+            categories={categories ?? []}
+            selectedSlug={categorySlug}
+            onSelect={next => {
+              setCategorySlug(next)
+              setPage(1)
+            }}
           />
-        }
-      />
+        </aside>
 
-      {data !== null && data.page.total > PAGE_SIZE && (
-        <Pagination
-          page={data.page.page}
-          pageSize={data.page.pageSize}
-          total={data.page.total}
-          onChange={setPage}
-        />
-      )}
+        <div className={styles.productsMain}>
+          {(error ?? actionError) !== null && (
+            <Alert tone="danger" title="Не получилось">
+              {error ?? actionError}
+            </Alert>
+          )}
+
+          <AdminProductsTable
+            products={data?.items ?? []}
+            categoryNames={categoryNames}
+            buildEditHref={product => `/admin/products/${product.id}`}
+            isLoading={isLoading}
+            busyId={busyId}
+            onDelete={product => {
+              void handleDelete(product)
+            }}
+            onRestore={product => {
+              void runAction(product, () => restoreProduct(product.id), 'Товар восстановлен')
+            }}
+            emptyState={
+              <EmptyState
+                title="Товаров не нашлось"
+                description="Измените фильтры или добавьте первый товар — вручную либо импортом из xlsx."
+                action={<Button link={{ href: '/admin/products/add' }}>Добавить товар</Button>}
+              />
+            }
+          />
+
+          {data !== undefined && data.total > PAGE_SIZE && (
+            <Pagination
+              page={data.page}
+              pageSize={data.pageSize}
+              total={data.total}
+              onChange={setPage}
+            />
+          )}
+        </div>
+      </div>
     </AdminShell>
   )
 }

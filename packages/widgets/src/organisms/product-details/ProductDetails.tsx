@@ -26,10 +26,13 @@ export const ProductDetails: FC<IProductDetailsProps & IBasicStyling> = ({
     <ProductGallery images={product.images} productName={product.name} />
 
     <div className={styles.info}>
-      {categoryName !== undefined && categoryName !== null && (
-        <Text size="sm" tone="muted">
-          {categoryName}
-        </Text>
+      {(product.brand !== null || (categoryName !== undefined && categoryName !== null)) && (
+        <span className={styles.tags}>
+          {product.brand !== null && <Badge tone="neutral">{product.brand}</Badge>}
+          {categoryName !== undefined && categoryName !== null && (
+            <Badge tone="neutral">{categoryName}</Badge>
+          )}
+        </span>
       )}
 
       <Heading level={1} size="lg">

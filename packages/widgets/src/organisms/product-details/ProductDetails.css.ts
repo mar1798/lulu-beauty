@@ -24,6 +24,11 @@ export const container = style({
 
 export const info = style(flexColumn(16))
 
+export const tags = style({
+  ...flexRow(6),
+  flexWrap: 'wrap',
+})
+
 export const priceRow = style({
   ...flexRow(12),
   alignItems: 'center',
