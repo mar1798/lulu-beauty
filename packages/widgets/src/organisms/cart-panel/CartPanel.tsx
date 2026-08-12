@@ -32,6 +32,7 @@ export const CartPanel: FC<ICartPanelProps & IBasicStyling> = ({
   isLoading = false,
   skeletonRows = DEFAULT_SKELETON_ROWS,
   isBusy = false,
+  isItemBusy,
   error,
   emptyState,
   className,
@@ -84,7 +85,7 @@ export const CartPanel: FC<ICartPanelProps & IBasicStyling> = ({
             key={item.productId}
             item={item}
             href={buildProductHref(item.productSlug)}
-            isBusy={isBusy}
+            isBusy={isItemBusy === undefined ? isBusy : isItemBusy(item.productId)}
             onQuantityChange={quantity => onQuantityChange(item.productId, quantity)}
             onRemove={() => onRemove(item.productId)}
           />

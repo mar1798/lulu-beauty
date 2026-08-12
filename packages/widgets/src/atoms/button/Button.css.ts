@@ -6,6 +6,7 @@ import { vars } from '../../styling/themes/contract.css'
 export const container = style([
   {
     ...flexRow(8),
+    position: 'relative',
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: vars.radius.pill,
@@ -19,10 +20,39 @@ export const container = style([
         opacity: 0.55,
         cursor: 'not-allowed',
       },
+      /*
+        Занятая кнопка не гаснет: приглушение читается как «нажимать нельзя»,
+        а тут ответ уже едет — об этом говорит спиннер. Правило идёт после
+        `[disabled]` намеренно: специфичность та же, побеждает порядок.
+      */
+      '&[aria-busy="true"]': { opacity: 1, cursor: 'progress' },
     },
   },
   focusVisibleRing(),
 ])
+
+/**
+ * Содержимое и спиннер лежат друг на друге, поэтому ширина кнопки не зависит
+ * от того, идёт запрос или нет. `visibility` вместо размонтирования — текст
+ * продолжает держать ширину.
+ */
+export const content = style({
+  ...flexRow(8),
+  alignItems: 'center',
+  justifyContent: 'center',
+})
+
+export const contentHidden = style({
+  visibility: 'hidden',
+})
+
+export const loader = style({
+  position: 'absolute',
+  inset: 0,
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+})
 
 export const fullWidth = style({
   width: '100%',

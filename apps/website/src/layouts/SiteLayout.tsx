@@ -6,6 +6,7 @@ import { useDisclosure } from 'widgets/hooks'
 import { BaseLayout } from 'widgets/templates'
 import { useAuth } from '@/contexts/AuthContext'
 import { useCart } from '@/contexts/CartContext'
+import { usePrefetchRoutes } from '@/hooks/usePrefetchRoutes'
 
 /**
  * Каркас публичных страниц: шапка и подвал, настроенные данными сайта.
@@ -48,6 +49,16 @@ const accountColumn = (isAuthorized: boolean): IFooterColumn => ({
 const START_YEAR = 2026
 
 /**
+ * Куда уходят из шапки чаще всего — эти маршруты подгружаются заранее, на
+ * простое браузера (см. `usePrefetchRoutes`: сам Next 16 этого уже не делает).
+ *
+ * Оба списка — константы уровня модуля: хук сравнивает массив по ссылке.
+ * Гостю незачем греть корзину и заявки — он упрётся в редирект на вход.
+ */
+const GUEST_PREFETCH = ['/catalog', '/login'] as const
+const USER_PREFETCH = ['/catalog', '/orders', '/cart'] as const
+
+/**
  * Раздел верхнего уровня для подсветки активного пункта: у страницы товара
  * путь `/catalog/[slug]`, и точное сравнение с `/catalog` его бы не поймало.
  */
@@ -62,6 +73,8 @@ export const SiteLayout: React.FC<{ children: React.ReactNode }> = ({ children }
   const { user, isAdmin } = useAuth()
   const { itemCount } = useCart()
   const menu = useDisclosure()
+
+  usePrefetchRoutes(user === null ? GUEST_PREFETCH : USER_PREFETCH)
 
   const navigation = useMemo<ILinkedLabel[]>(
     () => (isAdmin ? [...NAVIGATION, ADMIN_LINK] : NAVIGATION),

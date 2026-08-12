@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useCallback, useState } from 'react'
 import { useRouter } from 'next/router'
 import type { IControlSize } from 'widgets/types'
 import { Button, IconButton } from 'widgets/atoms'
@@ -28,9 +28,42 @@ export const AddToCartButton: React.FC<{
   isCompact?: boolean
 }> = ({ productId, size = 'sm', isFullWidth = false, disabled = false, isCompact = false }) => {
   const router = useRouter()
-  const { user, isLoading: isAuthLoading } = useAuth()
-  const { cart, addItem, isBusy } = useCart()
+  const { user, isLoading: isAuthLoading, reload: reloadSession } = useAuth()
+  const { cart, addItem, isItemBusy } = useCart()
   const { notify } = useToast()
+
+  /** Клик обрабатывается — от ожидания сессии до ответа корзины. */
+  const [isSubmitting, setIsSubmitting] = useState(false)
+
+  const add = useCallback(async (): Promise<void> => {
+    setIsSubmitting(true)
+
+    try {
+      /*
+        Пока `/api/auth/me` не ответил, `user === null` ещё не значит «гость»,
+        и уводить на `/login` рано — дожидаемся ответа прямо в обработчике.
+        Раньше кнопка на это время выключалась, и вся сетка каталога успевала
+        мигнуть приглушёнными кнопками сразу после загрузки страницы.
+      */
+      const current = isAuthLoading ? await reloadSession() : user
+
+      if (current === null) {
+        void router.push({ pathname: '/login', query: { next: router.asPath } })
+
+        return
+      }
+
+      if (!(await addItem(productId))) {
+        notify({
+          tone: 'danger',
+          title: 'Не удалось добавить товар',
+          description: 'Попробуйте ещё раз или обновите страницу.',
+        })
+      }
+    } finally {
+      setIsSubmitting(false)
+    }
+  }, [user, isAuthLoading, reloadSession, router, addItem, productId, notify])
 
   const isInCart = cart?.items.some(item => item.productId === productId) === true
 
@@ -55,37 +88,16 @@ export const AddToCartButton: React.FC<{
     )
   }
 
-  const handleAdd = async (): Promise<void> => {
-    /*
-      Пока `/api/auth/me` не ответил, `user` — `null`, и это ещё не значит
-      «гость». Раньше клик в этот момент уводил вошедшего покупателя на
-      `/login` вместо добавления товара; теперь кнопка на это время выключена
-      (см. `isPending`), а сюда мы попасть уже не должны.
-    */
-    if (isAuthLoading) {
-      return
-    }
-
-    if (user === null) {
-      void router.push({ pathname: '/login', query: { next: router.asPath } })
-      return
-    }
-
-    if (!(await addItem(productId))) {
-      notify({
-        tone: 'danger',
-        title: 'Не удалось добавить товар',
-        description: 'Попробуйте ещё раз или обновите страницу.',
-      })
-    }
-  }
-
   const onClick = (): void => {
-    void handleAdd()
+    void add()
   }
 
-  /** Сессия ещё проверяется или корзина занята — жать бессмысленно. */
-  const isPending = isAuthLoading || isBusy
+  /**
+   * Занята ровно эта позиция. Общий флаг корзины сюда не годится: с ним
+   * добавление одного товара гасило бы кнопки у всех остальных карточек на
+   * экране — клик по одной карточке мигал бы всей сеткой.
+   */
+  const isPending = isSubmitting || isItemBusy(productId)
 
   if (isCompact) {
     return (
@@ -94,7 +106,8 @@ export const AddToCartButton: React.FC<{
         label="В корзину"
         variant="primary"
         size="md"
-        disabled={disabled || isPending}
+        disabled={disabled}
+        isLoading={isPending}
         onClick={onClick}
       />
     )
@@ -104,8 +117,8 @@ export const AddToCartButton: React.FC<{
     <Button
       size={size}
       isFullWidth={isFullWidth}
-      disabled={disabled || isAuthLoading}
-      isLoading={isBusy}
+      disabled={disabled}
+      isLoading={isPending}
       onClick={onClick}
     >
       В корзину

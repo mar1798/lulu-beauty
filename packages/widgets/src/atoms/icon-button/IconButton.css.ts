@@ -15,6 +15,8 @@ export const container = style([
     transition: transition('background-color', 'color', 'border-color', 'box-shadow'),
     selectors: {
       '&[disabled]': { opacity: 0.55, cursor: 'not-allowed' },
+      // Занятая кнопка не гаснет — см. тот же приём в `Button.css.ts`.
+      '&[aria-busy="true"]': { opacity: 1, cursor: 'progress' },
     },
   },
   focusVisibleRing(),

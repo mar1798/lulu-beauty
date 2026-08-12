@@ -265,6 +265,8 @@ export interface IIconButtonProps {
   size?: IControlSize
   type?: 'button' | 'submit' | 'reset'
   disabled?: boolean
+  /** Запрос в работе: иконка меняется на спиннер, кнопка блокируется. */
+  isLoading?: boolean
   onClick?: () => void
 }
 
@@ -790,7 +792,16 @@ export interface ICartPanelProps {
    */
   isLoading?: boolean
   skeletonRows?: number
+  /**
+   * Идёт хоть какой-то запрос по корзине: блокируется только переход к
+   * оформлению — состав под ним ещё меняется.
+   */
   isBusy?: boolean
+  /**
+   * Занята ли конкретная позиция. Без этого запрос по одной строке гасил бы
+   * контролы всех — на экране это читается как сбой, а не как ожидание.
+   */
+  isItemBusy?: (productId: string) => boolean
   error?: string | null
   /** Показывается и на пустой корзине, и когда корзины ещё нет. */
   emptyState?: ReactNode
@@ -888,6 +899,13 @@ export interface IOrderDetailsProps {
    */
   onRestore?: () => void
   isBusy?: boolean
+  /**
+   * Позиция, по которой идёт запрос. Пока он про одну строку, гасить контролы
+   * остальных не за что: на экране это читается как сбой всей карточки.
+   * `null` при `isBusy` — действие про заявку целиком (отмена, комментарий,
+   * добавление), и блокируется весь состав.
+   */
+  busyItemId?: string | null
   error?: string | null
 }
 

@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useCallback, useState } from 'react'
 import useSWR from 'swr'
 import type { GetServerSideProps } from 'next'
 import type { IProduct } from 'widgets/types'
@@ -6,9 +6,16 @@ import { Alert, Button, Switch } from 'widgets/atoms'
 import { CategoryFilter, EmptyState, Pagination, SearchField } from 'widgets/molecules'
 import { AdminProductsTable } from 'widgets/organisms'
 import { useConfirm, useToast } from 'widgets/contexts'
-import { useDebouncedValue } from 'widgets/hooks'
 import { IconPlus } from 'widgets/svg'
 import { AdminShell } from '@/layouts/AdminShell'
+import {
+  flagParam,
+  optionalTextParam,
+  pageParam,
+  textParam,
+  useQueryParams,
+  useQueryTextInput,
+} from '@/hooks/useQueryParams'
 import { requireAdmin, type IAdminPageProps } from '@/server/adminGate'
 import { isApiError } from '@/services/apiErrors'
 import { deleteProduct, listAdminProducts, restoreProduct } from '@/services/endpoints/admin'
@@ -18,6 +25,10 @@ import * as styles from '@/styles/admin.css'
 
 /**
  * Список товаров: поиск, фильтр по категории, показ удалённых, пагинация.
+ *
+ * Все параметры выборки — в адресной строке, поэтому конкретный вид списка
+ * можно переслать или положить в закладки, а «назад» возвращает к прошлому
+ * набору фильтров.
  *
  * Удаление мягкое, поэтому строка не исчезает, а помечается — и её можно
  * вернуть. Признак удаления берётся из `deletedAt`: в ответе больше ничем
@@ -30,23 +41,38 @@ import * as styles from '@/styles/admin.css'
 
 const PAGE_SIZE = 20
 
+const SEARCH_DELAY_MS = 300
+
 const AdminProductsPage: React.FC<IAdminPageProps> = () => {
   const { notify } = useToast()
   const { confirm } = useConfirm()
 
-  const [search, setSearch] = useState('')
-  const [categorySlug, setCategorySlug] = useState<string | null>(null)
-  const [includeDeleted, setIncludeDeleted] = useState(false)
-  const [page, setPage] = useState(1)
+  const [{ q: query, category: categorySlug, deleted: includeDeleted, page }, setParams] =
+    useQueryParams({
+      q: textParam,
+      category: optionalTextParam,
+      deleted: flagParam,
+      page: pageParam,
+    })
+
+  /*
+    Поиск заменяет запись в истории, а не добавляет новую: набранное оказывается
+    в адресе, но «назад» не приходится жать по разу на букву.
+  */
+  const commitSearch = useCallback(
+    (next: string) => {
+      setParams({ q: next, page: 1 }, { replace: true })
+    },
+    [setParams]
+  )
+
+  const [search, setSearch] = useQueryTextInput(query, commitSearch, SEARCH_DELAY_MS)
+
   const [busyId, setBusyId] = useState<string | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
 
-  // Поиск меняется на каждый символ — в запрос он уходит с задержкой.
-  const query = useDebouncedValue(search, 300)
-
   const {
     data,
-    isLoading,
     error: fetchError,
     mutate,
   } = useSWR(
@@ -62,6 +88,13 @@ const AdminProductsPage: React.FC<IAdminPageProps> = () => {
     // Смена фильтра/страницы не должна сбрасывать таблицу в скелетон.
     { keepPreviousData: true }
   )
+
+  /*
+    Скелетон — только пока показывать нечего. `isLoading` из SWR считается по
+    текущему ключу и на смене фильтра становится `true` даже с
+    `keepPreviousData`, из-за чего таблица мигала скелетоном на каждый клик.
+  */
+  const isFirstLoad = data === undefined
 
   // Общий ключ с «Категориями» (`/admin/categories`): правка там видна тут без перезагрузки.
   const { data: categories } = useSWR(categoriesKey, () => listCategories())
@@ -124,31 +157,18 @@ const AdminProductsPage: React.FC<IAdminPageProps> = () => {
           <CategoryFilter
             categories={categories ?? []}
             selectedSlug={categorySlug}
-            onSelect={next => {
-              setCategorySlug(next)
-              setPage(1)
-            }}
+            onSelect={next => setParams({ category: next, page: 1 })}
           />
         </>
       }
     >
       <div className={styles.filters}>
-        <SearchField
-          label="Поиск по названию"
-          value={search}
-          onChange={next => {
-            setSearch(next)
-            setPage(1)
-          }}
-        />
+        <SearchField label="Поиск по названию" value={search} onChange={setSearch} />
 
         <Switch
           label="Показывать удалённые"
           checked={includeDeleted}
-          onChange={next => {
-            setIncludeDeleted(next)
-            setPage(1)
-          }}
+          onChange={next => setParams({ deleted: next, page: 1 })}
         />
       </div>
 
@@ -162,7 +182,7 @@ const AdminProductsPage: React.FC<IAdminPageProps> = () => {
         products={data?.items ?? []}
         categoryNames={categoryNames}
         buildEditHref={product => `/admin/products/${product.id}`}
-        isLoading={isLoading}
+        isLoading={isFirstLoad}
         busyId={busyId}
         onDelete={product => {
           void handleDelete(product)
@@ -184,7 +204,7 @@ const AdminProductsPage: React.FC<IAdminPageProps> = () => {
           page={data.page}
           pageSize={data.pageSize}
           total={data.total}
-          onChange={setPage}
+          onChange={next => setParams({ page: next })}
         />
       )}
     </AdminShell>

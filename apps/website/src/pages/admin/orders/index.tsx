@@ -56,7 +56,6 @@ const AdminOrdersPage: React.FC<IAdminPageProps> = () => {
 
   const {
     data,
-    isLoading,
     error: fetchError,
     mutate,
   } = useSWR(
@@ -71,6 +70,13 @@ const AdminOrdersPage: React.FC<IAdminPageProps> = () => {
     // Смена фильтра/страницы не должна сбрасывать таблицу в скелетон.
     { keepPreviousData: true }
   )
+
+  /*
+    Скелетон — только пока показывать нечего. `isLoading` из SWR считается по
+    текущему ключу и на смене фильтра становится `true` даже с
+    `keepPreviousData`, из-за чего таблица мигала скелетоном на каждый клик.
+  */
+  const isFirstLoad = data === undefined
 
   // Общий ключ со «Сборами» (`/admin/cycles`): список в фильтре не отстаёт от календаря.
   const { data: cycles } = useSWR(cyclesKey, () => listCycles())
@@ -210,7 +216,7 @@ const AdminOrdersPage: React.FC<IAdminPageProps> = () => {
 
       <AdminOrdersTable
         orders={data?.items ?? []}
-        isLoading={isLoading}
+        isLoading={isFirstLoad}
         busyId={busyId}
         buildProductHref={slug => `/catalog/${slug}`}
         onStatusChange={(order, next) => {

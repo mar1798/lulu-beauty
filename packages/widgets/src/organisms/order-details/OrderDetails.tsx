@@ -51,6 +51,7 @@ export const OrderDetails: FC<IOrderDetailsProps & IBasicStyling> = ({
   onCancel,
   onRestore,
   isBusy = false,
+  busyItemId = null,
   error = null,
   className,
 }) => {
@@ -255,7 +256,7 @@ export const OrderDetails: FC<IOrderDetailsProps & IBasicStyling> = ({
             }
             // Последнюю позицию бэкенд убрать не даст — для этого есть отмена заявки.
             canRemove={order.items.length > 1}
-            isBusy={isBusy}
+            isBusy={isBusy && (busyItemId === null || busyItemId === item.id)}
           />
         ))}
       </div>

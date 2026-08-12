@@ -1,6 +1,17 @@
+const path = require('path')
 const { createVanillaExtractPlugin } = require('@vanilla-extract/next-plugin')
 const withPlugins = require('next-compose-plugins')
 const withVanillaExtract = createVanillaExtractPlugin()
+
+/**
+ * Корень монорепозитория.
+ *
+ * Next выводит его сам по расположению лок-файлов и промахивается: если выше по
+ * дереву найдётся ещё один `package-lock.json` (например, случайный в домашней
+ * директории), корнем станет он, и `output: 'standalone'` будет трассировать
+ * зависимости не от того места.
+ */
+const MONOREPO_ROOT = path.join(__dirname, '..', '..')
 
 /**
  * Отчёт по размеру бандла: `npm run analyze -w website` (то же самое, что
@@ -22,6 +33,7 @@ const withBundleAnalyzer = require('@next/bundle-analyzer')({
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   output: 'standalone',
+  outputFileTracingRoot: MONOREPO_ROOT,
   /**
    * Картинки товаров лежат на API (`PUBLIC_FILES_BASE_URL`), но браузеру и
    * `next/image` отдаются как **свои** — `/files/*`.

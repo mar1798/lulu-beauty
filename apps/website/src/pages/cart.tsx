@@ -20,7 +20,7 @@ import { useCart } from '@/contexts/CartContext'
 const CartPage: React.FC = () => {
   const router = useRouter()
   const { user, isLoading: isAuthLoading } = useAuth()
-  const { cart, isLoading, isBusy, error, updateItem, removeItem } = useCart()
+  const { cart, isLoading, isBusy, isItemBusy, error, updateItem, removeItem } = useCart()
 
   const content = (): React.ReactNode => {
     // Пока сессия не проверена, «войдите» показывать нельзя: у залогиненного
@@ -41,7 +41,9 @@ const CartPage: React.FC = () => {
         // Скелетон, а не спиннер: раскладка корзины известна заранее, и
         // подменять её кружком значит переложить страницу дважды.
         isLoading={isAuthLoading || isLoading}
+        // Оформление ждёт любой запрос по корзине, контролы строки — только свой.
         isBusy={isBusy}
+        isItemBusy={isItemBusy}
         error={error}
         buildProductHref={slug => `/catalog/${slug}`}
         onQuantityChange={(productId, quantity) => {

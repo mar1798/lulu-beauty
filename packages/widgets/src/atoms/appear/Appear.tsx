@@ -1,8 +1,6 @@
 import clsx from 'clsx'
-import { motion, useReducedMotion } from 'motion/react'
 import { type FC } from 'react'
 import type { IAppearProps, IBasicStyling } from '../../types'
-import { APPEAR_OFFSET, APPEAR_TRANSITION } from '../../utils/motion'
 import * as styles from './Appear.css'
 
 /**
@@ -12,33 +10,27 @@ import * as styles from './Appear.css'
  * прямоугольника, и глаз читает её как скачок. Короткое проявление превращает
  * скачок в смену состояния.
  *
- * Сдвиг задаётся строкой `transform`, а не отдельным `y`: обе величины идут
- * с одной настройкой, и Motion уводит такую анимацию в WAAPI, то есть с
- * основного потока. При `prefers-reduced-motion` остаётся одна прозрачность —
- * движение убирается, а смена состояния по-прежнему заметна.
+ * Анимация живёт в CSS (см. `Appear.css.ts`): она должна начинаться с первой
+ * отрисовки, а не после гидратации, иначе статические страницы приезжают с
+ * невидимым содержимым. При `prefers-reduced-motion` остаётся одна
+ * прозрачность — это тоже решает медиа-запрос, без JS.
  *
- * `appearKey` нужен там, где содержимое подменяется без размонтирования:
- * без него переход между страницами каталога прошёл бы молча.
+ * `appearKey` нужен там, где содержимое подменяется без размонтирования: смена
+ * ключа пересоздаёт узел, и анимация играет заново. Списку, который просто
+ * меняет состав (страница каталога, фильтр), ключ не нужен — повтор
+ * проявления на каждое переключение как раз и читается как мигание.
  */
 export const Appear: FC<IAppearProps & IBasicStyling> = ({
   children,
   appearKey,
   delay = 0,
   className,
-}) => {
-  const isReduced = useReducedMotion() ?? false
-
-  return (
-    <motion.div
-      key={appearKey}
-      className={clsx(styles.container, className)}
-      initial={
-        isReduced ? { opacity: 0 } : { opacity: 0, transform: `translateY(${APPEAR_OFFSET}px)` }
-      }
-      animate={isReduced ? { opacity: 1 } : { opacity: 1, transform: 'translateY(0px)' }}
-      transition={{ ...APPEAR_TRANSITION, delay }}
-    >
-      {children}
-    </motion.div>
-  )
-}
+}) => (
+  <div
+    key={appearKey}
+    className={clsx(styles.container, className)}
+    style={delay === 0 ? undefined : { animationDelay: `${delay}s` }}
+  >
+    {children}
+  </div>
+)

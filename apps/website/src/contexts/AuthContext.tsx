@@ -40,7 +40,8 @@ export interface IAuthContextValue {
   resetPassword: (input: IResetPasswordInput) => Promise<IAuthUser>
   updateProfile: (name: string) => Promise<IAuthUser>
   logout: () => Promise<void>
-  reload: () => Promise<void>
+  /** Перечитывает сессию и отдаёт её результат — ждать лишнего рендера не нужно. */
+  reload: () => Promise<IAuthUser | null>
 }
 
 const AuthContext = createContext<IAuthContextValue | null>(null)
@@ -64,9 +65,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const { data, isLoading, mutate } = useSWR<IAuthUser | null>(meKey, loadUser)
   const user = data ?? null
 
-  const reload = useCallback(async (): Promise<void> => {
-    await mutate()
-  }, [mutate])
+  const reload = useCallback(async (): Promise<IAuthUser | null> => (await mutate()) ?? null, [
+    mutate,
+  ])
 
   const register = useCallback(
     async (input: IRegisterInput): Promise<OtpPurpose> => (await registerRequest(input)).purpose,

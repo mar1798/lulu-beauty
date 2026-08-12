@@ -13,6 +13,10 @@ import * as styles from './Button.css'
  * `isLoading` одновременно блокирует кнопку и выставляет `aria-busy`:
  * повторная отправка формы по двойному клику — самая частая ошибка,
  * а скринридеру нужно объяснить, почему кнопка перестала отвечать.
+ *
+ * Спиннер не встаёт в поток, а накрывает содержимое: иначе он раздвигал бы
+ * кнопку на свою ширину прямо под курсором — клик по «Оформить заявку»
+ * заканчивался бы прыжком кнопки и соседей по строке.
  */
 export const Button: FC<IButtonProps & IBasicStyling> = ({
   children,
@@ -39,11 +43,18 @@ export const Button: FC<IButtonProps & IBasicStyling> = ({
 
   const content = (
     <>
-      {isLoading ? <Spinner size="sm" /> : iconStart !== undefined && (
-        <span className={styles.icon}>{iconStart}</span>
+      <span className={clsx(styles.content, isLoading && styles.contentHidden)}>
+        {iconStart !== undefined && <span className={styles.icon}>{iconStart}</span>}
+        <span>{children}</span>
+        {iconEnd !== undefined && <span className={styles.icon}>{iconEnd}</span>}
+      </span>
+
+      {/* `label={null}` — про занятость уже сказал `aria-busy` самой кнопки. */}
+      {isLoading && (
+        <span className={styles.loader}>
+          <Spinner size="sm" label={null} />
+        </span>
       )}
-      <span>{children}</span>
-      {iconEnd !== undefined && <span className={styles.icon}>{iconEnd}</span>}
     </>
   )
 

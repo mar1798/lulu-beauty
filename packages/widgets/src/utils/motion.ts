@@ -52,7 +52,12 @@ export const TOAST_TRANSITION: Transition = {
  * Длительность короткая: анимация не должна задерживать чтение того, чего
  * человек и так уже подождал.
  */
-export const APPEAR_TRANSITION: Transition = { duration: 0.22, ease: 'easeOut' }
+export const APPEAR_DURATION_MS = 220
+
+export const APPEAR_TRANSITION: Transition = {
+  duration: APPEAR_DURATION_MS / 1000,
+  ease: 'easeOut',
+}
 
 /** Насколько блок приподнят до появления. Больше — и это уже «выезд», а не проявление. */
 export const APPEAR_OFFSET = 8

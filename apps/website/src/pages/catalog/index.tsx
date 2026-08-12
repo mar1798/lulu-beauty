@@ -1,16 +1,21 @@
-import React, { useCallback, useMemo, useState } from 'react'
+import React, { useCallback, useMemo } from 'react'
 import Head from 'next/head'
-import { useRouter } from 'next/router'
 import useSWR from 'swr'
 import type { GetStaticProps } from 'next'
 import type { ICategory, IPage, IProduct } from 'widgets/types'
 import { Alert, Button } from 'widgets/atoms'
-import { useDebouncedValue } from 'widgets/hooks'
 import { CategoryFilter, EmptyState, Pagination, SearchField } from 'widgets/molecules'
 import { ProductGrid } from 'widgets/organisms'
 import { CatalogTemplate } from 'widgets/templates'
 import { SiteLayout } from '@/layouts/SiteLayout'
 import { AddToCartButton } from '@/components/AddToCartButton'
+import {
+  optionalTextParam,
+  pageParam,
+  textParam,
+  useQueryParams,
+  useQueryTextInput,
+} from '@/hooks/useQueryParams'
 import { isApiError } from '@/services/apiErrors'
 import { listCategories, listProducts } from '@/services/endpoints/catalog'
 
@@ -18,9 +23,9 @@ import { listCategories, listProducts } from '@/services/endpoints/catalog'
  * Витрина.
  *
  * Первая страница каталога приезжает статикой (SSG + ISR), поэтому пустой
- * каталог никогда не «мигает» спиннером. Категория и номер страницы живут в
- * query-параметрах — ссылку можно переслать; поиск оставлен в состоянии
- * компонента: он меняется на каждый символ и засорял бы историю браузера.
+ * каталог никогда не «мигает» спиннером. Категория, поиск и номер страницы —
+ * всё, что уходит в запрос, — живут в query-параметрах, так что ссылкой на
+ * конкретную выборку можно поделиться.
  *
  * `getStaticProps` не имеет доступа к query-параметрам, поэтому любой вид,
  * отличный от первой страницы без фильтров, догружается на клиенте — через
@@ -54,14 +59,6 @@ export const getStaticProps: GetStaticProps<ICatalogPageProps> = async () => {
   }
 }
 
-const firstQueryValue = (value: string | string[] | undefined): string | null => {
-  if (Array.isArray(value)) {
-    return value[0] ?? null
-  }
-
-  return value ?? null
-}
-
 type ICatalogKey = readonly [tag: 'catalog-products', category: string | null, q: string, page: number]
 
 const fetchCatalogPage = async ([, category, q, page]: ICatalogKey): Promise<IPage<IProduct>> =>
@@ -73,21 +70,34 @@ const fetchCatalogPage = async ([, category, q, page]: ICatalogKey): Promise<IPa
   })
 
 const CatalogPage: React.FC<ICatalogPageProps> = ({ categories, initial }) => {
-  const router = useRouter()
-  const categorySlug = firstQueryValue(router.query.category)
-  const pageNumber = Number(firstQueryValue(router.query.page) ?? '1') || 1
+  const [{ category: categorySlug, q, page: pageNumber }, setParams] = useQueryParams({
+    category: optionalTextParam,
+    q: textParam,
+    page: pageParam,
+  })
 
-  const [search, setSearch] = useState('')
-  const debouncedSearch = useDebouncedValue(search)
+  /*
+    Поиск заменяет запись в истории, а не добавляет новую: набранное слово
+    оказывается в адресе (ссылку можно переслать), но «назад» уводит к прошлой
+    категории, а не отматывает набор по букве. Новый запрос — снова с первой
+    страницы, иначе можно попасть в пустой хвост.
+  */
+  const commitSearch = useCallback(
+    (next: string) => {
+      setParams({ q: next, page: 1 }, { replace: true })
+    },
+    [setParams]
+  )
 
-  const isDefaultParams = categorySlug === null && pageNumber === 1 && debouncedSearch === ''
+  const [search, setSearch] = useQueryTextInput(q, commitSearch)
+
+  const isDefaultParams = categorySlug === null && pageNumber === 1 && q === ''
 
   const {
     data: page,
     error: fetchError,
-    isLoading,
     mutate,
-  } = useSWR<IPage<IProduct>>(['catalog-products', categorySlug, debouncedSearch, pageNumber], fetchCatalogPage, {
+  } = useSWR<IPage<IProduct>>(['catalog-products', categorySlug, q, pageNumber], fetchCatalogPage, {
     // Первая страница без фильтров уже пришла статикой — подставляем её, а не гоняем повторный запрос.
     fallbackData: isDefaultParams && initial !== null ? initial : undefined,
     // Смена категории/страницы не должна перекрашивать сетку в скелетон:
@@ -95,44 +105,21 @@ const CatalogPage: React.FC<ICatalogPageProps> = ({ categories, initial }) => {
     keepPreviousData: true,
   })
 
+  /*
+    Скелетон — только когда показывать нечего. `isLoading` из SWR для этого не
+    годится: он считается по текущему ключу и при смене категории становится
+    `true`, хотя `keepPreviousData` держит на экране прошлую страницу. Раньше
+    сетка на каждый клик по категории проваливалась в скелетон и возвращалась —
+    это и было мигание.
+  */
+  const isFirstLoad = page === undefined
+
   const error =
     fetchError === undefined
       ? null
       : isApiError(fetchError)
         ? fetchError.message
         : 'Не удалось загрузить каталог.'
-
-  /** Категория и страница — в адресе; `shallow`, потому что данные тянет `useSWR` выше. */
-  const updateQuery = useCallback(
-    (next: { category?: string | null; page?: number }) => {
-      const query: Record<string, string> = {}
-      const nextCategory = next.category === undefined ? categorySlug : next.category
-      const nextPage = next.page ?? pageNumber
-
-      if (nextCategory !== null) {
-        query.category = nextCategory
-      }
-
-      if (nextPage > 1) {
-        query.page = String(nextPage)
-      }
-
-      void router.push({ pathname: '/catalog', query }, undefined, { shallow: true })
-    },
-    [categorySlug, pageNumber, router]
-  )
-
-  const handleSearch = useCallback(
-    (value: string) => {
-      setSearch(value)
-
-      // Новый запрос — снова с первой страницы, иначе можно упасть в пустой хвост.
-      if (pageNumber !== 1) {
-        updateQuery({ page: 1 })
-      }
-    },
-    [pageNumber, updateQuery]
-  )
 
   const products = page?.items ?? []
   const total = page?.total ?? 0
@@ -153,30 +140,30 @@ const CatalogPage: React.FC<ICatalogPageProps> = ({ categories, initial }) => {
 
       <CatalogTemplate
         title="Каталог"
-        summary={isLoading || page === undefined ? undefined : `Найдено товаров: ${total}`}
+        summary={isFirstLoad ? undefined : `Найдено товаров: ${total}`}
         filter={
           categories.length === 0 ? undefined : (
             <CategoryFilter
               categories={categories}
               selectedSlug={categorySlug}
-              onSelect={slug => updateQuery({ category: slug, page: 1 })}
+              onSelect={slug => setParams({ category: slug, page: 1 })}
             />
           )
         }
-        search={<SearchField value={search} onChange={handleSearch} />}
+        search={<SearchField value={search} onChange={setSearch} />}
         pagination={
           <Pagination
             page={pageNumber}
             pageSize={PAGE_SIZE}
             total={total}
-            onChange={next => updateQuery({ page: next })}
+            onChange={next => setParams({ page: next })}
           />
         }
       >
         {error === null ? (
           <ProductGrid
             products={products}
-            isLoading={isLoading}
+            isLoading={isFirstLoad}
             buildHref={product => `/catalog/${product.slug}`}
             categoryNames={categoryNames}
             renderAction={product =>

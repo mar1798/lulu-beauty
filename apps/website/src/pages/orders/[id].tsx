@@ -65,6 +65,8 @@ const OrderPage: React.FC = () => {
   const orderId = typeof router.query.id === 'string' ? router.query.id : null
 
   const [isBusy, setIsBusy] = useState(false)
+  /** Строка состава, по которой идёт запрос: блокируется она, а не вся карточка. */
+  const [busyItemId, setBusyItemId] = useState<string | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
 
   const search = useProductSearch()
@@ -92,8 +94,13 @@ const OrderPage: React.FC = () => {
     getActiveCycleOrNull()
   )
 
-  const runAction = async (action: () => Promise<unknown>, success: string): Promise<void> => {
+  const runAction = async (
+    action: () => Promise<unknown>,
+    success: string,
+    itemId: string | null = null
+  ): Promise<void> => {
     setIsBusy(true)
+    setBusyItemId(itemId)
     setActionError(null)
 
     try {
@@ -121,6 +128,7 @@ const OrderPage: React.FC = () => {
       await mutate()
     } finally {
       setIsBusy(false)
+      setBusyItemId(null)
     }
   }
 
@@ -222,11 +230,12 @@ const OrderPage: React.FC = () => {
         onItemQuantityChange={(itemId, quantity) => {
           void runAction(
             () => updateMyOrderItemQuantity(order.id, itemId, quantity),
-            'Количество изменено'
+            'Количество изменено',
+            itemId
           )
         }}
         onItemRemove={itemId => {
-          void runAction(() => removeMyOrderItem(order.id, itemId), 'Позиция убрана')
+          void runAction(() => removeMyOrderItem(order.id, itemId), 'Позиция убрана', itemId)
         }}
         /*
           Добавление товара прямо в заявку, а не через корзину: корзина копится
@@ -262,6 +271,7 @@ const OrderPage: React.FC = () => {
           void runAction(() => restoreMyOrder(order.id), 'Заявка снова в работе')
         }}
         isBusy={isBusy}
+        busyItemId={busyItemId}
         error={actionError}
       />
     )
