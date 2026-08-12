@@ -121,7 +121,7 @@ Next.js 16 app (`src/pages` — Pages Router), talking to `apps/api` — **not**
 - `src/contexts/AuthContext.tsx` / `CartContext.tsx` — app-level state, both backed by SWR (`/api/auth/me` returning 401 means "guest", not an error).
 - `src/layouts/` — `SiteLayout` / `AdminShell` wrap the `widgets` templates with site-specific navigation.
 - `transpilePackages: ['widgets']` — the widgets package is consumed as TS/JSX source, not prebuilt.
-- vanilla-extract and bundle-analyzer (`ANALYZE=true npm run build` / `npm run analyze`) plugins are wired in via `next-compose-plugins`.
+- vanilla-extract and bundle-analyzer plugins are wired in via `next-compose-plugins`. The analyzer only activates on `ANALYZE=true` (`npm run analyze -w website`), so ordinary `build`/`dev` don't pay for it; it writes `client.html`/`nodejs.html`/`edge.html` into `.next/analyze/` (gitignored) — `client.html` is the one worth opening. It reports **uncompressed** bytes by default; switch it to the gzip column before comparing against any budget.
 - SVGs are handled via `@svgr/webpack` + `url-loader`.
 - `rewrites()` proxies `/files/:path*` to `${API_BASE_URL}/files/:path*` so product images served by `apps/api`'s local storage are same-origin — needed because Next 16's image optimizer refuses hosts that resolve to a private IP. `src/components/Image.tsx` rewrites the API's absolute URLs to those relative ones.
 - Env vars are documented in `apps/website/.env.example`: `NEXT_PUBLIC_API_BASE_URL` / `API_BASE_URL` (browser- vs. server-side base URL for `apps/api`; inside `docker compose` the latter is `http://api:3001`), `NEXT_PUBLIC_TELEGRAM_BOT_USERNAME`, `AUTH_COOKIE_SECURE` (set `false` for local http so `lb_at`/`lb_rt` aren't dropped).

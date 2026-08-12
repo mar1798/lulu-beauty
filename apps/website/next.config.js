@@ -2,6 +2,23 @@ const { createVanillaExtractPlugin } = require('@vanilla-extract/next-plugin')
 const withPlugins = require('next-compose-plugins')
 const withVanillaExtract = createVanillaExtractPlugin()
 
+/**
+ * Отчёт по размеру бандла: `npm run analyze -w website` (то же самое, что
+ * `ANALYZE=true npm run build -w website`).
+ *
+ * Включается только переменной окружения — без неё плагин ничего не делает,
+ * поэтому обычные `build`/`dev` он не замедляет и в CI не мешает. Результат —
+ * три html-файла в `.next/analyze/` (`client.html` — тот, что нужен почти
+ * всегда: он показывает, из чего собран каждый чанк страницы).
+ *
+ * Считает он **несжатые** байты; по проводу уходит примерно втрое меньше,
+ * так что сравнивать с бюджетами имеет смысл колонку gzip/brotli в самом
+ * отчёте, а не «stat size».
+ */
+const withBundleAnalyzer = require('@next/bundle-analyzer')({
+  enabled: process.env.ANALYZE === 'true',
+})
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   output: 'standalone',
@@ -74,4 +91,4 @@ const nextConfig = {
 }
 
 
-module.exports = withPlugins([withVanillaExtract], nextConfig)
+module.exports = withPlugins([withVanillaExtract, withBundleAnalyzer], nextConfig)
