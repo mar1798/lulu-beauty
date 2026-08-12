@@ -26,7 +26,16 @@ export const page = style([
     cursor: 'pointer',
     transition: transition('background-color', 'color', 'border-color'),
     selectors: {
-      '&:hover:not([disabled])': { backgroundColor: color.surface('sunken') },
+      /*
+        Текущую страницу ховер не перекрашивает: у неё заливка акцентом и белый
+        текст, а подложка «sunken» сделала бы его нечитаемым. Остальные кнопки
+        на наведении не только подсвечиваются, но и темнеют — иначе подпись
+        остаётся вторичной и наведение читается как выключённое состояние.
+      */
+      '&:hover:not([disabled]):not([aria-current="page"])': {
+        backgroundColor: color.surface('sunken'),
+        color: color.text('primary'),
+      },
       '&[disabled]': { opacity: 0.4, cursor: 'not-allowed' },
       '&[aria-current="page"]': {
         backgroundColor: color.brand('600'),

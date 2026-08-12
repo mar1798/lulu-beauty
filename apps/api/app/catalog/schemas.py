@@ -3,6 +3,7 @@ from datetime import datetime
 
 from pydantic import Field
 
+from app.common.limits import MAX_PRICE_CENTS
 from app.common.schemas import CamelModel
 
 SLUG_PATTERN = r"^[a-z0-9]+(-[a-z0-9]+)*$"
@@ -56,7 +57,9 @@ class ProductCreateRequest(CamelModel):
     slug: str = Field(min_length=1, max_length=255, pattern=SLUG_PATTERN)
     description: str | None = None
     brand: str | None = Field(default=None, max_length=255)
-    price_cents: int = Field(ge=0)
+    # Upper bound is the 32-bit column behind it: without it a fat-fingered price is a
+    # 500 out of the driver instead of a field error the form can point at.
+    price_cents: int = Field(ge=0, le=MAX_PRICE_CENTS)
     category_id: uuid.UUID | None = None
     in_stock: bool = True
 
@@ -66,7 +69,7 @@ class ProductUpdateRequest(CamelModel):
     slug: str | None = Field(default=None, min_length=1, max_length=255, pattern=SLUG_PATTERN)
     description: str | None = None
     brand: str | None = Field(default=None, max_length=255)
-    price_cents: int | None = Field(default=None, ge=0)
+    price_cents: int | None = Field(default=None, ge=0, le=MAX_PRICE_CENTS)
     category_id: uuid.UUID | None = None
     in_stock: bool | None = None
 

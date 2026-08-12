@@ -37,10 +37,15 @@ def bot_session(
     return db_session
 
 
-def _contact_message(chat_id: int, phone: str) -> MagicMock:
+def _contact_message(chat_id: int, phone: str, *, owner_id: int | None = None) -> MagicMock:
+    """A shared contact. `owner_id` is Telegram's own answer to "whose card is this" —
+    it defaults to the sender, i.e. the share-contact button; pass someone else's id to
+    model a card picked out of the address book."""
     message = MagicMock()
     message.chat.id = chat_id
+    message.from_user.id = chat_id
     message.contact.phone_number = phone
+    message.contact.user_id = chat_id if owner_id is None else owner_id
     message.answer = AsyncMock()
     return message
 
@@ -97,6 +102,32 @@ async def test_second_pending_contact_from_the_same_chat_rebinds(
 
     pending = (await bot_session.execute(select(PendingTelegramContact))).scalars().all()
     assert [(row.phone, row.chat_id) for row in pending] == [("+996700999000", 555)]
+
+
+async def test_someone_elses_contact_card_binds_nothing(bot_session: AsyncSession) -> None:
+    """Otherwise: pick a victim out of your address book, share their card, and every OTP
+    issued for their phone lands in your chat."""
+    victim = await make_user(bot_session, phone="+996700111222")
+    await bot_session.commit()
+
+    message = _contact_message(555, "+996700111222", owner_id=999)
+    await handle_contact(message)
+
+    await bot_session.refresh(victim)
+    assert victim.telegram_chat_id is None
+    assert (await bot_session.execute(select(PendingTelegramContact))).scalars().all() == []
+    assert "только свой номер" in message.answer.await_args.args[0]
+
+
+async def test_a_contact_with_no_telegram_account_behind_it_binds_nothing(
+    bot_session: AsyncSession,
+) -> None:
+    """A card typed in by hand has no user_id at all — it proves nothing about the sender."""
+    message = _contact_message(555, "+996700333444", owner_id=None)
+    message.contact.user_id = None
+    await handle_contact(message)
+
+    assert (await bot_session.execute(select(PendingTelegramContact))).scalars().all() == []
 
 
 async def test_unlink_releases_the_chat(bot_session: AsyncSession) -> None:

@@ -10,7 +10,9 @@ import { Text } from '../../atoms/text'
 import * as styles from './ProductCard.css'
 
 /**
- * Карточка товара в сетке каталога.
+ * Карточка товара в сетке каталога: единый белый блок, внутри которого сверху
+ * лежит фотография на утопленной подложке, ниже — название, приглушённая
+ * подпись (марка · категория) и строка «цена + круглое действие».
  *
  * Кнопка «в корзину» приходит слотом `action`: класть её внутрь ссылки нельзя
  * (интерактив внутри интерактива), а знать про корзину карточке незачем —
@@ -37,7 +39,12 @@ export const ProductCard: FC<IProductCardProps & IBasicStyling> = ({
     categoryName !== undefined && categoryName !== null && categoryName.trim() !== ''
       ? categoryName
       : null
-  const hasTags = brand !== null || category !== null
+  /*
+    Марка и категория — одной приглушённой строкой под названием, а не двумя
+    бейджами: в референсе под заголовком идёт ровно одна вторичная подпись, и
+    на узкой мобильной колонке пара бейджей всё равно переносилась на две строки.
+  */
+  const subtitle = [brand, category].filter(value => value !== null).join(' · ')
 
   return (
     <article className={clsx(styles.container, className)}>
@@ -64,20 +71,19 @@ export const ProductCard: FC<IProductCardProps & IBasicStyling> = ({
 
       <div className={styles.body}>
         <AppLink href={href} className={styles.link}>
-          {hasTags && (
-            <span className={styles.tags}>
-              {brand !== null && <Badge tone="neutral">{brand}</Badge>}
-              {category !== null && <Badge tone="neutral">{category}</Badge>}
-            </span>
-          )}
-
-          <Text size="sm" weight="medium" clamp={2}>
+          <Text as="span" size="sm" weight="semibold" clamp={2}>
             {product.name}
           </Text>
+
+          {subtitle !== '' && (
+            <Text as="span" size="xs" tone="muted" clamp={1}>
+              {subtitle}
+            </Text>
+          )}
         </AppLink>
 
         <div className={styles.footer}>
-          <Price size="sm" priceCents={product.priceCents} />
+          <Price size="md" priceCents={product.priceCents} />
           {action !== undefined && action !== null && <span className={styles.action}>{action}</span>}
         </div>
       </div>

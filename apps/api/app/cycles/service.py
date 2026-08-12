@@ -52,6 +52,19 @@ class CyclesService:
         if cycle is None:
             raise CycleNotFoundError
 
+        # create() refuses a deadline in the past; update() used to accept one silently,
+        # and on a cycle customers are still ordering in that is not a shorter cycle but a
+        # closed one — the next sweep shuts it and empties every cart collected under it.
+        #
+        # Only *open* cycles are guarded. A cycle whose deadline has already passed is
+        # history, and the owner still edits those: the calendar's form saves the label
+        # and the deadline together, so refusing a past date there would make renaming a
+        # finished cycle impossible.
+        now = datetime.now(UTC)
+        deadline_at = updates.get("deadline_at")
+        if deadline_at is not None and deadline_at <= now and cycle.deadline_at > now:
+            raise PastDeadlineError
+
         for field, value in updates.items():
             setattr(cycle, field, value)
 

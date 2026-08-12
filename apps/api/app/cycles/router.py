@@ -82,6 +82,10 @@ async def update_cycle(
         cycle = await CyclesService(session).update(cycle_id, updates)
     except CycleNotFoundError as error:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "cycle_not_found") from error
+    except PastDeadlineError as error:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY, "deadline_must_be_future"
+        ) from error
 
     await session.commit()
     return _cycle_response(cycle)

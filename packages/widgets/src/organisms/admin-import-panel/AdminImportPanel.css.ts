@@ -1,6 +1,6 @@
 import { style } from '@vanilla-extract/css'
 import { color, font, rem } from '../../styling/lib'
-import { flexColumn, flexRow } from '../../styling/mixin'
+import { flexColumn, flexRow, panel as panelMixin } from '../../styling/mixin'
 import { tableBase, tableCell, tableHeadCell, tableWrap } from '../../styling/mixin/table'
 import { vars } from '../../styling/themes/contract.css'
 
@@ -9,10 +9,7 @@ export const container = style(flexColumn(20))
 export const panel = style({
   ...flexColumn(16),
   alignItems: 'flex-start',
-  padding: vars.space.lg,
-  backgroundColor: color.surface('base'),
-  borderRadius: vars.radius.xxl,
-  boxShadow: vars.shadow.md,
+  ...panelMixin(),
 })
 
 export const code = style({

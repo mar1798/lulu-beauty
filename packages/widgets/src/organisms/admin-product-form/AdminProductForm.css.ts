@@ -1,7 +1,7 @@
 import { style } from '@vanilla-extract/css'
 import { color, rem } from '../../styling/lib'
 import { media } from '../../styling/lib/media'
-import { flexColumn, flexRow } from '../../styling/mixin'
+import { flexColumn, flexRow, panel } from '../../styling/mixin'
 import { vars } from '../../styling/themes/contract.css'
 
 export const container = style({
@@ -16,16 +16,9 @@ export const container = style({
   }),
 })
 
-const panel = {
-  padding: vars.space.lg,
-  backgroundColor: color.surface('base'),
-  borderRadius: vars.radius.xxl,
-  boxShadow: vars.shadow.md,
-} as const
-
 export const form = style({
   ...flexColumn(16),
-  ...panel,
+  ...panel(),
 })
 
 /** Цена и категория — короткие поля, на широком экране им незачем занимать строку каждому. */
@@ -52,14 +45,17 @@ export const formActions = style({
 /** Панель фотографий; имя не `media` — оно занято хелпером медиазапросов. */
 export const mediaPanel = style({
   ...flexColumn(16),
-  ...panel,
+  ...panel(),
 })
 
 export const gallery = style({
   display: 'grid',
-  gridTemplateColumns: `repeat(auto-fill, minmax(${rem(120)}, 1fr))`,
+  gridTemplateColumns: `repeat(auto-fill, minmax(${rem(96)}, 1fr))`,
   gap: vars.space.sm,
   listStyle: 'none',
+  ...media({
+    sm: { gridTemplateColumns: `repeat(auto-fill, minmax(${rem(120)}, 1fr))` },
+  }),
 })
 
 export const thumb = style({

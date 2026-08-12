@@ -55,7 +55,20 @@ async def handle_start(message: Message) -> None:
 
 @router.message(F.contact)
 async def handle_contact(message: Message) -> None:
+    """Binds this chat to the phone number of whoever shared it — and only them.
+
+    The share-contact button sends the person's own number, but nothing stops them from
+    attaching any card out of their address book to the same chat, and Telegram delivers
+    both as a plain `contact`. Binding on that number alone would hand the sender every
+    OTP issued for it — i.e. anyone's account, for the price of having their number in
+    your phone. `contact.user_id` is filled in by Telegram, not by the client, so it is
+    the one part of the payload that says whose card this actually is.
+    """
     if message.contact is None:
+        return
+
+    if message.from_user is None or message.contact.user_id != message.from_user.id:
+        await message.answer(messages.FOREIGN_CONTACT, reply_markup=ReplyKeyboardRemove())
         return
 
     phone = normalize_phone(message.contact.phone_number)

@@ -98,9 +98,11 @@ def otp(code: str, purpose: OtpPurpose) -> str:
     return f"Код подтверждения {action} в Lulu Beauty: {code}"
 
 
-def cart_reminder(cycle_label: str, deadline_at: datetime) -> str:
+def cart_reminder(title: str, deadline_at: datetime) -> str:
+    """`title` — уже готовое название сбора из `cycle_title` (у сбора может не быть
+    подписи, и тогда он называется по дедлайну; кавычки ставит `cycle_title`)."""
     return (
-        f"Напоминание: товары в вашей корзине Lulu Beauty по заказу «{cycle_label}» "
+        f"Напоминание: товары в вашей корзине Lulu Beauty по сбору {title} "
         f"будут удалены {format_deadline(deadline_at)}, если вы не оформите заявку."
     )
 
@@ -191,6 +193,13 @@ def callback_applied(status: OrderStatus) -> str:
     return f"Заявка — {ORDER_STATUS_LABEL[status].lower()}"
 
 LINKED = "Готово! Этот чат привязан к вашему номеру телефона.\n/help — что умеет бот."
+
+# Прислали чужую карточку контакта. Формулировка без обвинений: чаще всего это
+# промах по списку контактов, а не попытка привязать чужой номер.
+FOREIGN_CONTACT = (
+    "Привязать можно только свой номер телефона. Отправьте /start и нажмите "
+    "«Поделиться номером телефона» — Telegram подставит ваш номер сам."
+)
 
 NOT_LINKED = (
     "Этот чат не привязан к аккаунту. Отправьте /start и поделитесь номером телефона — "

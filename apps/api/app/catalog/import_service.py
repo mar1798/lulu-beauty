@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.catalog.models import Category, Product
 from app.catalog.schemas import SLUG_PATTERN, ImportRowErrorResponse, ImportSummaryResponse
+from app.common.limits import MAX_PRICE_CENTS
 
 REQUIRED_HEADERS = {"name", "slug", "price"}
 TRUTHY_VALUES = {"true", "1", "yes", "y", "да"}
@@ -36,9 +37,21 @@ def parse_price_cents(raw: str | None) -> int:
         value = Decimal(text)
     except InvalidOperation as error:
         raise ImportRowError(f"invalid price: {raw!r}") from error
+    # Decimal() happily parses "nan" and "inf". Both then blow up further down —
+    # NaN raises on the comparison, Infinity on int() — and an exception here is not a
+    # row error: it escapes import_file() and turns the whole upload into a 500, losing
+    # every valid row in the file along with the report of what was wrong.
+    if not value.is_finite():
+        raise ImportRowError(f"invalid price: {raw!r}")
     if value < 0:
         raise ImportRowError("price must not be negative")
-    return int((value * 100).to_integral_value(rounding=ROUND_HALF_UP))
+
+    cents = int((value * 100).to_integral_value(rounding=ROUND_HALF_UP))
+    # price_cents is a 32-bit column; past that the row fails at flush, i.e. again as a
+    # 500 for the whole file rather than as one reported line.
+    if cents > MAX_PRICE_CENTS:
+        raise ImportRowError(f"price is too large: {raw!r}")
+    return cents
 
 
 def parse_in_stock(raw: str | None) -> bool:

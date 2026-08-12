@@ -1,28 +1,48 @@
 import { style } from '@vanilla-extract/css'
-import { color, transition } from '../../styling/lib'
+// `media` здесь занято экспортом стиля картинки, поэтому хелпер медиазапросов взят под псевдонимом.
+import { color, media as mediaQuery, transition } from '../../styling/lib'
 import { flexColumn, flexRow, focusVisibleRing } from '../../styling/mixin'
 import { vars } from '../../styling/themes/contract.css'
 
 /**
- * Карточка — две части: фотография сверху (некрупная, без своей тени) и
- * карточный блок снизу (тень + радиус), где живут тэги, название и цена.
- * На наведении приподнимается весь блок — сигнал даёт `container`, а не
+ * Карточка — единый белый блок с крупным скруглением: фотография лежит
+ * *внутри* него на утопленной подложке, а не отдельным боксом сверху.
+ * Внутренний радиус картинки на ступень меньше внешнего — иначе углы фото
+ * визуально «протыкают» углы карточки.
+ *
+ * На наведении приподнимается вся карточка: сигнал даёт `container`, а не
  * отдельная ссылка внутри него.
  */
 export const container = style({
-  ...flexColumn(10),
+  ...flexColumn(),
   position: 'relative',
   height: '100%',
+  padding: vars.space.xs,
+  borderRadius: vars.radius.xxl,
+  backgroundColor: color.surface('base'),
+  boxShadow: vars.shadow.md,
+  transition: transition('box-shadow', 'transform'),
+  selectors: {
+    '&:hover': { boxShadow: vars.shadow.lg },
+  },
+  ...mediaQuery({
+    // Подъём — только там, где есть настоящее наведение: на тапе он залипает.
+    hoverAnimatable: {
+      selectors: {
+        '&:hover': { transform: 'translateY(-2px)' },
+      },
+    },
+  }),
 })
 
 /**
  * Растянутая ссылка: `::after` перекрывает всю карточку (вплоть до фото),
  * поэтому клик работает где угодно, а не только по тексту заголовка.
- * У `footer` z-index выше — кнопка «в корзину» остаётся кликабельной поверх.
+ * У `action` z-index выше — кнопка «в корзину» остаётся кликабельной поверх.
  */
 export const link = style([
   {
-    ...flexColumn(8),
+    ...flexColumn(2),
     textDecoration: 'none',
     color: 'inherit',
     selectors: {
@@ -37,20 +57,24 @@ export const link = style([
   focusVisibleRing(),
 ])
 
-/** Бокс под картинку: фиксированная пропорция держит сетку ровной, даже пока изображение грузится. */
+/**
+ * Бокс под картинку: фиксированная пропорция держит сетку ровной, даже пока
+ * изображение грузится. Подложка — утопленная поверхность: у товарной съёмки
+ * фон почти белый, и на белой карточке она без неё расплывалась бы.
+ */
 export const media = style({
   position: 'relative',
   display: 'block',
   aspectRatio: '1 / 1',
   overflow: 'hidden',
-  backgroundColor: color.surface('base'),
-  borderRadius: vars.radius.lg,
+  backgroundColor: color.surface('sunken'),
+  borderRadius: vars.radius.xl,
 })
 
 export const image = style({
   transition: transition('transform'),
   selectors: {
-    [`${container}:hover &`]: { transform: 'scale(1.03)' },
+    [`${container}:hover &`]: { transform: 'scale(1.04)' },
   },
 })
 
@@ -67,33 +91,26 @@ export const placeholder = style({
 
 export const stockBadge = style({
   position: 'absolute',
-  left: vars.space.sm,
-  top: vars.space.sm,
+  left: vars.space.xs,
+  top: vars.space.xs,
   backgroundColor: color.surface('base'),
   boxShadow: vars.shadow.sm,
 })
 
-/** Карточный блок под фотографией: тень + радиус отделяют его от холста. */
+/**
+ * Текстовая часть: по горизонтали отступ добирается до 16px от края карточки
+ * (8 у контейнера + 8 здесь) — картинка при этом остаётся прижатой к padding
+ * контейнера, как в референсе.
+ */
 export const body = style({
-  ...flexColumn(10),
+  ...flexColumn(12),
   flexGrow: 1,
-  padding: vars.space.md,
-  borderRadius: vars.radius.xl,
-  backgroundColor: color.surface('base'),
-  boxShadow: vars.shadow.md,
-  transition: transition('box-shadow'),
-  selectors: {
-    [`${container}:hover &`]: { boxShadow: vars.shadow.lg },
-  },
+  padding: `${vars.space.sm} ${vars.space.xs} ${vars.space.xxs}`,
 })
 
-export const tags = style({
-  ...flexRow(6),
-  flexWrap: 'wrap',
-})
-
+/** Цена и действие в одну строку, прижатые к низу карточки. */
 export const footer = style({
-  ...flexRow(12),
+  ...flexRow(8),
   alignItems: 'center',
   justifyContent: 'space-between',
   marginTop: 'auto',
@@ -107,4 +124,5 @@ export const footer = style({
 export const action = style({
   position: 'relative',
   zIndex: 1,
+  display: 'flex',
 })

@@ -1,30 +1,41 @@
 import { style } from '@vanilla-extract/css'
 import { border, color, font, rem } from '../../styling/lib'
 import { media } from '../../styling/lib/media'
-import { flexColumn, flexRow, truncate } from '../../styling/mixin'
+import { flexColumn, flexRow, panel, truncate } from '../../styling/mixin'
 import { vars } from '../../styling/themes/contract.css'
 
 export const container = style(flexColumn(20))
 
-const panel = {
-  padding: vars.space.lg,
-  backgroundColor: color.surface('base'),
-  borderRadius: vars.radius.xxl,
-  boxShadow: vars.shadow.md,
-} as const
-
 export const list = style({
   ...flexColumn(4),
-  ...panel,
+  ...panel(),
 })
 
-export const row = style({
-  ...flexColumn(12),
+const rowBase = {
   padding: `${vars.space.sm} 0`,
   borderBottom: border(1, color.border('subtle')),
   selectors: {
     '&:last-child': { borderBottom: 'none' },
   },
+} as const
+
+/**
+ * Строка списка. Название и кнопки стоят в ряд на любой ширине: название
+ * обрезается (`truncate` в `name`/`slug`), а две иконки занимают 72px — гнать
+ * их на отдельную строку значило бы удваивать высоту списка на телефоне
+ * ради пустого места справа.
+ */
+export const row = style({
+  ...rowBase,
+  ...flexRow(12),
+  alignItems: 'center',
+  justifyContent: 'space-between',
+})
+
+/** Строка в режиме правки: три поля, на узком экране им нужен столбец. */
+export const editRow = style({
+  ...rowBase,
+  ...flexColumn(12),
   ...media({
     sm: {
       ...flexRow(12),
@@ -59,7 +70,7 @@ export const rowActions = style({
 
 export const createForm = style({
   ...flexColumn(12),
-  ...panel,
+  ...panel(),
   alignItems: 'flex-start',
 })
 

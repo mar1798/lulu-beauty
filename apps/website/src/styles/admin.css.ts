@@ -1,6 +1,6 @@
 import { style } from '@vanilla-extract/css'
 import { color, font, media, rem } from 'widgets/styling/lib'
-import { flexColumn, flexRow } from 'widgets/styling/mixin'
+import { flexColumn, flexRow, panel as panelMixin } from 'widgets/styling/mixin'
 import { vars } from 'widgets/styling/theme'
 
 /**
@@ -12,10 +12,7 @@ import { vars } from 'widgets/styling/theme'
 export const panel = style({
   ...flexColumn(12),
   alignItems: 'flex-start',
-  padding: vars.space.lg,
-  backgroundColor: color.surface('base'),
-  borderRadius: vars.radius.xxl,
-  boxShadow: vars.shadow.md,
+  ...panelMixin(),
 })
 
 export const cycleHead = style({
@@ -24,20 +21,31 @@ export const cycleHead = style({
   flexWrap: 'wrap',
 })
 
+/**
+ * Счётчики заявок. На телефоне это две колонки: подписи вроде «Ожидает
+ * подтверждения» в 120px не помещаются в строку, а при трёх колонках из пяти
+ * счётчиков получалась рваная лесенка.
+ */
 export const counters = style({
   display: 'grid',
-  gridTemplateColumns: `repeat(auto-fit, minmax(${rem(120)}, 1fr))`,
+  gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
   gap: vars.space.md,
   width: '100%',
+  ...media({
+    sm: { gridTemplateColumns: `repeat(auto-fit, minmax(${rem(120)}, 1fr))` },
+  }),
 })
 
 export const counter = style(flexColumn(2))
 
 export const counterValue = style({
-  font: font('28/34', 600),
+  font: font('24/30', 600),
   letterSpacing: vars.tracking.display,
   color: color.text('primary'),
   fontVariantNumeric: 'tabular-nums',
+  ...media({
+    sm: { font: font('28/34', 600) },
+  }),
 })
 
 export const counterLabel = style({
@@ -73,56 +81,14 @@ export const filtersWide = style({
 })
 
 /**
- * Список товаров и фильтр по категориям: от `lg` — сетка с таблицей слева и
- * категориями в узкой колонке справа (`gridTemplateAreas` вместо порядка в
- * DOM — на мобильном фильтр остаётся выше таблицы, где он и должен быть).
- * До `lg` — просто колонка, категории рендерятся как обычно, над таблицей.
- */
-export const productsLayout = style({
-  ...flexColumn(20),
-  width: '100%',
-  ...media({
-    lg: {
-      display: 'grid',
-      gridTemplateColumns: `minmax(0, 1fr) ${rem(240)}`,
-      gridTemplateAreas: '"main aside"',
-      gap: vars.space.lg,
-      alignItems: 'start',
-    },
-  }),
-})
-
-export const productsMain = style({
-  ...flexColumn(16),
-  minWidth: 0,
-  ...media({ lg: { gridArea: 'main' } }),
-})
-
-export const categorySidebar = style({
-  ...flexColumn(12),
-  width: '100%',
-  ...media({
-    lg: {
-      gridArea: 'aside',
-      padding: vars.space.md,
-      backgroundColor: color.surface('base'),
-      borderRadius: vars.radius.xxl,
-      boxShadow: vars.shadow.md,
-      position: 'sticky',
-      top: rem(96),
-    },
-  }),
-})
-
-/**
  * На мобильном свой лейбл уже есть у `<Select>` внутри `CategoryFilter` —
- * этот заголовок продублировал бы его, поэтому виден только рядом с сеткой
- * чипов на `lg`.
+ * этот заголовок продублировал бы его, поэтому появляется вместе с сеткой
+ * чипов, то есть от `sm`.
  */
 export const categorySidebarTitle = style({
   display: 'none',
   ...media({
-    lg: {
+    sm: {
       display: 'block',
       font: font('13/18', 600),
       color: color.text('muted'),

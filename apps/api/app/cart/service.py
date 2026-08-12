@@ -8,6 +8,7 @@ from app.cart.models import Cart, CartItem
 from app.cart.schemas import CartItemResponse, CartResponse
 from app.catalog.images import primary_image_url
 from app.catalog.models import Product
+from app.common.limits import MAX_ITEM_QUANTITY
 from app.cycles.models import OrderCycle
 from app.cycles.service import CyclesService
 
@@ -52,7 +53,10 @@ class CartService:
         if item is None:
             self._session.add(CartItem(cart_id=cart.id, product_id=product_id, quantity=quantity))
         else:
-            item.quantity += quantity
+            # Clamped, not rejected: pressing "в корзину" once more on a line that is
+            # already at the ceiling is not an error worth a red banner. Without this the
+            # per-request limit means nothing — it would just take a few more presses.
+            item.quantity = min(item.quantity + quantity, MAX_ITEM_QUANTITY)
 
         await self._session.flush()
         return await self._build_response(cycle, cart)
@@ -127,10 +131,15 @@ class CartService:
                 total_cents=0,
             )
 
+        # Discontinued products drop out of the cart. The rows themselves are left alone
+        # (a re-import by slug revives the product, and the line comes back with it), but
+        # they must not be shown or counted: adding a soft-deleted product is refused
+        # everywhere else, and checkout reads this same join — so a line the customer can
+        # see is exactly a line they can order.
         result = await self._session.execute(
             select(CartItem, Product)
             .join(Product, Product.id == CartItem.product_id)
-            .where(CartItem.cart_id == cart.id)
+            .where(CartItem.cart_id == cart.id, Product.deleted_at.is_(None))
             .order_by(Product.name)
             .options(selectinload(Product.images))
         )

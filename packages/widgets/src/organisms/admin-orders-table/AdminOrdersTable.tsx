@@ -20,6 +20,10 @@ import * as styles from './AdminOrdersTable.css'
  *
  * Телефон — ссылка `tel:`: с этого экрана владелец звонит покупателю, и
  * копировать номер руками незачем.
+ *
+ * Ниже `md` та же разметка раскладывается в карточки (см. миксин
+ * `styling/mixin/table.ts`): название колонки берётся из `data-label`, а роли
+ * проставлены явно — `display: block` снимает встроенные роли таблицы.
  */
 
 const DEFAULT_SKELETON_ROWS = 5
@@ -60,38 +64,38 @@ export const AdminOrdersTable: FC<IAdminOrdersTableProps & IBasicStyling> = ({
 
   return (
     <div className={clsx(styles.wrap, className)}>
-      <table className={styles.table}>
-        <thead>
-          <tr>
-            <th className={styles.headCell} scope="col">
+      <table className={styles.table} role="table">
+        <thead className={styles.head} role="rowgroup">
+          <tr className={styles.row} role="row">
+            <th className={styles.headCell} scope="col" role="columnheader">
               Заявка
             </th>
-            <th className={styles.headCell} scope="col">
+            <th className={styles.headCell} scope="col" role="columnheader">
               Покупатель
             </th>
-            <th className={styles.headCell} scope="col">
+            <th className={styles.headCell} scope="col" role="columnheader">
               Состав
             </th>
-            <th className={styles.headCell} scope="col">
+            <th className={styles.headCell} scope="col" role="columnheader">
               Сумма
             </th>
-            <th className={styles.headCell} scope="col">
+            <th className={styles.headCell} scope="col" role="columnheader">
               Статус
             </th>
             {onDelete !== undefined && (
-              <th className={styles.headCell} scope="col">
+              <th className={styles.headCell} scope="col" role="columnheader">
                 Действия
               </th>
             )}
           </tr>
         </thead>
 
-        <tbody aria-busy={isLoading}>
+        <tbody className={styles.body} role="rowgroup" aria-busy={isLoading}>
           {isLoading
             ? Array.from({ length: skeletonRows }, (_, index) => (
                 // eslint-disable-next-line react/no-array-index-key
-                <tr key={index}>
-                  <td className={styles.cell} colSpan={columnCount}>
+                <tr key={index} className={styles.row} role="row">
+                  <td className={styles.cell} role="cell" colSpan={columnCount}>
                     <Skeleton height={40} shape="block" />
                   </td>
                 </tr>
@@ -102,15 +106,15 @@ export const AdminOrdersTable: FC<IAdminOrdersTableProps & IBasicStyling> = ({
                 return (
                   /* Fragment с ключом: строка заявки и строка состава — соседи в `tbody`. */
                   <Fragment key={order.id}>
-                    <tr>
-                      <td className={styles.cell}>
+                    <tr className={styles.row} role="row">
+                      <td className={styles.cell} role="cell">
                         <div className={styles.order}>
                           <span className={styles.number}>№ {orderNumber(order.id)}</span>
                           <span className={styles.date}>{formatDateTime(order.createdAt)}</span>
                         </div>
                       </td>
 
-                      <td className={styles.cell}>
+                      <td className={styles.cell} role="cell">
                         <div className={styles.customer}>
                           <span className={styles.customerName}>{order.customerName}</span>
                           <AppLink
@@ -123,7 +127,7 @@ export const AdminOrdersTable: FC<IAdminOrdersTableProps & IBasicStyling> = ({
                         </div>
                       </td>
 
-                      <td className={styles.cell}>
+                      <td className={styles.cell} role="cell" data-label="Состав">
                         <button
                           type="button"
                           className={styles.toggle}
@@ -136,11 +140,11 @@ export const AdminOrdersTable: FC<IAdminOrdersTableProps & IBasicStyling> = ({
                         </button>
                       </td>
 
-                      <td className={styles.cell}>
+                      <td className={styles.cell} role="cell" data-label="Сумма">
                         <Price priceCents={order.totalCents} size="sm" />
                       </td>
 
-                      <td className={styles.cell}>
+                      <td className={styles.statusCell} role="cell" data-label="Статус">
                         <StatusSelect
                           value={order.status}
                           isLabelHidden={true}
@@ -152,7 +156,7 @@ export const AdminOrdersTable: FC<IAdminOrdersTableProps & IBasicStyling> = ({
                       </td>
 
                       {onDelete !== undefined && (
-                        <td className={styles.cell}>
+                        <td className={styles.cell} role="cell">
                           <IconButton
                             icon={<IconTrash />}
                             label={`Удалить заявку № ${orderNumber(order.id)}`}
@@ -168,8 +172,8 @@ export const AdminOrdersTable: FC<IAdminOrdersTableProps & IBasicStyling> = ({
                     </tr>
 
                     {isExpanded && (
-                      <tr className={styles.detailsRow}>
-                        <td className={styles.detailsCell} colSpan={columnCount}>
+                      <tr className={clsx(styles.row, styles.detailsRow)} role="row">
+                        <td className={styles.detailsCell} role="cell" colSpan={columnCount}>
                           <ul className={styles.items}>
                             {order.items.map(item => (
                               <li key={`${item.productSlug}-${item.productName}`} className={styles.item}>

@@ -49,10 +49,18 @@ export interface IAdminShellProps {
   title: string
   summary?: string
   actions?: React.ReactNode
+  /** Фильтры раздела — уходят в левую колонку под разделы. */
+  sidebar?: React.ReactNode
   children: React.ReactNode
 }
 
-export const AdminShell: React.FC<IAdminShellProps> = ({ title, summary, actions, children }) => {
+export const AdminShell: React.FC<IAdminShellProps> = ({
+  title,
+  summary,
+  actions,
+  sidebar,
+  children,
+}) => {
   const router = useRouter()
 
   return (
@@ -68,6 +76,7 @@ export const AdminShell: React.FC<IAdminShellProps> = ({ title, summary, actions
         navigation={NAVIGATION}
         currentHref={currentSection(router.asPath)}
         actions={actions}
+        sidebar={sidebar}
       >
         {children}
       </AdminLayout>

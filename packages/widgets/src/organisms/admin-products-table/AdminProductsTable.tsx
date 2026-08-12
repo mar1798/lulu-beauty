@@ -19,6 +19,11 @@ import * as styles from './AdminProductsTable.css'
  * вместе с колонкой, и «Нет» в столбце «Наличие» остаётся понятным вне
  * визуального контекста.
  *
+ * Ниже `md` та же разметка раскладывается в карточки (см. миксин
+ * `styling/mixin/table.ts`): название колонки берётся из `data-label`, а роли
+ * проставлены явно — `display: block` снимает встроенные роли таблицы, и без
+ * них строка перестала бы объявляться строкой.
+ *
  * Удаление на бэкенде мягкое, поэтому удалённая строка не исчезает, а
  * помечается: у неё вместо корзины — восстановление. Отличить её можно
  * только по `deletedAt` — других признаков в ответе нет.
@@ -47,33 +52,33 @@ export const AdminProductsTable: FC<IAdminProductsTableProps & IBasicStyling> = 
 
   return (
     <div className={clsx(styles.wrap, className)}>
-      <table className={styles.table}>
-        <thead>
-          <tr>
-            <th className={styles.headCell} scope="col">
+      <table className={styles.table} role="table">
+        <thead className={styles.head} role="rowgroup">
+          <tr className={styles.row} role="row">
+            <th className={styles.headCell} scope="col" role="columnheader">
               Товар
             </th>
-            <th className={styles.headCell} scope="col">
+            <th className={styles.headCell} scope="col" role="columnheader">
               Категория
             </th>
-            <th className={styles.headCell} scope="col">
+            <th className={styles.headCell} scope="col" role="columnheader">
               Цена
             </th>
-            <th className={styles.headCell} scope="col">
+            <th className={styles.headCell} scope="col" role="columnheader">
               Наличие
             </th>
-            <th className={styles.headActionsCell} scope="col">
+            <th className={styles.headActionsCell} scope="col" role="columnheader">
               Действия
             </th>
           </tr>
         </thead>
 
-        <tbody aria-busy={isLoading}>
+        <tbody className={styles.body} role="rowgroup" aria-busy={isLoading}>
           {isLoading
             ? Array.from({ length: skeletonRows }, (_, index) => (
                 // eslint-disable-next-line react/no-array-index-key
-                <tr key={index}>
-                  <td className={styles.cell} colSpan={5}>
+                <tr key={index} className={styles.row} role="row">
+                  <td className={styles.cell} role="cell" colSpan={5}>
                     <Skeleton height={40} shape="block" />
                   </td>
                 </tr>
@@ -84,8 +89,12 @@ export const AdminProductsTable: FC<IAdminProductsTableProps & IBasicStyling> = 
                 const isBusy = busyId === product.id
 
                 return (
-                  <tr key={product.id} className={clsx(deleted && styles.deletedRow)}>
-                    <td className={styles.cell}>
+                  <tr
+                    key={product.id}
+                    role="row"
+                    className={clsx(styles.row, deleted && styles.deletedRow)}
+                  >
+                    <td className={styles.cell} role="cell">
                       <div className={styles.product}>
                         <span className={styles.thumb}>
                           {image === null ? (
@@ -109,17 +118,17 @@ export const AdminProductsTable: FC<IAdminProductsTableProps & IBasicStyling> = 
                       </div>
                     </td>
 
-                    <td className={styles.cell}>
+                    <td className={styles.cell} role="cell" data-label="Категория">
                       {product.categoryId === null
                         ? '—'
                         : (categoryNames[product.categoryId] ?? '—')}
                     </td>
 
-                    <td className={styles.cell}>
+                    <td className={styles.cell} role="cell" data-label="Цена">
                       <Price priceCents={product.priceCents} size="sm" />
                     </td>
 
-                    <td className={styles.cell}>
+                    <td className={styles.cell} role="cell" data-label="Наличие">
                       {deleted ? (
                         <Badge tone="danger" withDot={true}>
                           Удалён
@@ -131,7 +140,7 @@ export const AdminProductsTable: FC<IAdminProductsTableProps & IBasicStyling> = 
                       )}
                     </td>
 
-                    <td className={styles.actionsCell}>
+                    <td className={styles.actionsCell} role="cell">
                       <div className={styles.actions}>
                         {/*
                           Переход на карточку — ссылка, а не кнопка: это

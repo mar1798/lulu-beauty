@@ -57,13 +57,13 @@ class NotificationsService:
             return
         logger.warning("%s; %s OTP: %s", self._fallback_reason(user), purpose.value, code)
 
-    async def send_reminder(self, user: User, cycle_label: str, deadline_at: datetime) -> None:
-        message = messages.cart_reminder(cycle_label, deadline_at)
+    async def send_reminder(self, user: User, cycle_title: str, deadline_at: datetime) -> None:
+        message = messages.cart_reminder(cycle_title, deadline_at)
         keyboard = keyboards.checkout_link()
         if await self._try_send(user.telegram_chat_id, message, reply_markup=keyboard):
-            logger.info("Sent reminder for cycle %s to %s via Telegram", cycle_label, user.phone)
+            logger.info("Sent reminder for cycle %s to %s via Telegram", cycle_title, user.phone)
             return
-        logger.warning("%s; reminder for %s not sent", self._fallback_reason(user), cycle_label)
+        logger.warning("%s; reminder for %s not sent", self._fallback_reason(user), cycle_title)
 
     async def send_new_order(
         self, owner: User, order: Order, customer: User | None, cycle: OrderCycle | None

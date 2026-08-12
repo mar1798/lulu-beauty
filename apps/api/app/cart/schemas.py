@@ -3,16 +3,19 @@ from datetime import datetime
 
 from pydantic import Field
 
+from app.common.limits import MAX_ITEM_QUANTITY
 from app.common.schemas import CamelModel
 
 
 class AddCartItemRequest(CamelModel):
     product_id: uuid.UUID
-    quantity: int = Field(default=1, ge=1)
+    # Same ceiling as an order line: the cart is what checkout copies into the order,
+    # and a quantity the order endpoints would refuse must not get in through here.
+    quantity: int = Field(default=1, ge=1, le=MAX_ITEM_QUANTITY)
 
 
 class UpdateCartItemRequest(CamelModel):
-    quantity: int = Field(ge=1)
+    quantity: int = Field(ge=1, le=MAX_ITEM_QUANTITY)
 
 
 class CartItemResponse(CamelModel):

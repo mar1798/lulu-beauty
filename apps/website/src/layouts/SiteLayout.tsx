@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useMemo } from 'react'
 import { useRouter } from 'next/router'
 import type { IFooterColumn, ILinkedLabel } from 'widgets/types'
 import { Footer, Header, MobileMenu } from 'widgets/organisms'
@@ -19,23 +19,31 @@ const NAVIGATION: ILinkedLabel[] = [
   { label: 'Мои заявки', link: { href: '/orders' } },
 ]
 
-const FOOTER_COLUMNS: IFooterColumn[] = [
-  {
-    title: 'Магазин',
-    links: [
-      { label: 'Каталог', link: { href: '/catalog' } },
-      { label: 'Мои заявки', link: { href: '/orders' } },
-    ],
-  },
-  {
-    title: 'Аккаунт',
-    links: [
-      { label: 'Профиль', link: { href: '/account' } },
-      { label: 'Вход', link: { href: '/login' } },
-      { label: 'Регистрация', link: { href: '/register' } },
-    ],
-  },
-]
+/** Виден только владельцу: у покупателя `/admin/*` всё равно закрыт SSR-гейтом. */
+const ADMIN_LINK: ILinkedLabel = { label: 'Админка', link: { href: '/admin' } }
+
+const SHOP_COLUMN: IFooterColumn = {
+  title: 'Магазин',
+  links: [
+    { label: 'Каталог', link: { href: '/catalog' } },
+    { label: 'Мои заявки', link: { href: '/orders' } },
+  ],
+}
+
+/**
+ * Колонка «Аккаунт» зависит от сессии: вошедшему «Вход» и «Регистрация» не
+ * нужны (и сбивают с толку — выглядят как приглашение завести второй аккаунт),
+ * гостю бесполезен «Профиль» — он всё равно упрётся в редирект на вход.
+ */
+const accountColumn = (isAuthorized: boolean): IFooterColumn => ({
+  title: 'Аккаунт',
+  links: isAuthorized
+    ? [{ label: 'Профиль', link: { href: '/account' } }]
+    : [
+        { label: 'Вход', link: { href: '/login' } },
+        { label: 'Регистрация', link: { href: '/register' } },
+      ],
+})
 
 const START_YEAR = 2026
 
@@ -51,12 +59,22 @@ const sectionOf = (path: string): string => {
 
 export const SiteLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const router = useRouter()
-  const { user } = useAuth()
+  const { user, isAdmin } = useAuth()
   const { itemCount } = useCart()
   const menu = useDisclosure()
 
+  const navigation = useMemo<ILinkedLabel[]>(
+    () => (isAdmin ? [...NAVIGATION, ADMIN_LINK] : NAVIGATION),
+    [isAdmin]
+  )
+
   const currentHref = sectionOf(router.asPath)
   const headerUser = user === null ? null : { name: user.name, link: { href: '/account' } }
+
+  const footerColumns = useMemo<IFooterColumn[]>(
+    () => [SHOP_COLUMN, accountColumn(user !== null)],
+    [user]
+  )
 
   return (
     <BaseLayout
@@ -64,7 +82,7 @@ export const SiteLayout: React.FC<{ children: React.ReactNode }> = ({ children }
         <>
           <Header
             logo={{ label: 'Lulu Beauty', link: { href: '/' } }}
-            navigation={NAVIGATION}
+            navigation={navigation}
             cartLink={{ href: '/cart' }}
             cartCount={itemCount}
             user={headerUser}
@@ -80,7 +98,7 @@ export const SiteLayout: React.FC<{ children: React.ReactNode }> = ({ children }
           <MobileMenu
             isOpen={menu.isOpen}
             onClose={menu.close}
-            navigation={NAVIGATION}
+            navigation={navigation}
             user={headerUser}
             loginLink={{ href: '/login' }}
             registerLink={{ href: '/register' }}
@@ -92,7 +110,7 @@ export const SiteLayout: React.FC<{ children: React.ReactNode }> = ({ children }
       }
       footer={
         <Footer
-          columns={FOOTER_COLUMNS}
+          columns={footerColumns}
           copyright={`© ${START_YEAR} Lulu Beauty`}
           note="Оплата и доставка обсуждаются лично"
         />

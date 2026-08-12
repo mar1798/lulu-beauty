@@ -121,7 +121,7 @@ export const AdminCycleCalendar: FC<IAdminCycleCalendarProps & IBasicStyling> = 
   return (
     <div className={clsx(styles.container, className)}>
       {error !== undefined && error !== null && (
-        <Alert tone="danger" title="Не получилось">
+        <Alert tone="danger" title="Не получилось" className={styles.alertSlot}>
           {error}
         </Alert>
       )}
@@ -195,16 +195,46 @@ export const AdminCycleCalendar: FC<IAdminCycleCalendarProps & IBasicStyling> = 
                       {Number(date.slice(-2))}
                     </span>
 
-                    {dayCycles.map(cycle => (
-                      <span key={cycle.id} className={styles.dayCycle}>
-                        <Badge
-                          tone={cycle.id === activeCycleId ? 'brand' : 'neutral'}
-                          withDot={cycle.id === activeCycleId}
-                        >
-                          {toStoreParts(cycle.deadlineAt)?.time ?? ''}
-                        </Badge>
-                      </span>
-                    ))}
+                    {dayCycles.length > 0 && (
+                      <>
+                        {/*
+                          Обе видимые метки скрыты от скринридера, а время ему
+                          отдаётся отдельной подписью: иначе на широком экране
+                          он читал бы «20:00» без слова «дедлайн», а на узком —
+                          вообще ничего, кроме числа.
+                        */}
+                        <span className={styles.dayDots} aria-hidden={true}>
+                          {dayCycles.map(cycle => (
+                            <span
+                              key={cycle.id}
+                              className={clsx(
+                                styles.dot,
+                                cycle.id === activeCycleId && styles.dotActive
+                              )}
+                            />
+                          ))}
+                        </span>
+
+                        <span className={styles.dayTimes} aria-hidden={true}>
+                          {dayCycles.map(cycle => (
+                            <span key={cycle.id} className={styles.dayCycle}>
+                              <Badge
+                                tone={cycle.id === activeCycleId ? 'brand' : 'neutral'}
+                                withDot={cycle.id === activeCycleId}
+                              >
+                                {toStoreParts(cycle.deadlineAt)?.time ?? ''}
+                              </Badge>
+                            </span>
+                          ))}
+                        </span>
+
+                        <span className={styles.dayLabel}>
+                          {dayCycles
+                            .map(cycle => `дедлайн ${toStoreParts(cycle.deadlineAt)?.time ?? ''}`)
+                            .join(', ')}
+                        </span>
+                      </>
+                    )}
                   </button>
                 )
               })}

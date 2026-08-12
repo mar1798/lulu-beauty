@@ -1,6 +1,7 @@
 import type { StoryFn, Meta } from '@storybook/react'
 import { AdminLayout } from '.'
-import { feedAdminLayout } from '../../stories/feed'
+import { CategoryFilter } from '../../molecules/category-filter'
+import { feedAdminLayout, feedCategoryFilter } from '../../stories/feed'
 import { StoryWrapper } from '../../stories/wrapper'
 
 export default {
@@ -19,3 +20,13 @@ Default.parameters = {
   layout: 'fullscreen',
 }
 Default.args = feedAdminLayout()
+
+/** С фильтрами раздела: они встают в левую колонку под разделами. */
+export const WithSidebar = Template.bind({})
+WithSidebar.parameters = {
+  layout: 'fullscreen',
+}
+WithSidebar.args = {
+  ...feedAdminLayout(),
+  sidebar: <CategoryFilter {...feedCategoryFilter()} />,
+}

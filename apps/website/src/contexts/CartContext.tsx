@@ -33,11 +33,17 @@ export interface ICartContextValue {
   /** Идёт изменение: контролы блокируются, чтобы не отправить два запроса подряд. */
   isBusy: boolean
   error: string | null
-  addItem: (productId: string, quantity?: number) => Promise<void>
-  updateItem: (productId: string, quantity: number) => Promise<void>
-  removeItem: (productId: string) => Promise<void>
-  empty: () => Promise<void>
-  reload: () => Promise<void>
+  /*
+   * Изменения возвращают признак успеха (`false` — не вышло, и `error` уже
+   * заполнен). Нужен он прежде всего кнопке «в корзину» в карточке: она
+   * единственная живёт вне экрана корзины, где ошибку никто не показывает,
+   * и должна сама сообщить о провале.
+   */
+  addItem: (productId: string, quantity?: number) => Promise<boolean>
+  updateItem: (productId: string, quantity: number) => Promise<boolean>
+  removeItem: (productId: string) => Promise<boolean>
+  empty: () => Promise<boolean>
+  reload: () => Promise<boolean>
   clearError: () => void
 }
 
@@ -59,11 +65,15 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
     mutate: swrMutate,
   } = useSWR<ICart>(userId === null ? null : cartKey(userId), getCart)
 
-  /** Общая обёртка изменений: блокировка, замена кеша ответом, разбор ошибки. */
+  /**
+   * Общая обёртка изменений: блокировка, замена кеша ответом, разбор ошибки.
+   * Возвращает, удалось ли изменение, — вызывающему не нужно ждать, пока
+   * `error` доедет до него отдельным рендером.
+   */
   const runMutation = useCallback(
-    async (action: () => Promise<ICart>, fallback: string): Promise<void> => {
+    async (action: () => Promise<ICart>, fallback: string): Promise<boolean> => {
       if (userId === null) {
-        return
+        return false
       }
 
       setIsBusy(true)
@@ -71,8 +81,12 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       try {
         await swrMutate(action(), { revalidate: false })
+
+        return true
       } catch (cause: unknown) {
         setError(messageOf(cause, fallback))
+
+        return false
       } finally {
         setIsBusy(false)
       }

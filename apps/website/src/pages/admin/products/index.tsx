@@ -118,6 +118,19 @@ const AdminProductsPage: React.FC<IAdminPageProps> = () => {
           Добавить товар
         </Button>
       }
+      sidebar={
+        <>
+          <span className={styles.categorySidebarTitle}>Категория</span>
+          <CategoryFilter
+            categories={categories ?? []}
+            selectedSlug={categorySlug}
+            onSelect={next => {
+              setCategorySlug(next)
+              setPage(1)
+            }}
+          />
+        </>
+      }
     >
       <div className={styles.filters}>
         <SearchField
@@ -139,57 +152,41 @@ const AdminProductsPage: React.FC<IAdminPageProps> = () => {
         />
       </div>
 
-      <div className={styles.productsLayout}>
-        <aside className={styles.categorySidebar}>
-          <span className={styles.categorySidebarTitle}>Категория</span>
-          <CategoryFilter
-            categories={categories ?? []}
-            selectedSlug={categorySlug}
-            onSelect={next => {
-              setCategorySlug(next)
-              setPage(1)
-            }}
+      {(error ?? actionError) !== null && (
+        <Alert tone="danger" title="Не получилось">
+          {error ?? actionError}
+        </Alert>
+      )}
+
+      <AdminProductsTable
+        products={data?.items ?? []}
+        categoryNames={categoryNames}
+        buildEditHref={product => `/admin/products/${product.id}`}
+        isLoading={isLoading}
+        busyId={busyId}
+        onDelete={product => {
+          void handleDelete(product)
+        }}
+        onRestore={product => {
+          void runAction(product, () => restoreProduct(product.id), 'Товар восстановлен')
+        }}
+        emptyState={
+          <EmptyState
+            title="Товаров не нашлось"
+            description="Измените фильтры или добавьте первый товар — вручную либо импортом из xlsx."
+            action={<Button link={{ href: '/admin/products/add' }}>Добавить товар</Button>}
           />
-        </aside>
+        }
+      />
 
-        <div className={styles.productsMain}>
-          {(error ?? actionError) !== null && (
-            <Alert tone="danger" title="Не получилось">
-              {error ?? actionError}
-            </Alert>
-          )}
-
-          <AdminProductsTable
-            products={data?.items ?? []}
-            categoryNames={categoryNames}
-            buildEditHref={product => `/admin/products/${product.id}`}
-            isLoading={isLoading}
-            busyId={busyId}
-            onDelete={product => {
-              void handleDelete(product)
-            }}
-            onRestore={product => {
-              void runAction(product, () => restoreProduct(product.id), 'Товар восстановлен')
-            }}
-            emptyState={
-              <EmptyState
-                title="Товаров не нашлось"
-                description="Измените фильтры или добавьте первый товар — вручную либо импортом из xlsx."
-                action={<Button link={{ href: '/admin/products/add' }}>Добавить товар</Button>}
-              />
-            }
-          />
-
-          {data !== undefined && data.total > PAGE_SIZE && (
-            <Pagination
-              page={data.page}
-              pageSize={data.pageSize}
-              total={data.total}
-              onChange={setPage}
-            />
-          )}
-        </div>
-      </div>
+      {data !== undefined && data.total > PAGE_SIZE && (
+        <Pagination
+          page={data.page}
+          pageSize={data.pageSize}
+          total={data.total}
+          onChange={setPage}
+        />
+      )}
     </AdminShell>
   )
 }

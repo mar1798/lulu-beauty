@@ -37,6 +37,18 @@ def test_parse_price_cents_rejects_invalid(raw: str | None) -> None:
         parse_price_cents(raw)
 
 
+@pytest.mark.parametrize("raw", ["nan", "NaN", "inf", "Infinity", "-inf", "1e30"])
+def test_parse_price_cents_rejects_values_decimal_accepts_but_the_column_cannot(
+    raw: str,
+) -> None:
+    """Decimal() parses all of these. Left to reach the end of the function they raise
+    (InvalidOperation on the NaN comparison, OverflowError on int(Infinity)) or overflow
+    the 32-bit column at flush — none of which is an ImportRowError, so a single such
+    cell would 500 the whole upload instead of being reported as one bad line."""
+    with pytest.raises(ImportRowError):
+        parse_price_cents(raw)
+
+
 @pytest.mark.parametrize("raw", ["true", "1", "yes", "y", "да", "TRUE", " Yes "])
 def test_parse_in_stock_truthy(raw: str) -> None:
     assert parse_in_stock(raw) is True

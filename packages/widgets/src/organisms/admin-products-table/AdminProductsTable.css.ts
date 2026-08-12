@@ -1,10 +1,13 @@
 import { style } from '@vanilla-extract/css'
-import { color, font, rem, transition } from '../../styling/lib'
+import { color, font, media, rem, transition } from '../../styling/lib'
 import { flexColumn, flexRow, focusVisibleRing, truncate } from '../../styling/mixin'
 import {
-  tableActionsCell,
-  tableBase,
-  tableCell,
+  tableCardActionsCell,
+  tableCardBase,
+  tableCardBody,
+  tableCardCell,
+  tableCardHead,
+  tableCardRow,
   tableHeadCell,
   tableWrap,
 } from '../../styling/mixin/table'
@@ -12,15 +15,21 @@ import { vars } from '../../styling/themes/contract.css'
 
 export const wrap = style(tableWrap())
 
-export const table = style(tableBase())
+export const table = style(tableCardBase())
+
+export const head = style(tableCardHead())
+
+export const body = style(tableCardBody())
+
+export const row = style(tableCardRow())
 
 export const headCell = style(tableHeadCell())
 
 export const headActionsCell = style([tableHeadCell(), { textAlign: 'right' }])
 
-export const cell = style(tableCell())
+export const cell = style(tableCardCell())
 
-export const actionsCell = style(tableActionsCell())
+export const actionsCell = style(tableCardActionsCell())
 
 /**
  * Удалённая строка приглушена, но читаема: она нужна ровно для того, чтобы
@@ -35,10 +44,18 @@ export const actionsCell = style(tableActionsCell())
  */
 export const deletedRow = style({})
 
+/**
+ * Название с миниатюрой. `minWidth` держит колонку в настоящей таблице, но на
+ * карточке его быть не должно: 240px не влезают в экран 320px вместе с полями.
+ */
 export const product = style({
   ...flexRow(12),
   alignItems: 'center',
-  minWidth: rem(240),
+  minWidth: 0,
+  width: '100%',
+  ...media({
+    md: { minWidth: rem(240), width: 'auto' },
+  }),
 })
 
 export const thumb = style({
@@ -97,5 +114,7 @@ export const slug = style({
 export const actions = style({
   ...flexRow(8),
   alignItems: 'center',
-  justifyContent: 'flex-end',
+  ...media({
+    md: { justifyContent: 'flex-end' },
+  }),
 })

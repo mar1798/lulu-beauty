@@ -1,6 +1,8 @@
 import { style } from '@vanilla-extract/css'
+import { color } from '../../styling/lib/color'
 import { media } from '../../styling/lib/media'
 import { flexColumn, grid, gridAutoFit } from '../../styling/mixin'
+import { vars } from '../../styling/themes/contract.css'
 
 /**
  * На узких экранах auto-fit не срабатывает: 220px-порог не даёт даже двум
@@ -20,10 +22,27 @@ export const container = style({
   }),
 })
 
-export const skeletonCard = style(flexColumn(10))
+/**
+ * Скелетон повторяет разметку карточки: та же белая подложка с крупным
+ * скруглением и та же квадратная картинка внутри — иначе на подмене данными
+ * сетка подпрыгивала бы на высоту карточной рамки.
+ */
+export const skeletonCard = style({
+  ...flexColumn(),
+  padding: vars.space.xs,
+  borderRadius: vars.radius.xxl,
+  backgroundColor: color.surface('base'),
+  boxShadow: vars.shadow.md,
+})
 
 export const skeletonMedia = style({
-  aspectRatio: '4 / 5',
+  aspectRatio: '1 / 1',
   width: '100%',
   height: 'auto',
+  borderRadius: vars.radius.xl,
+})
+
+export const skeletonBody = style({
+  ...flexColumn(10),
+  padding: `${vars.space.sm} ${vars.space.xs} ${vars.space.xxs}`,
 })

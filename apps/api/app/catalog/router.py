@@ -31,7 +31,12 @@ from app.storage.service import storage_service
 router = APIRouter(tags=["catalog"])
 
 MAX_IMAGE_BYTES = 5 * 1024 * 1024
-ALLOWED_IMAGE_CONTENT_TYPES = {"image/jpeg", "image/png", "image/webp"}
+# The stored file's extension comes from this table, never from the uploaded filename:
+# /files is served as static content and is same-origin with the site (next.config.js
+# rewrites it), so a name like "photo.html" would be stored and later served as a page
+# rather than as an image.
+IMAGE_EXTENSIONS = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp"}
+ALLOWED_IMAGE_CONTENT_TYPES = set(IMAGE_EXTENSIONS)
 MAX_IMPORT_BYTES = 10 * 1024 * 1024
 
 
@@ -280,7 +285,7 @@ async def upload_product_image(
     try:
         service = ProductService(session)
         await service.get_by_id(product_id)  # 404 up front, before touching storage
-        key = await storage_service.save(file.filename or "upload", content)
+        key = await storage_service.save(f"image{IMAGE_EXTENSIONS[file.content_type]}", content)
         image = await service.add_image(product_id, storage_service.url_for(key), alt, is_primary)
     except ProductNotFoundError as error:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "product_not_found") from error

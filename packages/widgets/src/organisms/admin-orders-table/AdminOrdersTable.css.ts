@@ -1,16 +1,34 @@
 import { style } from '@vanilla-extract/css'
-import { color, font, rem, transition } from '../../styling/lib'
+import { color, font, media, rem, transition } from '../../styling/lib'
 import { flexColumn, flexRow, focusVisibleRing } from '../../styling/mixin'
-import { tableBase, tableCell, tableHeadCell, tableWrap } from '../../styling/mixin/table'
+import {
+  tableCardBase,
+  tableCardBody,
+  tableCardCell,
+  tableCardHead,
+  tableCardRow,
+  tableCardStackCell,
+  tableHeadCell,
+  tableWrap,
+} from '../../styling/mixin/table'
 import { vars } from '../../styling/themes/contract.css'
 
 export const wrap = style(tableWrap())
 
-export const table = style(tableBase())
+export const table = style(tableCardBase())
+
+export const head = style(tableCardHead())
+
+export const body = style(tableCardBody())
+
+export const row = style(tableCardRow())
 
 export const headCell = style(tableHeadCell())
 
-export const cell = style(tableCell())
+export const cell = style(tableCardCell())
+
+/** Селект статуса: на карточке подпись встаёт над ним, иначе он сжимается. */
+export const statusCell = style(tableCardStackCell())
 
 export const order = style(flexColumn(2))
 
@@ -67,8 +85,18 @@ export const detailsRow = style({
   backgroundColor: color.surface('muted'),
 })
 
-/* Ячейка остаётся табличной — flex внутри `td` сломал бы `colSpan`. */
-export const detailsCell = style(tableCell())
+/*
+ * Состав раскрытой заявки. На широком экране ячейка остаётся табличной —
+ * flex внутри `td` сломал бы `colSpan`; на карточке она уже flex (так устроен
+ * `tableCell`), и её двум блокам — списку позиций и комментарию — нужен
+ * столбец, иначе они встали бы рядом.
+ */
+export const detailsCell = style({
+  ...tableCardCell(),
+  flexDirection: 'column',
+  alignItems: 'stretch',
+  rowGap: vars.space.xs,
+})
 
 export const items = style({
   ...flexColumn(6),
@@ -82,7 +110,9 @@ export const item = style({
 })
 
 export const itemName = style({
-  minWidth: rem(180),
+  ...media({
+    sm: { minWidth: rem(180) },
+  }),
 })
 
 export const itemLink = style([

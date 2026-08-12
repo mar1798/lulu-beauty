@@ -1,4 +1,5 @@
 import uuid
+from datetime import UTC, datetime
 
 import pytest
 from sqlalchemy import select
@@ -11,6 +12,7 @@ from app.cart.service import (
     NoActiveCycleError,
     ProductNotFoundError,
 )
+from app.common.limits import MAX_ITEM_QUANTITY
 from tests.integration.factories import (
     make_cycle,
     make_product,
@@ -119,3 +121,40 @@ async def test_set_item_quantity_without_active_cycle_raises_no_active_cycle(
 
     with pytest.raises(NoActiveCycleError):
         await CartService(db_session).set_item_quantity(user.id, product.id, 2)
+
+
+async def test_add_item_clamps_the_running_quantity_to_the_ceiling(
+    db_session: AsyncSession,
+) -> None:
+    """The per-request limit is a schema rule; without a clamp here it would only cost an
+    attacker a few more presses to check out a quantity the order endpoints refuse."""
+    user = await make_user(db_session)
+    await make_cycle(db_session)
+    product = await make_product(db_session)
+    service = CartService(db_session)
+
+    await service.add_item(user.id, product.id, MAX_ITEM_QUANTITY)
+    response = await service.add_item(user.id, product.id, 5)
+
+    assert response.items[0].quantity == MAX_ITEM_QUANTITY
+
+
+async def test_a_discontinued_product_drops_out_of_the_cart(db_session: AsyncSession) -> None:
+    """Soft-deleting is how the owner takes something off sale. Adding a deleted product
+    is already refused; a line already in the cart used to survive the whole way into an
+    order, which is the one place the refusal actually matters."""
+    user = await make_user(db_session)
+    await make_cycle(db_session)
+    live = await make_product(db_session, slug="live", price_cents=1000)
+    gone = await make_product(db_session, slug="gone", price_cents=5000)
+    service = CartService(db_session)
+
+    await service.add_item(user.id, live.id, 1)
+    await service.add_item(user.id, gone.id, 1)
+    gone.deleted_at = datetime.now(UTC)
+    await db_session.flush()
+
+    response = await service.get_cart(user.id)
+
+    assert [item.product_slug for item in response.items] == ["live"]
+    assert response.total_cents == 1000

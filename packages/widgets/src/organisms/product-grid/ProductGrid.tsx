@@ -33,8 +33,12 @@ export const ProductGrid: FC<IProductGridProps & IBasicStyling> = ({
           // eslint-disable-next-line react/no-array-index-key
           <div key={index} className={styles.skeletonCard}>
             <Skeleton className={styles.skeletonMedia} shape="block" tone="brand" />
-            <Skeleton width="80%" tone="brand" />
-            <Skeleton width="40%" height={18} tone="brand" />
+
+            <div className={styles.skeletonBody}>
+              <Skeleton width="80%" tone="brand" />
+              <Skeleton width="50%" height={14} tone="brand" />
+              <Skeleton width="40%" height={20} tone="brand" />
+            </div>
           </div>
         ))}
       </div>

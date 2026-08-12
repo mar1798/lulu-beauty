@@ -8,6 +8,7 @@ from app.auth.models import User
 from app.cart.models import Cart, CartItem
 from app.cycles.models import CycleStatus, OrderCycle
 from app.orders.models import Order, OrderStatus
+from app.telegram import messages
 from app.telegram.client import notifications_service
 
 REMINDER_WINDOW = timedelta(hours=24)
@@ -68,10 +69,13 @@ class CycleSchedulerService:
         )
         users = list(result.scalars().all())
 
+        # cycle_title, not `cycle.label or "<something>"`: the label is optional, and the
+        # fallback goes straight into a Russian sentence the customer reads ("...по заказу
+        # «...»"). Naming an unlabelled cycle by its deadline is what every other message
+        # already does.
+        title = messages.cycle_title(cycle)
         for user in users:
-            await notifications_service.send_reminder(
-                user, cycle.label or "the upcoming order cycle", cycle.deadline_at
-            )
+            await notifications_service.send_reminder(user, title, cycle.deadline_at)
         return len(users)
 
     async def sweep_deadlines(self) -> list[CycleClosure]:

@@ -1046,6 +1046,8 @@ export interface IAdminLayoutProps {
   currentHref?: string
   /** Кнопки раздела: «Добавить товар», «Скачать выгрузку». */
   actions?: ReactNode
+  /** Фильтры раздела: встают под разделами в левой колонке. */
+  sidebar?: ReactNode
   children: ReactNode
 }
 

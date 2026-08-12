@@ -25,6 +25,30 @@ const nextConfig = {
   },
   reactStrictMode: true,
   transpilePackages: ['widgets'],
+  /**
+   * `widgets` отдаётся сабпасами-бочками (`widgets/atoms` и т.д.), а бочка —
+   * это `export * from` по всем компонентам раздела. Из-за этого страница,
+   * которой нужна одна `Button`, тянула в свой чанк всю библиотеку: в dev у
+   * `/login` в бандле оказывалось ~215 модулей `widgets` (админские таблицы,
+   * календарь сборов, сетка каталога), а сам чанк весил 6 МБ.
+   *
+   * `optimizePackageImports` переписывает импорт из бочки в прямые импорты
+   * нужных файлов ещё на уровне SWC, поэтому и dev-компиляция, и итоговый
+   * бандл считаются только по фактически используемым компонентам.
+   */
+  experimental: {
+    optimizePackageImports: [
+      'widgets/atoms',
+      'widgets/molecules',
+      'widgets/organisms',
+      'widgets/templates',
+      'widgets/contexts',
+      'widgets/hooks',
+      'widgets/utils',
+      'widgets/styling/lib',
+      'widgets/styling/mixin',
+    ],
+  },
   images: {
     remotePatterns: [
       {

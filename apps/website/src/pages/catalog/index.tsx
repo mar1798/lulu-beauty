@@ -181,7 +181,7 @@ const CatalogPage: React.FC<ICatalogPageProps> = ({ categories, initial }) => {
             categoryNames={categoryNames}
             renderAction={product =>
               product.inStock ? (
-                <AddToCartButton productId={product.id} iconOnMobile={true} />
+                <AddToCartButton productId={product.id} isCompact={true} />
               ) : null
             }
             emptyState={

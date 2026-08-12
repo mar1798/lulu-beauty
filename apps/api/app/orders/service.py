@@ -84,10 +84,13 @@ class OrdersService:
         if cart is None:
             raise EmptyCartError
 
+        # Same filter as the cart response: a product discontinued between the last look
+        # at the cart and this click is not in the cart the customer is looking at, and
+        # add_item refuses to put one into an order — checkout must not be the one way in.
         result = await self._session.execute(
             select(CartItem, Product)
             .join(Product, Product.id == CartItem.product_id)
-            .where(CartItem.cart_id == cart.id)
+            .where(CartItem.cart_id == cart.id, Product.deleted_at.is_(None))
             .options(selectinload(Product.images))
         )
         rows = result.all()

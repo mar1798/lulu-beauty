@@ -2,8 +2,8 @@ import React from 'react'
 import { useRouter } from 'next/router'
 import type { IControlSize } from 'widgets/types'
 import { Button, IconButton } from 'widgets/atoms'
-import { IconPlus } from 'widgets/svg'
-import * as styles from '@/styles/addToCartButton.css'
+import { useToast } from 'widgets/contexts'
+import { IconCheck, IconPlus } from 'widgets/svg'
 import { useAuth } from '@/contexts/AuthContext'
 import { useCart } from '@/contexts/CartContext'
 
@@ -21,56 +21,82 @@ export const AddToCartButton: React.FC<{
   size?: IControlSize
   isFullWidth?: boolean
   disabled?: boolean
-  /** В сетке каталога на мобильном кнопка с текстом не помещается — только плюс. */
-  iconOnMobile?: boolean
-}> = ({ productId, size = 'sm', isFullWidth = false, disabled = false, iconOnMobile = false }) => {
+  /**
+   * Круглая кнопка-иконка вместо кнопки с текстом — форма действия в карточке
+   * каталога: в строке с ценой на текст места нет ни на одной ширине.
+   */
+  isCompact?: boolean
+}> = ({ productId, size = 'sm', isFullWidth = false, disabled = false, isCompact = false }) => {
   const router = useRouter()
-  const { user } = useAuth()
+  const { user, isLoading: isAuthLoading } = useAuth()
   const { cart, addItem, isBusy } = useCart()
+  const { notify } = useToast()
 
   const isInCart = cart?.items.some(item => item.productId === productId) === true
 
   if (isInCart) {
-    return (
+    /*
+      В карточке «уже в корзине» — та же круглая кнопка, но белая с галочкой:
+      состояние читается формой заливки, а не длиной подписи, и продолжает
+      вести в корзину.
+    */
+    return isCompact ? (
+      <IconButton
+        icon={<IconCheck />}
+        label="В корзине — перейти в корзину"
+        variant="solid"
+        size="md"
+        onClick={() => void router.push('/cart')}
+      />
+    ) : (
       <Button variant="secondary" size={size} isFullWidth={isFullWidth} link={{ href: '/cart' }}>
         В корзине
       </Button>
     )
   }
 
-  const handleAdd = (): void => {
-    if (user === null) {
-      void router.push('/login')
+  const handleAdd = async (): Promise<void> => {
+    /*
+      Пока `/api/auth/me` не ответил, `user` — `null`, и это ещё не значит
+      «гость». Раньше клик в этот момент уводил вошедшего покупателя на
+      `/login` вместо добавления товара; теперь кнопка на это время выключена
+      (см. `isPending`), а сюда мы попасть уже не должны.
+    */
+    if (isAuthLoading) {
       return
     }
 
-    void addItem(productId)
+    if (user === null) {
+      void router.push({ pathname: '/login', query: { next: router.asPath } })
+      return
+    }
+
+    if (!(await addItem(productId))) {
+      notify({
+        tone: 'danger',
+        title: 'Не удалось добавить товар',
+        description: 'Попробуйте ещё раз или обновите страницу.',
+      })
+    }
   }
 
-  if (iconOnMobile) {
-    return (
-      <>
-        <IconButton
-          className={styles.mobileOnly}
-          icon={<IconPlus />}
-          label="В корзину"
-          variant="primary"
-          size={size}
-          disabled={disabled || isBusy}
-          onClick={handleAdd}
-        />
+  const onClick = (): void => {
+    void handleAdd()
+  }
 
-        <Button
-          className={styles.desktopOnly}
-          size={size}
-          isFullWidth={isFullWidth}
-          disabled={disabled}
-          isLoading={isBusy}
-          onClick={handleAdd}
-        >
-          В корзину
-        </Button>
-      </>
+  /** Сессия ещё проверяется или корзина занята — жать бессмысленно. */
+  const isPending = isAuthLoading || isBusy
+
+  if (isCompact) {
+    return (
+      <IconButton
+        icon={<IconPlus />}
+        label="В корзину"
+        variant="primary"
+        size="md"
+        disabled={disabled || isPending}
+        onClick={onClick}
+      />
     )
   }
 
@@ -78,9 +104,9 @@ export const AddToCartButton: React.FC<{
     <Button
       size={size}
       isFullWidth={isFullWidth}
-      disabled={disabled}
+      disabled={disabled || isAuthLoading}
       isLoading={isBusy}
-      onClick={handleAdd}
+      onClick={onClick}
     >
       В корзину
     </Button>

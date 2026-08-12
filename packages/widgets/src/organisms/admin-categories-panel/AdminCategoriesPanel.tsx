@@ -87,7 +87,7 @@ export const AdminCategoriesPanel: FC<IAdminCategoriesPanelProps & IBasicStyling
         ) : (
           categories.map(category =>
             editingId === category.id ? (
-              <div key={category.id} className={styles.row}>
+              <div key={category.id} className={styles.editRow}>
                 <Input
                   label="Название"
                   value={draft.name}

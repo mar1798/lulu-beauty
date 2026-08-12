@@ -3,8 +3,21 @@ from datetime import datetime
 
 from pydantic import Field
 
+from app.common.limits import MAX_ITEM_QUANTITY
 from app.common.schemas import CamelModel
 from app.orders.models import OrderStatus
+
+__all__ = [
+    "MAX_ITEM_QUANTITY",
+    "AdminOrderResponse",
+    "CheckoutRequest",
+    "OrderItemAddRequest",
+    "OrderItemQuantityRequest",
+    "OrderItemResponse",
+    "OrderNoteUpdateRequest",
+    "OrderResponse",
+    "OrderStatusUpdateRequest",
+]
 
 
 class CheckoutRequest(CamelModel):
@@ -17,9 +30,6 @@ class OrderStatusUpdateRequest(CamelModel):
 
 class OrderNoteUpdateRequest(CamelModel):
     note: str | None = Field(default=None, max_length=2000)
-
-
-MAX_ITEM_QUANTITY = 999
 
 
 class OrderItemQuantityRequest(CamelModel):
