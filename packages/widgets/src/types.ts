@@ -214,7 +214,10 @@ export interface IOrderCycle {
   deadlineAt: string
   label: string | null
   status: CycleStatus
+  /** Напоминание за сутки до дедлайна. */
   reminderSentAt: string | null
+  /** Последнее напоминание, за несколько часов до дедлайна. */
+  finalReminderSentAt: string | null
   closedAt: string | null
 }
 
@@ -1133,7 +1136,6 @@ export interface IAdminProductValues {
 export interface IProductImageUpload {
   file: File
   alt: string
-  isPrimary: boolean
 }
 
 export interface IAdminProductFormProps {
@@ -1144,15 +1146,17 @@ export interface IAdminProductFormProps {
   isSubmitting?: boolean
   error?: string | null
   /**
-   * Картинки есть только у сохранённого товара: загружать их некуда, пока
-   * у него нет id. При создании вместо галереи показывается один выбор фото
+   * Фотография есть только у сохранённого товара: грузить её некуда, пока
+   * у него нет id. При создании вместо неё показывается один выбор файла
    * (см. `IAdminProductValues.image`), который уходит вместе с сабмитом.
+   *
+   * Список, а не одна картинка: у товара фотография одна, но у заведённых
+   * до этого правила могло остаться несколько — их нужно показать и дать удалить.
    */
   images?: IProductImage[]
+  /** Загрузка — это замена: бэкенд убирает прежние фотографии товара. */
   onImageUpload?: (upload: IProductImageUpload) => void
   onImageDelete?: (image: IProductImage) => void
-  /** Заменить главное фото одним действием: новая загрузка + удаление старого. */
-  onImageReplace?: (previous: IProductImage, file: File) => void
   isImageBusy?: boolean
   imageError?: string | null
   /** Слот под удаление/восстановление товара. */

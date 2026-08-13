@@ -488,9 +488,13 @@ async def test_admin_delete_removes_the_order_and_its_items(db_session: AsyncSes
     user_id, order = await _order_with_items(db_session, lines=2)
     service = OrdersService(db_session)
 
-    await service.delete(order.id)
+    deleted = await service.delete(order.id)
     await db_session.flush()
 
+    # Снято до удаления: после коммита читать уже нечего, а покупателю надо написать.
+    assert deleted.order_id == order.id
+    assert deleted.user_id == user_id
+    assert deleted.status == order.status
     with pytest.raises(OrderNotFoundError):
         await service.get_for_user(user_id, order.id)
     leftover_items = (

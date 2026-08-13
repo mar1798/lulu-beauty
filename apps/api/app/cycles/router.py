@@ -25,6 +25,7 @@ def _cycle_response(cycle: OrderCycle) -> OrderCycleResponse:
         label=cycle.label,
         status=cycle.status,
         reminder_sent_at=cycle.reminder_sent_at,
+        final_reminder_sent_at=cycle.final_reminder_sent_at,
         closed_at=cycle.closed_at,
     )
 

@@ -4,6 +4,9 @@ Kept out of `service.py` (which has no session) and out of the handlers (which w
 each grow their own copy of these queries).
 """
 
+import uuid
+from collections.abc import Sequence
+
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -30,6 +33,15 @@ async def get_broadcast_audience(session: AsyncSession) -> list[User]:
     """
     result = await session.execute(select(User).where(User.telegram_chat_id.is_not(None)))
     return list(result.scalars().all())
+
+
+async def get_users(session: AsyncSession, user_ids: Sequence[uuid.UUID]) -> dict[uuid.UUID, User]:
+    """Batch-loads the recipients of a personalised fan-out (one query, not one each)."""
+    if not user_ids:
+        return {}
+
+    result = await session.execute(select(User).where(User.id.in_(user_ids)))
+    return {user.id: user for user in result.scalars().all()}
 
 
 async def find_user_by_chat_id(session: AsyncSession, chat_id: int) -> User | None:

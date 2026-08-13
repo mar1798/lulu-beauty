@@ -92,7 +92,8 @@ export const CheckoutForm: FC<ICheckoutFormProps & IBasicStyling> = ({
       </Button>
 
       <Text size="sm" tone="muted">
-        Это не оплата. После закрытия сбора владелец свяжется с вами и подтвердит заказ.
+        Это не оплата. После закрытия сбора владелец подтвердит заявку — уведомление
+        придёт в Telegram.
       </Text>
     </form>
   )

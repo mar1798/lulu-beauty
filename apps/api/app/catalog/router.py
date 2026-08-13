@@ -239,7 +239,6 @@ async def upload_product_image(
     product_id: uuid.UUID,
     file: UploadFile = File(...),
     alt: str | None = Form(default=None),
-    is_primary: bool = Form(default=False, alias="isPrimary"),
     session: AsyncSession = Depends(get_session),
     _admin: CurrentUser = Depends(require_admin),
 ) -> ProductImageResponse:
@@ -254,7 +253,7 @@ async def upload_product_image(
         service = ProductService(session)
         await service.get_by_id(product_id)  # 404 up front, before touching storage
         key = await storage_service.save(f"image{IMAGE_EXTENSIONS[file.content_type]}", content)
-        image = await service.add_image(product_id, storage_service.url_for(key), alt, is_primary)
+        image = await service.add_image(product_id, storage_service.url_for(key), alt)
     except ProductNotFoundError as error:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "product_not_found") from error
 

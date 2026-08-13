@@ -3,6 +3,7 @@ from datetime import UTC, datetime
 
 from app.auth.models import User
 from app.cart.schemas import CartItemResponse, CartResponse
+from app.common.limits import MAX_WISHLIST_ITEMS
 from app.cycles.models import OrderCycle
 from app.orders.models import Order, OrderItem, OrderStatus
 from app.telegram import messages
@@ -72,6 +73,43 @@ def test_order_status_changed_says_nothing_about_pending() -> None:
     """PENDING is the owner undoing a cancellation — news to nobody."""
     assert messages.order_status_changed(_order(status=OrderStatus.PENDING)) is None
     assert messages.order_status_changed(_order(status=OrderStatus.READY)) is not None
+
+
+def test_order_deleted_stays_silent_on_what_was_already_finished() -> None:
+    """Выданную заявку человек забрал, отменённую — списал; и то и другое он уже
+    перестал ждать, а вот исчезнувшая PENDING без объяснения выглядит потерей."""
+    order_id = uuid.UUID("a1b2c3d4-0000-0000-0000-000000000000")
+
+    assert messages.order_deleted(order_id, OrderStatus.COMPLETED) is None
+    assert messages.order_deleted(order_id, OrderStatus.CANCELLED) is None
+    for status in (OrderStatus.PENDING, OrderStatus.CONFIRMED, OrderStatus.READY):
+        text = messages.order_deleted(order_id, status)
+        assert text is not None
+        assert "#a1b2c3d4" in text
+
+
+def test_cart_last_chance_is_not_the_day_ahead_reminder_again() -> None:
+    deadline = datetime(2030, 6, 12, 14, tzinfo=UTC)
+
+    first = messages.cart_reminder("«Июнь»", deadline)
+    last = messages.cart_last_chance("«Июнь»", deadline)
+
+    assert first != last
+    assert "Последний шанс" in last
+    # Обе даты — в локальной зоне магазина, а не в UTC.
+    assert messages.format_deadline(deadline) in last
+
+
+def test_cart_moved_to_wishlist_counts_in_russian_and_owns_up_to_the_overflow() -> None:
+    saved_only = messages.cart_moved_to_wishlist("«Июнь»", saved=2, dropped=0)
+    with_overflow = messages.cart_moved_to_wishlist("«Июнь»", saved=1, dropped=5)
+
+    assert "2 товара" in saved_only
+    assert "избранном" in saved_only
+    # Молчать о том, что часть корзины не влезла, — значит соврать про «сохранили».
+    assert "не поместилось" not in saved_only
+    assert "1 товар " in with_overflow
+    assert f"5 товаров не поместилось — в избранном уже {MAX_WISHLIST_ITEMS}" in with_overflow
 
 
 def test_new_order_for_owner_carries_customer_total_and_note() -> None:

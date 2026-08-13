@@ -30,7 +30,7 @@ from app.orders.service import (
     OrdersService,
     ProductNotFoundError,
 )
-from app.telegram.notify import notify_new_order, notify_order_status
+from app.telegram.notify import notify_new_order, notify_order_deleted, notify_order_status
 
 router = APIRouter(tags=["orders"])
 
@@ -322,13 +322,22 @@ async def update_order_status(
 @router.delete("/admin/orders/{order_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_order_admin(
     order_id: uuid.UUID,
+    background_tasks: BackgroundTasks,
     session: AsyncSession = Depends(get_session),
     _admin: CurrentUser = Depends(require_admin),
 ) -> None:
-    """Owner-side removal — unlike the customer's cancel, this really deletes the order."""
+    """Owner-side removal — unlike the customer's cancel, this really deletes the order.
+
+    The customer is told, unless the order was already COMPLETED or CANCELLED: for those
+    two the row was history, and for everything else it silently disappears from "Мои
+    заявки" while they're still waiting for it (`messages.order_deleted` holds the rule).
+    """
     try:
-        await OrdersService(session).delete(order_id)
+        deleted = await OrdersService(session).delete(order_id)
     except OrderNotFoundError as error:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "order_not_found") from error
 
     await session.commit()
+    background_tasks.add_task(
+        notify_order_deleted, deleted.user_id, deleted.order_id, deleted.status
+    )

@@ -66,3 +66,17 @@ def test_checkout_link_points_at_checkout_on_a_public_site(
     button = markup.inline_keyboard[0][0]
     # The trailing slash of the configured base must not survive into the link.
     assert button.url == "https://lulu.example.com/checkout"
+
+
+def test_wishlist_link_follows_the_same_public_url_rule(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Both site links go through `_site_link`, so localhost has to disarm this one too —
+    otherwise the whole "ваша корзина в избранном" message fails to send."""
+    monkeypatch.setattr("app.config.settings.website_base_url", "https://lulu.example.com")
+    markup = keyboards.wishlist_link()
+    assert markup is not None
+    assert markup.inline_keyboard[0][0].url == "https://lulu.example.com/wishlist"
+
+    monkeypatch.setattr("app.config.settings.website_base_url", "http://localhost:3000")
+    assert keyboards.wishlist_link() is None

@@ -47,7 +47,6 @@ const AdminProductCreatePage: React.FC = () => {
           await uploadProductImage(product.id, {
             file: values.image.file,
             alt: values.image.alt === '' ? undefined : values.image.alt,
-            isPrimary: true,
           })
         } catch (cause: unknown) {
           /*

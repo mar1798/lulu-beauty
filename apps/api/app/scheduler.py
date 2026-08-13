@@ -6,7 +6,7 @@ from app.auth.telegram_login import TelegramLoginService
 from app.config import settings
 from app.cycles.scheduler_service import CycleSchedulerService
 from app.db import async_session
-from app.telegram.notify import notify_cycle_closed
+from app.telegram.notify import notify_carts_rescued, notify_cycle_closed
 
 logger = logging.getLogger("app.scheduler")
 
@@ -26,11 +26,13 @@ async def _run_deadline_sweep() -> None:
         closures = await CycleSchedulerService(session).sweep_deadlines()
         await session.commit()
         # After the commit, not inside the sweep: a summary of a close that then rolled
-        # back would send the owner shopping against a cycle still collecting orders.
+        # back would send the owner shopping against a cycle still collecting orders —
+        # and would tell customers their carts are in the wishlist when they aren't.
         for closure in closures:
             await notify_cycle_closed(
                 session, closure.cycle, closure.orders_count, closure.total_cents
             )
+            await notify_carts_rescued(session, closure.cycle, closure.rescued_carts)
     if closures:
         logger.info("Deadline sweep closed %d cycle(s)", len(closures))
 

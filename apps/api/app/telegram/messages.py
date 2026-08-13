@@ -9,11 +9,13 @@ escaping and a product name with an underscore in it can't break a message.
 """
 
 import logging
+import uuid
 from datetime import datetime
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from app.auth.models import User
 from app.cart.schemas import CartResponse
+from app.common.limits import MAX_WISHLIST_ITEMS
 from app.config import settings
 from app.cycles.models import OrderCycle
 from app.orders.models import Order, OrderStatus
@@ -65,10 +67,13 @@ def cycle_title(cycle: OrderCycle) -> str:
     return f"«{cycle.label}»" if cycle.label else f"от {format_deadline(cycle.deadline_at)}"
 
 
-def order_reference(order: Order) -> str:
+def order_reference(order_id: uuid.UUID) -> str:
     """Short prefix of the UUID — enough for the owner and the customer to mean the same
-    order out loud, without pasting 36 characters into a chat."""
-    return f"#{str(order.id)[:8]}"
+    order out loud, without pasting 36 characters into a chat.
+
+    Takes the id rather than the order: the deletion notice has nothing else left.
+    """
+    return f"#{str(order_id)[:8]}"
 
 
 def _items_count(order: Order) -> str:
@@ -97,9 +102,50 @@ def cart_reminder(title: str, deadline_at: datetime) -> str:
     )
 
 
+def cart_last_chance(title: str, deadline_at: datetime) -> str:
+    """Второе напоминание, за несколько часов до дедлайна.
+
+    Отдельный текст, а не повтор первого: сутками раньше сбор можно было отложить
+    «на вечер», а здесь запаса уже нет — и если сообщение об этом не скажет, оно
+    прочитается как то же самое напоминание второй раз.
+
+    Срок в тексте не назван словами («меньше трёх часов») намеренно: окно живёт в
+    `cycles/scheduler_service.REMINDER_STAGES`, и продублированное здесь оно рано или
+    поздно начнёт врать. Точное время дедлайна отвечает на тот же вопрос честнее.
+    """
+    return (
+        f"⏳ Последний шанс: сбор {title} закрывается {format_deadline(deadline_at)}.\n"
+        "Товары из корзины Lulu Beauty удалятся, если до этого времени не оформить заявку."
+    )
+
+
+def cart_moved_to_wishlist(title: str, saved: int, dropped: int) -> str:
+    """Сбор закрылся, а заявку так и не оформили — куда делась корзина.
+
+    Сообщение обязано быть, даже когда переносить нечего было бы обидно: корзина
+    исчезает не по действию человека, а по часам, и без этой строки он в следующий раз
+    открывает пустую корзину и считает, что сайт потерял его выбор.
+    """
+    lines = [
+        f"Сбор {title} закрыт — заявку по нему вы не оформили.",
+        # «оттуда всё вернётся», а не «их можно вернуть»: местоимение пришлось бы
+        # согласовывать с числом, а число здесь бывает и единицей.
+        f"Сохранили {saved} {plural(saved, 'товар', 'товара', 'товаров')} из корзины "
+        "в избранном: оттуда всё вернётся в корзину одним нажатием, когда откроется "
+        "следующий сбор.",
+    ]
+    if dropped:
+        fit = plural(dropped, "не поместился", "не поместились", "не поместилось")
+        lines.append(
+            f"Ещё {dropped} {plural(dropped, 'товар', 'товара', 'товаров')} {fit} "
+            f"— в избранном уже {MAX_WISHLIST_ITEMS} позиций."
+        )
+    return "\n".join(lines)
+
+
 def new_order_for_owner(order: Order, customer: User | None, cycle: OrderCycle | None) -> str:
     lines = [
-        f"🆕 Новая заявка {order_reference(order)}",
+        f"🆕 Новая заявка {order_reference(order.id)}",
         # A deleted customer cascades their orders away, so the fallback is defensive
         # only — same reasoning as _admin_order_response in orders/router.py.
         f"Покупатель: {customer.name}, {customer.phone}" if customer else "Покупатель: —",
@@ -114,7 +160,7 @@ def new_order_for_owner(order: Order, customer: User | None, cycle: OrderCycle |
 
 _ORDER_STATUS_NEWS = {
     OrderStatus.CONFIRMED: "подтверждена — владелец начал закупку.",
-    OrderStatus.READY: "готова к выдаче.",
+    OrderStatus.READY: "готова к выдаче. О получении договоритесь лично.",
     OrderStatus.COMPLETED: "выдана. Спасибо за заказ!",
     OrderStatus.CANCELLED: "отменена владельцем. Если это ошибка — напишите ему.",
 }
@@ -129,7 +175,28 @@ def order_status_changed(order: Order) -> str | None:
     news = _ORDER_STATUS_NEWS.get(order.status)
     if news is None:
         return None
-    return f"Заявка {order_reference(order)} {news}"
+    return f"Заявка {order_reference(order.id)} {news}"
+
+
+# Статусы, на которых удаление заявки — уже не новость: выданную покупатель забрал,
+# отменённую он (или владелец) списал ещё раньше. В обоих случаях строка исчезает из
+# таблицы у владельца, а для покупателя не меняется ничего, чего он ещё ждёт.
+SILENT_DELETION_STATUSES = frozenset({OrderStatus.COMPLETED, OrderStatus.CANCELLED})
+
+
+def order_deleted(order_id: uuid.UUID, status: OrderStatus) -> str | None:
+    """None — «ничего не говорить», как и у `order_status_changed`.
+
+    Заявку, которую человек ещё ждёт, удаляют молча только по недосмотру: она просто
+    пропадает из «Мои заявки», и единственное объяснение, которое у него остаётся, —
+    что сайт её потерял.
+    """
+    if status in SILENT_DELETION_STATUSES:
+        return None
+    return (
+        f"Заявка {order_reference(order_id)} удалена владельцем. "
+        "Если это ошибка — напишите ему."
+    )
 
 
 def cycle_opened(cycle: OrderCycle) -> str:
@@ -162,7 +229,8 @@ def cycle_closed_for_owner(cycle: OrderCycle, orders_count: int, total_cents: in
 
 START = (
     "Добро пожаловать в Lulu Beauty! Поделитесь номером телефона, чтобы привязать "
-    "этот чат к вашему аккаунту и получать сюда коды подтверждения и напоминания."
+    "этот чат к вашему аккаунту: сюда придут вход на сайт, подтверждение заявки "
+    "и напоминания о дедлайне."
 )
 
 SHARE_CONTACT_BUTTON = "Поделиться номером телефона"
@@ -172,6 +240,7 @@ SHARE_CONTACT_BUTTON = "Поделиться номером телефона"
 CONFIRM_BUTTON = "✅ Подтвердить"
 CANCEL_BUTTON = "❌ Отменить"
 CHECKOUT_BUTTON = "Оформить заявку"
+WISHLIST_BUTTON = "Посмотреть избранное"
 
 # Toasts, not messages: Telegram shows these on the button itself and cuts them at 200
 # characters, so each says one thing and stops.
@@ -222,7 +291,7 @@ HELP = (
 FALLBACK = "Не понял. /help — список команд, /start — привязать номер телефона."
 
 UNLINKED = (
-    "Чат отвязан. Коды подтверждения и напоминания сюда больше не придут — "
+    "Чат отвязан. Подтверждения заявок и напоминания сюда больше не придут — "
     "отправьте /start, чтобы привязать его снова."
 )
 
@@ -234,7 +303,7 @@ def my_orders(orders: list[Order]) -> str:
     shown = orders[:MAX_LISTED_ORDERS]
     lines = ["Ваши заявки:"]
     lines += [
-        f"{order_reference(order)} — {_items_count(order)}, "
+        f"{order_reference(order.id)} — {_items_count(order)}, "
         f"{format_price(order.total_cents)} — {ORDER_STATUS_LABEL[order.status]}"
         for order in shown
     ]

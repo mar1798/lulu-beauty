@@ -338,8 +338,12 @@ export const feedStepList = (): IStepListProps => ({
       description: 'Это не оплата: заявка уходит владельцу, цены фиксируются на момент отправки.',
     },
     {
-      title: 'Дождитесь звонка',
-      description: 'После закрытия сбора владелец свяжется с вами и подтвердит заказ.',
+      title: 'Дождитесь подтверждения',
+      description: 'После закрытия сбора владелец подтвердит заявку — уведомление придёт в Telegram.',
+    },
+    {
+      title: 'Получите товар',
+      description: 'Когда заказ приедет, владелец обсудит с вами доставку или самовывоз.',
     },
   ],
 })
@@ -792,7 +796,8 @@ export const feedAdminProductForm = (): IAdminProductFormProps => {
     categories,
     product,
     onSubmit: noop,
-    images: product.images,
+    // У товара фотография одна — админка показывает ровно её.
+    images: product.images.slice(0, 1),
     onImageUpload: noop,
     onImageDelete: noop,
   }
@@ -827,6 +832,7 @@ export const feedAdminCycleCalendar = (): IAdminCycleCalendarProps => {
     label: 'Сбор на август',
     status: 'ACTIVE',
     reminderSentAt: null,
+    finalReminderSentAt: null,
     closedAt: null,
   }
 
@@ -839,6 +845,7 @@ export const feedAdminCycleCalendar = (): IAdminCycleCalendarProps => {
         label: 'Следующий сбор',
         status: 'UPCOMING',
         reminderSentAt: null,
+        finalReminderSentAt: null,
         closedAt: null,
       },
     ],

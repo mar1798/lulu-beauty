@@ -1,5 +1,5 @@
 import clsx from 'clsx'
-import { type ChangeEvent, type FC, type FormEvent, useEffect, useId, useMemo, useRef, useState } from 'react'
+import { type FC, type FormEvent, useEffect, useId, useMemo, useState } from 'react'
 import type {
   IAdminProductFormProps,
   IAdminProductValues,
@@ -7,12 +7,10 @@ import type {
   IProductImage,
   ISelectOption,
 } from '../../types'
-import { IconStar, IconTrash, IconUpload } from '../../svg/icons'
+import { IconTrash } from '../../svg/icons'
 import { Alert } from '../../atoms/alert'
 import { AppImage } from '../../atoms/app-image'
-import { Badge } from '../../atoms/badge'
 import { Button } from '../../atoms/button'
-import { Checkbox } from '../../atoms/checkbox'
 import { Heading } from '../../atoms/heading'
 import { IconButton } from '../../atoms/icon-button'
 import { Input } from '../../atoms/input'
@@ -25,7 +23,7 @@ import { slugify } from '../../utils/slug'
 import * as styles from './AdminProductForm.css'
 
 /**
- * Карточка товара в админке: поля товара и, у сохранённого, его фотографии.
+ * Карточка товара в админке: поля товара и, у сохранённого, его фотография.
  *
  * Цена вводится в сомах, а наружу уходит в копейках — как её хранит бэкенд.
  * Обратное («введите копейки») переложило бы на владельца арифметику,
@@ -35,14 +33,15 @@ import * as styles from './AdminProductForm.css'
  * остаётся редактируемым: как только владелец правит его руками, автоподстановка
  * выключается — иначе она затирала бы правку на каждом нажатии в названии.
  *
- * У бэкенда нет ручки «сделать главной» — только загрузка (`isPrimary` в
- * форме) и удаление. Поэтому у уже загруженных фото флажок для новой не
- * помогает: «Заменить» на главной карточке эмулирует переназначение —
- * грузит новый файл с `isPrimary: true` и следом удаляет старый.
+ * Фотография у товара одна: загрузка на бэкенде не добавляет её к прежним,
+ * а заменяет их. Поэтому тут нет ни «сделать главной», ни отдельной кнопки
+ * «заменить» — выбор нового файла и есть замена. `images` остаётся списком:
+ * у товаров, заведённых до этого правила, может лежать несколько снимков, и
+ * их нужно показать (и дать удалить), а не спрятать.
  *
- * При создании товара фото грузить некуда: у него нет id. Поэтому вместо
- * галереи — один выбор файла, который улетает вместе с остальными полями
- * по сабмиту (см. `IAdminProductValues.image`).
+ * При создании товара фото грузить некуда: у него нет id. Поэтому файл
+ * копится в форме и улетает вместе с остальными полями по сабмиту
+ * (см. `IAdminProductValues.image`).
  */
 
 const IMAGE_MAX_BYTES = 5 * 1024 * 1024
@@ -73,7 +72,6 @@ export const AdminProductForm: FC<IAdminProductFormProps & IBasicStyling> = ({
   images,
   onImageUpload,
   onImageDelete,
-  onImageReplace,
   isImageBusy = false,
   imageError,
   footer,
@@ -90,7 +88,6 @@ export const AdminProductForm: FC<IAdminProductFormProps & IBasicStyling> = ({
   const [isSubmitted, setIsSubmitted] = useState(false)
 
   const [imageAlt, setImageAlt] = useState('')
-  const [isNextPrimary, setIsNextPrimary] = useState(false)
   const mediaTitleId = useId()
   const createMediaTitleId = useId()
 
@@ -111,22 +108,6 @@ export const AdminProductForm: FC<IAdminProductFormProps & IBasicStyling> = ({
     },
     [pendingImagePreview]
   )
-
-  // Замена главного фото: скрытый инпут переиспользуется для любой карточки,
-  // на которую нажали «Заменить» — id хранится тут, пока не пришёл выбор файла.
-  const [replacingImage, setReplacingImage] = useState<IProductImage | null>(null)
-  const replaceInputRef = useRef<HTMLInputElement>(null)
-
-  const handleReplaceFileChange = (event: ChangeEvent<HTMLInputElement>): void => {
-    const file = event.target.files?.[0]
-    event.target.value = ''
-
-    if (file !== undefined && replacingImage !== null && onImageReplace !== undefined) {
-      onImageReplace(replacingImage, file)
-    }
-
-    setReplacingImage(null)
-  }
 
   const priceCents = parsePrice(price)
 
@@ -299,12 +280,12 @@ export const AdminProductForm: FC<IAdminProductFormProps & IBasicStyling> = ({
       {images !== undefined && onImageUpload !== undefined && onImageDelete !== undefined && (
         <section className={styles.mediaPanel} aria-labelledby={mediaTitleId}>
           <Heading level={2} size="sm" id={mediaTitleId}>
-            Фотографии
+            Фотография
           </Heading>
 
           {images.length === 0 ? (
             <Text tone="secondary" size="sm">
-              Пока ни одной фотографии — в каталоге у товара будет заглушка.
+              Пока без фотографии — в каталоге у товара будет заглушка.
             </Text>
           ) : (
             <ul className={styles.gallery}>
@@ -316,27 +297,6 @@ export const AdminProductForm: FC<IAdminProductFormProps & IBasicStyling> = ({
                     sizes={IMAGE_SIZES}
                     fill={true}
                   />
-
-                  {image.isPrimary && (
-                    <Badge className={styles.primaryBadge} tone="brand">
-                      <IconStar /> Главная
-                    </Badge>
-                  )}
-
-                  {image.isPrimary && onImageReplace !== undefined && (
-                    <IconButton
-                      className={styles.thumbReplace}
-                      icon={<IconUpload />}
-                      label="Заменить главное фото"
-                      size="sm"
-                      variant="solid"
-                      disabled={isImageBusy}
-                      onClick={() => {
-                        setReplacingImage(image)
-                        replaceInputRef.current?.click()
-                      }}
-                    />
-                  )}
 
                   <IconButton
                     className={styles.thumbDelete}
@@ -354,18 +314,6 @@ export const AdminProductForm: FC<IAdminProductFormProps & IBasicStyling> = ({
             </ul>
           )}
 
-          {onImageReplace !== undefined && (
-            <input
-              ref={replaceInputRef}
-              className={styles.hiddenInput}
-              type="file"
-              accept={IMAGE_TYPES.join(',')}
-              aria-hidden="true"
-              tabIndex={-1}
-              onChange={handleReplaceFileChange}
-            />
-          )}
-
           <Input
             label="Описание фотографии (alt)"
             value={imageAlt}
@@ -373,26 +321,24 @@ export const AdminProductForm: FC<IAdminProductFormProps & IBasicStyling> = ({
             onChange={setImageAlt}
           />
 
-          <Checkbox
-            label="Сделать главной"
-            hint="Главная показывается в каталоге. Метка снимется с остальных."
-            checked={isNextPrimary}
-            onChange={setIsNextPrimary}
-          />
-
           <FileDropzone
-            label="Новая фотография"
+            label={images.length === 0 ? 'Фото товара' : 'Другая фотография'}
             accept={IMAGE_TYPES.join(',')}
             allowedTypes={IMAGE_TYPES}
             maxBytes={IMAGE_MAX_BYTES}
-            hint="JPEG, PNG или WebP, до 5 МБ."
+            hint={`JPEG, PNG или WebP, до 5 МБ.${
+              images.length === 0
+                ? ''
+                : images.length === 1
+                  ? ' Новый файл заменит текущую фотографию.'
+                  : ' Новый файл заменит все текущие фотографии.'
+            }`}
             error={imageError}
             disabled={isImageBusy}
             buttonLabel="Выбрать фотографию"
             onSelect={file => {
-              onImageUpload({ file, alt: imageAlt.trim(), isPrimary: isNextPrimary })
+              onImageUpload({ file, alt: imageAlt.trim() })
               setImageAlt('')
-              setIsNextPrimary(false)
             }}
           />
         </section>

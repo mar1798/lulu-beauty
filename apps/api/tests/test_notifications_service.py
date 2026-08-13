@@ -9,7 +9,7 @@ from app.auth.models import User
 from app.cycles.models import OrderCycle
 from app.orders.models import Order, OrderStatus
 from app.telegram.keyboards import OrderAction
-from app.telegram.service import NotificationsService
+from app.telegram.service import CartRescueNotice, NotificationsService
 
 
 def _user(telegram_chat_id: int | None) -> User:
@@ -102,6 +102,44 @@ async def test_send_reminder_still_goes_out_without_a_linkable_site(
     assert bot.send_message.await_args.kwargs["reply_markup"] is None
 
 
+async def test_send_reminder_switches_text_on_the_last_chance_stage() -> None:
+    bot = AsyncMock()
+    service = NotificationsService(bot)
+
+    await service.send_reminder(_user(telegram_chat_id=42), "Cycle 1", datetime.now(UTC))
+    first = bot.send_message.await_args.args[1]
+    await service.send_reminder(
+        _user(telegram_chat_id=42), "Cycle 1", datetime.now(UTC), last_chance=True
+    )
+    last = bot.send_message.await_args.args[1]
+
+    assert "Последний шанс" in last
+    assert first != last
+
+
+async def test_send_order_deleted_stays_silent_on_a_finished_order() -> None:
+    bot = AsyncMock()
+    service = NotificationsService(bot)
+
+    await service.send_order_deleted(
+        _user(telegram_chat_id=42), uuid.uuid4(), OrderStatus.COMPLETED
+    )
+
+    bot.send_message.assert_not_awaited()
+
+
+async def test_send_order_deleted_tells_a_customer_still_waiting() -> None:
+    bot = AsyncMock()
+    service = NotificationsService(bot)
+    order_id = uuid.uuid4()
+
+    await service.send_order_deleted(_user(telegram_chat_id=42), order_id, OrderStatus.CONFIRMED)
+
+    chat_id, message = bot.send_message.await_args.args
+    assert chat_id == 42
+    assert str(order_id)[:8] in message
+
+
 async def test_send_order_status_stays_silent_on_pending() -> None:
     """The owner restoring an order they cancelled is not news the customer needs."""
     bot = AsyncMock()
@@ -119,6 +157,23 @@ async def test_send_order_status_announces_a_real_move() -> None:
     await service.send_order_status(_user(telegram_chat_id=42), _order(OrderStatus.READY))
 
     bot.send_message.assert_awaited_once()
+
+
+async def test_cart_rescue_is_a_fan_out_of_personal_texts() -> None:
+    """Одна рассылка, но у каждого свои числа — и общий троттлинг с обычным броадкастом."""
+    bot = AsyncMock()
+    service = NotificationsService(bot)
+    notices = [
+        CartRescueNotice(user=_user(telegram_chat_id=1), saved=2, dropped=0),
+        CartRescueNotice(user=_user(telegram_chat_id=2), saved=1, dropped=3),
+    ]
+
+    result = await service.send_cart_rescued(notices, "«Июнь»")
+
+    assert result.sent == 2
+    first, second = (call.args[1] for call in bot.send_message.await_args_list)
+    assert "2 товара" in first
+    assert "не поместились" in second
 
 
 async def test_broadcast_counts_deliveries_and_skips_unbound_users() -> None:

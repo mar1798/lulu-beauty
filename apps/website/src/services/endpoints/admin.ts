@@ -97,10 +97,14 @@ export const restoreProduct = (productId: string): Promise<IProduct> =>
 export interface IProductImageInput {
   file: File
   alt?: string
-  isPrimary?: boolean
 }
 
-/** multipart/form-data: поля называются `file`, `alt`, `isPrimary` (последнее — с алиасом). */
+/**
+ * multipart/form-data: поля называются `file` и `alt`.
+ *
+ * Загрузка — это замена: у товара одна фотография, и бэкенд убирает прежнюю
+ * (а у старых товаров — все прежние) в той же транзакции.
+ */
 export const uploadProductImage = (
   productId: string,
   input: IProductImageInput
@@ -111,10 +115,6 @@ export const uploadProductImage = (
 
   if (input.alt !== undefined) {
     body.append('alt', input.alt)
-  }
-
-  if (input.isPrimary !== undefined) {
-    body.append('isPrimary', String(input.isPrimary))
   }
 
   return api.post(`/admin/products/${encodeURIComponent(productId)}/images`, { body })

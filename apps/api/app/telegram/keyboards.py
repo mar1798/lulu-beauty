@@ -63,6 +63,7 @@ def order_actions(order_id: uuid.UUID) -> InlineKeyboardMarkup:
 
 
 CHECKOUT_PATH = "/checkout"
+WISHLIST_PATH = "/wishlist"
 
 
 def checkout_link() -> InlineKeyboardMarkup | None:
@@ -72,16 +73,23 @@ def checkout_link() -> InlineKeyboardMarkup | None:
     The reminder exists to be acted on, and "go find the site yourself" is most of the
     friction between reading it and checking out.
     """
+    return _site_link(CHECKOUT_PATH, messages.CHECKOUT_BUTTON)
+
+
+def wishlist_link() -> InlineKeyboardMarkup | None:
+    """Under "your cart moved to the wishlist" — the one thing to do about that news."""
+    return _site_link(WISHLIST_PATH, messages.WISHLIST_BUTTON)
+
+
+def _site_link(path: str, text: str) -> InlineKeyboardMarkup | None:
     base = settings.website_base_url.rstrip("/")
-    url = f"{base}{CHECKOUT_PATH}"
+    url = f"{base}{path}"
     if not _is_public_url(url):
-        # Once per reminder sweep at most, and only in local dev — see _is_public_url.
+        # Once per sweep at most, and only in local dev — see _is_public_url.
         logger.debug("WEBSITE_BASE_URL %r is not linkable from Telegram; sending no button", base)
         return None
 
-    return InlineKeyboardMarkup(
-        inline_keyboard=[[InlineKeyboardButton(text=messages.CHECKOUT_BUTTON, url=url)]]
-    )
+    return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=text, url=url)]])
 
 
 def _is_public_url(url: str) -> bool:

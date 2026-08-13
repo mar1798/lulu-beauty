@@ -67,6 +67,20 @@ class OrderFlags:
     is_restorable: bool
 
 
+@dataclass(frozen=True)
+class DeletedOrder:
+    """Who to notify about a deletion, and what the order was at the moment of it.
+
+    Every other order notification re-reads its row after the commit; this one can't —
+    the row is the thing that was deleted. So the few facts the message needs travel out
+    of the transaction by value instead.
+    """
+
+    order_id: uuid.UUID
+    user_id: uuid.UUID
+    status: OrderStatus
+
+
 class OrdersService:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
@@ -288,13 +302,19 @@ class OrdersService:
         await self._session.flush()
         return order
 
-    async def delete(self, order_id: uuid.UUID) -> None:
-        """Owner-side delete — really removes the order; items cascade with it."""
+    async def delete(self, order_id: uuid.UUID) -> DeletedOrder:
+        """Owner-side delete — really removes the order; items cascade with it.
+
+        Returns what the customer has to be told, because after the commit there is
+        nothing left to look it up from (see `DeletedOrder`).
+        """
         order = await self._session.get(Order, order_id)
         if order is None:
             raise OrderNotFoundError
 
+        deleted = DeletedOrder(order_id=order.id, user_id=order.user_id, status=order.status)
         await self._session.delete(order)
+        return deleted
 
     def _admin_query(
         self, cycle_id: uuid.UUID | None, status: OrderStatus | None

@@ -24,7 +24,7 @@ describe('TelegramLoginPanel', () => {
   it('говорит, что сделать в Telegram, и не прячет кнопку', () => {
     renderWidget(<TelegramLoginPanel {...feedTelegramLoginPanel()} status="waiting" />)
 
-    expect(screen.getByText(/Подтвердите вход в Telegram/)).toBeInTheDocument()
+    expect(screen.getByText(/Продолжите вход в Telegram/)).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /Войти через Telegram/ })).toBeInTheDocument()
   })
 

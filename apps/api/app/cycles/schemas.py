@@ -13,6 +13,7 @@ class OrderCycleResponse(CamelModel):
     label: str | None
     status: CycleStatus
     reminder_sent_at: datetime | None
+    final_reminder_sent_at: datetime | None
     closed_at: datetime | None
 
 

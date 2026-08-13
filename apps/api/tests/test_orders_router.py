@@ -11,6 +11,7 @@ from app.auth.models import Role
 from app.db import get_session
 from app.main import app
 from app.orders.models import Order, OrderStatus
+from app.orders.service import DeletedOrder
 
 
 @pytest.fixture
@@ -56,7 +57,7 @@ async def test_list_orders_admin_without_cycle_id_passes_none(client: AsyncClien
 async def test_list_orders_admin_maps_status_and_page_size_query_params(
     client: AsyncClient,
 ) -> None:
-    """Same class of bug as cycleId/isPrimary: Query params bypass CamelModel's alias_generator."""
+    """Same class of bug as cycleId: Query params bypass CamelModel's alias_generator."""
     with patch("app.orders.router.OrdersService") as mock_service_cls:
         service = _mock_service(mock_service_cls)
         async with client as c:
@@ -131,3 +132,26 @@ async def test_status_update_stays_silent_when_the_status_did_not_move(
     notify = await _patch_status(committing_client, _order(OrderStatus.READY), changed=False)
 
     notify.assert_not_awaited()
+
+
+async def test_delete_hands_the_notification_what_the_row_no_longer_holds(
+    committing_client: AsyncClient,
+) -> None:
+    """The order is gone by the time the task runs, so the router has to pass the facts
+    along; whether they're worth a message is `messages.order_deleted`'s call."""
+    order = _order(OrderStatus.CONFIRMED)
+    with (
+        patch("app.orders.router.OrdersService") as mock_service_cls,
+        patch("app.orders.router.notify_order_deleted", new_callable=AsyncMock) as notify,
+    ):
+        service = mock_service_cls.return_value
+        service.delete = AsyncMock(
+            return_value=DeletedOrder(
+                order_id=order.id, user_id=order.user_id, status=order.status
+            )
+        )
+        async with committing_client as c:
+            response = await c.delete(f"/admin/orders/{order.id}")
+
+    assert response.status_code == 204
+    notify.assert_awaited_once_with(order.user_id, order.id, OrderStatus.CONFIRMED)

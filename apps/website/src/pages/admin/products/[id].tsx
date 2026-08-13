@@ -20,11 +20,12 @@ import { listCategories } from '@/services/endpoints/catalog'
 import { adminProductKey, categoriesKey, isAdminProductsKey } from '@/services/swrKeys'
 
 /**
- * Карточка товара: поля и фотографии.
+ * Карточка товара: поля и фотография.
  *
- * Загрузка и удаление фотографии перезагружают товар целиком: `isPrimary`
- * снимается с остальных на бэкенде, и локально пересчитать это — значит
- * повторить его логику второй раз и однажды разойтись с ней.
+ * Фотография у товара одна: загрузка на бэкенде заменяет прежнюю, а не
+ * добавляется к ней. Поэтому после загрузки и удаления товар перезагружается
+ * целиком — локально это значило бы повторить логику бэкенда второй раз
+ * и однажды разойтись с ней.
  *
  * Удалённый товар не редиректит и не прячется: он открывается как обычно, но
  * сверху висит предупреждение и кнопка восстановления. Иначе ссылка из списка
@@ -118,7 +119,6 @@ const AdminProductPage: React.FC = () => {
         uploadProductImage(productId, {
           file: upload.file,
           alt: upload.alt === '' ? undefined : upload.alt,
-          isPrimary: upload.isPrimary,
         }),
       'Фотография загружена'
     )
@@ -141,21 +141,6 @@ const AdminProductPage: React.FC = () => {
         'Фотография удалена'
       )
     }
-  }
-
-  const handleImageReplace = (previous: IProductImage, file: File): void => {
-    if (productId === null) {
-      return
-    }
-
-    void runImageAction(async () => {
-      await uploadProductImage(productId, {
-        file,
-        alt: previous.alt ?? undefined,
-        isPrimary: true,
-      })
-      await deleteProductImage(productId, previous.id)
-    }, 'Главное фото заменено')
   }
 
   const handleDelete = async (): Promise<void> => {
@@ -246,7 +231,6 @@ const AdminProductPage: React.FC = () => {
           onImageDelete={image => {
             void handleImageDelete(image)
           }}
-          onImageReplace={handleImageReplace}
           footer={
             product.deletedAt === null ? (
               <Button

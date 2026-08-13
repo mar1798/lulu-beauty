@@ -2,7 +2,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import Select, func, select, update
+from sqlalchemy import Select, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -205,27 +205,29 @@ class ProductService:
         await self._session.flush()
         return product
 
-    async def add_image(
-        self, product_id: uuid.UUID, url: str, alt: str | None, is_primary: bool
-    ) -> ProductImage:
+    async def add_image(self, product_id: uuid.UUID, url: str, alt: str | None) -> ProductImage:
+        """Sets the product's photo, dropping whatever it had before.
+
+        A product carries exactly one photo, so an upload is a replacement rather
+        than an append. Doing it here (instead of asking the caller to delete
+        first) keeps the product from being briefly photo-less between the two
+        requests, and cleans up rows left by earlier multi-image data.
+        """
         await self.get_by_id(product_id)  # 404s if missing/soft-deleted
 
-        if is_primary:
-            await self._session.execute(
-                update(ProductImage)
-                .where(ProductImage.product_id == product_id)
-                .values(is_primary=False)
-            )
-
-        max_sort_order = await self._session.scalar(
-            select(func.max(ProductImage.sort_order)).where(ProductImage.product_id == product_id)
+        existing = await self._session.execute(
+            select(ProductImage).where(ProductImage.product_id == product_id)
         )
+        for image in existing.scalars():
+            await self._session.delete(image)
+        await self._session.flush()
+
         image = ProductImage(
             product_id=product_id,
             url=url,
             alt=alt,
-            is_primary=is_primary,
-            sort_order=(max_sort_order + 1) if max_sort_order is not None else 0,
+            is_primary=True,
+            sort_order=0,
         )
         self._session.add(image)
         await self._session.flush()

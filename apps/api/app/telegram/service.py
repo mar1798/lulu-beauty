@@ -1,6 +1,8 @@
 import asyncio
 import enum
 import logging
+import uuid
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
 
@@ -10,7 +12,7 @@ from aiogram.types import InlineKeyboardMarkup
 
 from app.auth.models import User
 from app.cycles.models import OrderCycle
-from app.orders.models import Order
+from app.orders.models import Order, OrderStatus
 from app.telegram import keyboards, messages
 
 logger = logging.getLogger("app.telegram")
@@ -25,6 +27,19 @@ class Delivery(enum.Enum):
     NO_BINDING = "NO_BINDING"
     BLOCKED = "BLOCKED"
     FAILED = "FAILED"
+
+
+@dataclass(frozen=True)
+class CartRescueNotice:
+    """One customer's share of a closed cycle's cart rescue, ready to be worded.
+
+    Carries the counts rather than the `CartRescue` the sweep produced: importing that
+    would point this module back at `cycles.scheduler_service`, which imports this one.
+    """
+
+    user: User
+    saved: int
+    dropped: int
 
 
 @dataclass(frozen=True)
@@ -53,8 +68,14 @@ class NotificationsService:
 
     # ─── Point-to-point ──────────────────────────────────────────────────────────
 
-    async def send_reminder(self, user: User, cycle_title: str, deadline_at: datetime) -> None:
-        message = messages.cart_reminder(cycle_title, deadline_at)
+    async def send_reminder(
+        self, user: User, cycle_title: str, deadline_at: datetime, *, last_chance: bool = False
+    ) -> None:
+        message = (
+            messages.cart_last_chance(cycle_title, deadline_at)
+            if last_chance
+            else messages.cart_reminder(cycle_title, deadline_at)
+        )
         keyboard = keyboards.checkout_link()
         if await self._try_send(user.telegram_chat_id, message, reply_markup=keyboard):
             logger.info("Sent reminder for cycle %s to %s via Telegram", cycle_title, user.phone)
@@ -87,6 +108,20 @@ class NotificationsService:
             order.id,
         )
 
+    async def send_order_deleted(
+        self, user: User, order_id: uuid.UUID, status: OrderStatus
+    ) -> None:
+        """Takes the id and the last status, not an Order: the row is already gone."""
+        message = messages.order_deleted(order_id, status)
+        if message is None:
+            return
+        if await self._try_send(user.telegram_chat_id, message):
+            logger.info("Notified %s that order %s was deleted", user.phone, order_id)
+            return
+        logger.warning(
+            "%s; deletion of order %s not announced", self._fallback_reason(user), order_id
+        )
+
     async def send_cycle_closed(
         self, owner: User, cycle: OrderCycle, orders_count: int, total_cents: int
     ) -> None:
@@ -101,17 +136,44 @@ class NotificationsService:
     # ─── Fan-out ─────────────────────────────────────────────────────────────────
 
     async def send_cycle_opened(self, users: list[User], cycle: OrderCycle) -> BroadcastResult:
-        return await self._broadcast(users, messages.cycle_opened(cycle))
+        message = messages.cycle_opened(cycle)
+        return await self._broadcast([(user, message) for user in users])
 
-    async def _broadcast(self, users: list[User], message: str) -> BroadcastResult:
+    async def send_cart_rescued(
+        self, notices: Sequence[CartRescueNotice], cycle_title: str
+    ) -> BroadcastResult:
+        """A fan-out of *different* texts: each customer is told about their own cart.
+
+        Same throttle and the same dead-binding bookkeeping as the shop-wide broadcast —
+        this goes out to everyone who abandoned a cart in the closing cycle at once, so
+        the counts differ but the rate limit does not.
+        """
+        keyboard = keyboards.wishlist_link()
+        return await self._broadcast(
+            [
+                (
+                    notice.user,
+                    messages.cart_moved_to_wishlist(cycle_title, notice.saved, notice.dropped),
+                )
+                for notice in notices
+            ],
+            reply_markup=keyboard,
+        )
+
+    async def _broadcast(
+        self,
+        deliveries: Sequence[tuple[User, str]],
+        *,
+        reply_markup: InlineKeyboardMarkup | None = None,
+    ) -> BroadcastResult:
         sent = 0
         blocked: list[int] = []
 
-        for index, user in enumerate(users):
+        for index, (user, message) in enumerate(deliveries):
             if index:
                 await asyncio.sleep(BROADCAST_DELAY_SECONDS)
 
-            outcome = await self._deliver(user.telegram_chat_id, message)
+            outcome = await self._deliver(user.telegram_chat_id, message, reply_markup=reply_markup)
             if outcome is Delivery.SENT:
                 sent += 1
             elif outcome is Delivery.BLOCKED and user.telegram_chat_id is not None:

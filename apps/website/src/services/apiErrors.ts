@@ -293,7 +293,6 @@ const FIELD_LABELS: Record<string, string> = {
   productId: 'Товар',
   file: 'Файл',
   alt: 'Описание фотографии',
-  isPrimary: 'Главная фотография',
   page: 'Страница',
   pageSize: 'Размер страницы',
 }
