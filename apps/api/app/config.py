@@ -21,15 +21,15 @@ class Settings(BaseSettings):
     jwt_refresh_secret: str
     jwt_refresh_ttl_seconds: int = 60 * 60 * 24 * 30
 
-    otp_ttl_seconds: int = 300
-    otp_max_attempts: int = 5
+    # A sign-in link is meant to be opened right away; five minutes covers "let me find
+    # my phone" without leaving a working key lying around in a chat.
+    auth_session_ttl_seconds: int = 300
 
     telegram_bot_token: str
     telegram_bot_username: str
 
     owner_phone: str
     owner_name: str
-    owner_password: str
 
     cycle_timezone: str = "Asia/Bishkek"
     currency: str = "KGS"

@@ -10,7 +10,7 @@ import { formatDate } from 'widgets/utils'
 import { IconDownload } from 'widgets/svg'
 import { AdminShell } from '@/layouts/AdminShell'
 import { requireAdmin, type IAdminPageProps } from '@/server/adminGate'
-import { isApiError } from '@/services/apiErrors'
+import { messageForError } from '@/services/apiErrors'
 import {
   deleteOrder,
   listAdminOrders,
@@ -81,12 +81,7 @@ const AdminOrdersPage: React.FC<IAdminPageProps> = () => {
   // Общий ключ со «Сборами» (`/admin/cycles`): список в фильтре не отстаёт от календаря.
   const { data: cycles } = useSWR(cyclesKey, () => listCycles())
 
-  const error =
-    fetchError === undefined
-      ? null
-      : isApiError(fetchError)
-        ? fetchError.message
-        : 'Не удалось загрузить заявки.'
+  const error = fetchError === undefined ? null : messageForError(fetchError, 'admin.orders')
 
   const handleStatusChange = async (order: IAdminOrder, next: OrderStatus): Promise<void> => {
     setBusyId(order.id)
@@ -98,7 +93,7 @@ const AdminOrdersPage: React.FC<IAdminPageProps> = () => {
       await mutate()
       void globalMutate(isAdminOverviewKey)
     } catch (cause: unknown) {
-      const message = isApiError(cause) ? cause.message : 'Не удалось изменить статус.'
+      const message = messageForError(cause, 'admin.orders')
 
       setActionError(message)
       notify({ tone: 'danger', title: 'Не получилось', description: message })
@@ -129,7 +124,7 @@ const AdminOrdersPage: React.FC<IAdminPageProps> = () => {
       await mutate()
       void globalMutate(isAdminOverviewKey)
     } catch (cause: unknown) {
-      const message = isApiError(cause) ? cause.message : 'Не удалось удалить заявку.'
+      const message = messageForError(cause, 'admin.orders')
 
       setActionError(message)
       notify({ tone: 'danger', title: 'Не получилось', description: message })
@@ -155,7 +150,7 @@ const AdminOrdersPage: React.FC<IAdminPageProps> = () => {
       // Отзываем сразу: браузер уже забрал содержимое, а ссылка держала бы blob в памяти.
       URL.revokeObjectURL(url)
     } catch (cause: unknown) {
-      const message = isApiError(cause) ? cause.message : 'Не удалось выгрузить заявки.'
+      const message = messageForError(cause, 'admin.export')
 
       setActionError(message)
       notify({ tone: 'danger', title: 'Выгрузка не выполнена', description: message })

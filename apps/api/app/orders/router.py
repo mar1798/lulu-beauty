@@ -90,9 +90,7 @@ def _admin_order_response(order: Order, customer: User | None) -> AdminOrderResp
     )
 
 
-@router.post(
-    "/orders/checkout", response_model=OrderResponse, status_code=status.HTTP_201_CREATED
-)
+@router.post("/orders/checkout", response_model=OrderResponse, status_code=status.HTTP_201_CREATED)
 async def checkout(
     body: CheckoutRequest,
     background_tasks: BackgroundTasks,

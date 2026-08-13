@@ -6,7 +6,7 @@ import { AdminImportPanel } from 'widgets/organisms'
 import { useToast } from 'widgets/contexts'
 import { AdminShell } from '@/layouts/AdminShell'
 import { requireAdmin, type IAdminPageProps } from '@/server/adminGate'
-import { isApiError } from '@/services/apiErrors'
+import { messageForError } from '@/services/apiErrors'
 import { importCatalog } from '@/services/endpoints/admin'
 import { categoriesKey, isAdminProductsKey } from '@/services/swrKeys'
 
@@ -61,7 +61,7 @@ const AdminImportPage: React.FC<IAdminPageProps> = () => {
             }
       )
     } catch (cause: unknown) {
-      const message = isApiError(cause) ? cause.message : 'Не удалось импортировать файл.'
+      const message = messageForError(cause, 'admin.import')
 
       setError(message)
       notify({ tone: 'danger', title: 'Импорт не выполнен', description: message })

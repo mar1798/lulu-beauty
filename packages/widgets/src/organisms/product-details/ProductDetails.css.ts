@@ -39,6 +39,14 @@ export const description = style({
   whiteSpace: 'pre-line',
 })
 
+/**
+ * Оба действия подписаны словами, и на узкой колонке в строку они не влезают —
+ * поэтому переносятся, а не выталкивают друг друга за край.
+ */
 export const action = style({
+  ...flexRow(12),
+  alignItems: 'center',
+  flexWrap: 'wrap',
   marginTop: vars.space.xs,
 })
+

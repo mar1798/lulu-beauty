@@ -76,7 +76,6 @@ export interface IImageComponentProps {
 
 export type OrderStatus = 'PENDING' | 'CONFIRMED' | 'READY' | 'COMPLETED' | 'CANCELLED'
 export type CycleStatus = 'UPCOMING' | 'ACTIVE' | 'CLOSED'
-export type OtpPurpose = 'REGISTER' | 'LOGIN' | 'RESET_PASSWORD'
 export type Role = 'CUSTOMER' | 'ADMIN'
 
 /** Конверт пагинации: `GET /products`, `GET /admin/products`, `GET /admin/orders`. */
@@ -147,6 +146,22 @@ export interface ICart {
 }
 
 /**
+ * Позиция избранного — целый товар, а не снимок полей, как в корзине.
+ *
+ * Обещания она не фиксирует: ни цены, ни количества, — а рисуется той же
+ * карточкой каталога, которой нужен `IProduct` целиком.
+ */
+export interface IWishlistItem {
+  product: IProduct
+  addedAt: string
+}
+
+/** Избранное целиком: от сбора не зависит и живёт между сборами. */
+export interface IWishlist {
+  items: IWishlistItem[]
+}
+
+/**
  * Позиция заявки — снапшот на момент чекаута, а не текущее состояние товара.
  * `productId` — `null`, если товар с тех пор удалён.
  */
@@ -203,12 +218,16 @@ export interface IOrderCycle {
   closedAt: string | null
 }
 
+/**
+ * Текущий пользователь. Подтверждённости телефона тут нет и не может быть:
+ * аккаунт заводит бот из контакта, за который ручается сам Telegram, — то есть
+ * неподтверждённым он не бывает (`apps/api/app/auth/models.py`).
+ */
 export interface IAuthUser {
   id: string
   phone: string
   name: string
   role: Role
-  phoneVerified: boolean
   telegramLinked: boolean
 }
 
@@ -255,6 +274,17 @@ export interface IButtonProps {
   /** Ссылочный режим: кнопка рендерится через `AppLink`, сохраняя внешность. */
   link?: ILink
   onClick?: () => void
+  /**
+   * Действие недоступно, и почему — текстом.
+   *
+   * Отличается от `disabled` тем, что кнопка **остаётся в табуляции**:
+   * настоящий `disabled` не отдаёт ни `focus`, ни `mouseenter`, и подсказка
+   * над ним не всплыла бы ни с клавиатуры, ни (в части браузеров) мышью —
+   * причина оказалась бы недостижимой ровно там, где она нужна. Клик при этом
+   * не проходит, а сама причина уходит в скрытую подпись, поэтому скринридер
+   * читает её вместе с названием кнопки.
+   */
+  unavailableReason?: string | null
 }
 
 export interface IIconButtonProps {
@@ -268,6 +298,21 @@ export interface IIconButtonProps {
   /** Запрос в работе: иконка меняется на спиннер, кнопка блокируется. */
   isLoading?: boolean
   onClick?: () => void
+  /** Недоступно с объяснением — см. `IButtonProps['unavailableReason']`. */
+  unavailableReason?: string | null
+}
+
+export interface ITooltipProps {
+  /** Текст пузыря. Он же обязан попадать в доступное имя триггера. */
+  content: ReactNode
+  /** Триггер: подсказка всплывает на его наведении и фокусе. */
+  children: ReactNode
+  placement?: 'top' | 'bottom'
+  /**
+   * Обёртка занимает всю ширину. Нужна кнопке с `isFullWidth`: обёртка по
+   * умолчанию `inline-flex` и ужала бы её до содержимого.
+   */
+  isBlock?: boolean
 }
 
 export interface IInputProps {
@@ -294,26 +339,11 @@ export interface IInputProps {
   onKeyDown?: React.KeyboardEventHandler<HTMLInputElement>
 }
 
-/** Тип поля и суффикс заняты переключателем видимости. */
-export type IPasswordInputProps = Omit<IInputProps, 'type' | 'prefix' | 'suffix'>
-
 /** Префикс занят кодом страны, тип — `tel`. */
 export interface IPhoneInputProps
   extends Omit<IInputProps, 'type' | 'prefix' | 'suffix' | 'inputMode' | 'autoComplete'> {
   /** Код страны без `+`. Значение наружу всегда уходит в E.164. */
   dialCode?: string
-}
-
-export interface IOtpInputProps {
-  value: string
-  onChange: (value: string) => void
-  /** Вызывается, когда набраны все `length` цифр. */
-  onComplete?: (value: string) => void
-  length?: number
-  label?: string
-  error?: string | null
-  disabled?: boolean
-  autoFocus?: boolean
 }
 
 export interface ITextareaProps {
@@ -431,6 +461,12 @@ export interface IChipProps {
   isSelected?: boolean
   count?: number
   disabled?: boolean
+  /**
+   * Растянуть на всю ширину и разрешить перенос подписи. Для узкой колонки:
+   * обычный чип не переносится (`white-space: nowrap`) и длинное название
+   * вылезает за её край.
+   */
+  isBlock?: boolean
   onToggle: (isSelected: boolean) => void
 }
 
@@ -598,6 +634,14 @@ export interface IProductCardProps {
   sizes?: ISizes
   /** Слот под «в корзину»: внутрь ссылки-карточки кнопку класть нельзя. */
   action?: ReactNode
+  /**
+   * Слот в правом верхнем углу фотографии — «в избранное».
+   *
+   * Отдельно от `action`: сердце должно быть на месте и тогда, когда «в
+   * корзину» недоступна (сбор закрыт), а в строке с ценой две круглые кнопки
+   * на узкой колонке встают вплотную.
+   */
+  mediaAction?: ReactNode
 }
 
 export interface IPaginationProps {
@@ -614,6 +658,12 @@ export interface ICategoryFilterProps {
   selectedSlug?: string | null
   onSelect: (slug: string | null) => void
   allLabel?: string
+  /**
+   * Раскладка чипов на широком экране: `row` (по умолчанию) — строка с
+   * переносом, для полосы фильтров над содержимым; `column` — столбец во всю
+   * ширину, для узкой боковой колонки админки.
+   */
+  layout?: 'row' | 'column'
 }
 
 export interface IEmptyStateProps {
@@ -654,6 +704,8 @@ export interface IProductGridProps {
   /** Что показать, когда ничего не нашлось. */
   emptyState?: ReactNode
   renderAction?: (product: IProduct) => ReactNode
+  /** Слот в углу фотографии («в избранное») — см. `IProductCardProps['mediaAction']`. */
+  renderMediaAction?: (product: IProduct) => ReactNode
 }
 
 export interface IProductDetailsProps {
@@ -661,6 +713,8 @@ export interface IProductDetailsProps {
   /** Название категории: у товара приходит только `categoryId`. */
   categoryName?: string | null
   action?: ReactNode
+  /** Второе действие рядом с основным — «в избранное». */
+  secondaryAction?: ReactNode
 }
 
 export interface ICatalogTemplateProps {
@@ -693,31 +747,8 @@ export interface ILoginValues {
   password: string
 }
 
-export interface ILoginFormProps {
-  onSubmit: (values: ILoginValues) => void
-  isSubmitting?: boolean
-  /** Ошибка от сервера; ошибки полей форма считает сама. */
-  error?: string | null
-}
-
 export interface IRegisterValues extends ILoginValues {
   name: string
-}
-
-export interface IRegisterFormProps {
-  onSubmit: (values: IRegisterValues) => void
-  isSubmitting?: boolean
-  error?: string | null
-}
-
-export interface IOtpVerifyFormProps {
-  onSubmit: (code: string) => void
-  isSubmitting?: boolean
-  error?: string | null
-  /** Например, «Код отправлен на +996 555 12 34 56». */
-  hint?: string
-  /** Слот «запросить новый код» — способ повтора зависит от страницы. */
-  resendAction?: ReactNode
 }
 
 export interface IForgotPasswordValues {
@@ -725,25 +756,23 @@ export interface IForgotPasswordValues {
   phone: string
 }
 
-export interface IForgotPasswordFormProps {
-  onSubmit: (values: IForgotPasswordValues) => void
-  isSubmitting?: boolean
-  error?: string | null
-}
-
 export interface IResetPasswordValues {
   code: string
   password: string
 }
 
-export interface IResetPasswordFormProps {
-  onSubmit: (values: IResetPasswordValues) => void
-  isSubmitting?: boolean
+/** Состояние входа через Telegram — ровно то, что панель обязана показать. */
+export type TelegramLoginStatus = 'preparing' | 'waiting' | 'expired' | 'error'
+
+export interface ITelegramLoginPanelProps {
+  /** Ссылка на бота с одноразовым payload; `null`, пока её не выдал сервер. */
+  botUrl: string | null
+  status: TelegramLoginStatus
+  /** Готовая картинка QR — кодирует ссылку сайт, не библиотека виджетов. */
+  qr?: ReactNode
+  /** Текст сбоя; показывается только при `status: 'error'`. */
   error?: string | null
-  /** Например, «Код отправлен на +996 555 12 34 56». */
-  hint?: string
-  /** Слот «запросить новый код» — способ повтора зависит от страницы. */
-  resendAction?: ReactNode
+  onRetry: () => void
 }
 
 export interface ITelegramLinkPromptProps {

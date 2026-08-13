@@ -100,9 +100,7 @@ def _order(status: OrderStatus) -> Order:
     return order
 
 
-async def _patch_status(
-    client: AsyncClient, order: Order, *, changed: bool
-) -> AsyncMock:
+async def _patch_status(client: AsyncClient, order: Order, *, changed: bool) -> AsyncMock:
     with (
         patch("app.orders.router.OrdersService") as mock_service_cls,
         patch("app.orders.router.notify_order_status", new_callable=AsyncMock) as notify,

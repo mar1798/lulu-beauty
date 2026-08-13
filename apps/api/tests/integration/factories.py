@@ -4,7 +4,6 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.models import Role, User
-from app.auth.security import hash_password
 from app.catalog.models import Product, ProductImage
 from app.cycles.models import CycleStatus, OrderCycle
 
@@ -14,14 +13,13 @@ async def make_user(
     *,
     phone: str | None = None,
     role: Role = Role.CUSTOMER,
-    phone_verified: bool = True,
+    telegram_chat_id: int | None = None,
 ) -> User:
     user = User(
         phone=phone or f"+1{uuid.uuid4().int % 10**10:010d}",
         name="Test User",
-        password_hash=hash_password("irrelevant-password"),
         role=role,
-        phone_verified=phone_verified,
+        telegram_chat_id=telegram_chat_id,
     )
     session.add(user)
     await session.flush()

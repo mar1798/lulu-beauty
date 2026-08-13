@@ -14,7 +14,7 @@ export const container = style([
     cursor: 'pointer',
     transition: transition('background-color', 'color', 'border-color', 'box-shadow'),
     selectors: {
-      '&[disabled]': { opacity: 0.55, cursor: 'not-allowed' },
+      '&[disabled], &[aria-disabled="true"]': { opacity: 0.55, cursor: 'not-allowed' },
       // Занятая кнопка не гаснет — см. тот же приём в `Button.css.ts`.
       '&[aria-busy="true"]': { opacity: 1, cursor: 'progress' },
     },
@@ -33,7 +33,7 @@ export const variant = styleVariants({
     backgroundColor: 'transparent',
     color: color.text('secondary'),
     selectors: {
-      '&:hover:not([disabled])': {
+      '&:hover:not([disabled]):not([aria-disabled="true"])': {
         backgroundColor: color.surface('sunken'),
         color: color.text('primary'),
       },
@@ -45,14 +45,14 @@ export const variant = styleVariants({
     color: color.text('primary'),
     boxShadow: vars.shadow.lg,
     selectors: {
-      '&:hover:not([disabled])': { backgroundColor: color.surface('muted') },
+      '&:hover:not([disabled]):not([aria-disabled="true"])': { backgroundColor: color.surface('muted') },
     },
   },
   danger: {
     backgroundColor: 'transparent',
     color: color.text('danger'),
     selectors: {
-      '&:hover:not([disabled])': { backgroundColor: color.danger('100') },
+      '&:hover:not([disabled]):not([aria-disabled="true"])': { backgroundColor: color.danger('100') },
     },
   },
   /** Единственная заливка акцентом — как у `Button` variant="primary". */
@@ -61,9 +61,9 @@ export const variant = styleVariants({
     color: color.text('inverse'),
     boxShadow: vars.shadow.brand,
     selectors: {
-      '&:hover:not([disabled])': { backgroundColor: color.brand('700') },
-      '&:active:not([disabled])': { backgroundColor: color.brand('800') },
-      '&[disabled]': { boxShadow: vars.shadow.none },
+      '&:hover:not([disabled]):not([aria-disabled="true"])': { backgroundColor: color.brand('700') },
+      '&:active:not([disabled]):not([aria-disabled="true"])': { backgroundColor: color.brand('800') },
+      '&[disabled], &[aria-disabled="true"]': { boxShadow: vars.shadow.none },
     },
   },
 })

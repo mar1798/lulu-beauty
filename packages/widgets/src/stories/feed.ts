@@ -37,7 +37,6 @@ import {
   IFileDropzoneProps,
   IFileInputProps,
   IFooterProps,
-  IForgotPasswordFormProps,
   IHeadingProps,
   IHomeHeroProps,
   IHomeTemplateProps,
@@ -46,7 +45,6 @@ import {
   IImage,
   IInputProps,
   ILink,
-  ILoginFormProps,
   IMobileMenuProps,
   IModalProps,
   IOrder,
@@ -57,11 +55,8 @@ import {
   IOrderItemRowProps,
   IOrderListProps,
   IOrderStatusBadgeProps,
-  IOtpInputProps,
-  IOtpVerifyFormProps,
   IPaginationProps,
   IProfileFormProps,
-  IPasswordInputProps,
   IPhoneInputProps,
   IPortalProps,
   IPriceProps,
@@ -74,8 +69,6 @@ import {
   IProductPickerProps,
   IProductTemplateProps,
   IQuantityStepperProps,
-  IRegisterFormProps,
-  IResetPasswordFormProps,
   ISearchFieldProps,
   ISectionHeadingProps,
   ISelectProps,
@@ -85,10 +78,12 @@ import {
   IStepListProps,
   ISwitchProps,
   ITelegramLinkPromptProps,
+  ITelegramLoginPanelProps,
   ITextProps,
   ITextareaProps,
   IToastProps,
   IToastViewportProps,
+  ITooltipProps,
   IVisuallyHiddenProps,
 } from '../types'
 
@@ -149,23 +144,10 @@ export const feedInput = (): IInputProps => ({
   placeholder: 'Как к вам обращаться',
 })
 
-export const feedPasswordInput = (): IPasswordInputProps => ({
-  value: '',
-  onChange: noop,
-  label: 'Пароль',
-  hint: 'Не короче 8 символов',
-})
-
 export const feedPhoneInput = (): IPhoneInputProps => ({
   value: '',
   onChange: noop,
   label: 'Телефон',
-})
-
-export const feedOtpInput = (): IOtpInputProps => ({
-  value: '',
-  onChange: noop,
-  label: 'Код из Telegram',
 })
 
 export const feedTextarea = (): ITextareaProps => ({
@@ -232,6 +214,11 @@ export const feedChip = (): IChipProps => ({
   label: 'Уход за кожей',
   count: 12,
   onToggle: noop,
+})
+
+export const feedTooltip = (): ITooltipProps => ({
+  content: 'Сейчас нет открытого сбора',
+  children: 'Наведите на меня',
 })
 
 export const feedAppear = (): IAppearProps => ({
@@ -427,6 +414,29 @@ export const feedCategoryFilter = (): ICategoryFilterProps => ({
   onSelect: noop,
 })
 
+/**
+ * Длинный список с длинными названиями: на нём видно и перенос подписи в
+ * столбце, и прокрутку боковой колонки админки.
+ */
+export const feedCategoryFilterMany = (): ICategoryFilterProps => ({
+  categories: [
+    feedCategory('Уход за кожей лица'),
+    feedCategory('Уход за волосами и кожей головы'),
+    feedCategory('Декоративная косметика'),
+    feedCategory('Парфюмерия'),
+    feedCategory('Уход за телом'),
+    feedCategory('Маникюр и педикюр'),
+    feedCategory('Солнцезащитные средства'),
+    feedCategory('Наборы и подарочные боксы'),
+    feedCategory('Аксессуары и кисти'),
+    feedCategory('Мужская линейка'),
+    feedCategory('Детская косметика'),
+    feedCategory('Профессиональные средства для салонов'),
+  ],
+  selectedSlug: null,
+  onSelect: noop,
+})
+
 export const feedEmptyState = (): IEmptyStateProps => ({
   title: 'Ничего не нашлось',
   description: 'Попробуйте изменить запрос или выбрать другую категорию.',
@@ -493,26 +503,10 @@ export const feedAuthTemplate = (): IAuthTemplateProps => ({
   children: 'Сюда встаёт форма',
 })
 
-export const feedLoginForm = (): ILoginFormProps => ({
-  onSubmit: noop,
-})
-
-export const feedRegisterForm = (): IRegisterFormProps => ({
-  onSubmit: noop,
-})
-
-export const feedOtpVerifyForm = (): IOtpVerifyFormProps => ({
-  onSubmit: noop,
-  hint: 'Код отправлен на +996 555 12 34 56',
-})
-
-export const feedForgotPasswordForm = (): IForgotPasswordFormProps => ({
-  onSubmit: noop,
-})
-
-export const feedResetPasswordForm = (): IResetPasswordFormProps => ({
-  onSubmit: noop,
-  hint: 'Код отправлен на +996 555 12 34 56',
+export const feedTelegramLoginPanel = (): ITelegramLoginPanelProps => ({
+  botUrl: 'https://t.me/lulu_beauty_test_bot?start=demo-payload',
+  status: 'preparing',
+  onRetry: noop,
 })
 
 export const feedTelegramLinkPrompt = (): ITelegramLinkPromptProps => ({
@@ -636,7 +630,6 @@ export const feedAuthUser = (overrides: Partial<IAuthUser> = {}): IAuthUser => (
   phone: '+996555123456',
   name: faker.person.firstName(),
   role: 'CUSTOMER',
-  phoneVerified: true,
   telegramLinked: false,
   ...overrides,
 })

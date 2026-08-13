@@ -24,6 +24,13 @@ export const container = style({
   transition: transition('box-shadow', 'transform'),
   selectors: {
     '&:hover': { boxShadow: vars.shadow.lg },
+    /*
+      Подсказка над кнопкой в футере выходит за границы карточки, а соседняя
+      карточка стоит в потоке позже и без этого закрывала бы её собой: своего
+      `z-index` у пузыря достаточно только внутри карточки. Подъём — на
+      наведении и на фокусе внутри: с клавиатуры подсказка открывается так же.
+    */
+    '&:hover, &:focus-within': { zIndex: 1 },
   },
   ...mediaQuery({
     // Подъём — только там, где есть настоящее наведение: на тапе он залипает.
@@ -123,6 +130,22 @@ export const footer = style({
  */
 export const action = style({
   position: 'relative',
+  zIndex: 1,
+  display: 'flex',
+})
+
+/**
+ * Слот «в избранное» — в правом верхнем углу фотографии. Отсчёт от края
+ * карточки, а не от фото: сам слот лежит вне `media` (иначе подсказку над
+ * кнопкой обрезал бы его `overflow: hidden`), поэтому отступ складывается из
+ * padding контейнера (8) и тех же 8 внутри фото — ровно как у `stockBadge` в
+ * противоположном углу.
+ */
+export const mediaAction = style({
+  position: 'absolute',
+  top: vars.space.md,
+  right: vars.space.md,
+  // Над растянутым `::after` ссылки — иначе клик по сердцу уходил бы на страницу товара.
   zIndex: 1,
   display: 'flex',
 })

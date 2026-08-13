@@ -9,7 +9,7 @@ import { AccountTemplate } from 'widgets/templates'
 import { SiteLayout } from '@/layouts/SiteLayout'
 import { ACCOUNT_NAVIGATION } from '@/layouts/accountNavigation'
 import { useAuth } from '@/contexts/AuthContext'
-import { isApiError } from '@/services/apiErrors'
+import { messageForError } from '@/services/apiErrors'
 import { listMyOrders } from '@/services/endpoints/orders'
 import { ordersKey } from '@/services/swrKeys'
 
@@ -32,12 +32,7 @@ const OrdersPage: React.FC = () => {
     mutate,
   } = useSWR<IOrder[]>(userId === null ? null : ordersKey(userId), () => listMyOrders())
 
-  const error =
-    fetchError === undefined
-      ? null
-      : isApiError(fetchError)
-        ? fetchError.message
-        : 'Не удалось загрузить заявки.'
+  const error = fetchError === undefined ? null : messageForError(fetchError, 'order.load')
 
   const content = (): React.ReactNode => {
     // Пока сессия не проверена, «войдите» показывать нельзя: у залогиненного

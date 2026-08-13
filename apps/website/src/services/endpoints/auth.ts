@@ -1,4 +1,4 @@
-import type { IAuthUser, OtpPurpose } from 'widgets/types'
+import type { IAuthUser } from 'widgets/types'
 import { api, nextApi } from '../api'
 
 /**
@@ -6,57 +6,30 @@ import { api, nextApi } from '../api'
  * (`src/pages/api/auth/*`): только они видят JWT и кладут их в httpOnly-cookie
  * `lb_at`/`lb_rt`. В браузерном JS токенов нет ни на одном шаге.
  *
+ * Ни пароля, ни кода здесь нет: личность подтверждает бот, а вкладка только
+ * открывает сессию и ждёт. Секрет опроса тоже живёт в cookie (`lb_ls`) —
+ * поэтому у `pollTelegramLogin` нет ни одного аргумента.
+ *
  * Профиль (`PATCH /users/me`) — обычная авторизованная ручка бэка, идёт через прокси.
  */
 
-export interface IOtpSent {
-  message: string
-  purpose: OtpPurpose
+export interface ITelegramLoginSession {
+  /** Ссылка на бота с одноразовым payload. */
+  botUrl: string
+  expiresAt: string
 }
 
-export interface IRegisterInput {
-  phone: string
-  name: string
-  password: string
+export interface ITelegramLoginPoll {
+  status: 'PENDING' | 'AUTHORIZED'
+  /** Профиль появляется вместе с `AUTHORIZED`; `null` — если он не дочитался. */
+  user?: IAuthUser | null
 }
 
-export interface ILoginInput {
-  phone: string
-  password: string
-}
+export const startTelegramLogin = (): Promise<ITelegramLoginSession> =>
+  nextApi.post('/auth/telegram/session')
 
-export interface IVerifyOtpInput {
-  phone: string
-  code: string
-  purpose: OtpPurpose
-}
-
-export interface IForgotPasswordInput {
-  phone: string
-}
-
-export interface IResetPasswordInput {
-  phone: string
-  code: string
-  newPassword: string
-}
-
-export const register = (input: IRegisterInput): Promise<IOtpSent> =>
-  nextApi.post('/auth/register', { body: input })
-
-export const login = (input: ILoginInput): Promise<IOtpSent> =>
-  nextApi.post('/auth/login', { body: input })
-
-/** Успешная проверка кода сразу ставит cookie и возвращает готовый профиль. */
-export const verifyOtp = (input: IVerifyOtpInput): Promise<IAuthUser> =>
-  nextApi.post('/auth/verify-otp', { body: input })
-
-export const forgotPassword = (input: IForgotPasswordInput): Promise<IOtpSent> =>
-  nextApi.post('/auth/forgot-password', { body: input })
-
-/** Как и `verifyOtp`, сразу ставит cookie и возвращает готовый профиль. */
-export const resetPassword = (input: IResetPasswordInput): Promise<IAuthUser> =>
-  nextApi.post('/auth/reset-password', { body: input })
+export const pollTelegramLogin = (): Promise<ITelegramLoginPoll> =>
+  nextApi.post('/auth/telegram/poll')
 
 export const logout = (): Promise<void> => nextApi.post('/auth/logout')
 

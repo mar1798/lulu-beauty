@@ -9,6 +9,8 @@ import { ProductGrid } from 'widgets/organisms'
 import { CatalogTemplate } from 'widgets/templates'
 import { SiteLayout } from '@/layouts/SiteLayout'
 import { AddToCartButton } from '@/components/AddToCartButton'
+import { ClosedCycleNotice } from '@/components/ClosedCycleNotice'
+import { WishlistButton } from '@/components/WishlistButton'
 import {
   optionalTextParam,
   pageParam,
@@ -16,8 +18,10 @@ import {
   useQueryParams,
   useQueryTextInput,
 } from '@/hooks/useQueryParams'
-import { isApiError } from '@/services/apiErrors'
+import { messageForError } from '@/services/apiErrors'
 import { listCategories, listProducts } from '@/services/endpoints/catalog'
+import { getActiveCycleOrNull } from '@/services/endpoints/cycles'
+import { activeCycleFallback, type ISwrFallback } from '@/services/swrFallback'
 
 /**
  * Витрина.
@@ -43,19 +47,31 @@ interface ICatalogPageProps {
   categories: ICategory[]
   /** `null` — API был недоступен на сборке; страница переживает это молча. */
   initial: IPage<IProduct> | null
+  /** Состояние сбора для кеша SWR — чтобы витрина сразу встала правильной. */
+  fallback: ISwrFallback
 }
 
 export const getStaticProps: GetStaticProps<ICatalogPageProps> = async () => {
+  // Со своим `catch`: отсутствие сбора — штатное состояние, и оно не должно
+  // ни ронять сборку, ни утаскивать за собой каталог.
+  const cycle = await getActiveCycleOrNull().catch(() => null)
+
   try {
     const [categories, initial] = await Promise.all([
       listCategories(),
       listProducts({ pageSize: PAGE_SIZE }),
     ])
 
-    return { props: { categories, initial }, revalidate: REVALIDATE_SECONDS }
+    return {
+      props: { categories, initial, fallback: activeCycleFallback(cycle) },
+      revalidate: REVALIDATE_SECONDS,
+    }
   } catch {
     // Ронять `next build` из-за недоступного API нельзя — ISR подхватит позже.
-    return { props: { categories: [], initial: null }, revalidate: REVALIDATE_SECONDS }
+    return {
+      props: { categories: [], initial: null, fallback: activeCycleFallback(cycle) },
+      revalidate: REVALIDATE_SECONDS,
+    }
   }
 }
 
@@ -114,12 +130,7 @@ const CatalogPage: React.FC<ICatalogPageProps> = ({ categories, initial }) => {
   */
   const isFirstLoad = page === undefined
 
-  const error =
-    fetchError === undefined
-      ? null
-      : isApiError(fetchError)
-        ? fetchError.message
-        : 'Не удалось загрузить каталог.'
+  const error = fetchError === undefined ? null : messageForError(fetchError, 'catalog.load')
 
   const products = page?.items ?? []
   const total = page?.total ?? 0
@@ -160,6 +171,8 @@ const CatalogPage: React.FC<ICatalogPageProps> = ({ categories, initial }) => {
           />
         }
       >
+        <ClosedCycleNotice />
+
         {error === null ? (
           <ProductGrid
             products={products}
@@ -171,6 +184,12 @@ const CatalogPage: React.FC<ICatalogPageProps> = ({ categories, initial }) => {
                 <AddToCartButton productId={product.id} isCompact={true} />
               ) : null
             }
+            /*
+              Сердце — у каждого товара, включая снятые с продажи: «нет в
+              наличии» проходит, а сохранить его на следующий сбор — ровно то,
+              зачем избранное и нужно.
+            */
+            renderMediaAction={product => <WishlistButton productId={product.id} />}
             emptyState={
               <EmptyState
                 title="Ничего не нашлось"

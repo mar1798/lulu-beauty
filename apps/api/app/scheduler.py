@@ -2,7 +2,7 @@ import logging
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
-from app.auth.otp_service import OtpService
+from app.auth.telegram_login import TelegramLoginService
 from app.config import settings
 from app.cycles.scheduler_service import CycleSchedulerService
 from app.db import async_session
@@ -35,12 +35,12 @@ async def _run_deadline_sweep() -> None:
         logger.info("Deadline sweep closed %d cycle(s)", len(closures))
 
 
-async def _run_otp_cleanup() -> None:
+async def _run_auth_session_cleanup() -> None:
     async with async_session() as session:
-        deleted = await OtpService(session).cleanup_expired()
+        deleted = await TelegramLoginService(session).cleanup_expired()
         await session.commit()
     if deleted:
-        logger.info("OTP cleanup removed %d expired/consumed code(s)", deleted)
+        logger.info("Auth cleanup removed %d expired/spent login session(s)", deleted)
 
 
 def start() -> None:
@@ -60,10 +60,10 @@ def start() -> None:
         id="deadline_sweep",
     )
     scheduler.add_job(
-        _run_otp_cleanup,
+        _run_auth_session_cleanup,
         "interval",
         seconds=settings.scheduler_interval_seconds,
-        id="otp_cleanup",
+        id="auth_session_cleanup",
     )
     scheduler.start()
     logger.info("Scheduler started (interval=%ds)", settings.scheduler_interval_seconds)

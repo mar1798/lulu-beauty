@@ -9,8 +9,10 @@ import { HomeTemplate } from 'widgets/templates'
 import { SiteLayout } from '@/layouts/SiteLayout'
 import * as styles from '@/styles/home.css'
 import { AddToCartButton } from '@/components/AddToCartButton'
+import { WishlistButton } from '@/components/WishlistButton'
 import { getActiveCycleOrNull } from '@/services/endpoints/cycles'
 import { listProducts } from '@/services/endpoints/catalog'
+import { activeCycleFallback, type ISwrFallback } from '@/services/swrFallback'
 
 /**
  * Главная.
@@ -50,6 +52,8 @@ interface IHomePageProps {
   /** `null` — открытого сбора нет либо API был недоступен на сборке. */
   cycle: IOrderCycle | null
   featured: IProduct[]
+  /** Тот же сбор, но для кеша SWR: его читают кнопки «в корзину» в подборке. */
+  fallback: ISwrFallback
 }
 
 export const getStaticProps: GetStaticProps<IHomePageProps> = async () => {
@@ -64,7 +68,10 @@ export const getStaticProps: GetStaticProps<IHomePageProps> = async () => {
       .catch(() => []),
   ])
 
-  return { props: { cycle, featured }, revalidate: REVALIDATE_SECONDS }
+  return {
+    props: { cycle, featured, fallback: activeCycleFallback(cycle) },
+    revalidate: REVALIDATE_SECONDS,
+  }
 }
 
 const HomePage: React.FC<IHomePageProps> = ({ cycle, featured }) => (
@@ -130,6 +137,7 @@ const HomePage: React.FC<IHomePageProps> = ({ cycle, featured }) => (
                 <AddToCartButton productId={product.id} isCompact={true} />
               ) : null
             }
+            renderMediaAction={product => <WishlistButton productId={product.id} />}
           />
         </section>
       )}

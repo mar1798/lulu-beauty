@@ -9,6 +9,17 @@ export const container = style({
   alignItems: 'center',
 })
 
+/**
+ * Столбец вместо строки: в боковой колонке админки чипы не переносятся
+ * строкой, а идут списком во всю её ширину.
+ */
+export const column = style({
+  flexDirection: 'column',
+  alignItems: 'stretch',
+  gap: rem(4),
+  flexWrap: 'nowrap',
+})
+
 export const mobileOnly = style({
   display: 'block',
   ...media({ sm: { display: 'none' } }),

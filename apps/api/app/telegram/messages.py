@@ -12,7 +12,7 @@ import logging
 from datetime import datetime
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from app.auth.models import OtpPurpose, User
+from app.auth.models import User
 from app.cart.schemas import CartResponse
 from app.config import settings
 from app.cycles.models import OrderCycle
@@ -86,16 +86,6 @@ ORDER_STATUS_LABEL = {
 
 
 # ─── Outgoing notifications ──────────────────────────────────────────────────────
-
-
-def otp(code: str, purpose: OtpPurpose) -> str:
-    if purpose is OtpPurpose.REGISTER:
-        action = "регистрации"
-    elif purpose is OtpPurpose.RESET_PASSWORD:
-        action = "смены пароля"
-    else:
-        action = "входа"
-    return f"Код подтверждения {action} в Lulu Beauty: {code}"
 
 
 def cart_reminder(title: str, deadline_at: datetime) -> str:
@@ -192,7 +182,20 @@ CALLBACK_ORDER_GONE = "Заявка не найдена — возможно, о
 def callback_applied(status: OrderStatus) -> str:
     return f"Заявка — {ORDER_STATUS_LABEL[status].lower()}"
 
+
 LINKED = "Готово! Этот чат привязан к вашему номеру телефона.\n/help — что умеет бот."
+
+# Ответ на вход с сайта. Про «вернитесь на вкладку» — не вежливость: вкладка входит сама,
+# и без этой строки человек остаётся в Telegram ждать кода, которого больше не бывает.
+LOGIN_CONFIRMED = (
+    "Вход подтверждён. Вернитесь на вкладку с сайтом — она уже впустила вас.\n"
+    "/help — что умеет бот."
+)
+
+ALREADY_LINKED = (
+    "Этот чат уже привязан к вашему номеру. Чтобы войти на сайте, нажмите там "
+    "«Войти через Telegram» — я подтвержу вход сам.\n/help — что умеет бот."
+)
 
 # Прислали чужую карточку контакта. Формулировка без обвинений: чаще всего это
 # промах по списку контактов, а не попытка привязать чужой номер.

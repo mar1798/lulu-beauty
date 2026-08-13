@@ -14,7 +14,6 @@ os.environ.setdefault("TELEGRAM_BOT_TOKEN", "test-telegram-token")
 os.environ.setdefault("TELEGRAM_BOT_USERNAME", "test_bot")
 os.environ.setdefault("OWNER_PHONE", "+10000000000")
 os.environ.setdefault("OWNER_NAME", "Test Owner")
-os.environ.setdefault("OWNER_PASSWORD", "test-owner-password")
 
 import app.models  # noqa: E402, F401 - populates Base.metadata for TRUNCATE below
 from app.db import Base, async_session, engine  # noqa: E402 - must follow the env setup above
@@ -37,9 +36,7 @@ async def db_session() -> AsyncIterator[AsyncSession]:
     try:
         async with engine.begin() as connection:
             table_names = ", ".join(f'"{table.name}"' for table in Base.metadata.sorted_tables)
-            await connection.execute(
-                text(f"TRUNCATE TABLE {table_names} RESTART IDENTITY CASCADE")
-            )
+            await connection.execute(text(f"TRUNCATE TABLE {table_names} RESTART IDENTITY CASCADE"))
     except Exception:
         pytest.skip("Postgres not reachable at DATABASE_URL; skipping DB-integration test")
 

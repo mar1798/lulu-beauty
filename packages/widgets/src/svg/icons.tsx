@@ -168,3 +168,23 @@ export const IconChart: FC<IBasicStyling> = ({ className }) => (
     <path d="M4 20V10M10 20V4M16 20v-7M22 20H2" />
   </svg>
 )
+
+/**
+ * Сердце — «в избранное». Две формы одного контура: пустая (не сохранено) и
+ * залитая (сохранено). Состояние читается заливкой, а не только цветом —
+ * на приглушённой карточке разница в оттенке видна не всем.
+ */
+const HEART_PATH =
+  'M12 20.3s-7.5-4.4-7.5-9.4a4.3 4.3 0 0 1 7.5-2.8 4.3 4.3 0 0 1 7.5 2.8c0 5-7.5 9.4-7.5 9.4Z'
+
+export const IconHeart: FC<IBasicStyling> = ({ className }) => (
+  <svg {...base} className={className}>
+    <path d={HEART_PATH} />
+  </svg>
+)
+
+export const IconHeartFilled: FC<IBasicStyling> = ({ className }) => (
+  <svg {...base} className={className} fill="currentColor">
+    <path d={HEART_PATH} />
+  </svg>
+)

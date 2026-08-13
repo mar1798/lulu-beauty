@@ -5,7 +5,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import CurrentUser, require_admin
 from app.catalog.import_service import CatalogImportService
-from app.catalog.models import Category, Product
 from app.catalog.schemas import (
     CategoryCreateRequest,
     CategoryResponse,
@@ -16,6 +15,7 @@ from app.catalog.schemas import (
     ProductResponse,
     ProductUpdateRequest,
 )
+from app.catalog.serializers import category_response, product_response
 from app.catalog.service import (
     CategoryNotFoundError,
     CategoryService,
@@ -40,40 +40,10 @@ ALLOWED_IMAGE_CONTENT_TYPES = set(IMAGE_EXTENSIONS)
 MAX_IMPORT_BYTES = 10 * 1024 * 1024
 
 
-def _category_response(category: Category) -> CategoryResponse:
-    return CategoryResponse(
-        id=category.id, name=category.name, slug=category.slug, sort_order=category.sort_order
-    )
-
-
-def _product_response(product: Product) -> ProductResponse:
-    return ProductResponse(
-        id=product.id,
-        name=product.name,
-        slug=product.slug,
-        description=product.description,
-        brand=product.brand,
-        price_cents=product.price_cents,
-        category_id=product.category_id,
-        in_stock=product.in_stock,
-        deleted_at=product.deleted_at,
-        images=[
-            ProductImageResponse(
-                id=image.id,
-                url=image.url,
-                alt=image.alt,
-                sort_order=image.sort_order,
-                is_primary=image.is_primary,
-            )
-            for image in product.images
-        ],
-    )
-
-
 @router.get("/categories", response_model=list[CategoryResponse])
 async def list_categories(session: AsyncSession = Depends(get_session)) -> list[CategoryResponse]:
     categories = await CategoryService(session).list()
-    return [_category_response(category) for category in categories]
+    return [category_response(category) for category in categories]
 
 
 @router.post(
@@ -90,7 +60,7 @@ async def create_category(
         raise HTTPException(status.HTTP_409_CONFLICT, "slug_already_exists") from error
 
     await session.commit()
-    return _category_response(category)
+    return category_response(category)
 
 
 @router.patch("/admin/categories/{category_id}", response_model=CategoryResponse)
@@ -109,7 +79,7 @@ async def update_category(
         raise HTTPException(status.HTTP_409_CONFLICT, "slug_already_exists") from error
 
     await session.commit()
-    return _category_response(category)
+    return category_response(category)
 
 
 @router.delete("/admin/categories/{category_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -139,7 +109,7 @@ async def list_products(
         category, in_stock, page, page_size, q
     )
     return PageResponse(
-        items=[_product_response(product) for product in products],
+        items=[product_response(product) for product in products],
         total=total,
         page=page,
         page_size=page_size,
@@ -151,7 +121,7 @@ async def get_product(slug: str, session: AsyncSession = Depends(get_session)) -
     product = await ProductService(session).get_by_slug(slug)
     if product is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "product_not_found")
-    return _product_response(product)
+    return product_response(product)
 
 
 @router.get("/admin/products", response_model=PageResponse[ProductResponse])
@@ -169,7 +139,7 @@ async def list_products_admin(
         category, in_stock, page, page_size, q, include_deleted
     )
     return PageResponse(
-        items=[_product_response(product) for product in products],
+        items=[product_response(product) for product in products],
         total=total,
         page=page,
         page_size=page_size,
@@ -186,12 +156,10 @@ async def get_product_by_id(
         product = await ProductService(session).get_by_id(product_id)
     except ProductNotFoundError as error:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "product_not_found") from error
-    return _product_response(product)
+    return product_response(product)
 
 
-@router.post(
-    "/admin/products", response_model=ProductResponse, status_code=status.HTTP_201_CREATED
-)
+@router.post("/admin/products", response_model=ProductResponse, status_code=status.HTTP_201_CREATED)
 async def create_product(
     body: ProductCreateRequest,
     session: AsyncSession = Depends(get_session),
@@ -211,7 +179,7 @@ async def create_product(
         raise HTTPException(status.HTTP_409_CONFLICT, "slug_already_exists") from error
 
     await session.commit()
-    return _product_response(product)
+    return product_response(product)
 
 
 @router.patch("/admin/products/{product_id}", response_model=ProductResponse)
@@ -230,7 +198,7 @@ async def update_product(
         raise HTTPException(status.HTTP_409_CONFLICT, "slug_already_exists") from error
 
     await session.commit()
-    return _product_response(product)
+    return product_response(product)
 
 
 @router.delete("/admin/products/{product_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -259,7 +227,7 @@ async def restore_product(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "product_not_found") from error
 
     await session.commit()
-    return _product_response(product)
+    return product_response(product)
 
 
 @router.post(

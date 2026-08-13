@@ -8,7 +8,7 @@ from aiogram import Bot
 from aiogram.exceptions import TelegramForbiddenError, TelegramRetryAfter
 from aiogram.types import InlineKeyboardMarkup
 
-from app.auth.models import OtpPurpose, User
+from app.auth.models import User
 from app.cycles.models import OrderCycle
 from app.orders.models import Order
 from app.telegram import keyboards, messages
@@ -40,22 +40,18 @@ class BroadcastResult:
 
 
 class NotificationsService:
-    """Sends via Telegram when a chat is bound; otherwise falls back to console/log.
+    """Sends via Telegram when a chat is bound; otherwise logs why it could not.
 
-    The fallback keeps register/login/reminders usable in local dev without a live bot,
-    and until a user has pressed Start + shared their contact.
+    A binding is no longer optional — an account cannot come into existence without one
+    (see `handle_contact`) — but it can die: the person blocks the bot, or deletes the
+    chat. Then a notification has nowhere to go, and saying so in the log beats an
+    exception from a background sweep.
     """
 
     def __init__(self, bot: Bot | None) -> None:
         self._bot = bot
 
     # ─── Point-to-point ──────────────────────────────────────────────────────────
-
-    async def send_otp(self, user: User, code: str, purpose: OtpPurpose) -> None:
-        if await self._try_send(user.telegram_chat_id, messages.otp(code, purpose)):
-            logger.info("Sent %s OTP to %s via Telegram", purpose.value, user.phone)
-            return
-        logger.warning("%s; %s OTP: %s", self._fallback_reason(user), purpose.value, code)
 
     async def send_reminder(self, user: User, cycle_title: str, deadline_at: datetime) -> None:
         message = messages.cart_reminder(cycle_title, deadline_at)
@@ -104,9 +100,7 @@ class NotificationsService:
 
     # ─── Fan-out ─────────────────────────────────────────────────────────────────
 
-    async def send_cycle_opened(
-        self, users: list[User], cycle: OrderCycle
-    ) -> BroadcastResult:
+    async def send_cycle_opened(self, users: list[User], cycle: OrderCycle) -> BroadcastResult:
         return await self._broadcast(users, messages.cycle_opened(cycle))
 
     async def _broadcast(self, users: list[User], message: str) -> BroadcastResult:

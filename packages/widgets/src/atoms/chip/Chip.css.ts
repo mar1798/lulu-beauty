@@ -38,6 +38,22 @@ export const container = style([
 ])
 
 /**
+ * Чип во всю ширину с переносом подписи: вариант для узкой колонки, где
+ * `nowrap` заставлял длинное название вылезать за край. Радиус здесь `md`, а
+ * не `pill`: на двух строках пилюля превращается в овал.
+ */
+export const block = style({
+  display: 'flex',
+  width: '100%',
+  justifyContent: 'flex-start',
+  textAlign: 'left',
+  whiteSpace: 'normal',
+  overflowWrap: 'anywhere',
+  paddingBlock: rem(8),
+  borderRadius: vars.radius.md,
+})
+
+/**
  * Счётчик приглушается отдельным цветом, а не `opacity`: прозрачность
  * смешивает текст с фоном и роняет контраст ниже AA — axe это ловит.
  * У выбранного чипа цвет наследуется от инверсного текста.

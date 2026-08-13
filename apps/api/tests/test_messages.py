@@ -1,7 +1,7 @@
 import uuid
 from datetime import UTC, datetime
 
-from app.auth.models import OtpPurpose, User
+from app.auth.models import User
 from app.cart.schemas import CartItemResponse, CartResponse
 from app.cycles.models import OrderCycle
 from app.orders.models import Order, OrderItem, OrderStatus
@@ -41,12 +41,6 @@ def _order(
     return order
 
 
-def test_otp_names_the_purpose_the_code_is_for() -> None:
-    assert "регистрации" in messages.otp("123456", OtpPurpose.REGISTER)
-    assert "входа" in messages.otp("123456", OtpPurpose.LOGIN)
-    assert "смены пароля" in messages.otp("123456", OtpPurpose.RESET_PASSWORD)
-
-
 def test_format_price_matches_the_sites_price_atom() -> None:
     # packages/widgets/src/atoms/price says "1 250 сом" / "19,99 сом"; two renderings of
     # the same number in the same shop must not disagree.
@@ -81,7 +75,7 @@ def test_order_status_changed_says_nothing_about_pending() -> None:
 
 
 def test_new_order_for_owner_carries_customer_total_and_note() -> None:
-    customer = User(phone="+996700123456", name="Айгуль", password_hash="irrelevant")
+    customer = User(phone="+996700123456", name="Айгуль")
     cycle = OrderCycle(deadline_at=datetime(2030, 6, 12, tzinfo=UTC), label="Июнь")
 
     text = _normalize(messages.new_order_for_owner(_order(note="без пробников"), customer, cycle))
@@ -124,9 +118,7 @@ def _cart(*, items: list[CartItemResponse], deadline: datetime | None) -> CartRe
 def test_my_cart_distinguishes_empty_cart_from_closed_shop() -> None:
     """Both are empty carts; only one of them is worth telling someone to check out."""
     between_cycles = messages.my_cart(_cart(items=[], deadline=None))
-    open_but_empty = messages.my_cart(
-        _cart(items=[], deadline=datetime(2030, 6, 12, tzinfo=UTC))
-    )
+    open_but_empty = messages.my_cart(_cart(items=[], deadline=datetime(2030, 6, 12, tzinfo=UTC)))
 
     assert between_cycles != open_but_empty
     assert "закрыт" in between_cycles

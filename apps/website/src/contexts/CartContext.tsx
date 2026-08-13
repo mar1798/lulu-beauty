@@ -1,7 +1,7 @@
 import React, { createContext, useCallback, useContext, useMemo, useRef, useState } from 'react'
 import useSWR from 'swr'
 import type { ICart } from 'widgets/types'
-import { isApiError } from '@/services/apiErrors'
+import { messageForError, type ErrorScope } from '@/services/apiErrors'
 import { cartKey } from '@/services/swrKeys'
 import {
   addCartItem,
@@ -56,6 +56,23 @@ const without = (cart: ICart, productId: string): ICart => {
   return { ...cart, items, totalCents: totalOf(items) }
 }
 
+/**
+ * Итог изменения корзины. Не просто «получилось/нет»: текст ошибки нужен там,
+ * где её показывает сам вызывающий, — кнопке «в корзину» в каталоге, которая
+ * живёт вне экрана корзины. Ждать, пока `error` доедет отдельным рендером,
+ * ей нельзя: тост показывается сразу после `await`.
+ */
+export interface ICartResult {
+  ok: boolean
+  /** Текст под конкретное действие (`no_active_cycle` при добавлении ≠ при оформлении). */
+  error: string | null
+}
+
+const OK: ICartResult = { ok: true, error: null }
+
+/** Корзины у гостя не существует — на бэкенде она привязана к пользователю. */
+const GUEST_ERROR = 'Корзина привязана к аккаунту — войдите, чтобы собрать заявку.'
+
 export interface ICartContextValue {
   cart: ICart | null
   /** Сумма количеств — то, что показывает счётчик в шапке. */
@@ -73,23 +90,21 @@ export interface ICartContextValue {
   isItemBusy: (productId: string) => boolean
   error: string | null
   /*
-   * Изменения возвращают признак успеха (`false` — не вышло, и `error` уже
-   * заполнен). Нужен он прежде всего кнопке «в корзину» в карточке: она
-   * единственная живёт вне экрана корзины, где ошибку никто не показывает,
-   * и должна сама сообщить о провале.
+   * Изменения возвращают итог с текстом ошибки (см. `ICartResult`). Нужен он
+   * прежде всего кнопке «в корзину» в карточке: она единственная живёт вне
+   * экрана корзины, где ошибку никто не показывает, и должна сама объяснить,
+   * почему товар не добавился, — «сбор закрыт» и «товар сняли с продажи»
+   * чинятся по-разному.
    */
-  addItem: (productId: string, quantity?: number) => Promise<boolean>
-  updateItem: (productId: string, quantity: number) => Promise<boolean>
-  removeItem: (productId: string) => Promise<boolean>
-  empty: () => Promise<boolean>
-  reload: () => Promise<boolean>
+  addItem: (productId: string, quantity?: number) => Promise<ICartResult>
+  updateItem: (productId: string, quantity: number) => Promise<ICartResult>
+  removeItem: (productId: string) => Promise<ICartResult>
+  empty: () => Promise<ICartResult>
+  reload: () => Promise<ICartResult>
   clearError: () => void
 }
 
 const CartContext = createContext<ICartContextValue | null>(null)
-
-const messageOf = (cause: unknown, fallback: string): string =>
-  isApiError(cause) ? cause.message : fallback
 
 export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user } = useAuth()
@@ -106,6 +121,7 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const {
     data,
     isLoading,
+    error: fetchError,
     mutate: swrMutate,
   } = useSWR<ICart>(userId === null ? null : cartKey(userId), getCart)
 
@@ -130,16 +146,19 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
    */
   const runMutation = useCallback(
     async (
-      scope: string,
+      busyScope: string,
       action: () => Promise<ICart>,
-      fallback: string,
+      errorScope: ErrorScope,
       optimistic?: (current: ICart) => ICart
-    ): Promise<boolean> => {
+    ): Promise<ICartResult> => {
       if (userId === null) {
-        return false
+        // Не «не получилось»: корзины у гостя нет вовсе, и сказать надо именно это.
+        setError(GUEST_ERROR)
+
+        return { ok: false, error: GUEST_ERROR }
       }
 
-      setBusy(previous => (previous.includes(scope) ? previous : [...previous, scope]))
+      setBusy(previous => (previous.includes(busyScope) ? previous : [...previous, busyScope]))
       setError(null)
 
       // Чужая осечка очередь не рвёт — свой запрос уходит в любом случае.
@@ -167,13 +186,15 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
           rollbackOnError: true,
         })
 
-        return true
+        return OK
       } catch (cause: unknown) {
-        setError(messageOf(cause, fallback))
+        const message = messageForError(cause, errorScope)
 
-        return false
+        setError(message)
+
+        return { ok: false, error: message }
       } finally {
-        setBusy(previous => previous.filter(item => item !== scope))
+        setBusy(previous => previous.filter(item => item !== busyScope))
       }
     },
     [userId, swrMutate, data]
@@ -183,38 +204,33 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
     (productId: string, quantity = 1) =>
       /*
         Без оптимистичного слепка: состав позиции (название, цена, картинка)
-        знает только ответ, а рисовать полустроку ради 200 мс — хуже, чем
-        показать спиннер на самой кнопке.
+        знает только ответ, а рисовать полустроку ради 200 мс не стоит. Кнопка
+        в каталоге эти миллисекунды просто не отыгрывает — спиннер на ней
+        читался как мигание (см. `AddToCartButton`).
       */
-      runMutation(productId, () => addCartItem(productId, quantity), 'Не удалось добавить товар.'),
+      runMutation(productId, () => addCartItem(productId, quantity), 'cart.add'),
     [runMutation]
   )
 
   const updateItem = useCallback(
     (productId: string, quantity: number) =>
-      runMutation(
-        productId,
-        () => updateCartItem(productId, quantity),
-        'Не удалось изменить количество.',
-        current => withQuantity(current, productId, quantity)
+      runMutation(productId, () => updateCartItem(productId, quantity), 'cart.update', current =>
+        withQuantity(current, productId, quantity)
       ),
     [runMutation]
   )
 
   const removeItem = useCallback(
     (productId: string) =>
-      runMutation(
-        productId,
-        () => removeCartItem(productId),
-        'Не удалось убрать товар.',
-        current => without(current, productId)
+      runMutation(productId, () => removeCartItem(productId), 'cart.remove', current =>
+        without(current, productId)
       ),
     [runMutation]
   )
 
   const empty = useCallback(
     () =>
-      runMutation(WHOLE_CART, () => emptyCart(), 'Не удалось очистить корзину.', current => ({
+      runMutation(WHOLE_CART, () => emptyCart(), 'cart.empty', current => ({
         ...current,
         items: [],
         totalCents: 0,
@@ -223,7 +239,7 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
   )
 
   const reload = useCallback(
-    () => runMutation(WHOLE_CART, () => getCart(), 'Не удалось загрузить корзину.'),
+    () => runMutation(WHOLE_CART, () => getCart(), 'cart.load'),
     [runMutation]
   )
 
@@ -236,6 +252,14 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const cart = userId === null ? null : (data ?? null)
 
+  /*
+   * Осечка последнего действия важнее осечки загрузки: человек только что
+   * нажал кнопку и ждёт ответа именно про неё. Но и молчать о несостоявшейся
+   * загрузке нельзя — иначе пустой экран выдаёт себя за пустую корзину.
+   */
+  const visibleError =
+    error ?? (fetchError === undefined ? null : messageForError(fetchError, 'cart.load'))
+
   const value = useMemo<ICartContextValue>(
     () => ({
       cart,
@@ -243,7 +267,7 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
       isLoading: userId !== null && isLoading,
       isBusy: busy.length > 0,
       isItemBusy,
-      error,
+      error: visibleError,
       addItem,
       updateItem,
       removeItem,
@@ -257,7 +281,7 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
       isLoading,
       busy,
       isItemBusy,
-      error,
+      visibleError,
       addItem,
       updateItem,
       removeItem,

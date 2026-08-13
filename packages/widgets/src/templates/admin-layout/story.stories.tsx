@@ -1,7 +1,7 @@
 import type { StoryFn, Meta } from '@storybook/react'
 import { AdminLayout } from '.'
 import { CategoryFilter } from '../../molecules/category-filter'
-import { feedAdminLayout, feedCategoryFilter } from '../../stories/feed'
+import { feedAdminLayout, feedCategoryFilter, feedCategoryFilterMany } from '../../stories/feed'
 import { StoryWrapper } from '../../stories/wrapper'
 
 export default {
@@ -28,5 +28,20 @@ WithSidebar.parameters = {
 }
 WithSidebar.args = {
   ...feedAdminLayout(),
-  sidebar: <CategoryFilter {...feedCategoryFilter()} />,
+  sidebar: <CategoryFilter {...feedCategoryFilter()} layout="column" />,
+}
+
+/**
+ * Категорий больше, чем помещается по высоте: колонка упирается в край
+ * экрана, и дальше прокручивается сам список фильтров, а разделы остаются на
+ * месте. До ограничения высоты хвост списка уезжал под нижний край и был
+ * недостижим — прилипший блок при прокрутке не двигается.
+ */
+export const WithLongSidebar = Template.bind({})
+WithLongSidebar.parameters = {
+  layout: 'fullscreen',
+}
+WithLongSidebar.args = {
+  ...feedAdminLayout(),
+  sidebar: <CategoryFilter {...feedCategoryFilterMany()} layout="column" />,
 }

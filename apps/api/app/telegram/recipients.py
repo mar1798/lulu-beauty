@@ -4,11 +4,10 @@ Kept out of `service.py` (which has no session) and out of the handlers (which w
 each grow their own copy of these queries).
 """
 
-from sqlalchemy import delete, select, update
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.models import Role, User
-from app.telegram.models import PendingTelegramContact
 
 
 async def get_owners(session: AsyncSession) -> list[User]:
@@ -23,10 +22,13 @@ async def get_owners(session: AsyncSession) -> list[User]:
 
 
 async def get_broadcast_audience(session: AsyncSession) -> list[User]:
-    """Everyone a shop-wide announcement can actually reach."""
-    result = await session.execute(
-        select(User).where(User.telegram_chat_id.is_not(None), User.phone_verified.is_(True))
-    )
+    """Everyone a shop-wide announcement can actually reach.
+
+    A bound chat is the whole condition: an account cannot exist without one having been
+    bound at some point, and when a binding dies (`clear_stale_bindings`) the account
+    stays but becomes unreachable — which is exactly what this filter is for.
+    """
+    result = await session.execute(select(User).where(User.telegram_chat_id.is_not(None)))
     return list(result.scalars().all())
 
 
@@ -52,9 +54,6 @@ async def release_chat(session: AsyncSession, chat_id: int) -> None:
     await session.execute(
         update(User).where(User.telegram_chat_id == chat_id).values(telegram_chat_id=None)
     )
-    await session.execute(
-        delete(PendingTelegramContact).where(PendingTelegramContact.chat_id == chat_id)
-    )
 
 
 async def clear_stale_bindings(session: AsyncSession, chat_ids: list[int]) -> int:
@@ -71,7 +70,4 @@ async def clear_stale_bindings(session: AsyncSession, chat_ids: list[int]) -> in
     for user in users:
         user.telegram_chat_id = None
 
-    await session.execute(
-        delete(PendingTelegramContact).where(PendingTelegramContact.chat_id.in_(chat_ids))
-    )
     return len(users)

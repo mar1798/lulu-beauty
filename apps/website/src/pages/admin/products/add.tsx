@@ -7,7 +7,7 @@ import { AdminProductForm } from 'widgets/organisms'
 import { useToast } from 'widgets/contexts'
 import { AdminShell } from '@/layouts/AdminShell'
 import { requireAdmin, type IAdminPageProps } from '@/server/adminGate'
-import { isApiError } from '@/services/apiErrors'
+import { messageForError } from '@/services/apiErrors'
 import { createProduct, uploadProductImage } from '@/services/endpoints/admin'
 import { listCategories } from '@/services/endpoints/catalog'
 import { categoriesKey, isAdminProductsKey } from '@/services/swrKeys'
@@ -51,11 +51,16 @@ const AdminProductCreatePage: React.FC<IAdminPageProps> = () => {
             alt: values.image.alt === '' ? undefined : values.image.alt,
             isPrimary: true,
           })
-        } catch {
+        } catch (cause: unknown) {
+          /*
+            Товар уже создан, а фотография — нет: причину нужно назвать прямо
+            здесь («больше 5 МБ», «формат не тот»), иначе человек пойдёт
+            перезагружать тот же файл на карточке и получит ровно то же.
+          */
           notify({
             tone: 'info',
             title: 'Товар создан, но фото не загрузилось',
-            description: 'Добавьте его на карточке товара.',
+            description: `${messageForError(cause, 'admin.product.images')} Фото можно добавить на карточке товара.`,
           })
         }
       }
@@ -65,7 +70,7 @@ const AdminProductCreatePage: React.FC<IAdminPageProps> = () => {
       void globalMutate(isAdminProductsKey)
       setFormVersion(current => current + 1)
     } catch (cause: unknown) {
-      setError(isApiError(cause) ? cause.message : 'Не удалось создать товар.')
+      setError(messageForError(cause, 'admin.product.create'))
     } finally {
       setIsSubmitting(false)
     }

@@ -7,7 +7,7 @@ import { useConfirm, useToast } from 'widgets/contexts'
 import { storeIso, storeToday } from 'widgets/utils'
 import { AdminShell } from '@/layouts/AdminShell'
 import { requireAdmin, type IAdminPageProps } from '@/server/adminGate'
-import { isApiError } from '@/services/apiErrors'
+import { messageForError } from '@/services/apiErrors'
 import { createCycle, deleteCycle, listCycles, updateCycle } from '@/services/endpoints/admin'
 import { getActiveCycleOrNull } from '@/services/endpoints/cycles'
 import { activeCycleKey, cyclesKey } from '@/services/swrKeys'
@@ -54,12 +54,7 @@ const AdminCyclesPage: React.FC<ICyclesPageProps> = ({ today, initialMonth }) =>
   )
 
   const isLoading = isCyclesLoading || isActiveLoading
-  const error =
-    cyclesError === undefined
-      ? null
-      : isApiError(cyclesError)
-        ? cyclesError.message
-        : 'Не удалось загрузить сборы.'
+  const error = cyclesError === undefined ? null : messageForError(cyclesError, 'admin.cycles')
 
   const run = async (action: () => Promise<unknown>, success: string): Promise<void> => {
     setIsBusy(true)
@@ -71,7 +66,7 @@ const AdminCyclesPage: React.FC<ICyclesPageProps> = ({ today, initialMonth }) =>
       await mutateCycles()
       void globalMutate(activeCycleKey)
     } catch (cause: unknown) {
-      const message = isApiError(cause) ? cause.message : 'Действие не выполнено.'
+      const message = messageForError(cause, 'admin.cycles')
 
       setActionError(message)
       notify({ tone: 'danger', title: 'Не получилось', description: message })

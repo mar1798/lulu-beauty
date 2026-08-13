@@ -72,7 +72,18 @@ export const CartPanel: FC<ICartPanelProps & IBasicStyling> = ({
   }
 
   if (cart === null || cart.items.length === 0) {
-    return <>{emptyState}</>
+    /*
+      Ошибка важнее пустого состояния: не загрузившаяся корзина иначе выдаёт
+      себя за пустую, и человек идёт собирать её заново вместо того, чтобы
+      повторить загрузку.
+    */
+    return error !== undefined && error !== null ? (
+      <Alert tone="danger" title="Не получилось">
+        {error}
+      </Alert>
+    ) : (
+      <>{emptyState}</>
+    )
   }
 
   const hasCycle = cart.cycleId !== null

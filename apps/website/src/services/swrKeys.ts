@@ -14,6 +14,9 @@ export const meKey = ['me'] as const
 
 export const cartKey = (userId: string) => ['cart', userId] as const
 
+/** С `userId`, как и корзина: чужое избранное не должно достаться из кеша после смены аккаунта. */
+export const wishlistKey = (userId: string) => ['wishlist', userId] as const
+
 export const categoriesKey = ['categories'] as const
 
 export const cyclesKey = ['cycles'] as const

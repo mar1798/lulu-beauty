@@ -8,8 +8,12 @@ import { ProductDetails } from 'widgets/organisms'
 import { ProductTemplate } from 'widgets/templates'
 import { SiteLayout } from '@/layouts/SiteLayout'
 import { AddToCartButton } from '@/components/AddToCartButton'
+import { ClosedCycleNotice } from '@/components/ClosedCycleNotice'
+import { WishlistButton } from '@/components/WishlistButton'
 import { isApiError } from '@/services/apiErrors'
 import { getProduct, listCategories, listProducts } from '@/services/endpoints/catalog'
+import { getActiveCycleOrNull } from '@/services/endpoints/cycles'
+import { activeCycleFallback, type ISwrFallback } from '@/services/swrFallback'
 
 /**
  * Страница товара.
@@ -30,6 +34,8 @@ interface IProductPageProps {
   product: IProduct
   /** У товара приходит только `categoryId` — имя резолвится здесь, на сервере. */
   categoryName: string | null
+  /** Состояние сбора для кеша SWR — см. `services/swrFallback.ts`. */
+  fallback: ISwrFallback
 }
 
 export const getStaticPaths: GetStaticPaths = async () => {
@@ -59,9 +65,14 @@ export const getStaticProps: GetStaticProps<IProductPageProps, { slug: string }>
     const product = await getProduct(slug)
     const categories = await listCategories().catch(() => [])
     const category = categories.find(item => item.id === product.categoryId)
+    const cycle = await getActiveCycleOrNull().catch(() => null)
 
     return {
-      props: { product, categoryName: category?.name ?? null },
+      props: {
+        product,
+        categoryName: category?.name ?? null,
+        fallback: activeCycleFallback(cycle),
+      },
       revalidate: REVALIDATE_SECONDS,
     }
   } catch (error) {
@@ -94,6 +105,8 @@ const ProductPage: React.FC<IProductPageProps> = ({ product, categoryName }) => 
         />
       }
     >
+      <ClosedCycleNotice />
+
       <ProductDetails
         product={product}
         categoryName={categoryName}
@@ -104,6 +117,7 @@ const ProductPage: React.FC<IProductPageProps> = ({ product, categoryName }) => 
             <Text tone="muted">Товара сейчас нет в наличии — загляните в следующий сбор.</Text>
           )
         }
+        secondaryAction={<WishlistButton productId={product.id} withLabel={true} size="lg" />}
       />
     </ProductTemplate>
   </SiteLayout>

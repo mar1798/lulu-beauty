@@ -17,6 +17,7 @@ import { usePrefetchRoutes } from '@/hooks/usePrefetchRoutes'
 
 const NAVIGATION: ILinkedLabel[] = [
   { label: 'Каталог', link: { href: '/catalog' } },
+  { label: 'Избранное', link: { href: '/wishlist' } },
   { label: 'Мои заявки', link: { href: '/orders' } },
 ]
 
@@ -27,6 +28,7 @@ const SHOP_COLUMN: IFooterColumn = {
   title: 'Магазин',
   links: [
     { label: 'Каталог', link: { href: '/catalog' } },
+    { label: 'Избранное', link: { href: '/wishlist' } },
     { label: 'Мои заявки', link: { href: '/orders' } },
   ],
 }
@@ -40,10 +42,9 @@ const accountColumn = (isAuthorized: boolean): IFooterColumn => ({
   title: 'Аккаунт',
   links: isAuthorized
     ? [{ label: 'Профиль', link: { href: '/account' } }]
-    : [
-        { label: 'Вход', link: { href: '/login' } },
-        { label: 'Регистрация', link: { href: '/register' } },
-      ],
+    // Регистрации как страницы больше нет: аккаунт заводится в боте на первом
+    // же входе, поэтому «Вход» — единственная ссылка, которая гостю что-то даёт.
+    : [{ label: 'Вход', link: { href: '/login' } }],
 })
 
 const START_YEAR = 2026
@@ -56,7 +57,7 @@ const START_YEAR = 2026
  * Гостю незачем греть корзину и заявки — он упрётся в редирект на вход.
  */
 const GUEST_PREFETCH = ['/catalog', '/login'] as const
-const USER_PREFETCH = ['/catalog', '/orders', '/cart'] as const
+const USER_PREFETCH = ['/catalog', '/orders', '/cart', '/wishlist'] as const
 
 /**
  * Раздел верхнего уровня для подсветки активного пункта: у страницы товара
@@ -114,7 +115,6 @@ export const SiteLayout: React.FC<{ children: React.ReactNode }> = ({ children }
             navigation={navigation}
             user={headerUser}
             loginLink={{ href: '/login' }}
-            registerLink={{ href: '/register' }}
             cartLink={{ href: '/cart' }}
             cartCount={itemCount}
             currentHref={currentHref}

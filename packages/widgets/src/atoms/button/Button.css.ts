@@ -77,7 +77,9 @@ export const variant = styleVariants({
       '&:hover:not([disabled]):not([aria-disabled="true"])': {
         backgroundColor: color.brand('700'),
       },
-      '&:active:not([disabled])': { backgroundColor: color.brand('800') },
+      '&:active:not([disabled]):not([aria-disabled="true"])': {
+        backgroundColor: color.brand('800'),
+      },
       '&[disabled], &[aria-disabled="true"]': { boxShadow: vars.shadow.none },
     },
   },

@@ -15,12 +15,13 @@ export const Chip: FC<IChipProps & IBasicStyling> = ({
   isSelected = false,
   count,
   disabled = false,
+  isBlock = false,
   onToggle,
   className,
 }) => (
   <button
     type="button"
-    className={clsx(styles.container, className)}
+    className={clsx(styles.container, isBlock && styles.block, className)}
     aria-pressed={isSelected}
     disabled={disabled}
     onClick={() => onToggle(!isSelected)}

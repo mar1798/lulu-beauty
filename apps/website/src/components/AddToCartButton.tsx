@@ -1,11 +1,12 @@
-import React, { useCallback, useState } from 'react'
+import React, { useCallback, useRef } from 'react'
 import { useRouter } from 'next/router'
 import type { IControlSize } from 'widgets/types'
-import { Button, IconButton } from 'widgets/atoms'
+import { Button, IconButton, Tooltip } from 'widgets/atoms'
 import { useToast } from 'widgets/contexts'
 import { IconCheck, IconPlus } from 'widgets/svg'
 import { useAuth } from '@/contexts/AuthContext'
 import { useCart } from '@/contexts/CartContext'
+import { useActiveCycle } from '@/hooks/useActiveCycle'
 
 /**
  * Кнопка «В корзину» для карточки и страницы товара.
@@ -15,7 +16,24 @@ import { useCart } from '@/contexts/CartContext'
  *
  * Гостя отправляем на вход, а не показываем ошибку: корзина на бэкенде
  * привязана к пользователю, анонимной корзины не существует.
+ *
+ * Когда открытого сбора нет, кнопка гаснет заранее: `POST /cart/items` в этом
+ * состоянии отвечает 409 `no_active_cycle`, и это известно ещё до нажатия (см.
+ * `useActiveCycle`). Гонку это не закрывает — сбор может закрыться между
+ * рендером и кликом, — поэтому разбор ответа ниже остаётся на месте.
+ *
+ * Спиннера на время запроса нет — как и на сердце «в избранное»
+ * (`WishlistButton`). Ответ приходит за те же ~200 мс, что кнопка успевает
+ * показать спиннер и тут же сменить его на «в корзине»: читалось это не как
+ * «идёт запрос», а как мигание. Двойной клик закрыт замком в `add`.
  */
+
+/**
+ * Почему нажать нельзя. Тот же текст уходит и в подсказку, и в скрытую подпись
+ * кнопки: сказать «недоступно», не сказав почему, хуже, чем не гасить вовсе.
+ */
+const CLOSED_REASON = 'Сейчас нет открытого сбора — товар можно сохранить в избранное'
+
 export const AddToCartButton: React.FC<{
   productId: string
   size?: IControlSize
@@ -30,13 +48,26 @@ export const AddToCartButton: React.FC<{
   const router = useRouter()
   const { user, isLoading: isAuthLoading, reload: reloadSession } = useAuth()
   const { cart, addItem, isItemBusy } = useCart()
+  const { isClosed } = useActiveCycle()
   const { notify } = useToast()
 
-  /** Клик обрабатывается — от ожидания сессии до ответа корзины. */
-  const [isSubmitting, setIsSubmitting] = useState(false)
+  /**
+   * Клик уже обрабатывается — от ожидания сессии до ответа корзины. Ref, а не
+   * состояние: показывать эту фазу кнопка не должна, и перерисовка ради неё
+   * только вернула бы мигание.
+   */
+  const isRunning = useRef(false)
 
   const add = useCallback(async (): Promise<void> => {
-    setIsSubmitting(true)
+    /*
+      Второй клик по неответившей кнопке добавил бы товар повторно: `cart` в
+      этот момент ещё без него, и до ветки «уже в корзине» дело не доходит.
+    */
+    if (isRunning.current || isItemBusy(productId)) {
+      return
+    }
+
+    isRunning.current = true
 
     try {
       /*
@@ -53,17 +84,24 @@ export const AddToCartButton: React.FC<{
         return
       }
 
-      if (!(await addItem(productId))) {
+      const result = await addItem(productId)
+
+      if (!result.ok) {
+        /*
+          Причину показываем словами корзины, а не общим «попробуйте ещё раз»:
+          закрытый сбор, снятый с продажи товар и истёкшая сессия чинятся
+          по-разному, и из «не получилось» человек ничего из этого не поймёт.
+        */
         notify({
           tone: 'danger',
-          title: 'Не удалось добавить товар',
-          description: 'Попробуйте ещё раз или обновите страницу.',
+          title: 'Товар не добавлен',
+          description: result.error ?? 'Попробуйте ещё раз или обновите страницу.',
         })
       }
     } finally {
-      setIsSubmitting(false)
+      isRunning.current = false
     }
-  }, [user, isAuthLoading, reloadSession, router, addItem, productId, notify])
+  }, [user, isAuthLoading, reloadSession, router, addItem, isItemBusy, productId, notify])
 
   const isInCart = cart?.items.some(item => item.productId === productId) === true
 
@@ -92,36 +130,48 @@ export const AddToCartButton: React.FC<{
     void add()
   }
 
-  /**
-   * Занята ровно эта позиция. Общий флаг корзины сюда не годится: с ним
-   * добавление одного товара гасило бы кнопки у всех остальных карточек на
-   * экране — клик по одной карточке мигал бы всей сеткой.
-   */
-  const isPending = isSubmitting || isItemBusy(productId)
+  /*
+    `disabled` (нет в наличии) и «сбор закрыт» — разные вещи, и ведут себя они
+    по-разному: первое выключает кнопку насовсем, второе оставляет её в
+    табуляции ради подсказки. Приоритет у `disabled`: объяснять закрытый сбор
+    на товаре, которого всё равно нет, незачем.
+  */
+  const unavailableReason = !disabled && isClosed ? CLOSED_REASON : null
 
-  if (isCompact) {
-    return (
-      <IconButton
-        icon={<IconPlus />}
-        label="В корзину"
-        variant="primary"
-        size="md"
-        disabled={disabled}
-        isLoading={isPending}
-        onClick={onClick}
-      />
-    )
-  }
-
-  return (
+  const button = isCompact ? (
+    <IconButton
+      icon={<IconPlus />}
+      label="В корзину"
+      variant="primary"
+      size="md"
+      disabled={disabled}
+      unavailableReason={unavailableReason}
+      onClick={onClick}
+    />
+  ) : (
     <Button
       size={size}
       isFullWidth={isFullWidth}
       disabled={disabled}
-      isLoading={isPending}
+      unavailableReason={unavailableReason}
       onClick={onClick}
     >
-      В корзину
+      {/*
+        С «добавить», в отличие от круглой кнопки в карточке: подпись стоит
+        рядом с «добавить в избранное» на странице товара, и без глагола пара
+        читается как два названия разделов, а не как два действия.
+      */}
+      Добавить в корзину
     </Button>
+  )
+
+  // Подсказка появляется только когда есть что объяснять: над рабочей кнопкой
+  // пузырь «в корзину» ничего не добавил бы к её же подписи.
+  return unavailableReason === null ? (
+    button
+  ) : (
+    <Tooltip content={unavailableReason} isBlock={isFullWidth}>
+      {button}
+    </Tooltip>
   )
 }

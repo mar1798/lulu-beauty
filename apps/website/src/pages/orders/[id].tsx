@@ -12,7 +12,7 @@ import { SiteLayout } from '@/layouts/SiteLayout'
 import { ACCOUNT_NAVIGATION } from '@/layouts/accountNavigation'
 import { useAuth } from '@/contexts/AuthContext'
 import { useProductSearch } from '@/hooks/useProductSearch'
-import { isApiError } from '@/services/apiErrors'
+import { isApiError, messageForError, type ErrorScope } from '@/services/apiErrors'
 import { getActiveCycleOrNull } from '@/services/endpoints/cycles'
 import {
   addMyOrderItem,
@@ -81,12 +81,7 @@ const OrderPage: React.FC = () => {
     () => getMyOrder(orderId as string)
   )
 
-  const error =
-    fetchError === undefined
-      ? null
-      : isApiError(fetchError)
-        ? fetchError.message
-        : 'Не удалось загрузить заявку.'
+  const error = fetchError === undefined ? null : messageForError(fetchError, 'order.load')
   const status = isApiError(fetchError) ? fetchError.status : null
 
   // Сбор — справочная деталь: его ошибку молча игнорируем, заявка важнее.
@@ -97,6 +92,7 @@ const OrderPage: React.FC = () => {
   const runAction = async (
     action: () => Promise<unknown>,
     success: string,
+    scope: ErrorScope,
     itemId: string | null = null
   ): Promise<void> => {
     setIsBusy(true)
@@ -114,13 +110,12 @@ const OrderPage: React.FC = () => {
       notify({ tone: 'success', title: success })
     } catch (cause: unknown) {
       /*
-        Отдельная ветка под 409: между открытием страницы и нажатием мог
-        пройти дедлайн или владелец мог подтвердить заявку. Общего «что-то
-        пошло не так» тут мало — человеку нужно понять, что правка закрылась.
+        Текст выбирается по действию, а не по одному коду: между открытием
+        страницы и нажатием мог пройти дедлайн или владелец мог подтвердить
+        заявку, и `order_not_editable` должен звучать как «количество уже не
+        изменить» или «отменить нельзя» — смотря что нажали.
       */
-      const message = isApiError(cause)
-        ? cause.message
-        : 'Действие не выполнено. Попробуйте ещё раз.'
+      const message = messageForError(cause, scope)
 
       setActionError(message)
       notify({ tone: 'danger', title: 'Не получилось', description: message })
@@ -148,7 +143,7 @@ const OrderPage: React.FC = () => {
     })
 
     if (confirmed) {
-      await runAction(() => cancelMyOrder(orderId), 'Заявка отменена')
+      await runAction(() => cancelMyOrder(orderId), 'Заявка отменена', 'order.cancel')
     }
   }
 
@@ -231,11 +226,17 @@ const OrderPage: React.FC = () => {
           void runAction(
             () => updateMyOrderItemQuantity(order.id, itemId, quantity),
             'Количество изменено',
+            'order.item.update',
             itemId
           )
         }}
         onItemRemove={itemId => {
-          void runAction(() => removeMyOrderItem(order.id, itemId), 'Позиция убрана', itemId)
+          void runAction(
+            () => removeMyOrderItem(order.id, itemId),
+            'Позиция убрана',
+            'order.item.remove',
+            itemId
+          )
         }}
         /*
           Добавление товара прямо в заявку, а не через корзину: корзина копится
@@ -252,13 +253,13 @@ const OrderPage: React.FC = () => {
               .map(item => item.productId)
               .filter((productId): productId is string => productId !== null)}
             onAdd={productId => {
-              void runAction(() => addMyOrderItem(order.id, productId), 'Товар добавлен')
+              void runAction(() => addMyOrderItem(order.id, productId), 'Товар добавлен', 'order.item.add')
             }}
             isBusy={isBusy}
           />
         }
         onNoteSave={note => {
-          void runAction(() => updateMyOrderNote(order.id, note), 'Комментарий сохранён')
+          void runAction(() => updateMyOrderNote(order.id, note), 'Комментарий сохранён', 'order.note')
         }}
         onCancel={() => {
           void handleCancel()
@@ -268,7 +269,7 @@ const OrderPage: React.FC = () => {
           а чинит, и лишний диалог тут только мешал бы исправить промах.
         */
         onRestore={() => {
-          void runAction(() => restoreMyOrder(order.id), 'Заявка снова в работе')
+          void runAction(() => restoreMyOrder(order.id), 'Заявка снова в работе', 'order.restore')
         }}
         isBusy={isBusy}
         busyItemId={busyItemId}

@@ -9,7 +9,7 @@ import { AdminProductForm } from 'widgets/organisms'
 import { useConfirm, useToast } from 'widgets/contexts'
 import { AdminShell } from '@/layouts/AdminShell'
 import { requireAdmin, type IAdminPageProps } from '@/server/adminGate'
-import { isApiError } from '@/services/apiErrors'
+import { isApiError, messageForError } from '@/services/apiErrors'
 import {
   deleteProduct,
   deleteProductImage,
@@ -59,12 +59,7 @@ const AdminProductPage: React.FC<IAdminPageProps> = () => {
     getAdminProduct(productId as string)
   )
 
-  const error =
-    fetchError === undefined
-      ? null
-      : isApiError(fetchError)
-        ? fetchError.message
-        : 'Не удалось загрузить товар.'
+  const error = fetchError === undefined ? null : messageForError(fetchError, 'admin.products.load')
   const status = isApiError(fetchError) ? fetchError.status : null
 
   // Общий ключ с «Категориями» (`/admin/categories`): правка там видна тут без перезагрузки.
@@ -93,7 +88,7 @@ const AdminProductPage: React.FC<IAdminPageProps> = () => {
       await mutate()
       setSaveVersion(current => current + 1)
     } catch (cause: unknown) {
-      setFormError(isApiError(cause) ? cause.message : 'Не удалось сохранить товар.')
+      setFormError(messageForError(cause, 'admin.product.update'))
     } finally {
       setIsSubmitting(false)
     }
@@ -109,7 +104,7 @@ const AdminProductPage: React.FC<IAdminPageProps> = () => {
       await mutate()
       setSaveVersion(current => current + 1)
     } catch (cause: unknown) {
-      setImageError(isApiError(cause) ? cause.message : 'Не удалось изменить фотографии.')
+      setImageError(messageForError(cause, 'admin.product.images'))
     } finally {
       setIsImageBusy(false)
     }
@@ -187,7 +182,7 @@ const AdminProductPage: React.FC<IAdminPageProps> = () => {
       void globalMutate(isAdminProductsKey)
       await router.push('/admin/products')
     } catch (cause: unknown) {
-      setFormError(isApiError(cause) ? cause.message : 'Не удалось удалить товар.')
+      setFormError(messageForError(cause, 'admin.product.delete'))
     }
   }
 
@@ -202,7 +197,7 @@ const AdminProductPage: React.FC<IAdminPageProps> = () => {
       await mutate()
       setSaveVersion(current => current + 1)
     } catch (cause: unknown) {
-      setFormError(isApiError(cause) ? cause.message : 'Не удалось восстановить товар.')
+      setFormError(messageForError(cause, 'admin.product.restore'))
     }
   }
 

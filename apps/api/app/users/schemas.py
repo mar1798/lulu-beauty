@@ -11,7 +11,6 @@ class UserResponse(CamelModel):
     phone: str
     name: str
     role: Role
-    phone_verified: bool
     telegram_linked: bool
 
 

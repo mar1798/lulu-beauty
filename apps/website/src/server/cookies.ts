@@ -26,6 +26,15 @@ export const ACCESS_COOKIE = 'lb_at'
 export const REFRESH_COOKIE = 'lb_rt'
 
 /**
+ * Незавершённый вход через Telegram: `<id сессии>:<секрет опроса>`.
+ *
+ * Секрет живёт здесь, а не в JS вкладки, по той же причине, что и токены:
+ * `payload` из ссылки видно в переписке с ботом, и если бы опрос шёл по нему,
+ * подтверждённый вход мог бы забрать любой, кто эту переписку увидел.
+ */
+export const LOGIN_SESSION_COOKIE = 'lb_ls'
+
+/**
  * Срок жизни самих cookie равен сроку refresh-токена (`JWT_REFRESH_TTL_SECONDS`,
  * по умолчанию 30 дней). Access-cookie живёт столько же намеренно: её задача —
  * донести токен до сервера, а протухание определяет `exp` внутри JWT (15 минут),
@@ -75,6 +84,45 @@ export const setAuthCookies = (res: ICookieResponse, tokens: IAuthTokens): void 
 
 export const clearAuthCookies = (res: ICookieResponse): void => {
   appendSetCookie(res, [serialize(ACCESS_COOKIE, '', 0), serialize(REFRESH_COOKIE, '', 0)])
+}
+
+/** Чуть больше срока самой сессии на бэке (`AUTH_SESSION_TTL_SECONDS`): протухнуть она должна там, а не здесь. */
+const LOGIN_SESSION_MAX_AGE_SECONDS = 15 * 60
+
+export interface ILoginSession {
+  sessionId: string
+  pollSecret: string
+}
+
+export const setLoginSession = (res: ICookieResponse, session: ILoginSession): void => {
+  appendSetCookie(res, [
+    serialize(
+      LOGIN_SESSION_COOKIE,
+      `${session.sessionId}:${session.pollSecret}`,
+      LOGIN_SESSION_MAX_AGE_SECONDS
+    ),
+  ])
+}
+
+export const clearLoginSession = (res: ICookieResponse): void => {
+  appendSetCookie(res, [serialize(LOGIN_SESSION_COOKIE, '', 0)])
+}
+
+export const readLoginSession = (req: ICookieRequest): ILoginSession | null => {
+  const raw = req.cookies[LOGIN_SESSION_COOKIE]
+
+  if (raw === undefined || raw === '') {
+    return null
+  }
+
+  // Секрет — base64url, двоеточий в нём не бывает; режем по первому на всякий случай.
+  const separator = raw.indexOf(':')
+
+  if (separator <= 0) {
+    return null
+  }
+
+  return { sessionId: raw.slice(0, separator), pollSecret: raw.slice(separator + 1) }
 }
 
 export const readAuthTokens = (req: ICookieRequest): Partial<IAuthTokens> => ({

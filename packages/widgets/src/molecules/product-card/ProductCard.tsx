@@ -31,6 +31,7 @@ export const ProductCard: FC<IProductCardProps & IBasicStyling> = ({
   categoryName,
   sizes = DEFAULT_SIZES,
   action,
+  mediaAction,
   className,
 }) => {
   const image = primaryImage(product.images)
@@ -68,6 +69,15 @@ export const ProductCard: FC<IProductCardProps & IBasicStyling> = ({
           </Badge>
         )}
       </span>
+
+      {/*
+        Сердце лежит рядом с `media`, а не внутри него: у `media` включён
+        `overflow: hidden` ради скругления фотографии, и подсказка над кнопкой
+        обрезалась бы по её краю.
+      */}
+      {mediaAction !== undefined && mediaAction !== null && (
+        <span className={styles.mediaAction}>{mediaAction}</span>
+      )}
 
       <div className={styles.body}>
         <AppLink href={href} className={styles.link}>

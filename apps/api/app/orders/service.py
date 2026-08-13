@@ -162,8 +162,7 @@ class OrdersService:
 
         return {
             order.id: OrderFlags(
-                is_editable=order.status == OrderStatus.PENDING
-                and order.cycle_id in open_cycles,
+                is_editable=order.status == OrderStatus.PENDING and order.cycle_id in open_cycles,
                 is_restorable=order.status == OrderStatus.CANCELLED
                 and order.cycle_id in open_cycles,
             )
@@ -181,9 +180,7 @@ class OrdersService:
 
     @staticmethod
     def _recalculate_total(order: Order) -> None:
-        order.total_cents = sum(
-            item.product_price_cents * item.quantity for item in order.items
-        )
+        order.total_cents = sum(item.product_price_cents * item.quantity for item in order.items)
 
     @staticmethod
     def _find_item(order: Order, item_id: uuid.UUID) -> OrderItem:
@@ -258,9 +255,7 @@ class OrdersService:
         await self._session.flush()
         return order
 
-    async def update_note(
-        self, user_id: uuid.UUID, order_id: uuid.UUID, note: str | None
-    ) -> Order:
+    async def update_note(self, user_id: uuid.UUID, order_id: uuid.UUID, note: str | None) -> Order:
         order = await self._get_editable(user_id, order_id)
         order.note = note
         await self._session.flush()
@@ -335,9 +330,7 @@ class OrdersService:
             or 0
         )
 
-        result = await self._session.execute(
-            query.offset((page - 1) * page_size).limit(page_size)
-        )
+        result = await self._session.execute(query.offset((page - 1) * page_size).limit(page_size))
         return list(result.scalars().all()), total
 
     async def load_customers(self, orders: list[Order]) -> dict[uuid.UUID, User]:

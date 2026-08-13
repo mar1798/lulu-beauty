@@ -2,7 +2,7 @@ import { useState } from 'react'
 import useSWR from 'swr'
 import type { IProduct } from 'widgets/types'
 import { useDebouncedValue } from 'widgets/hooks'
-import { isApiError } from '@/services/apiErrors'
+import { messageForError } from '@/services/apiErrors'
 import { listProducts } from '@/services/endpoints/catalog'
 import { productSearchKey } from '@/services/swrKeys'
 
@@ -18,8 +18,6 @@ import { productSearchKey } from '@/services/swrKeys'
  */
 
 const RESULT_LIMIT = 5
-
-const SEARCH_FAILED = 'Не удалось выполнить поиск.'
 
 interface IProductSearch {
   query: string
@@ -47,6 +45,6 @@ export const useProductSearch = (limit: number = RESULT_LIMIT): IProductSearch =
     setQuery,
     products: data ?? null,
     isSearching: debounced !== '' && isLoading,
-    error: fetchError === undefined ? null : isApiError(fetchError) ? fetchError.message : SEARCH_FAILED,
+    error: fetchError === undefined ? null : messageForError(fetchError, 'catalog.search'),
   }
 }

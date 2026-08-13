@@ -24,6 +24,7 @@ export const ProductGrid: FC<IProductGridProps & IBasicStyling> = ({
   skeletonCount = DEFAULT_SKELETON_COUNT,
   emptyState,
   renderAction,
+  renderMediaAction,
   className,
 }) => {
   if (isLoading) {
@@ -71,6 +72,7 @@ export const ProductGrid: FC<IProductGridProps & IBasicStyling> = ({
               product.categoryId === null ? null : categoryNames?.[product.categoryId]
             }
             action={renderAction?.(product)}
+            mediaAction={renderMediaAction?.(product)}
           />
         ))}
       </div>

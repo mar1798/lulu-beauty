@@ -195,9 +195,7 @@ class ProductService:
     async def restore(self, product_id: uuid.UUID) -> Product:
         """Undo a soft-delete. Mirrors what a catalog re-import already does by slug."""
         result = await self._session.execute(
-            select(Product)
-            .where(Product.id == product_id)
-            .options(selectinload(Product.images))
+            select(Product).where(Product.id == product_id).options(selectinload(Product.images))
         )
         product = result.scalar_one_or_none()
         if product is None:

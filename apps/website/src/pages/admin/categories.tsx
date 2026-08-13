@@ -6,7 +6,7 @@ import { AdminCategoriesPanel } from 'widgets/organisms'
 import { useConfirm, useToast } from 'widgets/contexts'
 import { AdminShell } from '@/layouts/AdminShell'
 import { requireAdmin, type IAdminPageProps } from '@/server/adminGate'
-import { isApiError } from '@/services/apiErrors'
+import { messageForError } from '@/services/apiErrors'
 import { createCategory, deleteCategory, updateCategory } from '@/services/endpoints/admin'
 import { listCategories } from '@/services/endpoints/catalog'
 import { categoriesKey } from '@/services/swrKeys'
@@ -32,12 +32,7 @@ const AdminCategoriesPage: React.FC<IAdminPageProps> = () => {
     mutate,
   } = useSWR<ICategory[]>(categoriesKey, () => listCategories())
 
-  const error =
-    fetchError === undefined
-      ? null
-      : isApiError(fetchError)
-        ? fetchError.message
-        : 'Не удалось загрузить категории.'
+  const error = fetchError === undefined ? null : messageForError(fetchError, 'admin.categories')
 
   const run = async (action: () => Promise<unknown>, success: string): Promise<void> => {
     setIsBusy(true)
@@ -48,7 +43,7 @@ const AdminCategoriesPage: React.FC<IAdminPageProps> = () => {
       notify({ tone: 'success', title: success })
       await mutate()
     } catch (cause: unknown) {
-      const message = isApiError(cause) ? cause.message : 'Действие не выполнено.'
+      const message = messageForError(cause, 'admin.categories')
 
       setActionError(message)
       notify({ tone: 'danger', title: 'Не получилось', description: message })

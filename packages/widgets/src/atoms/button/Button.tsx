@@ -3,6 +3,7 @@ import { type FC } from 'react'
 import type { IBasicStyling, IButtonProps } from '../../types'
 import { AppLink } from '../app-link'
 import { Spinner } from '../spinner'
+import { VisuallyHidden } from '../visually-hidden'
 import * as styles from './Button.css'
 
 /**
@@ -17,6 +18,12 @@ import * as styles from './Button.css'
  * Спиннер не встаёт в поток, а накрывает содержимое: иначе он раздвигал бы
  * кнопку на свою ширину прямо под курсором — клик по «Оформить заявку»
  * заканчивался бы прыжком кнопки и соседей по строке.
+ *
+ * `unavailableReason` — недоступность **с объяснением**: выглядит как
+ * `disabled`, но кнопка остаётся фокусируемой (`aria-disabled`), чтобы
+ * подсказка над ней всплывала и с клавиатуры. Причина уходит скрытой подписью
+ * внутрь кнопки — иначе скринридер сообщил бы, что нажать нельзя, и умолчал,
+ * почему.
  */
 export const Button: FC<IButtonProps & IBasicStyling> = ({
   children,
@@ -30,9 +37,11 @@ export const Button: FC<IButtonProps & IBasicStyling> = ({
   iconEnd,
   link,
   onClick,
+  unavailableReason = null,
   className,
 }) => {
-  const isBlocked = disabled || isLoading
+  const isUnavailable = unavailableReason !== null && unavailableReason !== ''
+  const isBlocked = disabled || isLoading || isUnavailable
   const classes = clsx(
     styles.container,
     styles.variant[variant],
@@ -48,6 +57,8 @@ export const Button: FC<IButtonProps & IBasicStyling> = ({
         <span>{children}</span>
         {iconEnd !== undefined && <span className={styles.icon}>{iconEnd}</span>}
       </span>
+
+      {isUnavailable && <VisuallyHidden>{unavailableReason}</VisuallyHidden>}
 
       {/* `label={null}` — про занятость уже сказал `aria-busy` самой кнопки. */}
       {isLoading && (
@@ -68,11 +79,21 @@ export const Button: FC<IButtonProps & IBasicStyling> = ({
 
   return (
     <button
-      type={type}
+      /*
+        `submit` тоже снимается: `aria-disabled` — это только для скринридера,
+        браузер по нему форму отправлять не перестанет.
+      */
+      type={isUnavailable ? 'button' : type}
       className={classes}
-      disabled={isBlocked}
+      /*
+        Недоступная «с объяснением» кнопка не выключается по-настоящему: она
+        должна принимать фокус, иначе причину не увидит никто, кроме мыши.
+        Клик при этом всё равно никуда не идёт.
+      */
+      disabled={isUnavailable ? undefined : isBlocked}
+      aria-disabled={isUnavailable ? true : undefined}
       aria-busy={isLoading}
-      onClick={onClick}
+      onClick={isUnavailable ? undefined : onClick}
     >
       {content}
     </button>

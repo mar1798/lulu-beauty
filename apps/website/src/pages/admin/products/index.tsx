@@ -17,7 +17,7 @@ import {
   useQueryTextInput,
 } from '@/hooks/useQueryParams'
 import { requireAdmin, type IAdminPageProps } from '@/server/adminGate'
-import { isApiError } from '@/services/apiErrors'
+import { messageForError, type ErrorScope } from '@/services/apiErrors'
 import { deleteProduct, listAdminProducts, restoreProduct } from '@/services/endpoints/admin'
 import { listCategories } from '@/services/endpoints/catalog'
 import { adminProductsKey, categoriesKey } from '@/services/swrKeys'
@@ -99,19 +99,15 @@ const AdminProductsPage: React.FC<IAdminPageProps> = () => {
   // Общий ключ с «Категориями» (`/admin/categories`): правка там видна тут без перезагрузки.
   const { data: categories } = useSWR(categoriesKey, () => listCategories())
 
-  const error =
-    fetchError === undefined
-      ? null
-      : isApiError(fetchError)
-        ? fetchError.message
-        : 'Не удалось загрузить товары.'
+  const error = fetchError === undefined ? null : messageForError(fetchError, 'admin.products.load')
 
   const categoryNames = Object.fromEntries((categories ?? []).map(category => [category.id, category.name]))
 
   const runAction = async (
     product: IProduct,
     action: () => Promise<unknown>,
-    success: string
+    success: string,
+    scope: ErrorScope
   ): Promise<void> => {
     setBusyId(product.id)
     setActionError(null)
@@ -121,7 +117,7 @@ const AdminProductsPage: React.FC<IAdminPageProps> = () => {
       notify({ tone: 'success', title: success, description: product.name })
       await mutate()
     } catch (cause: unknown) {
-      const message = isApiError(cause) ? cause.message : 'Действие не выполнено.'
+      const message = messageForError(cause, scope)
 
       setActionError(message)
       notify({ tone: 'danger', title: 'Не получилось', description: message })
@@ -138,7 +134,7 @@ const AdminProductsPage: React.FC<IAdminPageProps> = () => {
     })
 
     if (confirmed) {
-      await runAction(product, () => deleteProduct(product.id), 'Товар удалён')
+      await runAction(product, () => deleteProduct(product.id), 'Товар удалён', 'admin.product.delete')
     }
   }
 
@@ -154,9 +150,11 @@ const AdminProductsPage: React.FC<IAdminPageProps> = () => {
       sidebar={
         <>
           <span className={styles.categorySidebarTitle}>Категория</span>
+          {/* Столбцом: в колонке шириной 220px строка чипов рвётся по длинным названиям. */}
           <CategoryFilter
             categories={categories ?? []}
             selectedSlug={categorySlug}
+            layout="column"
             onSelect={next => setParams({ category: next, page: 1 })}
           />
         </>
@@ -188,7 +186,12 @@ const AdminProductsPage: React.FC<IAdminPageProps> = () => {
           void handleDelete(product)
         }}
         onRestore={product => {
-          void runAction(product, () => restoreProduct(product.id), 'Товар восстановлен')
+          void runAction(
+            product,
+            () => restoreProduct(product.id),
+            'Товар восстановлен',
+            'admin.product.restore'
+          )
         }}
         emptyState={
           <EmptyState

@@ -21,9 +21,7 @@ async def test_list_public_hides_soft_deleted_but_admin_can_include_them(
     admin_default, _ = await service.list_admin(None, None, 1, 20)
     assert [product.name for product in admin_default] == ["Live Product"]
 
-    admin_with_deleted, total = await service.list_admin(
-        None, None, 1, 20, include_deleted=True
-    )
+    admin_with_deleted, total = await service.list_admin(None, None, 1, 20, include_deleted=True)
     assert {product.name for product in admin_with_deleted} == {"Live Product", "Gone Product"}
     assert total == 2
 

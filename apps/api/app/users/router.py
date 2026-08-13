@@ -16,7 +16,6 @@ def _user_response(user: User) -> UserResponse:
         phone=user.phone,
         name=user.name,
         role=user.role,
-        phone_verified=user.phone_verified,
         telegram_linked=user.telegram_chat_id is not None,
     )
 

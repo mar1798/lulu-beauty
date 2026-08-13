@@ -1,16 +1,37 @@
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, MagicMock
 
-from aiogram.filters import CommandStart
+import pytest
+from aiogram.filters import CommandObject, CommandStart
 
 from app.telegram.bot import BOT_COMMANDS, dispatcher
 from app.telegram.handlers import handle_fallback, handle_help, handle_start, router
 
 
-async def test_handle_start_prompts_for_contact_share() -> None:
-    message = MagicMock()
-    message.answer = AsyncMock()
+def _stub_session(monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
+    """Хендлеры открывают собственную сессию; здесь она не нужна — только не должна ходить в БД."""
+    session = AsyncMock()
 
-    await handle_start(message)
+    @asynccontextmanager
+    async def factory() -> AsyncIterator[AsyncMock]:
+        yield session
+
+    monkeypatch.setattr("app.telegram.handlers.async_session", factory)
+    return session
+
+
+async def test_handle_start_prompts_for_contact_share(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Чат без привязки и без аккаунта — единственный путь дальше это «поделиться номером»."""
+    message = MagicMock()
+    message.chat.id = 555
+    message.answer = AsyncMock()
+    _stub_session(monkeypatch)
+    monkeypatch.setattr(
+        "app.telegram.handlers.recipients.find_user_by_chat_id", AsyncMock(return_value=None)
+    )
+
+    await handle_start(message, CommandObject(command="start", args=None))
 
     message.answer.assert_awaited_once()
     _, kwargs = message.answer.await_args

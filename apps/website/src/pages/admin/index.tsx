@@ -7,7 +7,7 @@ import { DeadlineCountdown, orderStatusLabel } from 'widgets/molecules'
 import { formatDateTime } from 'widgets/utils'
 import { AdminShell } from '@/layouts/AdminShell'
 import { requireAdmin, type IAdminPageProps } from '@/server/adminGate'
-import { isApiError } from '@/services/apiErrors'
+import { messageForError } from '@/services/apiErrors'
 import { listAdminOrders } from '@/services/endpoints/admin'
 import { getActiveCycleOrNull } from '@/services/endpoints/cycles'
 import { activeCycleKey, adminOverviewKey } from '@/services/swrKeys'
@@ -54,12 +54,7 @@ const AdminOverviewPage: React.FC<IAdminPageProps> = ({ user }) => {
   )
 
   const isLoading = isCycleLoading || isCountsLoading
-  const error =
-    cycleError === undefined
-      ? null
-      : isApiError(cycleError)
-        ? cycleError.message
-        : 'Не удалось загрузить сводку.'
+  const error = cycleError === undefined ? null : messageForError(cycleError, 'admin.orders')
 
   return (
     <AdminShell title="Обзор" summary={`Вы вошли как ${user.name}.`}>

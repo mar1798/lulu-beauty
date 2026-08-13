@@ -1,45 +1,37 @@
-import React, { useState } from 'react'
+import React from 'react'
 import Head from 'next/head'
 import { useRouter } from 'next/router'
-import type { ILoginValues } from 'widgets/types'
-import { AppLink, Spinner, Text } from 'widgets/atoms'
-import { LoginForm } from 'widgets/organisms'
+import { Spinner } from 'widgets/atoms'
+import { TelegramLoginPanel } from 'widgets/organisms'
 import { AuthTemplate } from 'widgets/templates'
 import { SiteLayout } from '@/layouts/SiteLayout'
-import * as authFooterStyles from '@/styles/authFooter.css'
-import { useAuth } from '@/contexts/AuthContext'
 import { useRedirectIfAuthenticated } from '@/hooks/useRedirectIfAuthenticated'
-import { isApiError } from '@/services/apiErrors'
-import { savePendingOtp } from '@/utils/otpSession'
+import { useQrCode } from '@/hooks/useQrCode'
+import { useTelegramLogin } from '@/hooks/useTelegramLogin'
 import { safeRedirectPath } from '@/utils/redirect'
+import * as styles from '@/styles/login.css'
 
 /**
- * Вход. Пара логин/пароль проверяется бэкендом, но сессию не открывает:
- * в ответ приходит только «код отправлен», а токены выдаст `/verify-otp`.
+ * Вход — он же регистрация.
+ *
+ * Ни телефона, ни пароля, ни кода: личность подтверждает бот, а страница только
+ * открывает сессию и ждёт. Отдельной регистрации нет вовсе — аккаунт заводится
+ * в тот момент, когда человек делится с ботом номером, и Telegram сам ручается
+ * за этот номер (`app/telegram/handlers.py`, `handle_contact`).
+ *
+ * Вошедшего уводит `useRedirectIfAuthenticated` — тем же способом, что и
+ * раньше: опрос кладёт профиль в кеш сессии, и редирект случается сам.
  */
 const LoginPage: React.FC = () => {
   const router = useRouter()
-  const { login } = useAuth()
   // Сюда уводит гейт админки: `/admin/*` у гостя даёт `/login?next=/admin/...`.
   const next = safeRedirectPath(router.query.next)
   const isRedirecting = useRedirectIfAuthenticated(next)
-  const [isSubmitting, setIsSubmitting] = useState(false)
-  const [error, setError] = useState<string | null>(null)
 
-  const handleSubmit = async (values: ILoginValues): Promise<void> => {
-    setIsSubmitting(true)
-    setError(null)
-
-    try {
-      const purpose = await login(values)
-
-      savePendingOtp({ phone: values.phone, purpose, next })
-      await router.push('/verify-otp')
-    } catch (cause: unknown) {
-      setError(isApiError(cause) ? cause.message : 'Не удалось войти. Попробуйте ещё раз.')
-      setIsSubmitting(false)
-    }
-  }
+  // Пока сессия проверяется, вход не начинаем: вошедший всё равно уедет отсюда,
+  // а лишняя ссылка на бота была бы выдана и брошена.
+  const { botUrl, status, error, retry } = useTelegramLogin(!isRedirecting)
+  const qrDataUrl = useQrCode(botUrl)
 
   return (
     <SiteLayout>
@@ -50,27 +42,26 @@ const LoginPage: React.FC = () => {
 
       <AuthTemplate
         title="Вход"
-        subtitle="Введите телефон и пароль — код подтверждения придёт в Telegram."
-        footer={
-          <div className={authFooterStyles.stack}>
-            <Text size="sm" tone="secondary">
-              Ещё нет аккаунта? <AppLink href="/register">Зарегистрироваться</AppLink>
-            </Text>
-            <Text size="sm" tone="secondary">
-              <AppLink href="/forgot-password">Забыли пароль?</AppLink>
-            </Text>
-          </div>
-        }
+        subtitle="Через Telegram — регистрация не нужна, аккаунт заведётся сам."
       >
         {isRedirecting ? (
           <Spinner label="Проверяем сессию" />
         ) : (
-          <LoginForm
-            onSubmit={values => {
-              void handleSubmit(values)
-            }}
-            isSubmitting={isSubmitting}
+          <TelegramLoginPanel
+            botUrl={botUrl}
+            status={status}
             error={error}
+            onRetry={retry}
+            qr={
+              qrDataUrl === null ? null : (
+                /*
+                  Обычный <img>, а не next/image: это `data:`-URL, сгенерированный
+                  в браузере, — оптимизатору Next нечего с ним делать.
+                */
+                // eslint-disable-next-line @next/next/no-img-element
+                <img className={styles.qr} src={qrDataUrl} alt="QR-код со ссылкой на бота" />
+              )
+            }
           />
         )}
       </AuthTemplate>

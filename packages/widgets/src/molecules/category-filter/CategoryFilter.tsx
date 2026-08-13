@@ -19,12 +19,17 @@ const ALL_VALUE = ''
  * хаос, поэтому там вместо неё — выпадающий список; от `sm` возвращается
  * ряд чипов. Оба варианта рендерятся всегда, переключает их только
  * медиа-запрос, чтобы гидратация не зависела от ширины экрана на сервере.
+ *
+ * `layout="column"` выстраивает чипы столбцом во всю ширину — так фильтр
+ * живёт в узкой боковой колонке админки, где строка с переносом рвалась бы
+ * по длинным названиям.
  */
 export const CategoryFilter: FC<ICategoryFilterProps & IBasicStyling> = ({
   categories,
   selectedSlug = null,
   onSelect,
   allLabel = 'Все',
+  layout = 'row',
   className,
 }) => (
   <div className={className}>
@@ -40,17 +45,23 @@ export const CategoryFilter: FC<ICategoryFilterProps & IBasicStyling> = ({
     />
 
     <div
-      className={clsx(styles.container, styles.desktopOnly)}
+      className={clsx(styles.container, styles.desktopOnly, layout === 'column' && styles.column)}
       role="group"
       aria-label="Категории"
     >
-      <Chip label={allLabel} isSelected={selectedSlug === null} onToggle={() => onSelect(null)} />
+      <Chip
+        label={allLabel}
+        isSelected={selectedSlug === null}
+        isBlock={layout === 'column'}
+        onToggle={() => onSelect(null)}
+      />
 
       {categories.map(category => (
         <Chip
           key={category.id}
           label={category.name}
           isSelected={category.slug === selectedSlug}
+          isBlock={layout === 'column'}
           // Повторное нажатие по выбранной категории снимает фильтр.
           onToggle={next => onSelect(next ? category.slug : null)}
         />

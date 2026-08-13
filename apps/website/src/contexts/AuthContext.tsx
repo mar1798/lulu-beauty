@@ -1,22 +1,15 @@
 import React, { createContext, useCallback, useContext, useMemo } from 'react'
 import useSWR from 'swr'
-import type { IAuthUser, OtpPurpose } from 'widgets/types'
+import type { IAuthUser } from 'widgets/types'
 import { isApiError } from '@/services/apiErrors'
 import { meKey } from '@/services/swrKeys'
 import {
-  forgotPassword as forgotPasswordRequest,
   getMe,
-  login as loginRequest,
   logout as logoutRequest,
-  register as registerRequest,
-  resetPassword as resetPasswordRequest,
+  pollTelegramLogin as pollTelegramLoginRequest,
+  startTelegramLogin as startTelegramLoginRequest,
   updateProfile as updateProfileRequest,
-  verifyOtp as verifyOtpRequest,
-  type IForgotPasswordInput,
-  type ILoginInput,
-  type IRegisterInput,
-  type IResetPasswordInput,
-  type IVerifyOtpInput,
+  type ITelegramLoginSession,
 } from '@/services/endpoints/auth'
 
 /**
@@ -24,8 +17,9 @@ import {
  * они лежат в httpOnly-cookie; единственный способ узнать, кто мы, —
  * спросить у `/api/auth/me`.
  *
- * `register`/`login` возвращают `OtpPurpose`: он нужен второму шагу
- * (`verifyOtp`) и определяет, что показывать на экране ввода кода.
+ * Входа «по данным» здесь нет: `startTelegramLogin` открывает сессию, а
+ * `pollTelegramLogin` спрашивает, подтвердил ли её бот. Пока не подтвердил —
+ * это не ошибка, а `status: 'PENDING'`.
  */
 
 export interface IAuthContextValue {
@@ -33,11 +27,10 @@ export interface IAuthContextValue {
   /** true, пока не завершилась первая проверка сессии — до этого не редиректим. */
   isLoading: boolean
   isAdmin: boolean
-  register: (input: IRegisterInput) => Promise<OtpPurpose>
-  login: (input: ILoginInput) => Promise<OtpPurpose>
-  verifyOtp: (input: IVerifyOtpInput) => Promise<IAuthUser>
-  forgotPassword: (input: IForgotPasswordInput) => Promise<OtpPurpose>
-  resetPassword: (input: IResetPasswordInput) => Promise<IAuthUser>
+  /** Открывает вход и отдаёт ссылку на бота. */
+  startTelegramLogin: () => Promise<ITelegramLoginSession>
+  /** Один опрос: `null` — ещё ждём, профиль — вошли. */
+  pollTelegramLogin: () => Promise<IAuthUser | null>
   updateProfile: (name: string) => Promise<IAuthUser>
   logout: () => Promise<void>
   /** Перечитывает сессию и отдаёт её результат — ждать лишнего рендера не нужно. */
@@ -69,43 +62,29 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     mutate,
   ])
 
-  const register = useCallback(
-    async (input: IRegisterInput): Promise<OtpPurpose> => (await registerRequest(input)).purpose,
-    []
-  )
+  const startTelegramLogin = useCallback(() => startTelegramLoginRequest(), [])
 
-  const login = useCallback(
-    async (input: ILoginInput): Promise<OtpPurpose> => (await loginRequest(input)).purpose,
-    []
-  )
+  const pollTelegramLogin = useCallback(async (): Promise<IAuthUser | null> => {
+    const result = await pollTelegramLoginRequest()
 
-  const verifyOtp = useCallback(
-    async (input: IVerifyOtpInput): Promise<IAuthUser> => {
-      const verified = await verifyOtpRequest(input)
+    if (result.status !== 'AUTHORIZED') {
+      return null
+    }
 
-      await mutate(verified, { revalidate: false })
+    /*
+      Профиль приходит вместе с подтверждением, и кеш заполняется им сразу:
+      иначе между «вошли» и первым ответом `/api/auth/me` экран успевает
+      мигнуть гостевым состоянием — с редиректом на этот же вход включительно.
+      Если профиль не дочитался, перезапрашиваем — cookie уже стоят.
+    */
+    if (result.user == null) {
+      return await reload()
+    }
 
-      return verified
-    },
-    [mutate]
-  )
+    await mutate(result.user, { revalidate: false })
 
-  const forgotPassword = useCallback(
-    async (input: IForgotPasswordInput): Promise<OtpPurpose> =>
-      (await forgotPasswordRequest(input)).purpose,
-    []
-  )
-
-  const resetPassword = useCallback(
-    async (input: IResetPasswordInput): Promise<IAuthUser> => {
-      const verified = await resetPasswordRequest(input)
-
-      await mutate(verified, { revalidate: false })
-
-      return verified
-    },
-    [mutate]
-  )
+    return result.user
+  }, [mutate, reload])
 
   const updateProfile = useCallback(
     async (name: string): Promise<IAuthUser> => {
@@ -131,27 +110,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       user,
       isLoading,
       isAdmin: user?.role === 'ADMIN',
-      register,
-      login,
-      verifyOtp,
-      forgotPassword,
-      resetPassword,
+      startTelegramLogin,
+      pollTelegramLogin,
       updateProfile,
       logout,
       reload,
     }),
-    [
-      user,
-      isLoading,
-      register,
-      login,
-      verifyOtp,
-      forgotPassword,
-      resetPassword,
-      updateProfile,
-      logout,
-      reload,
-    ]
+    [user, isLoading, startTelegramLogin, pollTelegramLogin, updateProfile, logout, reload]
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

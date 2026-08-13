@@ -11,8 +11,9 @@ import * as styles from './ProductDetails.css'
 /**
  * Страница товара: галерея слева, описание справа.
  *
- * Кнопка «в корзину» приходит слотом `action` — она завязана на активный
- * цикл и авторизацию, а это состояние `apps/website`, не виджета.
+ * Кнопка «в корзину» приходит слотом `action`, «в избранное» —
+ * `secondaryAction`: обе завязаны на активный цикл и авторизацию, а это
+ * состояние `apps/website`, не виджета.
  * Описание выводится с `white-space: pre-line`: в импорте из xlsx переносы
  * строк осмысленные, и схлопывать их нельзя.
  */
@@ -20,6 +21,7 @@ export const ProductDetails: FC<IProductDetailsProps & IBasicStyling> = ({
   product,
   categoryName,
   action,
+  secondaryAction,
   className,
 }) => (
   <div className={clsx(styles.container, className)}>
@@ -59,7 +61,13 @@ export const ProductDetails: FC<IProductDetailsProps & IBasicStyling> = ({
         </Text>
       )}
 
-      {action !== undefined && <div className={styles.action}>{action}</div>}
+      {(action !== undefined || secondaryAction !== undefined) && (
+        <div className={styles.action}>
+          {/* Оба действия — подписанными кнопками в одной строке, вторым «в избранное». */}
+          {action}
+          {secondaryAction}
+        </div>
+      )}
     </div>
   </div>
 )

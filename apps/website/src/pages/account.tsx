@@ -8,7 +8,7 @@ import { AccountTemplate } from 'widgets/templates'
 import { SiteLayout } from '@/layouts/SiteLayout'
 import { ACCOUNT_NAVIGATION } from '@/layouts/accountNavigation'
 import { useAuth } from '@/contexts/AuthContext'
-import { isApiError } from '@/services/apiErrors'
+import { messageForError } from '@/services/apiErrors'
 import { publicConfig } from '@/сonfig'
 
 /**
@@ -36,7 +36,7 @@ const AccountPage: React.FC = () => {
       await updateProfile(name)
       setIsSaved(true)
     } catch (cause: unknown) {
-      setError(isApiError(cause) ? cause.message : 'Не удалось сохранить профиль.')
+      setError(messageForError(cause, 'account.save'))
     } finally {
       setIsSubmitting(false)
     }

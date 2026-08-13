@@ -12,7 +12,7 @@ import { SiteLayout } from '@/layouts/SiteLayout'
 import * as styles from '@/styles/layout.css'
 import { useAuth } from '@/contexts/AuthContext'
 import { useCart } from '@/contexts/CartContext'
-import { isApiError } from '@/services/apiErrors'
+import { messageForError } from '@/services/apiErrors'
 import { checkout } from '@/services/endpoints/orders'
 import { ordersKey } from '@/services/swrKeys'
 
@@ -43,7 +43,7 @@ const CheckoutPage: React.FC = () => {
         void globalMutate(ordersKey(user.id))
       }
     } catch (cause: unknown) {
-      setError(isApiError(cause) ? cause.message : 'Не удалось отправить заявку.')
+      setError(messageForError(cause, 'checkout'))
     } finally {
       setIsSubmitting(false)
     }

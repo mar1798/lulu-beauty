@@ -4,28 +4,28 @@ from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from aiogram.filters import CommandObject
 from aiogram.types import Message
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.models import Role, User
+from app.auth.telegram_login import AuthSessionPendingError, TelegramLoginService
 from app.orders.models import Order, OrderStatus
 from app.telegram import recipients
 from app.telegram.handlers import (
     handle_contact,
     handle_order_action,
     handle_orders,
+    handle_start,
     handle_unlink,
 )
 from app.telegram.keyboards import OrderAction
-from app.telegram.models import PendingTelegramContact
 from tests.integration.factories import make_cycle, make_user
 
 
 @pytest.fixture
-def bot_session(
-    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
-) -> AsyncSession:
+def bot_session(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch) -> AsyncSession:
     """Handlers open their own session (they run outside any request); point that at the
     test's session so its writes are visible to the assertions."""
 
@@ -44,6 +44,9 @@ def _contact_message(chat_id: int, phone: str, *, owner_id: int | None = None) -
     message = MagicMock()
     message.chat.id = chat_id
     message.from_user.id = chat_id
+    # Строками, а не моками: имя нового аккаунта берётся из профиля Telegram.
+    message.from_user.first_name = "Test"
+    message.from_user.last_name = None
     message.contact.phone_number = phone
     message.contact.user_id = chat_id if owner_id is None else owner_id
     message.answer = AsyncMock()
@@ -67,11 +70,19 @@ async def test_contact_binds_an_existing_user(bot_session: AsyncSession) -> None
     assert user.telegram_chat_id == 555
 
 
-async def test_contact_without_a_user_is_parked_as_pending(bot_session: AsyncSession) -> None:
-    await handle_contact(_contact_message(555, "+996700333444"))
+async def test_contact_without_a_user_creates_the_account(bot_session: AsyncSession) -> None:
+    """Регистрации на сайте нет вовсе: аккаунт рождается здесь и только здесь."""
+    message = _contact_message(555, "+996700333444")
+    message.from_user.first_name = "Айгуль"
+    message.from_user.last_name = "Т."
 
-    pending = (await bot_session.execute(select(PendingTelegramContact))).scalars().all()
-    assert [(row.phone, row.chat_id) for row in pending] == [("+996700333444", 555)]
+    await handle_contact(message)
+
+    user = (
+        await bot_session.execute(select(User).where(User.phone == "+996700333444"))
+    ).scalar_one()
+    assert user.telegram_chat_id == 555
+    assert user.name == "Айгуль Т."
 
 
 async def test_second_contact_from_the_same_chat_rebinds_instead_of_crashing(
@@ -93,15 +104,18 @@ async def test_second_contact_from_the_same_chat_rebinds_instead_of_crashing(
     assert second.telegram_chat_id == 555
 
 
-async def test_second_pending_contact_from_the_same_chat_rebinds(
+async def test_second_contact_from_the_same_chat_rebinds_freshly_created_accounts(
     bot_session: AsyncSession,
 ) -> None:
-    """Same collision, on the pending table — neither phone has an account yet."""
+    """Тот же конфликт по UNIQUE chat_id, но оба аккаунта заводит сам бот."""
     await handle_contact(_contact_message(555, "+996700777888"))
     await handle_contact(_contact_message(555, "+996700999000"))
 
-    pending = (await bot_session.execute(select(PendingTelegramContact))).scalars().all()
-    assert [(row.phone, row.chat_id) for row in pending] == [("+996700999000", 555)]
+    users = (await bot_session.execute(select(User).order_by(User.phone))).scalars().all()
+    assert [(u.phone, u.telegram_chat_id) for u in users] == [
+        ("+996700777888", None),
+        ("+996700999000", 555),
+    ]
 
 
 async def test_someone_elses_contact_card_binds_nothing(bot_session: AsyncSession) -> None:
@@ -115,7 +129,6 @@ async def test_someone_elses_contact_card_binds_nothing(bot_session: AsyncSessio
 
     await bot_session.refresh(victim)
     assert victim.telegram_chat_id is None
-    assert (await bot_session.execute(select(PendingTelegramContact))).scalars().all() == []
     assert "только свой номер" in message.answer.await_args.args[0]
 
 
@@ -127,7 +140,54 @@ async def test_a_contact_with_no_telegram_account_behind_it_binds_nothing(
     message.contact.user_id = None
     await handle_contact(message)
 
-    assert (await bot_session.execute(select(PendingTelegramContact))).scalars().all() == []
+    assert (await bot_session.execute(select(User))).scalars().all() == []
+
+
+async def test_start_with_a_login_payload_signs_in_a_bound_chat(
+    bot_session: AsyncSession,
+) -> None:
+    """Привязанный чат — это уже вход: спрашивать нечего, кода не существует."""
+    user = await make_user(bot_session, phone="+996700111222", telegram_chat_id=555)
+    service = TelegramLoginService(bot_session)
+    started = await service.start()
+    await bot_session.commit()
+
+    await handle_start(
+        _command_message(555), CommandObject(command="start", args=started.link_payload)
+    )
+
+    assert (await service.claim(str(started.session.id), started.poll_secret)).id == user.id
+
+
+async def test_start_then_contact_registers_and_signs_in(bot_session: AsyncSession) -> None:
+    """Новый человек: /start по ссылке, «поделиться номером» — и вкладка впускает его."""
+    service = TelegramLoginService(bot_session)
+    started = await service.start()
+    await bot_session.commit()
+
+    await handle_start(
+        _command_message(555), CommandObject(command="start", args=started.link_payload)
+    )
+    await handle_contact(_contact_message(555, "+996700333444"))
+
+    claimed = await service.claim(str(started.session.id), started.poll_secret)
+    assert claimed.phone == "+996700333444"
+    assert claimed.telegram_chat_id == 555
+
+
+async def test_start_without_a_payload_leaves_the_login_untouched(
+    bot_session: AsyncSession,
+) -> None:
+    """Голый /start — не вход: иначе любой чужой /start подтверждал бы чью-то вкладку."""
+    await make_user(bot_session, phone="+996700111222", telegram_chat_id=555)
+    service = TelegramLoginService(bot_session)
+    started = await service.start()
+    await bot_session.commit()
+
+    await handle_start(_command_message(555), CommandObject(command="start", args=None))
+
+    with pytest.raises(AuthSessionPendingError):
+        await service.claim(str(started.session.id), started.poll_secret)
 
 
 async def test_unlink_releases_the_chat(bot_session: AsyncSession) -> None:
@@ -160,14 +220,10 @@ async def test_find_user_by_chat_id_is_the_bots_only_way_in(db_session: AsyncSes
     assert (await recipients.find_user_by_chat_id(db_session, 556)) is None
 
 
-async def test_broadcast_audience_is_only_verified_and_linked_users(
-    db_session: AsyncSession,
-) -> None:
-    linked = await make_user(db_session, phone="+996700111111")
-    linked.telegram_chat_id = 1
+async def test_broadcast_audience_is_only_linked_users(db_session: AsyncSession) -> None:
+    """Отвязанный чат (бот заблокирован, чат удалён) — аккаунт жив, но недостижим."""
+    linked = await make_user(db_session, phone="+996700111111", telegram_chat_id=1)
     unlinked = await make_user(db_session, phone="+996700222222")
-    unverified = await make_user(db_session, phone="+996700333333", phone_verified=False)
-    unverified.telegram_chat_id = 3
     await db_session.flush()
 
     audience = await recipients.get_broadcast_audience(db_session)
@@ -175,24 +231,20 @@ async def test_broadcast_audience_is_only_verified_and_linked_users(
     ids = {user.id for user in audience}
     assert linked.id in ids
     assert unlinked.id not in ids
-    assert unverified.id not in ids
 
 
 async def test_clear_stale_bindings_frees_the_chat_for_relinking(
     db_session: AsyncSession,
 ) -> None:
-    user = await make_user(db_session, phone="+996700111222")
-    user.telegram_chat_id = 555
-    db_session.add(PendingTelegramContact(phone="+996700999888", chat_id=556))
+    user = await make_user(db_session, phone="+996700111222", telegram_chat_id=555)
     await db_session.flush()
 
     cleared = await recipients.clear_stale_bindings(db_session, [555, 556])
     await db_session.flush()
 
-    assert cleared == 1  # one User row; the pending row is deleted, not counted
+    assert cleared == 1
     await db_session.refresh(user)
     assert user.telegram_chat_id is None
-    assert (await db_session.execute(select(PendingTelegramContact))).scalars().all() == []
 
 
 def _callback_query(chat_id: int, order_id: uuid.UUID) -> MagicMock:

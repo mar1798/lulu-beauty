@@ -42,7 +42,6 @@ jobs:
       TELEGRAM_BOT_USERNAME: test_bot
       OWNER_PHONE: "+10000000000"
       OWNER_NAME: Test Owner
-      OWNER_PASSWORD: test-owner-password
 
     steps:
       - name: Get repository code

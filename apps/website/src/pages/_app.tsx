@@ -4,11 +4,12 @@ import { AppProps } from 'next/app'
 import { Inter } from 'next/font/google'
 import localFont from 'next/font/local'
 import clsx from 'clsx'
-import React from 'react'
+import React, { useMemo } from 'react'
 import { SWRConfig } from 'swr'
 import { ConfirmProvider, ServicesContext, ToastProvider } from 'widgets/contexts'
 import { AuthProvider } from '@/contexts/AuthContext'
 import { CartProvider } from '@/contexts/CartContext'
+import { WishlistProvider } from '@/contexts/WishlistContext'
 import { Link } from '@/components/Link'
 import { Image } from '@/components/Image'
 import { shell } from '@/styles/shell.css'
@@ -62,8 +63,22 @@ const services = {
 const swrConfig = { revalidateOnFocus: false } as const
 
 const App: React.FC<AppProps> = ({ Component, pageProps }) => {
+  /*
+    Страницы со статикой кладут в `pageProps.fallback` то, что уже посчитано на
+    сборке (см. `services/swrFallback.ts`). Без этого состояние сбора приезжает
+    отдельным запросом после первого кадра — врезка «приём заказов закрыт»
+    вдвигается в поток и сдвигает сетку, а кнопки «в корзину» успевают мигнуть
+    доступными.
+  */
+  const fallback = (pageProps as { fallback?: Record<string, unknown> }).fallback
+
+  const value = useMemo(
+    () => (fallback === undefined ? swrConfig : { ...swrConfig, fallback }),
+    [fallback]
+  )
+
   return (
-    <SWRConfig value={swrConfig}>
+    <SWRConfig value={value}>
       <ServicesContext.Provider initialState={services}>
         {/*
           Тосты и подтверждения — над данными: подтверждение удаления нужно и
@@ -74,9 +89,11 @@ const App: React.FC<AppProps> = ({ Component, pageProps }) => {
           <ConfirmProvider>
             <AuthProvider>
               <CartProvider>
-                <div className={clsx(shell, inter.variable, eloqua.variable, inter.className)}>
-                  <Component {...pageProps} />
-                </div>
+                <WishlistProvider>
+                  <div className={clsx(shell, inter.variable, eloqua.variable, inter.className)}>
+                    <Component {...pageProps} />
+                  </div>
+                </WishlistProvider>
               </CartProvider>
             </AuthProvider>
           </ConfirmProvider>

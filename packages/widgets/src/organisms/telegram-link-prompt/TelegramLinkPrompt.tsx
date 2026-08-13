@@ -9,11 +9,16 @@ import * as styles from './TelegramLinkPrompt.css'
 /**
  * Инструкция по привязке Telegram — без неё код просто некуда прислать.
  *
- * Ссылка обязана быть **чистой**: `https://t.me/<username>`, без `?start=`.
- * Бот сравнивает текст сообщения с `/start` точно
- * (`apps/api/app/telegram/bot.py`: `F.text == "/start"`), а deep-link с
- * payload присылает `/start <payload>` и уходит в fallback — человек получит
- * ответ без кнопки «поделиться контактом» и застрянет.
+ * Второй шаг написан в двух вариантах намеренно. Кнопку «Start» Telegram
+ * показывает только в чате **без истории**: тот, кто открывал бота раньше (а
+ * после сброса базы привязка пропадает, чат — нет), видит обычное поле ввода,
+ * ищет кнопку, не находит и застревает — код при этом уходит в лог сервера, а
+ * человек ждёт его в Telegram.
+ *
+ * Ссылка держится чистой (`https://t.me/<username>`, без `?start=`) просто за
+ * ненадобностью: payload'а тут нет. Сам бот deep-link переживает — он ловит
+ * `/start` через `CommandStart()` (`apps/api/app/telegram/handlers.py`), то
+ * есть вместе с аргументом.
  */
 export const TelegramLinkPrompt: FC<ITelegramLinkPromptProps & IBasicStyling> = ({
   botUsername,
@@ -36,8 +41,8 @@ export const TelegramLinkPrompt: FC<ITelegramLinkPromptProps & IBasicStyling> = 
 
       <ol className={styles.steps}>
         <li>Откройте бота по кнопке ниже.</li>
-        <li>Нажмите «Start» — команду набирать не нужно.</li>
-        <li>Поделитесь контактом: бот попросит об этом сам.</li>
+        <li>Нажмите «Start». Если чат с ботом уже открывали, кнопки не будет — отправьте /start сообщением.</li>
+        <li>Поделитесь номером: бот попросит об этом сам, кнопкой под полем ввода.</li>
       </ol>
 
       {botUsername !== '' && (
