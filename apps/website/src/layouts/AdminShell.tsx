@@ -2,6 +2,7 @@ import React from 'react'
 import Head from 'next/head'
 import { useRouter } from 'next/router'
 import type { IAdminNavItem } from 'widgets/types'
+import { Spinner } from 'widgets/atoms'
 import {
   IconBox,
   IconCalendar,
@@ -12,14 +13,19 @@ import {
 } from 'widgets/svg'
 import { AdminLayout } from 'widgets/templates'
 import { SiteLayout } from '@/layouts/SiteLayout'
+import { useAdminGate } from '@/hooks/useAdminGate'
+import * as styles from '@/styles/admin.css'
 
 /**
  * Каркас страниц админки: шапка сайта плюс раскладка `AdminLayout` с
  * разделами. Навигация живёт здесь, а не в виджете, — адреса это знание
  * приложения.
  *
- * `noindex` на всех страницах раздела: они и так закрыты гейтом в
- * `getServerSideProps`, но в выдачу им попадать незачем.
+ * Здесь же стоит гейт раздела (см. `useAdminGate`): пока сессия не проверена
+ * или пришёл не владелец, вместо разделов и содержимого показывается только
+ * спиннер — каркас чужого раздела покупателю видеть незачем.
+ *
+ * `noindex` на всех страницах раздела: смотреть поисковику тут не на что.
  */
 
 const NAVIGATION: IAdminNavItem[] = [
@@ -62,6 +68,23 @@ export const AdminShell: React.FC<IAdminShellProps> = ({
   children,
 }) => {
   const router = useRouter()
+  const access = useAdminGate()
+
+  if (access !== 'granted') {
+    return (
+      <SiteLayout>
+        <Head>
+          <title>Админка Lulu Beauty</title>
+          <meta name="robots" content="noindex" />
+        </Head>
+
+        {/* `denied` тоже показывает спиннер: редирект уже запущен эффектом. */}
+        <div className={styles.gate}>
+          <Spinner size="lg" />
+        </div>
+      </SiteLayout>
+    )
+  }
 
   return (
     <SiteLayout>

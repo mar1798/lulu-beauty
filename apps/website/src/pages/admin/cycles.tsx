@@ -1,12 +1,10 @@
 import React, { useState } from 'react'
 import useSWR, { mutate as globalMutate } from 'swr'
-import type { GetServerSideProps } from 'next'
 import type { ICycleDraft, IOrderCycle } from 'widgets/types'
 import { AdminCycleCalendar } from 'widgets/organisms'
 import { useConfirm, useToast } from 'widgets/contexts'
 import { storeIso, storeToday } from 'widgets/utils'
 import { AdminShell } from '@/layouts/AdminShell'
-import { requireAdmin, type IAdminPageProps } from '@/server/adminGate'
 import { messageForError } from '@/services/apiErrors'
 import { createCycle, deleteCycle, listCycles, updateCycle } from '@/services/endpoints/admin'
 import { getActiveCycleOrNull } from '@/services/endpoints/cycles'
@@ -15,9 +13,9 @@ import { activeCycleKey, cyclesKey } from '@/services/swrKeys'
 /**
  * Календарь дедлайнов.
  *
- * Сегодняшняя дата и стартовый месяц приходят из `getServerSideProps`, а не
- * считаются в браузере: страница рендерится на сервере, и вычисленное на
- * клиенте «сегодня» разошлось бы с разметкой на границе суток.
+ * Сегодняшняя дата считается в браузере (см. `useState` ниже), а не приходит
+ * пропсом с сервера: страница статическая, и «сегодня», зашитое в сборку,
+ * протухло бы на следующий же день.
  *
  * Активный сбор спрашивается отдельно (`GET /cycles/active`), а не выводится
  * из поля `status`: статус переставляет планировщик по расписанию, и сразу
@@ -26,18 +24,22 @@ import { activeCycleKey, cyclesKey } from '@/services/swrKeys'
  * оформляет заявки, нельзя.
  */
 
-interface ICyclesPageProps extends IAdminPageProps {
-  /** `YYYY-MM-DD` по таймзоне магазина. */
-  today: string
-  /** `YYYY-MM`. */
-  initialMonth: string
-}
-
-const AdminCyclesPage: React.FC<ICyclesPageProps> = ({ today, initialMonth }) => {
+const AdminCyclesPage: React.FC = () => {
   const { notify } = useToast()
   const { confirm } = useConfirm()
 
-  const [month, setMonth] = useState(initialMonth)
+  /*
+    Дата берётся один раз на монтирование — ленивым инициализатором, а не
+    эффектом: эффект добавил бы лишний кадр с пустым календарём (и запрещён
+    здесь правилом `react-hooks/set-state-in-effect`).
+
+    Расхождения гидратации это не даёт: до ответа `/api/auth/me` `AdminShell`
+    рисует спиннер вместо содержимого, поэтому в статику календарь не попадает
+    вовсе — а на клиенте он строится уже по сегодняшней дате браузера.
+  */
+  const [{ date: today, month: currentMonth }] = useState(storeToday)
+  /** Показываемый месяц, `YYYY-MM`. */
+  const [month, setMonth] = useState(currentMonth)
   const [isBusy, setIsBusy] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
 
@@ -131,18 +133,6 @@ const AdminCyclesPage: React.FC<ICyclesPageProps> = ({ today, initialMonth }) =>
       />
     </AdminShell>
   )
-}
-
-export const getServerSideProps: GetServerSideProps<ICyclesPageProps> = async context => {
-  const gate = await requireAdmin<ICyclesPageProps>(context)
-
-  if (gate.redirect) {
-    return gate.redirect
-  }
-
-  const { date, month } = storeToday()
-
-  return { props: { user: gate.user, today: date, initialMonth: month } }
 }
 
 export default AdminCyclesPage

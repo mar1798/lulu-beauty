@@ -1,12 +1,11 @@
 import React from 'react'
 import useSWR from 'swr'
-import type { GetServerSideProps } from 'next'
 import type { OrderStatus } from 'widgets/types'
 import { Alert, Badge, Button, Skeleton, Text } from 'widgets/atoms'
 import { DeadlineCountdown, orderStatusLabel } from 'widgets/molecules'
 import { formatDateTime } from 'widgets/utils'
 import { AdminShell } from '@/layouts/AdminShell'
-import { requireAdmin, type IAdminPageProps } from '@/server/adminGate'
+import { useAuth } from '@/contexts/AuthContext'
 import { messageForError } from '@/services/apiErrors'
 import { listAdminOrders } from '@/services/endpoints/admin'
 import { getActiveCycleOrNull } from '@/services/endpoints/cycles'
@@ -40,7 +39,11 @@ const loadCounts = async (cycleId: string | undefined): Promise<Record<OrderStat
   >
 }
 
-const AdminOverviewPage: React.FC<IAdminPageProps> = ({ user }) => {
+const AdminOverviewPage: React.FC = () => {
+  // Профиль берётся из сессии на клиенте: до гейта эта страница всё равно не
+  // рисуется, а значит владелец здесь уже известен.
+  const { user } = useAuth()
+
   const {
     data: cycleData,
     isLoading: isCycleLoading,
@@ -57,7 +60,7 @@ const AdminOverviewPage: React.FC<IAdminPageProps> = ({ user }) => {
   const error = cycleError === undefined ? null : messageForError(cycleError, 'admin.orders')
 
   return (
-    <AdminShell title="Обзор" summary={`Вы вошли как ${user.name}.`}>
+    <AdminShell title="Обзор" summary={user === null ? undefined : `Вы вошли как ${user.name}.`}>
       {error !== null && (
         <Alert tone="danger" title="Не получилось">
           {error}
@@ -121,12 +124,6 @@ const AdminOverviewPage: React.FC<IAdminPageProps> = ({ user }) => {
       </section>
     </AdminShell>
   )
-}
-
-export const getServerSideProps: GetServerSideProps<IAdminPageProps> = async context => {
-  const gate = await requireAdmin<IAdminPageProps>(context)
-
-  return gate.redirect ?? { props: { user: gate.user } }
 }
 
 export default AdminOverviewPage

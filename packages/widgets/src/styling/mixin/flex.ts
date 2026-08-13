@@ -13,11 +13,18 @@ export function flexColumn(gap?: number) {
   } satisfies CSSProperties
 }
 
+/**
+ * Mixin which is used to define flex container with row flow
+ *
+ * Отступ задаётся сокращением `gap`, а не `columnGap`: в строке без переноса
+ * `row-gap` ни на что не влияет, зато при `flexWrap: 'wrap'` перенесённые
+ * элементы (например, кнопки) не слипаются друг с другом по вертикали.
+ */
 // eslint-disable-next-line @typescript-eslint/explicit-module-boundary-types,@typescript-eslint/explicit-function-return-type
 export function flexRow(gap?: number) {
   return {
     display: 'flex',
     flexDirection: 'row',
-    ...(gap !== undefined ? { columnGap: rem(gap) } : {}),
+    ...(gap !== undefined ? { gap: rem(gap) } : {}),
   } satisfies CSSProperties
 }

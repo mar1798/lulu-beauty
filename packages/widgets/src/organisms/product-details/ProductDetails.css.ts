@@ -1,4 +1,5 @@
 import { style } from '@vanilla-extract/css'
+import { rem } from '../../styling/lib/rem'
 import { media } from '../../styling/lib/media'
 import { flexColumn, flexRow } from '../../styling/mixin'
 import { vars } from '../../styling/themes/contract.css'
@@ -48,5 +49,24 @@ export const action = style({
   alignItems: 'center',
   flexWrap: 'wrap',
   marginTop: vars.space.xs,
+})
+
+/**
+ * Каркас на время загрузки повторяет пропорции `ProductGallery` (кадр `4 / 5`,
+ * миниатюры по 72px) — иначе при подстановке товара страница подпрыгнула бы.
+ */
+export const skeletonGallery = style(flexColumn(12))
+
+export const skeletonMedia = style({
+  aspectRatio: '4 / 5',
+  borderRadius: vars.radius.xxl,
+})
+
+export const skeletonThumbs = style(flexRow(8))
+
+export const skeletonThumb = style({
+  width: rem(72),
+  aspectRatio: '1 / 1',
+  borderRadius: vars.radius.lg,
 })
 

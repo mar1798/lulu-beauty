@@ -1,11 +1,9 @@
 import React, { useState } from 'react'
 import useSWR from 'swr'
-import type { GetServerSideProps } from 'next'
 import type { IAdminCategoryValues, ICategory } from 'widgets/types'
 import { AdminCategoriesPanel } from 'widgets/organisms'
 import { useConfirm, useToast } from 'widgets/contexts'
 import { AdminShell } from '@/layouts/AdminShell'
-import { requireAdmin, type IAdminPageProps } from '@/server/adminGate'
 import { messageForError } from '@/services/apiErrors'
 import { createCategory, deleteCategory, updateCategory } from '@/services/endpoints/admin'
 import { listCategories } from '@/services/endpoints/catalog'
@@ -18,7 +16,7 @@ import { categoriesKey } from '@/services/swrKeys'
  * стоит `ON DELETE SET NULL`, то есть они просто теряют категорию. Об этом
  * прямо сказано в подтверждении — иначе владелец боится нажать.
  */
-const AdminCategoriesPage: React.FC<IAdminPageProps> = () => {
+const AdminCategoriesPage: React.FC = () => {
   const { notify } = useToast()
   const { confirm } = useConfirm()
 
@@ -86,12 +84,6 @@ const AdminCategoriesPage: React.FC<IAdminPageProps> = () => {
       />
     </AdminShell>
   )
-}
-
-export const getServerSideProps: GetServerSideProps<IAdminPageProps> = async context => {
-  const gate = await requireAdmin<IAdminPageProps>(context)
-
-  return gate.redirect ?? { props: { user: gate.user } }
 }
 
 export default AdminCategoriesPage

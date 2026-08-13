@@ -15,6 +15,19 @@ export const panel = style({
   ...panelMixin(),
 })
 
+/**
+ * Экран ожидания гейта: пока не ясно, владелец ли пришёл, вместо разделов
+ * админки висит только спиннер. Высота задана, чтобы подвал не подпрыгивал
+ * к шапке на пустой странице.
+ */
+export const gate = style({
+  ...flexColumn(0),
+  alignItems: 'center',
+  justifyContent: 'center',
+  minHeight: rem(320),
+  color: color.text('subtle'),
+})
+
 export const cycleHead = style({
   ...flexRow(12),
   alignItems: 'center',

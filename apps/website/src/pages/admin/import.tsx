@@ -1,11 +1,9 @@
 import React, { useState } from 'react'
-import type { GetServerSideProps } from 'next'
 import { mutate as globalMutate } from 'swr'
 import type { IImportSummary } from 'widgets/types'
 import { AdminImportPanel } from 'widgets/organisms'
 import { useToast } from 'widgets/contexts'
 import { AdminShell } from '@/layouts/AdminShell'
-import { requireAdmin, type IAdminPageProps } from '@/server/adminGate'
 import { messageForError } from '@/services/apiErrors'
 import { importCatalog } from '@/services/endpoints/admin'
 import { categoriesKey, isAdminProductsKey } from '@/services/swrKeys'
@@ -21,7 +19,7 @@ import { categoriesKey, isAdminProductsKey } from '@/services/swrKeys'
 
 /** Номер строки `0` в `errors` означает отказ по всему файлу, а не по строке. */
 const WHOLE_FILE_ROW = 0
-const AdminImportPage: React.FC<IAdminPageProps> = () => {
+const AdminImportPage: React.FC = () => {
   const { notify } = useToast()
   const [isImporting, setIsImporting] = useState(false)
   const [summary, setSummary] = useState<IImportSummary | null>(null)
@@ -85,12 +83,6 @@ const AdminImportPage: React.FC<IAdminPageProps> = () => {
       />
     </AdminShell>
   )
-}
-
-export const getServerSideProps: GetServerSideProps<IAdminPageProps> = async context => {
-  const gate = await requireAdmin<IAdminPageProps>(context)
-
-  return gate.redirect ?? { props: { user: gate.user } }
 }
 
 export default AdminImportPage

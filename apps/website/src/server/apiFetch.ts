@@ -94,6 +94,65 @@ const sendApi = async (
   return fetch(apiUrl(path, search), init)
 }
 
+/**
+ * Обмены, уже запущенные для конкретного refresh-токена.
+ *
+ * Бэкенд гасит токен при первом же использовании (`revoked_at` в
+ * `auth/service.py`), а браузер открывает страницу пачкой параллельных
+ * запросов через прокси. Без общей очереди первый обмен проходил, а
+ * остальные предъявляли уже погашенный токен, получали 401 — и прокси
+ * стирал cookie, то есть выкидывал из аккаунта на ровном месте.
+ *
+ * Ключ — сам токен: параллельные запросы приходят с одной и той же cookie,
+ * поэтому попадают в один и тот же обмен и получают одну и ту же новую пару.
+ */
+const exchanges = new Map<string, Promise<IAuthTokens>>()
+
+/**
+ * Успешный обмен помнится ещё немного после завершения: запрос, ушедший из
+ * браузера до того, как доехал `Set-Cookie`, несёт старый токен и иначе
+ * упёрся бы в тот же 401.
+ */
+const EXCHANGE_GRACE_MS = 10_000
+
+/** Сам поход за новой парой; 401 отделён от сетевого сбоя — реагируют на них по-разному. */
+const rotateTokens = async (refreshToken: string): Promise<IAuthTokens> => {
+  const response = await fetch(apiUrl('/auth/refresh'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ refreshToken }),
+  })
+
+  if (!response.ok) {
+    throw new UnauthenticatedError()
+  }
+
+  return (await response.json()) as IAuthTokens
+}
+
+const exchangeTokens = (refreshToken: string): Promise<IAuthTokens> => {
+  const pending = exchanges.get(refreshToken)
+
+  if (pending !== undefined) {
+    return pending
+  }
+
+  const started = rotateTokens(refreshToken)
+
+  exchanges.set(refreshToken, started)
+
+  void started.then(
+    () => {
+      // Отказ отпускаем сразу, удачу — с задержкой: мёртвый токен незачем
+      // держать в памяти, а живой ответ ещё пригодится опоздавшим запросам.
+      setTimeout(() => exchanges.delete(refreshToken), EXCHANGE_GRACE_MS)
+    },
+    () => exchanges.delete(refreshToken)
+  )
+
+  return started
+}
+
 /** Меняет пару токенов по refresh-cookie и переставляет cookie в ответе. */
 export const refreshTokens = async (
   req: ICookieRequest,
@@ -105,18 +164,19 @@ export const refreshTokens = async (
     throw new UnauthenticatedError()
   }
 
-  const response = await fetch(apiUrl('/auth/refresh'), {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ refreshToken }),
-  })
+  let tokens: IAuthTokens
 
-  if (!response.ok) {
-    clearAuthCookies(res)
-    throw new UnauthenticatedError()
+  try {
+    tokens = await exchangeTokens(refreshToken)
+  } catch (error) {
+    // Cookie стираются только на отказ бэкенда: недоступный API — это сбой
+    // запроса, а не разлогин, и переживать его пользователь должен молча.
+    if (error instanceof UnauthenticatedError) {
+      clearAuthCookies(res)
+    }
+
+    throw error
   }
-
-  const tokens = (await response.json()) as IAuthTokens
 
   setAuthCookies(res, tokens)
   // Чтобы повторный вызов внутри этого же запроса взял уже новый токен.

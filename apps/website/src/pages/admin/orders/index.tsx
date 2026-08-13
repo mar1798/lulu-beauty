@@ -1,6 +1,5 @@
 import React, { useState } from 'react'
 import useSWR, { mutate as globalMutate } from 'swr'
-import type { GetServerSideProps } from 'next'
 import type { IAdminOrder, IOrderCycle, ISelectOption, OrderStatus } from 'widgets/types'
 import { Alert, Button, Select } from 'widgets/atoms'
 import { EmptyState, Pagination, orderStatusLabel } from 'widgets/molecules'
@@ -9,7 +8,6 @@ import { useConfirm, useToast } from 'widgets/contexts'
 import { formatDate } from 'widgets/utils'
 import { IconDownload } from 'widgets/svg'
 import { AdminShell } from '@/layouts/AdminShell'
-import { requireAdmin, type IAdminPageProps } from '@/server/adminGate'
 import { messageForError } from '@/services/apiErrors'
 import {
   deleteOrder,
@@ -43,7 +41,7 @@ const STATUS_OPTIONS: ISelectOption[] = [
 const cycleLabel = (cycle: IOrderCycle): string =>
   `${cycle.label ?? 'Без подписи'} — ${formatDate(cycle.deadlineAt)}`
 
-const AdminOrdersPage: React.FC<IAdminPageProps> = () => {
+const AdminOrdersPage: React.FC = () => {
   const { notify } = useToast()
   const { confirm } = useConfirm()
 
@@ -233,12 +231,6 @@ const AdminOrdersPage: React.FC<IAdminPageProps> = () => {
       )}
     </AdminShell>
   )
-}
-
-export const getServerSideProps: GetServerSideProps<IAdminPageProps> = async context => {
-  const gate = await requireAdmin<IAdminPageProps>(context)
-
-  return gate.redirect ?? { props: { user: gate.user } }
 }
 
 export default AdminOrdersPage

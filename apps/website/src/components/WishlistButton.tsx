@@ -6,7 +6,6 @@ import { useToast } from 'widgets/contexts'
 import { IconHeart, IconHeartFilled } from 'widgets/svg'
 import { useAuth } from '@/contexts/AuthContext'
 import { useWishlist } from '@/contexts/WishlistContext'
-import { savedHeart } from '@/styles/product.css'
 
 /**
  * «В избранное» для карточки и страницы товара.
@@ -108,27 +107,29 @@ export const WishlistButton: React.FC<{
     void run()
   }
 
-  // Состояние читается заливкой, а не оттенком: разницу в цвете видят не все.
-  const icon = isSaved ? <IconHeartFilled /> : <IconHeart />
-
   if (withLabel) {
     return (
       <Button
         /*
           Вторичная, а не акцентная: рядом стоит «добавить в корзину», и две
-          розовые заливки в одной строке отменили бы порядок действий. Марка
-          приходит сюда сердцем — залитым и розовым.
+          розовые заливки в одной строке отменили бы порядок действий.
+
+          Без иконки: состояние здесь читается самой подписью («в избранном» /
+          «добавить в избранное»), и сердце рядом с ней ничего не добавляло —
+          в отличие от круглой кнопки в карточке, где текста нет вовсе.
         */
         variant="secondary"
         size={size}
         isFullWidth={isFullWidth}
-        iconStart={isSaved ? <span className={savedHeart}>{icon}</span> : icon}
         onClick={onClick}
       >
         {isSaved ? 'В избранном' : 'Добавить в избранное'}
       </Button>
     )
   }
+
+  // Состояние читается заливкой, а не оттенком: разницу в цвете видят не все.
+  const icon = isSaved ? <IconHeartFilled /> : <IconHeart />
 
   return (
     <IconButton

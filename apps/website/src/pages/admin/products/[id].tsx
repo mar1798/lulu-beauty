@@ -1,5 +1,4 @@
 import React, { useState } from 'react'
-import type { GetServerSideProps } from 'next'
 import { useRouter } from 'next/router'
 import useSWR, { mutate as globalMutate } from 'swr'
 import type { IAdminProductValues, IProductImage, IProductImageUpload } from 'widgets/types'
@@ -8,7 +7,6 @@ import { EmptyState } from 'widgets/molecules'
 import { AdminProductForm } from 'widgets/organisms'
 import { useConfirm, useToast } from 'widgets/contexts'
 import { AdminShell } from '@/layouts/AdminShell'
-import { requireAdmin, type IAdminPageProps } from '@/server/adminGate'
 import { isApiError, messageForError } from '@/services/apiErrors'
 import {
   deleteProduct,
@@ -35,7 +33,7 @@ import { adminProductKey, categoriesKey, isAdminProductsKey } from '@/services/s
 
 const NOT_FOUND = 404
 
-const AdminProductPage: React.FC<IAdminPageProps> = () => {
+const AdminProductPage: React.FC = () => {
   const router = useRouter()
   const { notify } = useToast()
   const { confirm } = useConfirm()
@@ -288,12 +286,6 @@ const AdminProductPage: React.FC<IAdminPageProps> = () => {
       {content()}
     </AdminShell>
   )
-}
-
-export const getServerSideProps: GetServerSideProps<IAdminPageProps> = async context => {
-  const gate = await requireAdmin<IAdminPageProps>(context)
-
-  return gate.redirect ?? { props: { user: gate.user } }
 }
 
 export default AdminProductPage

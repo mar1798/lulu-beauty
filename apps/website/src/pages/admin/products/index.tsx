@@ -1,6 +1,5 @@
 import React, { useCallback, useState } from 'react'
 import useSWR from 'swr'
-import type { GetServerSideProps } from 'next'
 import type { IProduct } from 'widgets/types'
 import { Alert, Button, Switch } from 'widgets/atoms'
 import { CategoryFilter, EmptyState, Pagination, SearchField } from 'widgets/molecules'
@@ -16,7 +15,6 @@ import {
   useQueryParams,
   useQueryTextInput,
 } from '@/hooks/useQueryParams'
-import { requireAdmin, type IAdminPageProps } from '@/server/adminGate'
 import { messageForError, type ErrorScope } from '@/services/apiErrors'
 import { deleteProduct, listAdminProducts, restoreProduct } from '@/services/endpoints/admin'
 import { listCategories } from '@/services/endpoints/catalog'
@@ -43,7 +41,7 @@ const PAGE_SIZE = 20
 
 const SEARCH_DELAY_MS = 300
 
-const AdminProductsPage: React.FC<IAdminPageProps> = () => {
+const AdminProductsPage: React.FC = () => {
   const { notify } = useToast()
   const { confirm } = useConfirm()
 
@@ -212,12 +210,6 @@ const AdminProductsPage: React.FC<IAdminPageProps> = () => {
       )}
     </AdminShell>
   )
-}
-
-export const getServerSideProps: GetServerSideProps<IAdminPageProps> = async context => {
-  const gate = await requireAdmin<IAdminPageProps>(context)
-
-  return gate.redirect ?? { props: { user: gate.user } }
 }
 
 export default AdminProductsPage

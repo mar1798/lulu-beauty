@@ -1,12 +1,10 @@
 import React, { useState } from 'react'
-import type { GetServerSideProps } from 'next'
 import useSWR, { mutate as globalMutate } from 'swr'
 import type { IAdminProductValues } from 'widgets/types'
 import { Alert, Button, Skeleton } from 'widgets/atoms'
 import { AdminProductForm } from 'widgets/organisms'
 import { useToast } from 'widgets/contexts'
 import { AdminShell } from '@/layouts/AdminShell'
-import { requireAdmin, type IAdminPageProps } from '@/server/adminGate'
 import { messageForError } from '@/services/apiErrors'
 import { createProduct, uploadProductImage } from '@/services/endpoints/admin'
 import { listCategories } from '@/services/endpoints/catalog'
@@ -21,7 +19,7 @@ import { categoriesKey, isAdminProductsKey } from '@/services/swrKeys'
  * формы; если оно выбрано, грузится вторым запросом сразу после создания
  * товара (id появляется только в ответе на первый).
  */
-const AdminProductCreatePage: React.FC<IAdminPageProps> = () => {
+const AdminProductCreatePage: React.FC = () => {
   const { notify } = useToast()
   const [formVersion, setFormVersion] = useState(0)
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -109,12 +107,6 @@ const AdminProductCreatePage: React.FC<IAdminPageProps> = () => {
       )}
     </AdminShell>
   )
-}
-
-export const getServerSideProps: GetServerSideProps<IAdminPageProps> = async context => {
-  const gate = await requireAdmin<IAdminPageProps>(context)
-
-  return gate.redirect ?? { props: { user: gate.user } }
 }
 
 export default AdminProductCreatePage

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { ProductDetails } from '.'
+import { ProductDetails, ProductDetailsSkeleton } from '.'
 import { feedProductDetails } from '../../stories/feed'
 import { renderWidget } from '../../testing/render'
 
@@ -13,5 +13,11 @@ describe('ProductDetails', () => {
     const { container } = renderWidget(<ProductDetails {...feedProductDetails()} />)
 
     expect(container.firstElementChild).not.toBeNull()
+  })
+
+  it('каркас помечен как загружающийся', () => {
+    const { container } = renderWidget(<ProductDetailsSkeleton />)
+
+    expect(container.firstElementChild?.getAttribute('aria-busy')).toBe('true')
   })
 })

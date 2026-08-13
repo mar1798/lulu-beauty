@@ -21,7 +21,7 @@ const NAVIGATION: ILinkedLabel[] = [
   { label: 'Мои заявки', link: { href: '/orders' } },
 ]
 
-/** Виден только владельцу: у покупателя `/admin/*` всё равно закрыт SSR-гейтом. */
+/** Виден только владельцу: покупателя `/admin/*` всё равно развернёт гейт (`useAdminGate`). */
 const ADMIN_LINK: ILinkedLabel = { label: 'Админка', link: { href: '/admin' } }
 
 const SHOP_COLUMN: IFooterColumn = {
@@ -56,8 +56,22 @@ const START_YEAR = 2026
  * Оба списка — константы уровня модуля: хук сравнивает массив по ссылке.
  * Гостю незачем греть корзину и заявки — он упрётся в редирект на вход.
  */
-const GUEST_PREFETCH = ['/catalog', '/login'] as const
-const USER_PREFETCH = ['/catalog', '/orders', '/cart', '/wishlist'] as const
+const GUEST_PREFETCH = ['/', '/catalog', '/login'] as const
+const USER_PREFETCH = ['/', '/catalog', '/orders', '/cart', '/wishlist'] as const
+
+/**
+ * Владельцу заранее греются и разделы админки: после снятия SSR-гейта они
+ * статические, а значит префетчатся так же, как витрина, — и открываются
+ * без ожидания.
+ */
+const ADMIN_PREFETCH = [
+  ...USER_PREFETCH,
+  '/admin',
+  '/admin/products',
+  '/admin/orders',
+  '/admin/categories',
+  '/admin/cycles',
+] as const
 
 /**
  * Раздел верхнего уровня для подсветки активного пункта: у страницы товара
@@ -75,7 +89,7 @@ export const SiteLayout: React.FC<{ children: React.ReactNode }> = ({ children }
   const { itemCount } = useCart()
   const menu = useDisclosure()
 
-  usePrefetchRoutes(user === null ? GUEST_PREFETCH : USER_PREFETCH)
+  usePrefetchRoutes(user === null ? GUEST_PREFETCH : isAdmin ? ADMIN_PREFETCH : USER_PREFETCH)
 
   const navigation = useMemo<ILinkedLabel[]>(
     () => (isAdmin ? [...NAVIGATION, ADMIN_LINK] : NAVIGATION),
