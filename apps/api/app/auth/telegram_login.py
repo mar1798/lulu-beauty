@@ -26,6 +26,15 @@ class AuthSessionPendingError(Exception):
     """Nobody has confirmed it in the bot yet. The tab keeps waiting."""
 
 
+class TelegramAccountNotLinkedError(Exception):
+    """Telegram vouched for a person this shop has no account for.
+
+    Only reachable from the signature-based paths (Login Widget, Mini App): those prove
+    a Telegram identity but carry no phone number, and an account cannot be created
+    without one. The way in is the bot, which is the only place a contact is shared.
+    """
+
+
 @dataclass(frozen=True)
 class StartedAuthSession:
     """What the caller needs to hand out — the plaintext secrets exist only here.
@@ -135,6 +144,22 @@ class TelegramLoginService:
 
         auth_session.consumed_at = datetime.now(UTC)
         await self._session.flush()
+        return user
+
+    async def find_by_telegram_id(self, telegram_id: int) -> User:
+        """The account behind a signature-proved Telegram identity.
+
+        Matched against `telegram_chat_id` because that is where a Telegram id is stored
+        here: bindings are made in a private chat, where the chat id and the user id are
+        the same number (see `auth/telegram_identity`). Queried inline rather than
+        through `telegram/recipients.py` so signing in doesn't depend on the bot module.
+        """
+        result = await self._session.execute(
+            select(User).where(User.telegram_chat_id == telegram_id)
+        )
+        user = result.scalar_one_or_none()
+        if user is None:
+            raise TelegramAccountNotLinkedError
         return user
 
     async def cleanup_expired(self) -> int:

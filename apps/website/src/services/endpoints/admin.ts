@@ -68,7 +68,8 @@ export interface IProductInput {
   name: string
   slug: string
   description?: string | null
-  brand?: string | null
+  /** Обязателен: бэкенд не примет ни создание, ни изменение товара без бренда. */
+  brand: string
   priceCents: number
   categoryId?: string | null
   inStock?: boolean

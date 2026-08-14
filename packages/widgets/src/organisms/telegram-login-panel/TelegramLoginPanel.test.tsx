@@ -36,6 +36,26 @@ describe('TelegramLoginPanel', () => {
     expect(container.querySelector('[role="status"]')).toBeNull()
   })
 
+  it('показывает быструю дорожку под основной кнопкой, а не вместо неё', () => {
+    renderWidget(
+      <TelegramLoginPanel
+        {...feedTelegramLoginPanel()}
+        loginWidget={<div data-testid="widget" />}
+      />
+    )
+
+    expect(screen.getByTestId('widget')).toBeInTheDocument()
+    // Виджет входит в один клик, но только тех, кто уже делился номером с ботом —
+    // основная кнопка обязана остаться на месте для всех остальных.
+    expect(screen.getByRole('link', { name: /Войти через Telegram/ })).toBeInTheDocument()
+  })
+
+  it('не оставляет пустой блок, когда виджета нет', () => {
+    renderWidget(<TelegramLoginPanel {...feedTelegramLoginPanel()} loginWidget={null} />)
+
+    expect(screen.queryByText(/в один клик/)).not.toBeInTheDocument()
+  })
+
   it('на истёкшей ссылке предлагает новую вместо мёртвой кнопки', async () => {
     const onRetry = vi.fn()
     renderWidget(

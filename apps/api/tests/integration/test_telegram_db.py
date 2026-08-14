@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from aiogram.filters import CommandObject
-from aiogram.types import Message
+from aiogram.types import Message, ReplyKeyboardRemove
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -15,13 +15,16 @@ from app.orders.models import Order, OrderStatus
 from app.telegram import recipients
 from app.telegram.handlers import (
     handle_contact,
+    handle_menu_action,
     handle_order_action,
     handle_orders,
     handle_start,
     handle_unlink,
+    handle_wishlist,
 )
-from app.telegram.keyboards import OrderAction
-from tests.integration.factories import make_cycle, make_user
+from app.telegram.keyboards import MenuAction, OrderAction
+from app.wishlist.models import WishlistItem
+from tests.integration.factories import make_cycle, make_product, make_user
 
 
 @pytest.fixture
@@ -190,25 +193,96 @@ async def test_start_without_a_payload_leaves_the_login_untouched(
         await service.claim(str(started.session.id), started.poll_secret)
 
 
-async def test_unlink_releases_the_chat(bot_session: AsyncSession) -> None:
+def _menu_query(chat_id: int) -> MagicMock:
+    query = MagicMock()
+    query.from_user.id = chat_id
+    query.answer = AsyncMock()
+    query.message = MagicMock(spec=Message)
+    query.message.answer = AsyncMock()
+    query.message.edit_text = AsyncMock()
+    return query
+
+
+async def test_unlink_asks_before_it_releases_the_chat(bot_session: AsyncSession) -> None:
+    """Two presses, not one: the button sits on the help screen where a stray tap is
+    cheap, and a released chat_id costs the person a whole re-link."""
     user = await make_user(bot_session, phone="+996700111222")
     user.telegram_chat_id = 555
     await bot_session.commit()
 
-    await handle_unlink(_command_message(555))
+    asked = _menu_query(555)
+    await handle_menu_action(asked, MenuAction(action="unlink"))
+
+    await bot_session.refresh(user)
+    assert user.telegram_chat_id == 555
+
+    confirmed = _menu_query(555)
+    await handle_menu_action(confirmed, MenuAction(action="unlink_confirm"))
 
     await bot_session.refresh(user)
     assert user.telegram_chat_id is None
+    # Клавиатура живёт у чата, а не у сообщения: правкой старого её не снять.
+    assert isinstance(
+        confirmed.message.answer.await_args.kwargs["reply_markup"], ReplyKeyboardRemove
+    )
 
 
-async def test_commands_from_an_unlinked_chat_say_so_instead_of_failing(
+async def test_declining_the_unlink_keeps_the_binding(bot_session: AsyncSession) -> None:
+    user = await make_user(bot_session, phone="+996700111222")
+    user.telegram_chat_id = 555
+    await bot_session.commit()
+
+    query = _menu_query(555)
+    await handle_menu_action(query, MenuAction(action="unlink_cancel"))
+
+    await bot_session.refresh(user)
+    assert user.telegram_chat_id == 555
+    # Ответ на вопрос убирает и сам вопрос — иначе к нему вернутся второй раз.
+    query.message.edit_text.assert_awaited_once()
+
+
+async def test_the_typed_unlink_alias_asks_the_same_question(bot_session: AsyncSession) -> None:
+    """/unlink stayed as an alias, and an alias that skipped the confirmation would make
+    the safety of the operation depend on which way in you happened to know."""
+    user = await make_user(bot_session, phone="+996700111222")
+    user.telegram_chat_id = 555
+    await bot_session.commit()
+
+    message = _command_message(555)
+    await handle_unlink(message)
+
+    await bot_session.refresh(user)
+    assert user.telegram_chat_id == 555
+    assert message.answer.await_args.kwargs["reply_markup"] is not None
+
+
+async def test_buttons_from_an_unlinked_chat_offer_the_way_to_link(
     bot_session: AsyncSession,
 ) -> None:
+    """The five menu buttons are all useless without an account, so the answer is not a
+    sentence about /start but the one button that does something."""
     message = _command_message(999)
 
     await handle_orders(message)
 
     assert "не привязан" in message.answer.await_args.args[0]
+    markup = message.answer.await_args.kwargs["reply_markup"]
+    assert markup.keyboard[0][0].request_contact is True
+
+
+async def test_wishlist_button_lists_saved_products(bot_session: AsyncSession) -> None:
+    """The sweep has been moving abandoned carts into the wishlist for a while; until
+    the menu there was no way to look at one from the chat."""
+    user = await make_user(bot_session, phone="+996700111222")
+    user.telegram_chat_id = 555
+    product = await make_product(bot_session, name="Крем для рук")
+    bot_session.add(WishlistItem(user_id=user.id, product_id=product.id))
+    await bot_session.commit()
+
+    message = _command_message(555)
+    await handle_wishlist(message)
+
+    assert "Крем для рук" in message.answer.await_args.args[0]
 
 
 async def test_find_user_by_chat_id_is_the_bots_only_way_in(db_session: AsyncSession) -> None:

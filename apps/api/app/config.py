@@ -28,6 +28,14 @@ class Settings(BaseSettings):
     telegram_bot_token: str
     telegram_bot_username: str
 
+    # Webhook instead of polling. Off by default, and deliberately: a webhook needs a
+    # public HTTPS address, which local development doesn't have. All three are required
+    # together — with a url but no secret the endpoint would accept updates from anyone
+    # who guessed its path, so `bot.start()` refuses the mode and stays on polling.
+    telegram_use_webhook: bool = False
+    telegram_webhook_url: str = ""
+    telegram_webhook_secret: str = ""
+
     owner_phone: str
     owner_name: str
 

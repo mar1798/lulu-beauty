@@ -6,12 +6,14 @@ import pytest
 from app.catalog.import_service import (
     ImportFileError,
     ImportRowError,
+    category_name_from_slug,
     normalize_header,
     parse_csv_rows,
     parse_in_stock,
     parse_price_cents,
     parse_rows,
     parse_xlsx_rows,
+    slugify,
     validate_headers,
 )
 
@@ -140,10 +142,35 @@ def test_validate_headers_reports_missing_columns() -> None:
     assert "price" in error
 
 
-def test_validate_headers_passes_when_required_columns_present() -> None:
+def test_validate_headers_accepts_a_file_without_brand_and_category_columns() -> None:
+    """Both are optional per row, so a file that never mentions them is a valid file."""
     rows = [(2, {"name": "A", "slug": "a", "price": "1"})]
+    assert validate_headers(rows) is None
+
+
+def test_validate_headers_passes_when_required_columns_present() -> None:
+    rows = [(2, {"name": "A", "slug": "a", "price": "1", "brand": "Round Lab"})]
     assert validate_headers(rows) is None
 
 
 def test_validate_headers_none_for_empty_rows() -> None:
     assert validate_headers([]) is None
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("Уход за глазами", "uhod-za-glazami"),
+        ("Beauty of Joseon", "beauty-of-joseon"),
+        ("  Тонеры / лосьоны  ", "tonery-losony"),
+        ("eye-cream", "eye-cream"),
+        ("!!!", ""),
+    ],
+)
+def test_slugify_matches_the_slug_pattern_the_backend_requires(raw: str, expected: str) -> None:
+    assert slugify(raw) == expected
+
+
+def test_category_name_from_slug_is_readable_in_the_admin_list() -> None:
+    assert category_name_from_slug("eye-cream") == "Eye Cream"
+    assert category_name_from_slug("toner") == "Toner"

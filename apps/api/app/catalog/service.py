@@ -110,9 +110,11 @@ class ProductService:
         if category_slug is not None:
             query = query.join(Category).where(Category.slug == category_slug)
         if brand is not None:
-            # Exact match: the picker is fed by list_brands(), so the value always
-            # comes from the same set of stored strings.
-            query = query.where(Product.brand == brand)
+            # Case-insensitive, like everything else brand-related: writes go
+            # through canonical_brand(), but rows imported before that (or by a
+            # sloppy xlsx) can still hold "round lab" next to "Round Lab", and a
+            # filter that split them would show half the brand's products.
+            query = query.where(func.lower(Product.brand) == brand.lower())
         if in_stock is not None:
             query = query.where(Product.in_stock.is_(in_stock))
         if search:
@@ -163,21 +165,61 @@ class ProductService:
         return await self._paginate(query, page, page_size)
 
     async def list_brands(self, include_deleted: bool = False) -> list[str]:
-        """Distinct brands actually present in the catalog, for the filter dropdown.
+        """Distinct brands actually present in the catalog.
+
+        Feeds both the filter dropdown and the autocomplete on the product form.
 
         Brands are a free-text column rather than their own table (they arrive
         with the xlsx import), so the option list has to be derived from the
         products themselves. Blank strings are dropped alongside NULLs — the
         import writes None for an empty cell, but hand-edited rows may not.
+
+        Case only ever differs by accident, so variants collapse into one entry
+        (the first spelling in alphabetical order wins). Without that the filter
+        and the autocomplete would offer "Round Lab" and "round lab" as two
+        separate brands, which is exactly the confusion this list is meant to
+        prevent.
         """
-        query = select(Product.brand).where(
-            Product.brand.is_not(None), Product.brand != ""
-        )
+        query = select(Product.brand).where(Product.brand.is_not(None), Product.brand != "")
         if not include_deleted:
             query = query.where(Product.deleted_at.is_(None))
 
         result = await self._session.execute(query.distinct().order_by(Product.brand))
-        return [brand for brand in result.scalars().all() if brand is not None]
+
+        brands: list[str] = []
+        seen: set[str] = set()
+        for brand in result.scalars().all():
+            if brand is None or brand.lower() in seen:
+                continue
+            seen.add(brand.lower())
+            brands.append(brand)
+        return brands
+
+    async def canonical_brand(self, brand: str) -> str:
+        """The spelling the catalog already uses for this brand, if it knows one.
+
+        "round lab" typed into the product form must not become a second brand
+        next to "Round Lab": brands have no table of their own, so the stored
+        string *is* the identity, and two casings of it split the catalog filter
+        in two. Soft-deleted products count as known spellings — a brand whose
+        products were all deleted still shouldn't come back re-cased.
+
+        An unknown brand is kept exactly as typed: this normalizes case, it does
+        not police it. Emptiness is not this method's problem — the request
+        schema rejects a blank brand before it gets here.
+        """
+        brand = brand.strip()
+
+        result = await self._session.execute(
+            select(Product.brand)
+            .where(func.lower(Product.brand) == brand.lower())
+            # Ordered only so that legacy rows holding several casings of the same
+            # brand resolve to the same one every time, instead of to whichever
+            # row the planner happened to reach first.
+            .order_by(Product.brand)
+            .limit(1)
+        )
+        return result.scalar_one_or_none() or brand
 
     async def get_by_slug(self, slug: str) -> Product | None:
         result = await self._session.execute(
@@ -203,7 +245,7 @@ class ProductService:
         name: str,
         slug: str,
         description: str | None,
-        brand: str | None,
+        brand: str,
         price_cents: int,
         category_id: uuid.UUID | None,
         in_stock: bool,
@@ -214,7 +256,7 @@ class ProductService:
             name=name,
             slug=slug,
             description=description,
-            brand=brand,
+            brand=await self.canonical_brand(brand),
             price_cents=price_cents,
             category_id=category_id,
             in_stock=in_stock,
@@ -230,6 +272,9 @@ class ProductService:
         new_slug = updates.get("slug")
         if new_slug is not None and new_slug != product.slug and await self._slug_taken(new_slug):
             raise SlugAlreadyExistsError
+
+        if "brand" in updates:
+            updates["brand"] = await self.canonical_brand(updates["brand"])
 
         for field, value in updates.items():
             setattr(product, field, value)

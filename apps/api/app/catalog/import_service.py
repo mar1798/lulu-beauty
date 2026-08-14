@@ -19,6 +19,17 @@ _SLUG_CHUNK = 5000
 TRUTHY_VALUES = {"true", "1", "yes", "y", "да"}
 FALSY_VALUES = {"false", "0", "no", "n", "нет"}
 
+# Practical transliteration, not GOST: a slug has to be readable, not reversible.
+# Mirrors packages/widgets/src/utils/slug.ts, which builds slugs for the same columns
+# from the admin forms.
+_TRANSLITERATION = {
+    "а": "a", "б": "b", "в": "v", "г": "g", "д": "d", "е": "e", "ё": "e", "ж": "zh",
+    "з": "z", "и": "i", "й": "y", "к": "k", "л": "l", "м": "m", "н": "n", "о": "o",
+    "п": "p", "р": "r", "с": "s", "т": "t", "у": "u", "ф": "f", "х": "h", "ц": "ts",
+    "ч": "ch", "ш": "sh", "щ": "sch", "ъ": "", "ы": "y", "ь": "", "э": "e", "ю": "yu",
+    "я": "ya",
+}  # fmt: skip
+
 
 class ImportFileError(Exception):
     pass
@@ -30,6 +41,21 @@ class ImportRowError(Exception):
 
 def normalize_header(raw: str | None) -> str:
     return (raw or "").strip().lower().replace(" ", "_").replace("-", "_")
+
+
+def slugify(value: str) -> str:
+    """A `SLUG_PATTERN`-shaped slug from arbitrary text (may be empty if nothing survives)."""
+    transliterated = "".join(_TRANSLITERATION.get(char, char) for char in value.lower())
+    return re.sub(r"[^a-z0-9]+", "-", transliterated).strip("-")[:255].strip("-")
+
+
+def category_name_from_slug(slug: str) -> str:
+    """`"eye-cream"` → `"Eye Cream"` — a placeholder name for a category the file invented.
+
+    The file only carries a slug, and a category has to be named something the owner can
+    recognise in the admin list; it is renamed there in one field if this reads badly.
+    """
+    return " ".join(word.capitalize() for word in slug.split("-"))
 
 
 def parse_price_cents(raw: str | None) -> int:
@@ -131,6 +157,47 @@ def validate_headers(rows: list[tuple[int, dict[str, str]]]) -> str | None:
     return None
 
 
+class CategoryIndex:
+    """The catalogue's categories, plus the ones the file invents as it is read.
+
+    A file is written by a supplier or by hand, not against the category list, so a
+    `category` cell naming something the shop does not have yet used to fail the whole
+    row. It now creates the category instead: the column stays optional, and an empty
+    cell still means "no category".
+    """
+
+    def __init__(self, session: AsyncSession, categories: list[Category]) -> None:
+        self._session = session
+        self._by_slug = {category.slug: category for category in categories}
+        self._by_name = {category.name.strip().lower(): category for category in categories}
+        # New categories land after everything the owner has already ordered by hand.
+        highest = max((category.sort_order for category in categories), default=-1)
+        self._next_sort_order = highest + 1
+
+    def resolve(self, raw: str) -> Category | None:
+        """The category for a `category` cell, creating it when the catalogue has none."""
+        text = raw.strip()
+        if not text:
+            return None
+
+        # The cell is a slug when it looks like one, and a name otherwise — files come
+        # both ways, and a Russian name is never a valid slug.
+        slug = text if re.fullmatch(SLUG_PATTERN, text) else slugify(text)
+        existing = self._by_slug.get(slug) or self._by_name.get(text.lower())
+        if existing is not None:
+            return existing
+        if not slug:
+            raise ImportRowError(f"invalid category: {text!r}")
+
+        name = text if slug != text else category_name_from_slug(slug)
+        category = Category(name=name[:255], slug=slug, sort_order=self._next_sort_order)
+        self._next_sort_order += 1
+        self._session.add(category)
+        self._by_slug[slug] = category
+        self._by_name[name.lower()] = category
+        return category
+
+
 class CatalogImportService:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
@@ -151,7 +218,8 @@ class CatalogImportService:
                 created=0, updated=0, errors=[ImportRowErrorResponse(row=0, message=header_error)]
             )
 
-        categories_by_slug = await self._load_categories()
+        categories = CategoryIndex(self._session, await self._load_categories())
+        brands_by_key = await self._load_brands()
 
         created = 0
         updated = 0
@@ -160,7 +228,7 @@ class CatalogImportService:
         validated: list[dict[str, object]] = []
         for row_number, row in rows:
             try:
-                validated.append(self._validate_row(row, categories_by_slug))
+                validated.append(self._validate_row(row, categories, brands_by_key))
             except ImportRowError as error:
                 errors.append(ImportRowErrorResponse(row=row_number, message=str(error)))
 
@@ -181,7 +249,10 @@ class CatalogImportService:
         return ImportSummaryResponse(created=created, updated=updated, errors=errors)
 
     def _validate_row(
-        self, row: dict[str, str], categories_by_slug: dict[str, Category]
+        self,
+        row: dict[str, str],
+        categories: CategoryIndex,
+        brands_by_key: dict[str, str],
     ) -> dict[str, object]:
         name = row.get("name", "").strip()
         if not name:
@@ -196,15 +267,22 @@ class CatalogImportService:
         price_cents = parse_price_cents(row.get("price"))
         in_stock = parse_in_stock(row.get("in_stock"))
         description = row.get("description", "").strip() or None
-        brand = row.get("brand", "").strip() or None
+        # Optional, unlike in the product form: a file is what the shop is stocked from,
+        # and one nameless brand is not a reason to reject the row it sits on. Such a
+        # product is invisible to the catalog's brand filter until the brand is filled in.
+        brand: str | None = row.get("brand", "").strip() or None
+        if brand is not None:
+            # One spelling per brand, whatever case the file happens to use: the brand
+            # column has no table behind it, so "round lab" would otherwise become a
+            # second brand alongside "Round Lab" and split the catalog filter in two.
+            # New brands register themselves, so case variants inside a single upload
+            # collapse onto the first row that named it.
+            brand = brands_by_key.setdefault(brand.lower(), brand)
 
-        category_id = None
-        category_slug = row.get("category", "").strip()
-        if category_slug:
-            category = categories_by_slug.get(category_slug)
-            if category is None:
-                raise ImportRowError(f"unknown category slug: {category_slug!r}")
-            category_id = category.id
+        # Last, so a row rejected further up never leaves a category behind with no
+        # products in it. The relationship rather than `category_id`: a category this
+        # file has just invented has no id until flush.
+        category = categories.resolve(row.get("category", ""))
 
         return {
             "name": name,
@@ -213,7 +291,7 @@ class CatalogImportService:
             "brand": brand,
             "price_cents": price_cents,
             "in_stock": in_stock,
-            "category_id": category_id,
+            "category": category,
         }
 
     def _upsert(self, existing: dict[str, Product], fields: dict[str, object]) -> bool:
@@ -252,6 +330,18 @@ class CatalogImportService:
             products.update({product.slug: product for product in result.scalars().all()})
         return products
 
-    async def _load_categories(self) -> dict[str, Category]:
+    async def _load_categories(self) -> list[Category]:
         result = await self._session.execute(select(Category))
-        return {category.slug: category for category in result.scalars().all()}
+        return list(result.scalars().all())
+
+    async def _load_brands(self) -> dict[str, str]:
+        """Brands the catalogue already knows, keyed by lowercase spelling.
+
+        Soft-deleted products count: a brand left only on discontinued rows is
+        still the spelling the catalogue uses, and re-importing it under another
+        case would revive it as a second brand.
+        """
+        result = await self._session.execute(
+            select(Product.brand).where(Product.brand.is_not(None), Product.brand != "").distinct()
+        )
+        return {brand.lower(): brand for brand in result.scalars().all() if brand is not None}

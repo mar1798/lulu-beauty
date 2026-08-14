@@ -7,6 +7,8 @@ import {
   getMe,
   logout as logoutRequest,
   pollTelegramLogin as pollTelegramLoginRequest,
+  signInWithMiniApp as signInWithMiniAppRequest,
+  signInWithTelegramWidget as signInWithTelegramWidgetRequest,
   startTelegramLogin as startTelegramLoginRequest,
   updateProfile as updateProfileRequest,
   type ITelegramLoginSession,
@@ -31,6 +33,14 @@ export interface IAuthContextValue {
   startTelegramLogin: () => Promise<ITelegramLoginSession>
   /** Один опрос: `null` — ещё ждём, профиль — вошли. */
   pollTelegramLogin: () => Promise<IAuthUser | null>
+  /**
+   * Вход по подписи Telegram — из Mini App и из виджета на странице входа.
+   *
+   * Ожидания здесь нет вовсе: подпись либо сходится, либо нет, а «нет» приезжает
+   * исключением с кодом (`telegram_account_not_linked` — единственный поправимый).
+   */
+  signInWithMiniApp: (initData: string) => Promise<IAuthUser | null>
+  signInWithTelegramWidget: (payload: Record<string, unknown>) => Promise<IAuthUser | null>
   updateProfile: (name: string) => Promise<IAuthUser>
   logout: () => Promise<void>
   /** Перечитывает сессию и отдаёт её результат — ждать лишнего рендера не нужно. */
@@ -86,6 +96,37 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return result.user
   }, [mutate, reload])
 
+  /**
+   * Общий хвост обоих входов по подписи: профиль приходит вместе с ответом и сразу
+   * ложится в кеш — иначе экран успевает мигнуть гостевым состоянием, а в Mini App это
+   * мигание выглядит как «магазин выкинул меня на вход».
+   */
+  const acceptSignIn = useCallback(
+    async (signedIn: IAuthUser | null): Promise<IAuthUser | null> => {
+      if (signedIn === null) {
+        // Cookie уже стоят — профиль достаточно перезапросить.
+        return await reload()
+      }
+
+      await mutate(signedIn, { revalidate: false })
+
+      return signedIn
+    },
+    [mutate, reload]
+  )
+
+  const signInWithMiniApp = useCallback(
+    async (initData: string): Promise<IAuthUser | null> =>
+      await acceptSignIn((await signInWithMiniAppRequest(initData)).user),
+    [acceptSignIn]
+  )
+
+  const signInWithTelegramWidget = useCallback(
+    async (payload: Record<string, unknown>): Promise<IAuthUser | null> =>
+      await acceptSignIn((await signInWithTelegramWidgetRequest(payload)).user),
+    [acceptSignIn]
+  )
+
   const updateProfile = useCallback(
     async (name: string): Promise<IAuthUser> => {
       const updated = await updateProfileRequest(name)
@@ -112,11 +153,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       isAdmin: user?.role === 'ADMIN',
       startTelegramLogin,
       pollTelegramLogin,
+      signInWithMiniApp,
+      signInWithTelegramWidget,
       updateProfile,
       logout,
       reload,
     }),
-    [user, isLoading, startTelegramLogin, pollTelegramLogin, updateProfile, logout, reload]
+    [
+      user,
+      isLoading,
+      startTelegramLogin,
+      pollTelegramLogin,
+      signInWithMiniApp,
+      signInWithTelegramWidget,
+      updateProfile,
+      logout,
+      reload,
+    ]
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

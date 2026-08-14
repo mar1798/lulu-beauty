@@ -19,6 +19,14 @@ export const publicConfig = makeConfig({
    * сообщения с `/start` точно, и deep-link с payload уедет в fallback.
    */
   telegramBotUsername: process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME ?? '',
+  /**
+   * Показывать ли на странице входа Telegram Login Widget.
+   *
+   * За флагом, а не всегда: виджет авторизует только на домене, прописанном боту через
+   * `/setdomain` в BotFather. На любом другом (localhost в том числе) кнопка нарисуется
+   * и откажет — а сломанная кнопка рядом с рабочей хуже, чем её отсутствие.
+   */
+  telegramLoginWidget: process.env.NEXT_PUBLIC_TELEGRAM_LOGIN_WIDGET === 'true',
 } as const)
 
 /**

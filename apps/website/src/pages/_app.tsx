@@ -12,6 +12,7 @@ import { CartProvider } from '@/contexts/CartContext'
 import { WishlistProvider } from '@/contexts/WishlistContext'
 import { Link } from '@/components/Link'
 import { Image } from '@/components/Image'
+import { TelegramMiniAppSession } from '@/components/TelegramMiniAppSession'
 import { shell } from '@/styles/shell.css'
 
 const inter = Inter({
@@ -88,6 +89,11 @@ const App: React.FC<AppProps> = ({ Component, pageProps }) => {
         <ToastProvider>
           <ConfirmProvider>
             <AuthProvider>
+              {/*
+                Сайт, открытый как Mini App, входит сам — на любой странице, а не только
+                на `/login`: внутри Telegram человек попадает сразу в каталог.
+              */}
+              <TelegramMiniAppSession />
               <CartProvider>
                 <WishlistProvider>
                   <div className={clsx(shell, inter.variable, eloqua.variable, inter.className)}>

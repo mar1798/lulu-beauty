@@ -31,6 +31,26 @@ export const startTelegramLogin = (): Promise<ITelegramLoginSession> =>
 export const pollTelegramLogin = (): Promise<ITelegramLoginPoll> =>
   nextApi.post('/auth/telegram/poll')
 
+/**
+ * Вход, подтверждённый подписью Telegram, а не ожиданием в боте: виджет на странице
+ * входа и Mini App внутри Telegram. Обе ручки отвечают одинаково — профилем, — потому
+ * что ждать в них нечего: подпись либо сходится, либо нет.
+ *
+ * `null` в профиле значит «вошли, но профиль не дочитался» — cookie уже стоят, и его
+ * достаточно перезапросить.
+ */
+export interface ITelegramSignIn {
+  user: IAuthUser | null
+}
+
+/** `payload` уходит как есть: подписью Telegram накрыты все поля, включая лишние. */
+export const signInWithTelegramWidget = (
+  payload: Record<string, unknown>
+): Promise<ITelegramSignIn> => nextApi.post('/auth/telegram/widget', { body: payload })
+
+export const signInWithMiniApp = (initData: string): Promise<ITelegramSignIn> =>
+  nextApi.post('/auth/telegram/mini-app', { body: { initData } })
+
 export const logout = (): Promise<void> => nextApi.post('/auth/logout')
 
 /** Профиль текущего пользователя; `ApiError` со статусом 401 — значит, не залогинен. */

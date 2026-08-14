@@ -5,6 +5,7 @@ import { Spinner } from 'widgets/atoms'
 import { TelegramLoginPanel } from 'widgets/organisms'
 import { AuthTemplate } from 'widgets/templates'
 import { SiteLayout } from '@/layouts/SiteLayout'
+import { TelegramLoginWidget, isTelegramLoginWidgetEnabled } from '@/components/TelegramLoginWidget'
 import { useRedirectIfAuthenticated } from '@/hooks/useRedirectIfAuthenticated'
 import { useQrCode } from '@/hooks/useQrCode'
 import { useTelegramLogin } from '@/hooks/useTelegramLogin'
@@ -52,6 +53,13 @@ const LoginPage: React.FC = () => {
             status={status}
             error={error}
             onRetry={retry}
+            /*
+              Виджета нет вовсе, пока домен не прописан боту в BotFather: там он
+              нарисуется и откажет, а сломанная кнопка рядом с рабочей хуже, чем её
+              отсутствие. Слот, а не импорт внутри виджетов, — как и QR: рисует
+              кнопку чужой скрипт с telegram.org.
+            */
+            loginWidget={isTelegramLoginWidgetEnabled() ? <TelegramLoginWidget /> : null}
             qr={
               qrDataUrl === null ? null : (
                 /*

@@ -1,78 +1,132 @@
 import io
 import uuid
 from dataclasses import dataclass
-from datetime import datetime
 from urllib.parse import quote
 
 import anyio.to_thread
 from openpyxl import Workbook
-from sqlalchemy import select
+from openpyxl.cell import Cell, WriteOnlyCell
+from openpyxl.styles import Alignment, Font
+from openpyxl.utils import get_column_letter
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth.models import User
+from app.catalog.models import Product
 from app.config import settings
 from app.cycles.models import OrderCycle
-from app.orders.models import Order, OrderItem
+from app.orders.models import Order, OrderItem, OrderStatus
 
 HEADER = [
-    "Order ID",
-    "Created At",
-    "Customer Name",
-    "Customer Phone",
-    "Status",
-    "Note",
-    "Product",
-    "Quantity",
-    f"Unit Price ({settings.currency})",
-    f"Line Total ({settings.currency})",
-    f"Order Total ({settings.currency})",
+    "Наименование товара",
+    "Бренд",
+    "Количество",
+    f"Цена за штуку, {settings.currency}",
+    f"Сумма, {settings.currency}",
 ]
+
+TOTAL_LABEL = "Итого"
+
+MONEY_FORMAT = "#,##0.00"
+QUANTITY_FORMAT = "#,##0"
+
+# Excel's column width unit is about one character of the default font, so the widths below
+# are derived from the longest rendered value in each column. Text columns stop growing at
+# MAX_TEXT_WIDTH and wrap instead — an unbounded width would push the money columns off the
+# screen on a single 255-character product name.
+WIDTH_PADDING = 3
+MAX_TEXT_WIDTH = 60
+TEXT_COLUMNS = (0, 1)
+
+CellValue = str | float | None
 
 
 @dataclass(frozen=True)
 class OrderExportRow:
-    order_id: uuid.UUID
-    created_at: datetime
-    customer_name: str
-    customer_phone: str
-    status: str
-    note: str
+    """One product line of the purchase list: the same product across every order, summed."""
+
     product_name: str
+    brand: str
     quantity: int
     unit_price_cents: int
-    order_total_cents: int
+
+    @property
+    def total_cents(self) -> int:
+        return self.unit_price_cents * self.quantity
+
+
+def _money(cents: int) -> float:
+    return cents / 100
+
+
+def _rendered_width(value: CellValue, number_format: str | None) -> int:
+    """Length of the text Excel will actually paint in the cell."""
+    if isinstance(value, float) and number_format == MONEY_FORMAT:
+        return len(f"{value:,.2f}")
+    if isinstance(value, int) and number_format == QUANTITY_FORMAT:
+        return len(f"{value:,}")
+    return len(str(value))
 
 
 def build_orders_workbook(rows: list[OrderExportRow]) -> bytes:
-    """Serializes the rows to xlsx bytes. Blocking CPU — call it off the event loop.
+    """Serializes the purchase list to xlsx bytes. Blocking CPU — call it off the event loop.
 
     write_only, because the default Workbook keeps every cell as a Python object until
     save() and then walks the lot: on a full-catalogue export (100k lines) that was ~7.6s
     of the request, against ~2.3s of actual SQL. In write-only mode openpyxl streams each
     row to the underlying archive as it is appended, which is both far faster and flat in
     memory. The trade-off is that the sheet cannot be read back or re-ordered afterwards,
-    which no caller here does.
+    which no caller here does — hence the column widths being computed up front, before the
+    first append, rather than measured while writing.
     """
     workbook = Workbook(write_only=True)
-    sheet = workbook.create_sheet(title="Orders")
-    sheet.append(HEADER)
+    sheet = workbook.create_sheet(title="Заказ")
 
-    for row in rows:
-        sheet.append(
-            [
-                str(row.order_id),
-                row.created_at.isoformat(),
-                row.customer_name,
-                row.customer_phone,
-                row.status,
-                row.note,
-                row.product_name,
-                row.quantity,
-                row.unit_price_cents / 100,
-                (row.unit_price_cents * row.quantity) / 100,
-                row.order_total_cents / 100,
-            ]
+    formats: list[str | None] = [None, None, QUANTITY_FORMAT, MONEY_FORMAT, MONEY_FORMAT]
+    total_quantity = sum(row.quantity for row in rows)
+    total_cents = sum(row.total_cents for row in rows)
+
+    body: list[list[CellValue]] = [
+        [
+            row.product_name,
+            row.brand,
+            row.quantity,
+            _money(row.unit_price_cents),
+            _money(row.total_cents),
+        ]
+        for row in rows
+    ]
+    footer: list[CellValue] = [TOTAL_LABEL, "", total_quantity, "", _money(total_cents)]
+
+    widths = [len(title) for title in HEADER]
+    for values in (*body, footer):
+        for index, value in enumerate(values):
+            widths[index] = max(widths[index], _rendered_width(value, formats[index]))
+
+    for index, width in enumerate(widths):
+        limit = MAX_TEXT_WIDTH if index in TEXT_COLUMNS else width
+        letter = get_column_letter(index + 1)
+        sheet.column_dimensions[letter].width = min(width, limit) + WIDTH_PADDING
+
+    def cell(value: CellValue, *, index: int, bold: bool = False) -> Cell:
+        written = WriteOnlyCell(sheet, value=value)
+        written.alignment = Alignment(
+            wrap_text=index in TEXT_COLUMNS,
+            vertical="center",
+            horizontal="left" if index in TEXT_COLUMNS else "right",
         )
+        number_format = formats[index]
+        if number_format is not None:
+            written.number_format = number_format
+        if bold:
+            written.font = Font(bold=True)
+        return written
+
+    sheet.append(
+        [cell(title, index=index, bold=True) for index, title in enumerate(HEADER)],
+    )
+    for values in body:
+        sheet.append([cell(value, index=index) for index, value in enumerate(values)])
+    sheet.append([cell(value, index=index, bold=True) for index, value in enumerate(footer)])
 
     buffer = io.BytesIO()
     workbook.save(buffer)
@@ -116,8 +170,10 @@ class ExportService:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
-    async def export_orders(self, cycle_id: uuid.UUID | None) -> tuple[bytes, str]:
-        rows = await self._export_rows(cycle_id)
+    async def export_orders(
+        self, cycle_id: uuid.UUID | None, status: OrderStatus | None = None
+    ) -> tuple[bytes, str]:
+        rows = await self._export_rows(cycle_id, status)
 
         # In a worker thread: everything above is I/O the event loop can interleave, but
         # the xlsx serialization is pure CPU, and on a full export it ran long enough
@@ -128,65 +184,49 @@ class ExportService:
         filename = await self._filename(cycle_id)
         return content, filename
 
-    async def _export_rows(self, cycle_id: uuid.UUID | None) -> list[OrderExportRow]:
-        """One flat join, read as plain rows rather than through the ORM.
+    async def _export_rows(
+        self, cycle_id: uuid.UUID | None, status: OrderStatus | None = None
+    ) -> list[OrderExportRow]:
+        """The purchase list: every ordered product summed across the orders in scope.
 
-        The sheet is one line per order item with the order and the customer repeated
-        across it — which is what this join returns directly. Going via the ORM meant
-        loading every Order, its OrderItems and its User as mapped objects, complete with
-        identity map and relationship bookkeeping, only to flatten them again here: on a
-        full export that was seconds of hydration for objects nothing ever navigated.
+        Grouped in SQL rather than in Python, so the sheet is one row per product no matter
+        how many customers asked for it. The grouping key includes the snapshotted price:
+        order items keep the price they were bought at, and two orders placed either side of
+        a price change are genuinely two lines on the supplier's list, not one line with an
+        invented average.
 
-        A LEFT JOIN on users, so an order whose customer somehow no longer exists is still
-        exported (with the same "—" the admin listing shows) instead of vanishing from the
-        owner's shopping list.
+        Brand is not snapshotted on the item, so it comes from a LEFT JOIN on products —
+        soft-deleted products keep their row, but an item whose product_id went NULL (a hard
+        delete) still belongs on the list, with the same "—" the admin listing shows.
         """
+        quantity = func.sum(OrderItem.quantity)
         query = (
             select(
-                Order.id,
-                Order.created_at,
-                User.name,
-                User.phone,
-                Order.status,
-                Order.note,
                 OrderItem.product_name,
-                OrderItem.quantity,
+                Product.brand,
                 OrderItem.product_price_cents,
-                Order.total_cents,
+                quantity,
             )
-            .join(OrderItem, OrderItem.order_id == Order.id)
-            .outerjoin(User, User.id == Order.user_id)
-            .order_by(Order.created_at.desc())
+            .select_from(OrderItem)
+            .join(Order, Order.id == OrderItem.order_id)
+            .outerjoin(Product, Product.id == OrderItem.product_id)
+            .group_by(OrderItem.product_name, Product.brand, OrderItem.product_price_cents)
+            .order_by(Product.brand.nulls_last(), OrderItem.product_name)
         )
         if cycle_id is not None:
             query = query.where(Order.cycle_id == cycle_id)
+        if status is not None:
+            query = query.where(Order.status == status)
 
         result = await self._session.execute(query)
         return [
             OrderExportRow(
-                order_id=order_id,
-                created_at=created_at,
-                customer_name=name if name is not None else "—",
-                customer_phone=phone if phone is not None else "—",
-                status=status.value,
-                note=note or "",
                 product_name=product_name,
-                quantity=quantity,
+                brand=brand if brand else "—",
+                quantity=int(total_quantity),
                 unit_price_cents=unit_price_cents,
-                order_total_cents=order_total_cents,
             )
-            for (
-                order_id,
-                created_at,
-                name,
-                phone,
-                status,
-                note,
-                product_name,
-                quantity,
-                unit_price_cents,
-                order_total_cents,
-            ) in result.all()
+            for (product_name, brand, unit_price_cents, total_quantity) in result.all()
         ]
 
     async def _filename(self, cycle_id: uuid.UUID | None) -> str:

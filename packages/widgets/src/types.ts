@@ -395,6 +395,36 @@ export interface ISelectProps {
   required?: boolean
 }
 
+/**
+ * Поле со свободным вводом и подсказками из уже введённых значений.
+ *
+ * В отличие от `ISelectProps` значение не обязано быть одним из `options`:
+ * список только подсказывает, а не ограничивает.
+ */
+export interface IComboboxProps {
+  value: string
+  onChange: (value: string) => void
+  /**
+   * Подсказки. Совпадение ищется без учёта регистра, и им же значение
+   * приводится к уже известному написанию: набранное «round lab» при
+   * подсказке «Round Lab» — это она и есть, а не новое значение.
+   */
+  options: string[]
+  id?: string
+  name?: string
+  label?: string
+  /** Имя поля для скринридера, когда видимой подписи нет. Игнорируется при `label`. */
+  ariaLabel?: string
+  hint?: string
+  error?: string | null
+  placeholder?: string
+  maxLength?: number
+  disabled?: boolean
+  required?: boolean
+  /** Подпись, когда под набранное ничего не нашлось. */
+  emptyLabel?: string
+}
+
 export interface ICheckboxProps {
   checked: boolean
   onChange: (checked: boolean) => void
@@ -772,6 +802,11 @@ export interface ITelegramLoginPanelProps {
   status: TelegramLoginStatus
   /** Готовая картинка QR — кодирует ссылку сайт, не библиотека виджетов. */
   qr?: ReactNode
+  /**
+   * Telegram Login Widget — слотом по той же причине, что и QR: кнопку рисует чужой
+   * скрипт с telegram.org, и библиотеке виджетов такое знание ни к чему.
+   */
+  loginWidget?: ReactNode
   /** Текст сбоя; показывается только при `status: 'error'`. */
   error?: string | null
   onRetry: () => void
@@ -1139,6 +1174,12 @@ export interface IProductImageUpload {
 
 export interface IAdminProductFormProps {
   categories: ICategory[]
+  /**
+   * Бренды, уже заведённые в каталоге, — подсказки для поля «Производитель».
+   * Своей таблицы у брендов нет, они набираются руками, поэтому единственное,
+   * что удерживает их от расползания по опечаткам и регистру, — этот список.
+   */
+  brands?: string[]
   /** Редактирование; `undefined` — создание нового товара. */
   product?: IProduct
   onSubmit: (values: IAdminProductValues) => void

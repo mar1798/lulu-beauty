@@ -55,7 +55,10 @@ export const CheckoutForm: FC<ICheckoutFormProps & IBasicStyling> = ({
         <Divider />
 
         <Skeleton shape="block" width="100%" height={132} />
-        <Skeleton shape="block" width="100%" height={48} />
+
+        <div className={styles.submitSkeleton}>
+          <Skeleton shape="block" width="100%" height={48} />
+        </div>
       </div>
     )
   }
@@ -87,7 +90,7 @@ export const CheckoutForm: FC<ICheckoutFormProps & IBasicStyling> = ({
         disabled={isSubmitting}
       />
 
-      <Button type="submit" isFullWidth={true} isLoading={isSubmitting}>
+      <Button type="submit" className={styles.submit} isLoading={isSubmitting}>
         Отправить заявку
       </Button>
 

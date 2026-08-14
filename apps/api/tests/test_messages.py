@@ -3,10 +3,12 @@ from datetime import UTC, datetime
 
 from app.auth.models import User
 from app.cart.schemas import CartItemResponse, CartResponse
+from app.catalog.schemas import ProductResponse
 from app.common.limits import MAX_WISHLIST_ITEMS
 from app.cycles.models import OrderCycle
 from app.orders.models import Order, OrderItem, OrderStatus
 from app.telegram import messages
+from app.wishlist.schemas import WishlistItemResponse, WishlistResponse
 
 
 def _normalize(text: str) -> str:
@@ -180,6 +182,55 @@ def test_my_cart_lists_items_total_and_deadline() -> None:
     assert "Крем для рук × 2" in text
     assert "1 250 сом" in text
     assert "12.06.2030" in text
+
+
+def _wishlist(names: list[str]) -> WishlistResponse:
+    return WishlistResponse(
+        items=[
+            WishlistItemResponse(
+                product=ProductResponse(
+                    id=uuid.uuid4(),
+                    name=name,
+                    slug=f"slug-{index}",
+                    description=None,
+                    brand=None,
+                    price_cents=125_000,
+                    category_id=None,
+                    in_stock=True,
+                    images=[],
+                    deleted_at=None,
+                ),
+                added_at=datetime(2030, 6, 1, tzinfo=UTC),
+            )
+            for index, name in enumerate(names)
+        ]
+    )
+
+
+def test_my_wishlist_empty_says_how_things_get_there() -> None:
+    """Nobody arrives at an empty wishlist knowing how to fill it — the heart on a
+    product card is the only way in, and it isn't in this chat."""
+    text = messages.my_wishlist(_wishlist([]))
+
+    assert "♥" in text
+
+
+def test_my_wishlist_lists_products_with_prices() -> None:
+    text = _normalize(messages.my_wishlist(_wishlist(["Крем для рук"])))
+
+    assert "Крем для рук" in text
+    assert "1 250 сом" in text
+
+
+def test_my_wishlist_truncates_like_every_other_list_here() -> None:
+    """A wishlist holds up to MAX_WISHLIST_ITEMS; a chat message that printed all of
+    them would be scrolled past rather than read."""
+    names = [f"Товар {index}" for index in range(messages.MAX_LISTED_WISHLIST_ITEMS + 3)]
+
+    text = messages.my_wishlist(_wishlist(names))
+
+    assert "ещё 3" in text
+    assert names[-1] not in text
 
 
 def test_current_deadline_between_cycles_is_not_an_error() -> None:

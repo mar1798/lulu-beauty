@@ -28,6 +28,7 @@ export const TelegramLoginPanel: FC<ITelegramLoginPanelProps & IBasicStyling> = 
   botUrl,
   status,
   qr,
+  loginWidget,
   error = null,
   onRetry,
   className,
@@ -81,6 +82,20 @@ export const TelegramLoginPanel: FC<ITelegramLoginPanelProps & IBasicStyling> = 
               Продолжите вход в Telegram — после подтверждения мы автоматически
               переведём вас на сайт.
             </Text>
+          )}
+
+          {/*
+            Ниже основной кнопки, а не выше: виджет входит в один клик, но только тех,
+            кто уже делился номером с ботом. Новому человеку он ответит отказом, и
+            поставить его первым значило бы предложить незнакомцу тупик.
+          */}
+          {loginWidget !== undefined && loginWidget !== null && (
+            <div className={styles.alternative}>
+              <Text size="sm" tone="secondary">
+                Уже пользовались ботом? Войдите в один клик
+              </Text>
+              {loginWidget}
+            </div>
           )}
 
           {qr !== undefined && qr !== null && (

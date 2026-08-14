@@ -19,6 +19,7 @@ from app.common.limits import MAX_WISHLIST_ITEMS
 from app.config import settings
 from app.cycles.models import OrderCycle
 from app.orders.models import Order, OrderStatus
+from app.wishlist.schemas import WishlistResponse
 
 logger = logging.getLogger("app.telegram.messages")
 
@@ -34,6 +35,7 @@ CURRENCY_LABEL = "сом"
 # the customer has the full list on the site.
 MAX_LISTED_ORDERS = 5
 MAX_LISTED_CART_ITEMS = 10
+MAX_LISTED_WISHLIST_ITEMS = 10
 
 
 def format_price(cents: int) -> str:
@@ -235,35 +237,82 @@ START = (
 
 SHARE_CONTACT_BUTTON = "Поделиться номером телефона"
 
+# ─── Main menu ───────────────────────────────────────────────────────────────────
+#
+# These labels are the whole interface: they are what the person taps and, being plain
+# text messages, also what the handlers match on. Changing one here changes both sides
+# at once — which is the point of them living in a single place.
+#
+# The emoji is part of the label, not decoration around it: a menu of five identical
+# grey pills is read one word at a time, whereas the picture is found by shape.
+
+MENU_CART = "🛒 Корзина"
+MENU_ORDERS = "📦 Мои заявки"
+MENU_WISHLIST = "⭐ Избранное"
+MENU_DEADLINE = "📅 Текущий сбор"
+MENU_HELP = "ℹ️ Помощь"
+
+# Sent with the keyboard itself, when there is nothing else to say — after linking, or
+# when someone asks for the menu back.
+MENU_PROMPT = "Чем помочь? Выберите кнопку ниже."
+
 # ─── Inline buttons and their answers ────────────────────────────────────────────
 
 CONFIRM_BUTTON = "✅ Подтвердить"
 CANCEL_BUTTON = "❌ Отменить"
 CHECKOUT_BUTTON = "Оформить заявку"
 WISHLIST_BUTTON = "Посмотреть избранное"
+CATALOG_BUTTON = "Открыть каталог"
+ORDERS_BUTTON = "Все заявки на сайте"
+SITE_BUTTON = "Открыть сайт"
+
+# Подпись кнопки слева от поля ввода (`set_chat_menu_button`), открывающей Mini App.
+# «Каталог», а не «Открыть сайт»: это не ссылка наружу, а магазин внутри Telegram,
+# и человек не должен ждать, что его сейчас выкинет в браузер.
+MINI_APP_BUTTON = "Каталог"
+
+# Unlinking is the one destructive thing the bot can do, and it now sits behind a
+# button rather than a typed command — so it asks first. The confirming label repeats
+# the verb instead of saying "да": a lone "да" under a scrolled-past question is how
+# people confirm things they didn't mean to.
+UNLINK_BUTTON = "🔌 Отвязать чат"
+UNLINK_CONFIRM_BUTTON = "Отвязать"
+UNLINK_KEEP_BUTTON = "Оставить как есть"
+
+UNLINK_CONFIRM = (
+    "Отвязать этот чат от вашего аккаунта? Заявки и избранное останутся на сайте, но "
+    "уведомления и вход через Telegram сюда больше не придут."
+)
+UNLINK_KEPT = "Ничего не меняю — чат остался привязан."
 
 # Toasts, not messages: Telegram shows these on the button itself and cuts them at 200
 # characters, so each says one thing and stops.
 CALLBACK_NOT_FOR_YOU = "Эта кнопка работает только у владельца магазина."
 CALLBACK_ORDER_GONE = "Заявка не найдена — возможно, она уже удалена."
+CALLBACK_NOT_LINKED = "Этот чат и так не привязан к аккаунту."
+
+# Ответ на слишком частые нажатия (`throttling.py`). Про «секунду» — чтобы человек
+# понял, что ждать нужно мгновение, а не что бот сломался: молчание в ответ на нажатие
+# читается именно как поломка.
+TOO_FAST = "Слишком много запросов подряд. Подождите секунду и попробуйте снова."
 
 
 def callback_applied(status: OrderStatus) -> str:
     return f"Заявка — {ORDER_STATUS_LABEL[status].lower()}"
 
 
-LINKED = "Готово! Этот чат привязан к вашему номеру телефона.\n/help — что умеет бот."
+LINKED = "Готово! Этот чат привязан к вашему номеру телефона.\nКнопки ниже — всё, что я умею."
 
 # Ответ на вход с сайта. Про «вернитесь на вкладку» — не вежливость: вкладка входит сама,
 # и без этой строки человек остаётся в Telegram ждать кода, которого больше не бывает.
 LOGIN_CONFIRMED = (
     "Вход подтверждён. Вернитесь на вкладку с сайтом — она уже впустила вас.\n"
-    "/help — что умеет бот."
+    "Кнопки ниже — всё, что я умею."
 )
 
 ALREADY_LINKED = (
     "Этот чат уже привязан к вашему номеру. Чтобы войти на сайте, нажмите там "
-    "«Войти через Telegram» — я подтвержу вход сам.\n/help — что умеет бот."
+    "«Войти через Telegram» — я подтвержу вход сам."
 )
 
 # Прислали чужую карточку контакта. Формулировка без обвинений: чаще всего это
@@ -274,26 +323,32 @@ FOREIGN_CONTACT = (
 )
 
 NOT_LINKED = (
-    "Этот чат не привязан к аккаунту. Отправьте /start и поделитесь номером телефона — "
-    "тогда я смогу показать ваши заявки и корзину."
+    "Этот чат не привязан к аккаунту. Нажмите «Поделиться номером телефона» — "
+    "тогда я смогу показать ваши заявки, корзину и избранное."
 )
 
 HELP = (
-    "Что я умею:\n"
-    "/orders — мои заявки\n"
-    "/cart — что в корзине и до какого числа\n"
-    "/deadline — когда закрывается текущий сбор\n"
-    "/unlink — отвязать этот чат от аккаунта\n"
-    "/start — привязать чат заново\n"
-    "/help — эта справка"
+    "Кнопки под полем ввода:\n"
+    f"{MENU_CART} — что лежит в корзине и до какого числа её нужно оформить\n"
+    f"{MENU_ORDERS} — ваши заявки и их статусы\n"
+    f"{MENU_WISHLIST} — сохранённые товары; они переживают закрытие сбора\n"
+    f"{MENU_DEADLINE} — когда закрывается текущий сбор\n"
+    f"{MENU_HELP} — этот экран; отсюда же можно отвязать чат\n\n"
+    "Сам напишу, когда откроется новый сбор, когда до дедлайна останутся сутки "
+    "и когда изменится статус вашей заявки.\n\n"
+    "Кнопки пропали? /menu вернёт их, /help — эта справка."
 )
 
-FALLBACK = "Не понял. /help — список команд, /start — привязать номер телефона."
+# Ответ на любой текст, который не совпал с кнопкой. Приходит вместе с клавиатурой:
+# чаще всего это как раз человек, у которого кнопки свёрнуты и который поэтому пишет
+# словами, — и тогда ответ должен не объяснять, а вернуть кнопки.
+FALLBACK = "Не понял вас. Выберите кнопку ниже 👇"
 
-UNLINKED = (
-    "Чат отвязан. Подтверждения заявок и напоминания сюда больше не придут — "
-    "отправьте /start, чтобы привязать его снова."
-)
+UNLINKED = "Чат отвязан. Подтверждения заявок и напоминания сюда больше не придут."
+
+# Отдельным сообщением, а не хвостом UNLINKED: клавиатура принадлежит чату, а не
+# сообщению, и снять её редактированием старого сообщения нельзя — нужно новое.
+UNLINK_NEXT = "Захотите вернуть — нажмите «Поделиться номером телефона» после /start."
 
 
 def my_orders(orders: list[Order], total: int | None = None) -> str:
@@ -338,6 +393,28 @@ def my_cart(cart: CartResponse) -> str:
     lines.append(f"Итого: {format_price(cart.total_cents)}")
     if cart.cycle_deadline_at is not None:
         lines.append(f"Оформить заявку нужно до {format_deadline(cart.cycle_deadline_at)}.")
+    return "\n".join(lines)
+
+
+def my_wishlist(wishlist: WishlistResponse) -> str:
+    """Saved products — the one list here that outlives a cycle.
+
+    It earns a button of its own because the sweep now empties abandoned carts *into*
+    it (`cart_moved_to_wishlist`), and a message pointing at a place with no way to
+    open it is only half an answer.
+    """
+    if not wishlist.items:
+        return (
+            "В избранном пусто. Нажмите ♥ на товаре в каталоге — он сохранится здесь "
+            "и не пропадёт, когда закроется сбор."
+        )
+
+    shown = wishlist.items[:MAX_LISTED_WISHLIST_ITEMS]
+    lines = ["В избранном:"]
+    lines += [f"• {item.product.name} — {format_price(item.product.price_cents)}" for item in shown]
+    hidden = len(wishlist.items) - len(shown)
+    if hidden > 0:
+        lines.append(f"…и ещё {hidden} — весь список на сайте.")
     return "\n".join(lines)
 
 

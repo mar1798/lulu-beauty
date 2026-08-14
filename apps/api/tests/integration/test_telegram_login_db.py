@@ -10,6 +10,7 @@ from app.auth.telegram_login import (
     AuthSessionExpiredError,
     AuthSessionNotFoundError,
     AuthSessionPendingError,
+    TelegramAccountNotLinkedError,
     TelegramLoginService,
 )
 from tests.integration.factories import make_user
@@ -153,3 +154,24 @@ async def test_cleanup_removes_expired_and_spent_sessions(db_session: AsyncSessi
 
     left = (await db_session.execute(select(TelegramAuthSession))).scalars().all()
     assert [row.id for row in left] == [live.session.id]
+
+
+async def test_a_signature_login_finds_the_account_bound_to_that_telegram_id(
+    db_session: AsyncSession,
+) -> None:
+    """Вход из виджета и из Mini App ищет аккаунт по `telegram_chat_id`: в личном чате,
+    где делается привязка, id чата и id пользователя — одно и то же число."""
+    user = await make_user(db_session, telegram_chat_id=777)
+
+    assert (await TelegramLoginService(db_session).find_by_telegram_id(777)).id == user.id
+
+
+async def test_a_signature_login_refuses_a_telegram_id_nobody_shared_a_number_from(
+    db_session: AsyncSession,
+) -> None:
+    """Подпись Telegram доказывает личность, но не даёт телефона, а без него аккаунта
+    здесь не существует. Значит, единственный вход для незнакомца — через бота."""
+    await make_user(db_session, telegram_chat_id=777)
+
+    with pytest.raises(TelegramAccountNotLinkedError):
+        await TelegramLoginService(db_session).find_by_telegram_id(778)

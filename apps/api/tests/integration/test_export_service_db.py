@@ -16,52 +16,82 @@ async def _place_order(session: AsyncSession, user_id, product_id, quantity: int
     return await OrdersService(session).checkout(user_id, note="комментарий")
 
 
-async def test_export_rows_flatten_orders_into_one_line_per_item(
-    db_session: AsyncSession,
-) -> None:
-    """Строка выгрузки — это позиция заявки, с данными заявки и покупателя рядом."""
-    user = await make_user(db_session)
+async def test_export_rows_sum_one_product_across_orders(db_session: AsyncSession) -> None:
+    """Строка выгрузки — это товар, а не позиция заявки: количество складывается."""
+    first_user = await make_user(db_session)
+    second_user = await make_user(db_session)
     await make_cycle(db_session)
-    first = await make_product(db_session, name="Крем", slug="krem", price_cents=15000)
-    second = await make_product(db_session, name="Тоник", slug="tonik", price_cents=5000)
+    krem = await make_product(
+        db_session, name="Крем", slug="krem", price_cents=15000, brand="Lulu"
+    )
+    tonik = await make_product(db_session, name="Тоник", slug="tonik", price_cents=5000)
 
-    order = await _place_order(db_session, user.id, first.id, 2)
-    await OrdersService(db_session).add_item(user.id, order.id, second.id, 3)
+    order = await _place_order(db_session, first_user.id, krem.id, 2)
+    await OrdersService(db_session).add_item(first_user.id, order.id, tonik.id, 3)
+    await _place_order(db_session, second_user.id, krem.id, 4)
 
     rows = await ExportService(db_session)._export_rows(None)
 
     assert len(rows) == 2
-    assert {row.product_name for row in rows} == {"Крем", "Тоник"}
-    krem = next(row for row in rows if row.product_name == "Крем")
-    assert krem.quantity == 2
-    assert krem.unit_price_cents == 15000
-    assert krem.order_total_cents == 2 * 15000 + 3 * 5000
-    assert krem.customer_phone == user.phone
-    assert krem.status == OrderStatus.PENDING.value
-    assert krem.note == "комментарий"
+    by_name = {row.product_name: row for row in rows}
+    assert by_name["Крем"].quantity == 6
+    assert by_name["Крем"].brand == "Lulu"
+    assert by_name["Крем"].unit_price_cents == 15000
+    assert by_name["Крем"].total_cents == 6 * 15000
+    # Бренд не проставлен — в лист уходит прочерк, а не пустая ячейка.
+    assert by_name["Тоник"].brand == "—"
+    assert by_name["Тоник"].quantity == 3
 
 
-async def test_export_rows_are_newest_first_and_can_be_scoped_to_a_cycle(
+async def test_export_rows_split_one_product_by_its_snapshotted_price(
+    db_session: AsyncSession,
+) -> None:
+    """Цена в позиции — снимок: заявки по разным ценам остаются разными строками."""
+    user = await make_user(db_session)
+    await make_cycle(db_session)
+    product = await make_product(db_session, name="Крем", slug="krem", price_cents=15000)
+
+    await _place_order(db_session, user.id, product.id, 2)
+    product.price_cents = 20000
+    await db_session.flush()
+    await _place_order(db_session, user.id, product.id, 1)
+
+    rows = await ExportService(db_session)._export_rows(None)
+
+    assert {(row.unit_price_cents, row.quantity) for row in rows} == {(15000, 2), (20000, 1)}
+
+
+async def test_export_rows_can_be_scoped_to_a_cycle_and_a_status(
     db_session: AsyncSession,
 ) -> None:
     user = await make_user(db_session)
-    product = await make_product(db_session)
+    product = await make_product(db_session, price_cents=1000)
 
     old_cycle = await make_cycle(db_session, deadline_at=datetime.now(UTC) + timedelta(hours=1))
-    older_order = await _place_order(db_session, user.id, product.id, 1)
-    older_order.created_at = datetime.now(UTC) - timedelta(days=2)
+    await _place_order(db_session, user.id, product.id, 5)
 
     # Новый сбор перекрывает старый: get_active_cycle берёт ближайший дедлайн.
     old_cycle.deadline_at = datetime.now(UTC) - timedelta(seconds=1)
     new_cycle = await make_cycle(db_session, deadline_at=datetime.now(UTC) + timedelta(days=1))
-    newer_order = await _place_order(db_session, user.id, product.id, 1)
+    newer_order = await _place_order(db_session, user.id, product.id, 2)
     await db_session.flush()
 
-    everything = await ExportService(db_session)._export_rows(None)
-    assert [row.order_id for row in everything] == [newer_order.id, older_order.id]
+    service = ExportService(db_session)
 
-    scoped = await ExportService(db_session)._export_rows(new_cycle.id)
-    assert [row.order_id for row in scoped] == [newer_order.id]
+    everything = await service._export_rows(None)
+    assert [row.quantity for row in everything] == [7]
+
+    scoped = await service._export_rows(new_cycle.id)
+    assert [row.quantity for row in scoped] == [2]
+
+    # Отменённая заявка не должна попадать в лист закупки.
+    newer_order.status = OrderStatus.CANCELLED
+    await db_session.flush()
+
+    pending = await service._export_rows(None, OrderStatus.PENDING)
+    assert [row.quantity for row in pending] == [5]
+    cancelled = await service._export_rows(None, OrderStatus.CANCELLED)
+    assert [row.quantity for row in cancelled] == [2]
 
 
 async def test_deleting_a_customer_takes_their_orders_out_of_the_export(
@@ -69,10 +99,9 @@ async def test_deleting_a_customer_takes_their_orders_out_of_the_export(
 ) -> None:
     """Осиротевших заявок не бывает: orders.user_id каскадный.
 
-    Именно поэтому LEFT JOIN на users в выгрузке — подстраховка, а не рабочая ветка:
-    прочерк вместо имени взять неоткуда, строка уходит вместе с покупателем. Тест
-    закрепляет каскад — если он когда-нибудь станет SET NULL, внутренний JOIN начнёт
-    молча терять заявки из листа закупки, и упасть должно здесь.
+    Покупателя в листе закупки уже нет, но заявки он всё ещё уносит с собой — если
+    каскад когда-нибудь станет SET NULL, строки останутся висеть в закупке без заявки,
+    и упасть должно здесь.
     """
     user = await make_user(db_session)
     await make_cycle(db_session)

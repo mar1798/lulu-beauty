@@ -1,11 +1,10 @@
 import io
-import uuid
-from datetime import UTC, datetime
 
 import openpyxl
 
 from app.export.service import (
     HEADER,
+    TOTAL_LABEL,
     OrderExportRow,
     build_orders_workbook,
     content_disposition,
@@ -16,57 +15,74 @@ from app.export.service import (
 
 def _row(**overrides: object) -> OrderExportRow:
     defaults: dict[str, object] = {
-        "order_id": uuid.uuid4(),
-        "created_at": datetime(2026, 1, 1, tzinfo=UTC),
-        "customer_name": "Jane Doe",
-        "customer_phone": "+15551234567",
-        "status": "PENDING",
-        "note": "",
         "product_name": "Rose Serum",
+        "brand": "Lulu",
         "quantity": 2,
         "unit_price_cents": 1500,
-        "order_total_cents": 3000,
     }
     defaults.update(overrides)
     return OrderExportRow(**defaults)  # type: ignore[arg-type]
 
 
+def _sheet(rows: list[OrderExportRow]):  # type: ignore[no-untyped-def]
+    workbook = openpyxl.load_workbook(io.BytesIO(build_orders_workbook(rows)))
+    sheet = workbook.active
+    assert sheet is not None
+    return sheet
+
+
+def _values(sheet, index: int) -> list[object]:  # type: ignore[no-untyped-def]
+    return [cell.value for cell in next(sheet.iter_rows(min_row=index, max_row=index))]
+
+
 def test_build_orders_workbook_writes_header_row() -> None:
-    content = build_orders_workbook([])
+    sheet = _sheet([])
 
-    workbook = openpyxl.load_workbook(io.BytesIO(content))
-    sheet = workbook.active
-    assert sheet is not None
-    assert sheet.title == "Orders"
-    header_row = [cell.value for cell in next(sheet.iter_rows(min_row=1, max_row=1))]
-    assert header_row == HEADER
+    assert sheet.title == "Заказ"
+    assert _values(sheet, 1) == HEADER
 
 
-def test_build_orders_workbook_converts_cents_to_currency_units() -> None:
-    row = _row(quantity=3, unit_price_cents=1000, order_total_cents=3000)
+def test_build_orders_workbook_writes_a_line_per_product_with_the_line_total() -> None:
+    sheet = _sheet([_row(product_name="Крем", brand="Lulu", quantity=3, unit_price_cents=15000)])
 
-    content = build_orders_workbook([row])
-
-    workbook = openpyxl.load_workbook(io.BytesIO(content))
-    sheet = workbook.active
-    assert sheet is not None
-    data_row = [cell.value for cell in next(sheet.iter_rows(min_row=2, max_row=2))]
-    assert data_row[-3:] == [10.0, 30.0, 30.0]  # unit price, line total, order total
+    assert _values(sheet, 2) == ["Крем", "Lulu", 3, 150.0, 450.0]
 
 
-def test_build_orders_workbook_one_row_per_order_item() -> None:
-    order_id = uuid.uuid4()
+def test_build_orders_workbook_closes_with_the_totals_row() -> None:
     rows = [
-        _row(order_id=order_id, product_name="Rose Serum"),
-        _row(order_id=order_id, product_name="Lip Balm"),
+        _row(product_name="Крем", quantity=3, unit_price_cents=15000),
+        _row(product_name="Тоник", quantity=2, unit_price_cents=5000),
     ]
 
-    content = build_orders_workbook(rows)
+    sheet = _sheet(rows)
 
-    workbook = openpyxl.load_workbook(io.BytesIO(content))
-    sheet = workbook.active
-    assert sheet is not None
-    assert sheet.max_row == 3  # header + 2 item rows
+    assert sheet.max_row == 4  # шапка + два товара + итог
+    # Пустые ячейки под брендом и ценой openpyxl читает как None.
+    assert _values(sheet, 4) == [TOTAL_LABEL, None, 5, None, 550]
+
+
+def test_build_orders_workbook_totals_row_on_an_empty_export_is_zeroed() -> None:
+    sheet = _sheet([])
+
+    assert _values(sheet, 2) == [TOTAL_LABEL, None, 0, None, 0]
+
+
+def test_build_orders_workbook_widens_columns_to_the_longest_value() -> None:
+    """Regression: fixed widths clipped long product names into the neighbouring column."""
+    short = _sheet([_row(product_name="Крем")])
+    long = _sheet([_row(product_name="Крем для лица с гиалуроновой кислотой, 50 мл")])
+
+    assert long.column_dimensions["A"].width > short.column_dimensions["A"].width
+    # Шапка длиннее любого бренда в примере — колонка всё равно не уже неё.
+    assert short.column_dimensions["B"].width > len(HEADER[1])
+
+
+def test_build_orders_workbook_caps_the_text_columns_and_wraps_instead() -> None:
+    sheet = _sheet([_row(product_name="Крем " * 60)])
+
+    assert sheet.column_dimensions["A"].width < 100
+    name_cell = next(sheet.iter_rows(min_row=2, max_row=2))[0]
+    assert name_cell.alignment.wrap_text is True
 
 
 def test_sanitize_filename_label_keeps_alphanumeric_dash_underscore() -> None:

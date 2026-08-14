@@ -38,6 +38,17 @@ class TelegramLoginClaimRequest(CamelModel):
     poll_secret: str
 
 
+class TelegramMiniAppLoginRequest(CamelModel):
+    """`window.Telegram.WebApp.initData`, verbatim.
+
+    A string rather than the fields inside it: the signature covers the query string as
+    Telegram built it, so anything that parses and re-serialises it on the way here is a
+    chance to change one percent-encoded character and fail every login.
+    """
+
+    init_data: str
+
+
 class TelegramLoginClaimResponse(CamelModel):
     """Waiting is a normal answer here, not an error.
 
