@@ -13,6 +13,12 @@ export interface IProductListParams {
    * Экрану каталога нужна карта id → slug из `listCategories()`.
    */
   category?: string
+  /**
+   * Название бренда целиком, а не слаг: бренд у товара — свободная строка
+   * (её приносит импорт xlsx), отдельной таблицы под него нет. Значения для
+   * фильтра берутся из `listBrands()`, поэтому совпадение всегда точное.
+   */
+  brand?: string
   inStock?: boolean
   q?: string
   page?: number
@@ -21,11 +27,15 @@ export interface IProductListParams {
 
 export const listCategories = (): Promise<ICategory[]> => api.get('/categories')
 
+/** Бренды, реально встречающиеся в каталоге, — варианты для фильтра. */
+export const listBrands = (): Promise<string[]> => api.get('/brands')
+
 /** Публичная ручка списка товаров держит snake_case-параметры (в отличие от админской). */
 export const listProducts = (params: IProductListParams = {}): Promise<IPage<IProduct>> =>
   api.get('/products', {
     query: {
       category: params.category,
+      brand: params.brand,
       in_stock: params.inStock,
       q: params.q,
       page: params.page,

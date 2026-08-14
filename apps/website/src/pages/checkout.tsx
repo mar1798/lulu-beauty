@@ -14,7 +14,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import { useCart } from '@/contexts/CartContext'
 import { messageForError } from '@/services/apiErrors'
 import { checkout } from '@/services/endpoints/orders'
-import { ordersKey } from '@/services/swrKeys'
+import { isOrdersKey } from '@/services/swrKeys'
 
 /**
  * Оформление заявки.
@@ -40,7 +40,8 @@ const CheckoutPage: React.FC = () => {
       await reload()
 
       if (user !== null) {
-        void globalMutate(ordersKey(user.id))
+        // Все страницы списка: новая заявка встаёт первой и сдвигает остальные.
+        void globalMutate(isOrdersKey)
       }
     } catch (cause: unknown) {
       setError(messageForError(cause, 'checkout'))

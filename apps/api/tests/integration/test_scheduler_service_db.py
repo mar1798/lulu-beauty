@@ -1,3 +1,4 @@
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock
 
@@ -10,57 +11,73 @@ from app.cart.service import CartService
 from app.cycles.models import CycleStatus
 from app.cycles.scheduler_service import CartRescue, CycleSchedulerService
 from app.orders.service import OrdersService
-from app.telegram.notify import notify_carts_rescued
+from app.telegram.notify import notify_carts_rescued, notify_cycle_reminders
 from app.telegram.service import BroadcastResult
 from app.wishlist.models import WishlistItem
 from app.wishlist.service import WishlistService
 from tests.integration.factories import make_cycle, make_product, make_user
 
 
-def _patch_send_reminder(monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
-    send_reminder = AsyncMock(return_value=None)
-    monkeypatch.setattr(
-        "app.cycles.scheduler_service.notifications_service.send_reminder", send_reminder
-    )
-    return send_reminder
-
-
-async def test_sweep_reminders_notifies_once_per_stage_and_is_idempotent(
-    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+async def test_reminders_are_planned_once_per_stage_and_stamping_closes_them(
+    db_session: AsyncSession,
 ) -> None:
     user = await make_user(db_session)
     cycle = await make_cycle(db_session, deadline_at=datetime.now(UTC) + timedelta(hours=20))
     product = await make_product(db_session)
     await CartService(db_session).add_item(user.id, product.id, 1)
 
-    send_reminder = _patch_send_reminder(monkeypatch)
     service = CycleSchedulerService(db_session)
 
-    first_count = await service.sweep_reminders()
+    first = await service.plan_reminders()
+    assert [reminder.user_ids for reminder in first] == [[user.id]]
+    assert first[0].last_chance is False
+    # Планирование ничего не пишет — до отправки стадия остаётся открытой.
+    assert cycle.reminder_sent_at is None
+
+    await service.mark_reminders_sent(first)
     await db_session.refresh(cycle)
-    assert first_count == 1
     assert cycle.reminder_sent_at is not None
     assert cycle.final_reminder_sent_at is None  # три часа ещё не наступили
-    assert send_reminder.await_args.kwargs["last_chance"] is False
 
-    assert await service.sweep_reminders() == 0
-    send_reminder.assert_awaited_once()  # still just once: reminder_sent_at gates re-entry
+    # reminder_sent_at закрывает вход: повторный тик не планирует ничего заново.
+    assert await service.plan_reminders() == []
 
     # Дедлайн подошёл вплотную — теперь очередь второго, последнего напоминания.
     cycle.deadline_at = datetime.now(UTC) + timedelta(hours=2)
     await db_session.flush()
 
-    assert await service.sweep_reminders() == 1
+    second = await service.plan_reminders()
+    assert [reminder.user_ids for reminder in second] == [[user.id]]
+    assert second[0].last_chance is True
+
+    await service.mark_reminders_sent(second)
     await db_session.refresh(cycle)
     assert cycle.final_reminder_sent_at is not None
-    assert send_reminder.await_args.kwargs["last_chance"] is True
-
-    assert await service.sweep_reminders() == 0
-    assert send_reminder.await_count == 2
+    assert await service.plan_reminders() == []
 
 
-async def test_sweep_reminders_sends_only_the_last_chance_to_a_late_cycle(
-    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+async def test_a_reminder_that_was_not_stamped_is_planned_again(
+    db_session: AsyncSession,
+) -> None:
+    """Падение между отправкой и отметкой означает повтор, а не потерю.
+
+    Из двух исходов дубликат — это неудобство, а несостоявшееся напоминание о дедлайне —
+    это заявка, которую покупатель не подал. Поэтому отметка идёт после отправки, и
+    неотмеченный сбор снова попадает в план.
+    """
+    user = await make_user(db_session)
+    await make_cycle(db_session, deadline_at=datetime.now(UTC) + timedelta(hours=1))
+    product = await make_product(db_session)
+    await CartService(db_session).add_item(user.id, product.id, 1)
+    service = CycleSchedulerService(db_session)
+
+    assert len(await service.plan_reminders()) == 1
+    # Отметка не дошла — следующий тик обязан спланировать то же самое заново.
+    assert len(await service.plan_reminders()) == 1
+
+
+async def test_reminders_plan_only_the_last_chance_for_a_late_cycle(
+    db_session: AsyncSession,
 ) -> None:
     """Сбор, открытый за час до собственного дедлайна, попадает в оба окна сразу.
     Предупреждение «за сутки», тут же опровергнутое «последним шансом», — не два
@@ -70,34 +87,69 @@ async def test_sweep_reminders_sends_only_the_last_chance_to_a_late_cycle(
     product = await make_product(db_session)
     await CartService(db_session).add_item(user.id, product.id, 1)
 
-    send_reminder = _patch_send_reminder(monkeypatch)
+    service = CycleSchedulerService(db_session)
+    reminders = await service.plan_reminders()
 
-    count = await CycleSchedulerService(db_session).sweep_reminders()
+    assert len(reminders) == 1
+    assert reminders[0].last_chance is True
+    assert reminders[0].user_ids == [user.id]
 
-    assert count == 1
-    send_reminder.assert_awaited_once()
-    assert send_reminder.await_args.kwargs["last_chance"] is True
+    await service.mark_reminders_sent(reminders)
     await db_session.refresh(cycle)
     # Обогнанная стадия помечена отправленной, иначе следующий тик пришлёт её вдогонку.
     assert cycle.reminder_sent_at is not None
     assert cycle.final_reminder_sent_at is not None
 
 
-async def test_sweep_reminders_skips_users_who_already_checked_out(
-    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
-) -> None:
+async def test_reminders_skip_users_who_already_checked_out(db_session: AsyncSession) -> None:
+    """Сбор всё равно планируется — но с пустой аудиторией, чтобы стадии закрылись.
+
+    Иначе цикл, в котором все уже оформились, каждый тик до самого дедлайна заново
+    пересчитывал бы получателей.
+    """
     user = await make_user(db_session)
-    await make_cycle(db_session, deadline_at=datetime.now(UTC) + timedelta(hours=1))
+    cycle = await make_cycle(db_session, deadline_at=datetime.now(UTC) + timedelta(hours=1))
     product = await make_product(db_session)
     await CartService(db_session).add_item(user.id, product.id, 1)
     await OrdersService(db_session).checkout(user.id, note=None)
 
-    send_reminder = _patch_send_reminder(monkeypatch)
+    service = CycleSchedulerService(db_session)
+    reminders = await service.plan_reminders()
 
-    count = await CycleSchedulerService(db_session).sweep_reminders()
+    assert [reminder.user_ids for reminder in reminders] == [[]]
 
-    assert count == 0
-    send_reminder.assert_not_awaited()
+    await service.mark_reminders_sent(reminders)
+    await db_session.refresh(cycle)
+    assert cycle.final_reminder_sent_at is not None
+    assert await service.plan_reminders() == []
+
+
+async def test_planning_sends_nothing_and_an_empty_audience_is_not_broadcast(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Рассылка — работа вызывающего, между планированием и отметкой.
+
+    Отправка изнутри свёртки держала транзакцию открытой на всё время похода в Telegram.
+    """
+    broadcast = AsyncMock(return_value=BroadcastResult(sent=1, blocked_chat_ids=[]))
+    monkeypatch.setattr("app.telegram.notify.notifications_service.broadcast_reminder", broadcast)
+    user = await make_user(db_session)
+    await make_cycle(db_session, deadline_at=datetime.now(UTC) + timedelta(hours=1))
+    product = await make_product(db_session)
+    await CartService(db_session).add_item(user.id, product.id, 1)
+
+    reminders = await CycleSchedulerService(db_session).plan_reminders()
+    broadcast.assert_not_awaited()
+
+    await notify_cycle_reminders(db_session, reminders)
+
+    broadcast.assert_awaited_once()
+    assert [recipient.id for recipient in broadcast.await_args.args[0]] == [user.id]
+
+    # Сбор без получателей планируется ради отметки, но рассылать в него нечего.
+    broadcast.reset_mock()
+    await notify_cycle_reminders(db_session, [replace(reminders[0], user_ids=[])])
+    broadcast.assert_not_awaited()
 
 
 async def test_sweep_deadlines_closes_cycle_and_clears_abandoned_carts_only(

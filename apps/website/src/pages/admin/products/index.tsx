@@ -1,7 +1,7 @@
-import React, { useCallback, useState } from 'react'
+import React, { useCallback, useMemo, useState } from 'react'
 import useSWR from 'swr'
-import type { IProduct } from 'widgets/types'
-import { Alert, Button, Switch } from 'widgets/atoms'
+import type { IProduct, ISelectOption } from 'widgets/types'
+import { Alert, Button, Select, Switch } from 'widgets/atoms'
 import { CategoryFilter, EmptyState, Pagination, SearchField } from 'widgets/molecules'
 import { AdminProductsTable } from 'widgets/organisms'
 import { useConfirm, useToast } from 'widgets/contexts'
@@ -16,9 +16,14 @@ import {
   useQueryTextInput,
 } from '@/hooks/useQueryParams'
 import { messageForError, type ErrorScope } from '@/services/apiErrors'
-import { deleteProduct, listAdminProducts, restoreProduct } from '@/services/endpoints/admin'
+import {
+  deleteProduct,
+  listAdminBrands,
+  listAdminProducts,
+  restoreProduct,
+} from '@/services/endpoints/admin'
 import { listCategories } from '@/services/endpoints/catalog'
-import { adminProductsKey, categoriesKey } from '@/services/swrKeys'
+import { adminBrandsKey, adminProductsKey, categoriesKey } from '@/services/swrKeys'
 import * as styles from '@/styles/admin.css'
 
 /**
@@ -41,17 +46,23 @@ const PAGE_SIZE = 20
 
 const SEARCH_DELAY_MS = 300
 
+/** Сентинел «все бренды»: у `Select` нет значения `null`, пустая строка — сброс. */
+const ALL_BRANDS = ''
+
 const AdminProductsPage: React.FC = () => {
   const { notify } = useToast()
   const { confirm } = useConfirm()
 
-  const [{ q: query, category: categorySlug, deleted: includeDeleted, page }, setParams] =
-    useQueryParams({
-      q: textParam,
-      category: optionalTextParam,
-      deleted: flagParam,
-      page: pageParam,
-    })
+  const [
+    { q: query, category: categorySlug, brand, deleted: includeDeleted, page },
+    setParams,
+  ] = useQueryParams({
+    q: textParam,
+    category: optionalTextParam,
+    brand: optionalTextParam,
+    deleted: flagParam,
+    page: pageParam,
+  })
 
   /*
     Поиск заменяет запись в истории, а не добавляет новую: набранное оказывается
@@ -74,11 +85,12 @@ const AdminProductsPage: React.FC = () => {
     error: fetchError,
     mutate,
   } = useSWR(
-    adminProductsKey(query, categorySlug ?? '', includeDeleted, page),
+    adminProductsKey(query, categorySlug ?? '', brand ?? '', includeDeleted, page),
     () =>
       listAdminProducts({
         q: query === '' ? undefined : query,
         category: categorySlug ?? undefined,
+        brand: brand ?? undefined,
         includeDeleted,
         page,
         pageSize: PAGE_SIZE,
@@ -96,6 +108,30 @@ const AdminProductsPage: React.FC = () => {
 
   // Общий ключ с «Категориями» (`/admin/categories`): правка там видна тут без перезагрузки.
   const { data: categories } = useSWR(categoriesKey, () => listCategories())
+
+  /*
+    Список брендов пересобирается вместе с показом удалённых: бренд, оставшийся
+    только на удалённых товарах, должен появляться в фильтре ровно тогда, когда
+    такие товары показаны.
+  */
+  const { data: brands } = useSWR(adminBrandsKey(includeDeleted), () =>
+    listAdminBrands(includeDeleted)
+  )
+
+  /*
+    Выбранный бренд добавляется в список, даже если его там уже нет: иначе после
+    выключения «показывать удалённые» (или прихода по чужой ссылке) фильтр
+    остаётся включённым, но поле пустое — и снять его нечем.
+  */
+  const brandOptions = useMemo<ISelectOption[]>(() => {
+    const names = brands ?? []
+    const known = brand === null || names.includes(brand) ? names : [...names, brand]
+
+    return [
+      { value: ALL_BRANDS, label: 'Все бренды' },
+      ...known.map(name => ({ value: name, label: name })),
+    ]
+  }, [brands, brand])
 
   const error = fetchError === undefined ? null : messageForError(fetchError, 'admin.products.load')
 
@@ -145,21 +181,29 @@ const AdminProductsPage: React.FC = () => {
           Добавить товар
         </Button>
       }
-      sidebar={
-        <>
-          <span className={styles.categorySidebarTitle}>Категория</span>
-          {/* Столбцом: в колонке шириной 220px строка чипов рвётся по длинным названиям. */}
-          <CategoryFilter
-            categories={categories ?? []}
-            selectedSlug={categorySlug}
-            layout="column"
-            onSelect={next => setParams({ category: next, page: 1 })}
-          />
-        </>
-      }
     >
+      {/*
+        Категория и бренд стоят рядом: это два фильтра одного назначения, и
+        разносить их по разным местам экрана незачем. Раньше категория жила
+        рядом с разделами слева — там ей было место, пока она была столбцом
+        чипов во всю ширину колонки.
+      */}
       <div className={styles.filters}>
-        <SearchField label="Поиск по названию" value={search} onChange={setSearch} />
+        {/* Без подписи: placeholder у поля — тот же «Поиск по названию». */}
+        <SearchField value={search} onChange={setSearch} />
+
+        <CategoryFilter
+          categories={categories ?? []}
+          selectedSlug={categorySlug}
+          onSelect={next => setParams({ category: next, page: 1 })}
+        />
+
+        <Select
+          label="Бренд"
+          value={brand ?? ALL_BRANDS}
+          options={brandOptions}
+          onChange={next => setParams({ brand: next === ALL_BRANDS ? null : next, page: 1 })}
+        />
 
         <Switch
           label="Показывать удалённые"

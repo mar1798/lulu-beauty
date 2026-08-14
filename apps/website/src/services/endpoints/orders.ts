@@ -1,4 +1,4 @@
-import type { IOrder } from 'widgets/types'
+import type { IOrder, IPage } from 'widgets/types'
 import { api } from '../api'
 
 /** Заказы покупателя. Оформление переносит текущую корзину в заказ активного сбора. */
@@ -6,8 +6,20 @@ import { api } from '../api'
 export const checkout = (note?: string): Promise<IOrder> =>
   api.post('/orders/checkout', { body: { note: note ?? null } })
 
-/** Без пагинации: бэк отдаёт плоский список (`response_model=list[OrderResponse]`). */
-export const listMyOrders = (): Promise<IOrder[]> => api.get('/orders')
+export interface IMyOrderListParams {
+  page?: number
+  pageSize?: number
+}
+
+/**
+ * Постранично: у покупателя, заказывающего каждый сбор, история накапливается
+ * без предела, а каждая заявка едет со всеми своими позициями.
+ *
+ * Параметры — `page`/`page_size` в snake_case: так их принимают покупательские
+ * ручки (как `GET /products`), camelCase — только у `/admin/*`.
+ */
+export const listMyOrders = (params: IMyOrderListParams = {}): Promise<IPage<IOrder>> =>
+  api.get('/orders', { query: { page: params.page, page_size: params.pageSize } })
 
 export const getMyOrder = (orderId: string): Promise<IOrder> =>
   api.get(`/orders/${encodeURIComponent(orderId)}`)

@@ -166,9 +166,13 @@ async def handle_orders(message: Message) -> None:
         user = await _linked_user(message, session)
         if user is None:
             return
-        orders = await OrdersService(session).list_for_user(user.id)
+        # Only the page the message shows: the bot never listed more than
+        # MAX_LISTED_ORDERS, and `total` is what the "…и ещё N" line needs.
+        orders, total = await OrdersService(session).list_for_user(
+            user.id, page=1, page_size=messages.MAX_LISTED_ORDERS
+        )
 
-    await message.answer(messages.my_orders(orders))
+    await message.answer(messages.my_orders(orders, total))
 
 
 @router.message(Command("cart"))

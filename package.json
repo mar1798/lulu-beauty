@@ -12,6 +12,11 @@
     "test": "turbo run test --filter=!//",
     "barrels": "turbo run barrels --filter=!//",
     "dev": "turbo run dev --filter=!//",
+    "dev:web": "npm run dev -w website",
+    "dev:api": "docker compose up api",
+    "dev:api:stop": "docker compose stop",
+    "dev:storybook": "npm run storybook -w widgets",
+    "dev:all": "docker compose up -d api && npm run dev -w website",
     "lint": "turbo run lint --filter=!//",
     "check": "turbo run check --filter=!//",
     "format": "prettier --write \"./**/*.{js,ts,tsx,jsx,json,md}\""

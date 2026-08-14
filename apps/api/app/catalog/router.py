@@ -96,9 +96,15 @@ async def delete_category(
     await session.commit()
 
 
+@router.get("/brands", response_model=list[str])
+async def list_brands(session: AsyncSession = Depends(get_session)) -> list[str]:
+    return await ProductService(session).list_brands()
+
+
 @router.get("/products", response_model=PageResponse[ProductResponse])
 async def list_products(
     category: str | None = Query(default=None),
+    brand: str | None = Query(default=None, min_length=1, max_length=255),
     in_stock: bool | None = Query(default=None),
     q: str | None = Query(default=None, min_length=1, max_length=255),
     page: int = Query(default=1, ge=1),
@@ -106,7 +112,7 @@ async def list_products(
     session: AsyncSession = Depends(get_session),
 ) -> PageResponse[ProductResponse]:
     products, total = await ProductService(session).list_public(
-        category, in_stock, page, page_size, q
+        category, in_stock, page, page_size, q, brand
     )
     return PageResponse(
         items=[product_response(product) for product in products],
@@ -124,9 +130,24 @@ async def get_product(slug: str, session: AsyncSession = Depends(get_session)) -
     return product_response(product)
 
 
+@router.get("/admin/brands", response_model=list[str])
+async def list_brands_admin(
+    include_deleted: bool = Query(default=False, alias="includeDeleted"),
+    session: AsyncSession = Depends(get_session),
+    _admin: CurrentUser = Depends(require_admin),
+) -> list[str]:
+    """Same list as the public one, but it can cover soft-deleted products.
+
+    The admin list has a "show deleted" switch, and a brand left only on
+    deleted products would otherwise be unpickable there.
+    """
+    return await ProductService(session).list_brands(include_deleted)
+
+
 @router.get("/admin/products", response_model=PageResponse[ProductResponse])
 async def list_products_admin(
     category: str | None = Query(default=None),
+    brand: str | None = Query(default=None, min_length=1, max_length=255),
     in_stock: bool | None = Query(default=None, alias="inStock"),
     q: str | None = Query(default=None, min_length=1, max_length=255),
     include_deleted: bool = Query(default=False, alias="includeDeleted"),
@@ -136,7 +157,7 @@ async def list_products_admin(
     _admin: CurrentUser = Depends(require_admin),
 ) -> PageResponse[ProductResponse]:
     products, total = await ProductService(session).list_admin(
-        category, in_stock, page, page_size, q, include_deleted
+        category, in_stock, page, page_size, q, include_deleted, brand
     )
     return PageResponse(
         items=[product_response(product) for product in products],

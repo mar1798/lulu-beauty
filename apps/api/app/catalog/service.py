@@ -1,8 +1,11 @@
 import uuid
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import Select, func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -11,6 +14,25 @@ from app.catalog.models import Category, Product, ProductImage
 
 class SlugAlreadyExistsError(Exception):
     pass
+
+
+@asynccontextmanager
+async def _slug_conflict_as_error(session: AsyncSession) -> AsyncIterator[None]:
+    """Turns a lost race for a slug into the same 409 the pre-check produces.
+
+    Both `products.slug` and `categories.slug` are UNIQUE, and checking before writing
+    only narrows the window — it cannot close it. Two writers past the check (the catalog
+    import running while the owner saves a product by hand, most plausibly) meant the
+    loser got a 500 on what is an ordinary, well-understood conflict.
+
+    The savepoint is the point: without it the failed statement aborts the whole
+    request's transaction, so the router could not go on to report anything at all.
+    """
+    try:
+        async with session.begin_nested():
+            yield
+    except IntegrityError as error:
+        raise SlugAlreadyExistsError from error
 
 
 class CategoryNotFoundError(Exception):
@@ -39,8 +61,8 @@ class CategoryService:
         if await self._slug_taken(slug):
             raise SlugAlreadyExistsError
         category = Category(name=name, slug=slug, sort_order=sort_order)
-        self._session.add(category)
-        await self._session.flush()
+        async with _slug_conflict_as_error(self._session):
+            self._session.add(category)
         return category
 
     async def update(self, category_id: uuid.UUID, updates: dict[str, Any]) -> Category:
@@ -55,7 +77,8 @@ class CategoryService:
         for field, value in updates.items():
             setattr(category, field, value)
 
-        await self._session.flush()
+        async with _slug_conflict_as_error(self._session):
+            await self._session.flush()
         return category
 
     async def delete(self, category_id: uuid.UUID) -> None:
@@ -79,12 +102,17 @@ class ProductService:
         in_stock: bool | None,
         search: str | None,
         include_deleted: bool,
+        brand: str | None = None,
     ) -> Select[tuple[Product]]:
         query = select(Product)
         if not include_deleted:
             query = query.where(Product.deleted_at.is_(None))
         if category_slug is not None:
             query = query.join(Category).where(Category.slug == category_slug)
+        if brand is not None:
+            # Exact match: the picker is fed by list_brands(), so the value always
+            # comes from the same set of stored strings.
+            query = query.where(Product.brand == brand)
         if in_stock is not None:
             query = query.where(Product.in_stock.is_(in_stock))
         if search:
@@ -113,8 +141,11 @@ class ProductService:
         page: int,
         page_size: int,
         search: str | None = None,
+        brand: str | None = None,
     ) -> tuple[list[Product], int]:
-        query = self._filtered_query(category_slug, in_stock, search, include_deleted=False)
+        query = self._filtered_query(
+            category_slug, in_stock, search, include_deleted=False, brand=brand
+        )
         return await self._paginate(query, page, page_size)
 
     async def list_admin(
@@ -125,10 +156,28 @@ class ProductService:
         page_size: int,
         search: str | None = None,
         include_deleted: bool = False,
+        brand: str | None = None,
     ) -> tuple[list[Product], int]:
         """Admin listing — unlike list_public it can surface soft-deleted products."""
-        query = self._filtered_query(category_slug, in_stock, search, include_deleted)
+        query = self._filtered_query(category_slug, in_stock, search, include_deleted, brand)
         return await self._paginate(query, page, page_size)
+
+    async def list_brands(self, include_deleted: bool = False) -> list[str]:
+        """Distinct brands actually present in the catalog, for the filter dropdown.
+
+        Brands are a free-text column rather than their own table (they arrive
+        with the xlsx import), so the option list has to be derived from the
+        products themselves. Blank strings are dropped alongside NULLs — the
+        import writes None for an empty cell, but hand-edited rows may not.
+        """
+        query = select(Product.brand).where(
+            Product.brand.is_not(None), Product.brand != ""
+        )
+        if not include_deleted:
+            query = query.where(Product.deleted_at.is_(None))
+
+        result = await self._session.execute(query.distinct().order_by(Product.brand))
+        return [brand for brand in result.scalars().all() if brand is not None]
 
     async def get_by_slug(self, slug: str) -> Product | None:
         result = await self._session.execute(
@@ -170,8 +219,8 @@ class ProductService:
             category_id=category_id,
             in_stock=in_stock,
         )
-        self._session.add(product)
-        await self._session.flush()
+        async with _slug_conflict_as_error(self._session):
+            self._session.add(product)
         await self._session.refresh(product, attribute_names=["images"])
         return product
 
@@ -185,7 +234,8 @@ class ProductService:
         for field, value in updates.items():
             setattr(product, field, value)
 
-        await self._session.flush()
+        async with _slug_conflict_as_error(self._session):
+            await self._session.flush()
         return product
 
     async def soft_delete(self, product_id: uuid.UUID) -> None:

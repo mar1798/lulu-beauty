@@ -2,11 +2,16 @@ import logging
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
+from app.auth.service import AuthService
 from app.auth.telegram_login import TelegramLoginService
 from app.config import settings
 from app.cycles.scheduler_service import CycleSchedulerService
 from app.db import async_session
-from app.telegram.notify import notify_carts_rescued, notify_cycle_closed
+from app.telegram.notify import (
+    notify_carts_rescued,
+    notify_cycle_closed,
+    notify_cycle_reminders,
+)
 
 logger = logging.getLogger("app.scheduler")
 
@@ -14,11 +19,26 @@ scheduler = AsyncIOScheduler(timezone="UTC")
 
 
 async def _run_reminder_sweep() -> None:
+    """Plan, send, then record — in that order, and never inside one transaction.
+
+    The order is the whole design. Planning is read-only, so the fan-out that follows
+    holds no write transaction open across a Telegram round-trip per recipient. And the
+    stamps go in only once the messages are out: if this process dies mid-sweep, the next
+    tick sends again rather than silently swallowing the reminder — for a deadline nudge,
+    a duplicate is a nuisance and a miss is a lost order.
+    """
     async with async_session() as session:
-        sent = await CycleSchedulerService(session).sweep_reminders()
+        service = CycleSchedulerService(session)
+        reminders = await service.plan_reminders()
+        await notify_cycle_reminders(session, reminders)
+        await service.mark_reminders_sent(reminders)
         await session.commit()
-    if sent:
-        logger.info("Reminder sweep sent %d reminder(s)", sent)
+    if reminders:
+        logger.info(
+            "Reminder sweep notified %d cycle(s), %d recipient(s)",
+            len(reminders),
+            sum(len(reminder.user_ids) for reminder in reminders),
+        )
 
 
 async def _run_deadline_sweep() -> None:
@@ -40,9 +60,12 @@ async def _run_deadline_sweep() -> None:
 async def _run_auth_session_cleanup() -> None:
     async with async_session() as session:
         deleted = await TelegramLoginService(session).cleanup_expired()
+        pruned = await AuthService(session).prune_refresh_tokens()
         await session.commit()
     if deleted:
         logger.info("Auth cleanup removed %d expired/spent login session(s)", deleted)
+    if pruned:
+        logger.info("Auth cleanup pruned %d dead refresh token(s)", pruned)
 
 
 def start() -> None:

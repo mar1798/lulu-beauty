@@ -139,6 +139,17 @@ class NotificationsService:
         message = messages.cycle_opened(cycle)
         return await self._broadcast([(user, message) for user in users])
 
+    async def broadcast_reminder(self, users: Sequence[User], message: str) -> BroadcastResult:
+        """The deadline nudge, fanned out under the same throttle as any other broadcast.
+
+        Kept apart from `send_reminder` (which is one message, to one person, and reports
+        through the log) because a sweep-driven reminder goes to a whole cycle's worth of
+        abandoned carts at once and has to be paced and to report dead bindings back.
+        """
+        return await self._broadcast(
+            [(user, message) for user in users], reply_markup=keyboards.checkout_link()
+        )
+
     async def send_cart_rescued(
         self, notices: Sequence[CartRescueNotice], cycle_title: str
     ) -> BroadcastResult:

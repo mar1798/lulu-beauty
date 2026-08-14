@@ -5,7 +5,6 @@ import { IconBox, IconPencil, IconRestore, IconTrash } from '../../svg/icons'
 import { AppImage } from '../../atoms/app-image'
 import { AppLink } from '../../atoms/app-link'
 import { Badge } from '../../atoms/badge'
-import { Button } from '../../atoms/button'
 import { IconButton } from '../../atoms/icon-button'
 import { Price } from '../../atoms/price'
 import { Skeleton } from '../../atoms/skeleton'
@@ -134,8 +133,13 @@ export const AdminProductsTable: FC<IAdminProductsTableProps & IBasicStyling> = 
                           Удалён
                         </Badge>
                       ) : (
+                        /*
+                          «Да»/«Нет», а не «В наличии»: колонка уже названа
+                          «Наличие» (в карточном режиме — через `data-label`),
+                          и полный текст только раздувал ячейку.
+                        */
                         <Badge tone={product.inStock ? 'success' : 'neutral'} withDot={true}>
-                          {product.inStock ? 'В наличии' : 'Нет'}
+                          {product.inStock ? 'Да' : 'Нет'}
                         </Badge>
                       )}
                     </td>
@@ -145,16 +149,18 @@ export const AdminProductsTable: FC<IAdminProductsTableProps & IBasicStyling> = 
                         {/*
                           Переход на карточку — ссылка, а не кнопка: это
                           навигация, и она обязана открываться в новой вкладке
-                          и попадать в историю.
+                          и попадать в историю. Подпись при этом скрытая, и
+                          название товара в ней обязательно: в таблице таких
+                          иконок столько же, сколько строк, и «Изменить» без
+                          товара скринридер прочитал бы одинаково у всех.
                         */}
-                        <Button
-                          variant="secondary"
+                        <IconButton
+                          icon={<IconPencil />}
+                          label={`Изменить «${product.name}»`}
                           size="sm"
+                          variant="ghost"
                           link={{ href: buildEditHref(product) }}
-                          iconStart={<IconPencil />}
-                        >
-                          Изменить
-                        </Button>
+                        />
 
                         {deleted ? (
                           <IconButton

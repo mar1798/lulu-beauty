@@ -23,7 +23,7 @@ from sqlalchemy.orm import selectinload
 
 from app.auth.models import User
 from app.cycles.models import OrderCycle
-from app.cycles.scheduler_service import CartRescue
+from app.cycles.scheduler_service import CartRescue, CycleReminder
 from app.db import async_session
 from app.orders.models import Order, OrderStatus
 from app.telegram import messages, recipients
@@ -132,6 +132,52 @@ async def notify_cycle_opened(cycle_id: uuid.UUID) -> None:
             )
     except Exception:  # noqa: BLE001 - the cycle is already committed; see module docstring
         logger.exception("Failed to announce cycle %s", cycle_id)
+
+
+async def notify_cycle_reminders(
+    session: AsyncSession, reminders: Sequence[CycleReminder]
+) -> None:
+    """Sends the deadline nudges the sweep worked out, after its commit.
+
+    A throttled fan-out like the other broadcasts: a reminder goes to everyone holding an
+    abandoned cart, which is the same shape of audience as a shop-wide announcement, and
+    firing it flat-out would simply earn a rate-limit from Telegram partway through.
+    """
+    if not reminders:
+        return
+
+    try:
+        for reminder in reminders:
+            if not reminder.user_ids:
+                # Planned only so its stages get stamped — nobody left a cart in it.
+                continue
+
+            users = await recipients.get_users(session, reminder.user_ids)
+            message = (
+                messages.cart_last_chance(
+                    messages.cycle_title(reminder.cycle), reminder.cycle.deadline_at
+                )
+                if reminder.last_chance
+                else messages.cart_reminder(
+                    messages.cycle_title(reminder.cycle), reminder.cycle.deadline_at
+                )
+            )
+            result = await notifications_service.broadcast_reminder(
+                [users[user_id] for user_id in reminder.user_ids if user_id in users], message
+            )
+
+            cleared = await recipients.clear_stale_bindings(session, result.blocked_chat_ids)
+            await session.commit()
+
+            logger.info(
+                "Cycle %s: %d/%d reminder(s) delivered; %d stale binding(s) cleared",
+                reminder.cycle.id,
+                result.sent,
+                len(reminder.user_ids),
+                cleared,
+            )
+    except Exception:  # noqa: BLE001 - the cycles are already stamped; see module docstring
+        logger.exception("Failed to send cycle reminders")
 
 
 async def notify_cycle_closed(

@@ -12,6 +12,11 @@ import * as styles from './SearchField.css'
  * тот, кто этот запрос делает.
  *
  * Ищет бэкенд (`GET /products?q=`), а не фронт по загруженной странице.
+ *
+ * Подпись необязательна: placeholder у поля говорящий, и над ним подпись
+ * обычно оказывается его же дословным повтором. Без неё поле не остаётся
+ * безымянным — тем же текстом подставляется `aria-label`, потому что
+ * placeholder именем для скринридера не считается.
  */
 export const SearchField: FC<ISearchFieldProps & IBasicStyling> = ({
   value,
@@ -26,6 +31,7 @@ export const SearchField: FC<ISearchFieldProps & IBasicStyling> = ({
     value={value}
     onChange={onChange}
     label={label}
+    ariaLabel={placeholder}
     placeholder={placeholder}
     prefix={<IconSearch className={styles.icon} />}
     suffix={

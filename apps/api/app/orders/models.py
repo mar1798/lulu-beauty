@@ -2,7 +2,7 @@ import enum
 import uuid
 
 from sqlalchemy import Enum as SAEnum
-from sqlalchemy import ForeignKey, Integer, String, Text
+from sqlalchemy import ForeignKey, Index, Integer, String, Text, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.common.mixins import TimestampMixin, UUIDPrimaryKeyMixin
@@ -19,6 +19,13 @@ class OrderStatus(enum.StrEnum):
 
 class Order(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "orders"
+    # Every listing of orders — the owner's, the customer's, the export — is newest-first,
+    # and the owner's is usually narrowed to one cycle. Without these the admin table sorted
+    # the entire orders table on each page request.
+    __table_args__ = (
+        Index("ix_orders_created_at", text("created_at DESC")),
+        Index("ix_orders_cycle_created", "cycle_id", text("created_at DESC")),
+    )
 
     user_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("users.id", ondelete="CASCADE"), index=True

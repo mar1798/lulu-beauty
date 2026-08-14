@@ -2,8 +2,8 @@ import React, { useCallback, useMemo } from 'react'
 import Head from 'next/head'
 import useSWR from 'swr'
 import type { GetStaticProps } from 'next'
-import type { ICategory, IPage, IProduct } from 'widgets/types'
-import { Alert, Button } from 'widgets/atoms'
+import type { ICategory, IPage, IProduct, ISelectOption } from 'widgets/types'
+import { Alert, Button, Select } from 'widgets/atoms'
 import { CategoryFilter, EmptyState, Pagination, SearchField } from 'widgets/molecules'
 import { ProductGrid } from 'widgets/organisms'
 import { CatalogTemplate } from 'widgets/templates'
@@ -19,9 +19,10 @@ import {
   useQueryTextInput,
 } from '@/hooks/useQueryParams'
 import { messageForError } from '@/services/apiErrors'
-import { listCategories, listProducts } from '@/services/endpoints/catalog'
+import { listBrands, listCategories, listProducts } from '@/services/endpoints/catalog'
 import { getActiveCycleOrNull } from '@/services/endpoints/cycles'
 import { activeCycleFallback, type ISwrFallback } from '@/services/swrFallback'
+import * as styles from '@/styles/catalog.css'
 
 /**
  * Витрина.
@@ -45,6 +46,8 @@ const REVALIDATE_SECONDS = 60
 
 interface ICatalogPageProps {
   categories: ICategory[]
+  /** Бренды, встречающиеся в каталоге; отдельной сущности у бренда нет — только строка. */
+  brands: string[]
   /** `null` — API был недоступен на сборке; страница переживает это молча. */
   initial: IPage<IProduct> | null
   /** Состояние сбора для кеша SWR — чтобы витрина сразу встала правильной. */
@@ -57,37 +60,51 @@ export const getStaticProps: GetStaticProps<ICatalogPageProps> = async () => {
   const cycle = await getActiveCycleOrNull().catch(() => null)
 
   try {
-    const [categories, initial] = await Promise.all([
+    const [categories, brands, initial] = await Promise.all([
       listCategories(),
+      listBrands(),
       listProducts({ pageSize: PAGE_SIZE }),
     ])
 
     return {
-      props: { categories, initial, fallback: activeCycleFallback(cycle) },
+      props: { categories, brands, initial, fallback: activeCycleFallback(cycle) },
       revalidate: REVALIDATE_SECONDS,
     }
   } catch {
     // Ронять `next build` из-за недоступного API нельзя — ISR подхватит позже.
     return {
-      props: { categories: [], initial: null, fallback: activeCycleFallback(cycle) },
+      props: { categories: [], brands: [], initial: null, fallback: activeCycleFallback(cycle) },
       revalidate: REVALIDATE_SECONDS,
     }
   }
 }
 
-type ICatalogKey = readonly [tag: 'catalog-products', category: string | null, q: string, page: number]
+type ICatalogKey = readonly [
+  tag: 'catalog-products',
+  category: string | null,
+  brand: string | null,
+  q: string,
+  page: number,
+]
 
-const fetchCatalogPage = async ([, category, q, page]: ICatalogKey): Promise<IPage<IProduct>> =>
+const fetchCatalogPage = async ([, category, brand, q, page]: ICatalogKey): Promise<
+  IPage<IProduct>
+> =>
   listProducts({
     category: category ?? undefined,
+    brand: brand ?? undefined,
     q: q === '' ? undefined : q,
     page,
     pageSize: PAGE_SIZE,
   })
 
-const CatalogPage: React.FC<ICatalogPageProps> = ({ categories, initial }) => {
-  const [{ category: categorySlug, q, page: pageNumber }, setParams] = useQueryParams({
+/** Сентинел «все бренды»: у `Select` нет значения `null`, пустая строка — сброс. */
+const ALL_BRANDS = ''
+
+const CatalogPage: React.FC<ICatalogPageProps> = ({ categories, brands, initial }) => {
+  const [{ category: categorySlug, brand, q, page: pageNumber }, setParams] = useQueryParams({
     category: optionalTextParam,
+    brand: optionalTextParam,
     q: textParam,
     page: pageParam,
   })
@@ -107,19 +124,23 @@ const CatalogPage: React.FC<ICatalogPageProps> = ({ categories, initial }) => {
 
   const [search, setSearch] = useQueryTextInput(q, commitSearch)
 
-  const isDefaultParams = categorySlug === null && pageNumber === 1 && q === ''
+  const isDefaultParams = categorySlug === null && brand === null && pageNumber === 1 && q === ''
 
   const {
     data: page,
     error: fetchError,
     mutate,
-  } = useSWR<IPage<IProduct>>(['catalog-products', categorySlug, q, pageNumber], fetchCatalogPage, {
-    // Первая страница без фильтров уже пришла статикой — подставляем её, а не гоняем повторный запрос.
-    fallbackData: isDefaultParams && initial !== null ? initial : undefined,
-    // Смена категории/страницы не должна перекрашивать сетку в скелетон:
-    // прошлая страница остаётся на экране, пока грузится следующая.
-    keepPreviousData: true,
-  })
+  } = useSWR<IPage<IProduct>>(
+    ['catalog-products', categorySlug, brand, q, pageNumber],
+    fetchCatalogPage,
+    {
+      // Первая страница без фильтров уже пришла статикой — подставляем её, а не гоняем повторный запрос.
+      fallbackData: isDefaultParams && initial !== null ? initial : undefined,
+      // Смена категории/страницы не должна перекрашивать сетку в скелетон:
+      // прошлая страница остаётся на экране, пока грузится следующая.
+      keepPreviousData: true,
+    }
+  )
 
   /*
     Скелетон — только когда показывать нечего. `isLoading` из SWR для этого не
@@ -139,6 +160,21 @@ const CatalogPage: React.FC<ICatalogPageProps> = ({ categories, initial }) => {
     [categories]
   )
 
+  /*
+    Выбранный бренд остаётся в списке, даже если его там уже нет: страница
+    статическая (ISR), и по ссылке с `?brand=` можно прийти после того, как
+    последний товар этого бренда пропал из каталога. Без этого фильтр был бы
+    включён, а поле — пустым, и снять его было бы нечем.
+  */
+  const brandOptions = useMemo<ISelectOption[]>(() => {
+    const known = brand === null || brands.includes(brand) ? brands : [...brands, brand]
+
+    return [
+      { value: ALL_BRANDS, label: 'Все бренды' },
+      ...known.map(name => ({ value: name, label: name })),
+    ]
+  }, [brands, brand])
+
   return (
     <SiteLayout>
       <Head>
@@ -153,12 +189,30 @@ const CatalogPage: React.FC<ICatalogPageProps> = ({ categories, initial }) => {
         title="Каталог"
         summary={isFirstLoad ? undefined : `Найдено товаров: ${total}`}
         filter={
-          categories.length === 0 ? undefined : (
-            <CategoryFilter
-              categories={categories}
-              selectedSlug={categorySlug}
-              onSelect={slug => setParams({ category: slug, page: 1 })}
-            />
+          // `> 1` — кроме «Все бренды» в списке есть хоть что-то выбираемое.
+          categories.length === 0 && brandOptions.length <= 1 ? undefined : (
+            <div className={styles.filters}>
+              {categories.length > 0 && (
+                <CategoryFilter
+                  className={styles.field}
+                  categories={categories}
+                  selectedSlug={categorySlug}
+                  onSelect={slug => setParams({ category: slug, page: 1 })}
+                />
+              )}
+
+              {brandOptions.length > 1 && (
+                <Select
+                  className={styles.field}
+                  label="Бренд"
+                  value={brand ?? ALL_BRANDS}
+                  options={brandOptions}
+                  onChange={next =>
+                    setParams({ brand: next === ALL_BRANDS ? null : next, page: 1 })
+                  }
+                />
+              )}
+            </div>
           )
         }
         search={<SearchField value={search} onChange={setSearch} />}
@@ -193,7 +247,7 @@ const CatalogPage: React.FC<ICatalogPageProps> = ({ categories, initial }) => {
             emptyState={
               <EmptyState
                 title="Ничего не нашлось"
-                description="Попробуйте изменить запрос или выбрать другую категорию."
+                description="Попробуйте изменить запрос или выбрать другую категорию или бренд."
               />
             }
           />

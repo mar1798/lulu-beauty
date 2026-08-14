@@ -1,6 +1,7 @@
 import uuid
 
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -46,8 +47,16 @@ class WishlistService:
             # Counted before inserting, and only when something is actually being added:
             # a repeated press on a full list is idempotent, not a wall.
             await self._require_room(user_id)
-            self._session.add(WishlistItem(user_id=user_id, product_id=product_id))
-            await self._session.flush()
+            # Savepointed for the same reason the cart creates one: (user_id, product_id)
+            # is UNIQUE and two taps on the heart are two requests, both of which can find
+            # nothing saved yet. Adding a product twice is the customer's own idempotent
+            # action, so the loser reports success rather than a 500.
+            try:
+                async with self._session.begin_nested():
+                    self._session.add(WishlistItem(user_id=user_id, product_id=product_id))
+            except IntegrityError:
+                if await self._find_item(user_id, product_id) is None:
+                    raise
 
         return await self._build_response(user_id)
 

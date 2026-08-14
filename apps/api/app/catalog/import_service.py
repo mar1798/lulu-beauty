@@ -4,6 +4,7 @@ import re
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from pathlib import Path
 
+import anyio.to_thread
 import openpyxl
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -13,6 +14,8 @@ from app.catalog.schemas import SLUG_PATTERN, ImportRowErrorResponse, ImportSumm
 from app.common.limits import MAX_PRICE_CENTS
 
 REQUIRED_HEADERS = {"name", "slug", "price"}
+# How many slugs are looked up per round-trip when resolving a file against the catalogue.
+_SLUG_CHUNK = 5000
 TRUTHY_VALUES = {"true", "1", "yes", "y", "да"}
 FALSY_VALUES = {"false", "0", "no", "n", "нет"}
 
@@ -134,7 +137,9 @@ class CatalogImportService:
 
     async def import_file(self, filename: str, content: bytes) -> ImportSummaryResponse:
         try:
-            rows = parse_rows(filename, content)
+            # Off the event loop: openpyxl parsing a multi-megabyte upload is seconds of
+            # blocking CPU, and the API is single-threaded — see export/service.py.
+            rows = await anyio.to_thread.run_sync(parse_rows, filename, content)
         except ImportFileError as error:
             return ImportSummaryResponse(
                 created=0, updated=0, errors=[ImportRowErrorResponse(row=0, message=str(error))]
@@ -152,14 +157,22 @@ class CatalogImportService:
         updated = 0
         errors: list[ImportRowErrorResponse] = []
 
+        validated: list[dict[str, object]] = []
         for row_number, row in rows:
             try:
-                fields = self._validate_row(row, categories_by_slug)
+                validated.append(self._validate_row(row, categories_by_slug))
             except ImportRowError as error:
                 errors.append(ImportRowErrorResponse(row=row_number, message=str(error)))
-                continue
 
-            if await self._upsert(fields):
+        # Every product the file could touch, in one query rather than one per row. The
+        # per-row SELECT also forced an autoflush each time, so a 2 000-row upload cost
+        # ~4 000 round-trips and grew linearly (2.2s, and a full catalogue far worse).
+        existing = await self._load_products_by_slug(
+            [str(fields["slug"]) for fields in validated]
+        )
+
+        for fields in validated:
+            if self._upsert(existing, fields):
                 created += 1
             else:
                 updated += 1
@@ -203,19 +216,41 @@ class CatalogImportService:
             "category_id": category_id,
         }
 
-    async def _upsert(self, fields: dict[str, object]) -> bool:
-        """Upserts by slug; returns True if a new product was created, False if updated."""
-        result = await self._session.execute(select(Product).where(Product.slug == fields["slug"]))
-        product = result.scalar_one_or_none()
+    def _upsert(self, existing: dict[str, Product], fields: dict[str, object]) -> bool:
+        """Upserts by slug; returns True if a new product was created, False if updated.
+
+        `existing` is both the lookup table and the record of what this file has already
+        created: a slug repeated inside one upload has to update the row the earlier line
+        produced, not insert a second one against a UNIQUE column.
+        """
+        slug = str(fields["slug"])
+        product = existing.get(slug)
 
         if product is None:
-            self._session.add(Product(**fields))
+            product = Product(**fields)
+            self._session.add(product)
+            existing[slug] = product
             return True
 
         for field, value in fields.items():
             setattr(product, field, value)
         product.deleted_at = None  # re-importing revives a previously discontinued product
         return False
+
+    async def _load_products_by_slug(self, slugs: list[str]) -> dict[str, Product]:
+        """The products these rows will update, keyed by slug — chunked, not one big IN.
+
+        A bind parameter per slug against a file that may carry tens of thousands of rows
+        would run into the driver's parameter ceiling; the chunk size is well under it.
+        """
+        products: dict[str, Product] = {}
+        unique = list(dict.fromkeys(slugs))
+        for start in range(0, len(unique), _SLUG_CHUNK):
+            result = await self._session.execute(
+                select(Product).where(Product.slug.in_(unique[start : start + _SLUG_CHUNK]))
+            )
+            products.update({product.slug: product for product in result.scalars().all()})
+        return products
 
     async def _load_categories(self) -> dict[str, Category]:
         result = await self._session.execute(select(Category))

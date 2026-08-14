@@ -1,6 +1,7 @@
 import uuid
 
 from sqlalchemy import delete, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -116,10 +117,23 @@ class CartService:
 
     async def _find_or_create_cart(self, user_id: uuid.UUID, cycle_id: uuid.UUID) -> Cart:
         cart = await self._find_cart(user_id, cycle_id)
-        if cart is None:
-            cart = Cart(user_id=user_id, cycle_id=cycle_id)
-            self._session.add(cart)
-            await self._session.flush()
+        if cart is not None:
+            return cart
+
+        # Inside a savepoint, because (user_id, cycle_id) is UNIQUE and this is genuinely
+        # racy: adding two products in quick succession is two parallel requests, both of
+        # which find no cart and both of which insert one. The loser used to surface as a
+        # 500 on an action the customer had every right to perform — so it re-reads the
+        # row the winner committed instead. The savepoint is what keeps the failed insert
+        # from poisoning the rest of the request's transaction.
+        try:
+            async with self._session.begin_nested():
+                cart = Cart(user_id=user_id, cycle_id=cycle_id)
+                self._session.add(cart)
+        except IntegrityError:
+            cart = await self._find_cart(user_id, cycle_id)
+            if cart is None:
+                raise
         return cart
 
     async def _build_response(self, cycle: OrderCycle | None, cart: Cart | None) -> CartResponse:

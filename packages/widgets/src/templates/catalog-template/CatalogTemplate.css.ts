@@ -11,12 +11,19 @@ export const container = style({
 
 export const head = style(flexColumn(8))
 
+/**
+ * Фильтры и поиск выровнены по **нижнему** краю, а не по верхнему: у списков
+ * над полем стоит подпись, у поиска её нет, и по верхнему краю его «пилюля»
+ * поднималась выше остальных — три поля в ряд читались как ступенька. По
+ * нижнему краю сами поля стоят на одной линии, а подписи просто висят над
+ * своими.
+ */
 export const controls = style({
   ...flexColumn(16),
   ...media({
     md: {
       ...flexRow(24),
-      alignItems: 'flex-start',
+      alignItems: 'flex-end',
       justifyContent: 'space-between',
     },
   }),

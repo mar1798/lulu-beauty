@@ -41,9 +41,30 @@ globalStyle('html, body', {
   color: color.text('primary'),
   minHeight: '100vh',
   scrollBehavior: 'smooth',
-  scrollbarWidth: 'none',
   WebkitFontSmoothing: 'antialiased',
   MozOsxFontSmoothing: 'grayscale',
+})
+
+/*
+  Полосы прокрутки скрыты по всему сайту — не только у страницы, но и у всего,
+  что прокручивается внутри неё: списка в `Select`, таблиц админки, полосы
+  разделов на телефоне.
+
+  Именно `*`, а не `html, body`: `scrollbar-width` не наследуется, и правило на
+  корне не доходит ни до одного вложенного контейнера. Оба объявления
+  обязательны — `scrollbar-width` понимают Firefox и свежие WebKit/Chromium,
+  `::-webkit-scrollbar` закрывает всё остальное; раньше стояло только первое, и
+  в Chrome полосы никуда не девались.
+
+  Прокрутка при этом остаётся: скрыт только сам ползунок, колесо, тачпад,
+  клавиши и `scroll-behavior` работают как прежде.
+*/
+globalStyle('*', {
+  scrollbarWidth: 'none',
+})
+
+globalStyle('*::-webkit-scrollbar', {
+  display: 'none',
 })
 
 globalStyle('img', {

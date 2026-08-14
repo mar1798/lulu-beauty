@@ -23,7 +23,7 @@ import {
   updateMyOrderItemQuantity,
   updateMyOrderNote,
 } from '@/services/endpoints/orders'
-import { activeCycleKey, ordersKey, orderKey } from '@/services/swrKeys'
+import { activeCycleKey, isOrdersKey, orderKey } from '@/services/swrKeys'
 
 /**
  * Одна заявка покупателя.
@@ -104,7 +104,9 @@ const OrderPage: React.FC = () => {
       await mutate()
 
       if (userId !== null) {
-        void globalMutate(ordersKey(userId))
+        // Тегом, а не одним ключом: список постраничный, и правка заявки меняет
+        // не только ту страницу, на которой её открыли.
+        void globalMutate(isOrdersKey)
       }
 
       notify({ tone: 'success', title: success })

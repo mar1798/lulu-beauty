@@ -300,6 +300,8 @@ export interface IIconButtonProps {
   disabled?: boolean
   /** Запрос в работе: иконка меняется на спиннер, кнопка блокируется. */
   isLoading?: boolean
+  /** Ссылочный режим — см. `IButtonProps['link']`. */
+  link?: ILink
   onClick?: () => void
   /** Недоступно с объяснением — см. `IButtonProps['unavailableReason']`. */
   unavailableReason?: string | null
@@ -324,6 +326,8 @@ export interface IInputProps {
   id?: string
   name?: string
   label?: string
+  /** Имя поля для скринридера, когда видимой подписи нет. Игнорируется при `label`. */
+  ariaLabel?: string
   hint?: string
   /** Непустая строка включает состояние ошибки и `aria-invalid`. */
   error?: string | null
@@ -660,13 +664,8 @@ export interface ICategoryFilterProps {
   /** **Слаг**, а не id: по нему фильтрует `GET /products?category=`. `null` — все. */
   selectedSlug?: string | null
   onSelect: (slug: string | null) => void
+  /** Подпись строки-сброса. По умолчанию «Все категории». */
   allLabel?: string
-  /**
-   * Раскладка чипов на широком экране: `row` (по умолчанию) — строка с
-   * переносом, для полосы фильтров над содержимым; `column` — столбец во всю
-   * ширину, для узкой боковой колонки админки.
-   */
-  layout?: 'row' | 'column'
 }
 
 export interface IEmptyStateProps {

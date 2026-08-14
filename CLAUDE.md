@@ -27,20 +27,33 @@ Run from the repo root unless noted. Workspace-scoped commands use `-w <workspac
 - `npm run lint` — eslint only, `website`/`widgets`.
 - `npm test` — runs each JS workspace's `test` script (via turbo): `vitest run` for `widgets`. Does not cover `apps/api` — use `uv run pytest` there.
 - `npm run barrels` — regenerates the auto-generated `index.ts` barrel files (see below).
-- `npm run dev` — turbo dev across JS workspaces (only `website` defines `dev`). Start the api separately (`docker compose up --build`, or `uv run uvicorn app.main:app --reload` from `apps/api`).
+- `npm run dev` — turbo dev across JS workspaces (only `website` defines `dev`), i.e. the frontend alone. Deliberately **not** an alias for `dev:all` below — CI and muscle memory rely on it staying frontend-only. Start the api separately (see `dev:api`/`dev:all`, or `uv run uvicorn app.main:app --reload` from `apps/api`).
 - `npm run build -w <workspace>` / `npm start -w <workspace>` — build/start a single workspace.
+
+Dev-server shortcuts (root `package.json`, so each piece can be started without remembering which workspace or tool owns it):
+
+| Command | Starts | Ports |
+| --- | --- | --- |
+| `npm run dev:web` | frontend only (`npm run dev -w website`) | 3000 |
+| `npm run dev:api` | backend in the foreground with logs (`docker compose up api`; `db` comes up too via `depends_on`) | 3001, 5432 |
+| `npm run dev:storybook` | Storybook for `packages/widgets` | 6006 |
+| `npm run dev:all` | backend detached + frontend in the foreground | 3000, 3001 |
+| `npm run dev:api:stop` | `docker compose stop` — the off-switch for whatever `dev:api`/`dev:all` left running | — |
+
+- `dev:all` starts the api with `-d` **on purpose**: no `concurrently`/`npm-run-all` is installed, and two foreground processes can't share one npm script. Consequence: `Ctrl+C` kills only the frontend and the containers keep running — stop them with `npm run dev:api:stop`.
+- None of these pass `--build`, so a rebuild isn't paid for on every start. After changing `apps/api/Dockerfile` or its dependencies, run `docker compose up --build api` manually.
 
 `website`'s `dev`/`build` scripts pass `--webpack` explicitly — Next 16 defaults to Turbopack, but the vanilla-extract plugin here is the webpack one. Don't drop that flag.
 
 Widgets-specific (run with `-w widgets` or `cd packages/widgets`):
 - `npm run generate -w widgets` — scaffolds a new atom/molecule/organism (prompts for type + name), then regenerates barrels. Always use this instead of hand-creating component folders.
-- `npm run storybook -w widgets` — starts Storybook on port 6006; this is the primary dev/test loop for widgets.
+- `npm run storybook -w widgets` — starts Storybook on port 6006; this is the primary dev/test loop for widgets. `npm run dev:storybook` from the root is the same thing.
 - `npm run types -w widgets` — `tsc --noEmit` only.
 
 To run a single vitest test file: `npx vitest run <path-to-test>` from `packages/widgets`.
 
 Backend-specific (run with `cd apps/api`; uses `uv`, not npm):
-- `docker compose up --build` (from repo root) — brings up `db` (Postgres 16, with healthcheck) and `api` (builds `apps/api/Dockerfile`, runs `alembic upgrade head` on start, then serves on port 3001). `docker compose down` to tear down. Product image uploads live in the named `uploads` volume — don't `down -v` unless you intend to orphan the `product_images` rows still in the DB.
+- `docker compose up --build` (from repo root) — brings up `db` (Postgres 16, with healthcheck) and `api` (builds `apps/api/Dockerfile`, runs `alembic upgrade head` on start, then serves on port 3001). `npm run dev:api` wraps this without `--build` for everyday use. `docker compose down` to tear down. Product image uploads live in the named `uploads` volume — don't `down -v` unless you intend to orphan the `product_images` rows still in the DB.
 - `cp apps/api/.env.example apps/api/.env` — required before running the api directly (outside Docker) or via compose (the `api` service's `env_file` points at it); `DATABASE_URL` there targets `localhost` for local dev, while the containerized `api` service overrides it to target the `db` hostname.
 - `uv sync` — installs dependencies into `apps/api/.venv` per `uv.lock`.
 - `uv run uvicorn app.main:app --reload --port 3001` — local dev server (outside Docker; requires Postgres reachable per `DATABASE_URL`).

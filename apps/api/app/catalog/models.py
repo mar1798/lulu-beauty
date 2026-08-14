@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, String, Text, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.common.mixins import TimestampMixin, UUIDPrimaryKeyMixin
@@ -20,6 +20,26 @@ class Category(UUIDPrimaryKeyMixin, Base):
 
 class Product(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "products"
+    # Partial, on `deleted_at IS NULL`, because that filter is on every listing the shop
+    # serves and a soft-deleted product is never ordered by name or picked from the brand
+    # dropdown. Without them both queries fell back to a seq scan plus a sort of the whole
+    # catalogue on every page of every request.
+    __table_args__ = (
+        Index("ix_products_live_name", "name", postgresql_where=text("deleted_at IS NULL")),
+        Index("ix_products_live_brand", "brand", postgresql_where=text("deleted_at IS NULL")),
+        # Catalogue search is `name ILIKE '%…%'`, which no btree index can serve — the
+        # leading wildcard rules it out — so it read every row. A trigram GIN index is the
+        # one thing that indexes an infix match. pg_trgm is a *trusted* extension, so the
+        # migration can create it without superuser (verified against a plain database
+        # owner); the index is partial on the same condition as the two above.
+        Index(
+            "ix_products_live_name_trgm",
+            "name",
+            postgresql_using="gin",
+            postgresql_ops={"name": "gin_trgm_ops"},
+            postgresql_where=text("deleted_at IS NULL"),
+        ),
+    )
 
     name: Mapped[str] = mapped_column(String(255))
     slug: Mapped[str] = mapped_column(String(255), unique=True, index=True)

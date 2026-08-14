@@ -1,3 +1,4 @@
+import asyncio
 import uuid
 from datetime import UTC, datetime
 
@@ -6,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.common.limits import MAX_WISHLIST_ITEMS
+from app.db import async_session
 from app.wishlist.models import WishlistItem
 from app.wishlist.service import (
     ProductNotFoundError,
@@ -159,3 +161,33 @@ async def test_full_wishlist_refuses_new_products_but_not_repeats(
 
     # Already saved — nothing is being added, so the ceiling has nothing to refuse.
     assert len((await service.add_item(user.id, products[0].id)).items) == MAX_WISHLIST_ITEMS
+
+
+async def test_concurrent_add_of_the_same_product_saves_it_once(db_session: AsyncSession) -> None:
+    """Два быстрых нажатия на сердечко — два запроса на один и тот же товар.
+
+    UNIQUE(user_id, product_id) отсекает второй, но добавить уже сохранённое — действие
+    идемпотентное, и проигравший запрос должен вернуть успех, а не пятисотку.
+    """
+    user = await make_user(db_session)
+    product = await make_product(db_session)
+    await db_session.commit()
+
+    barrier = asyncio.Barrier(2)
+
+    async def add() -> None:
+        async with async_session() as session:
+            service = WishlistService(session)
+            await service._find_item(user.id, product.id)
+            await barrier.wait()
+            await service.add_item(user.id, product.id)
+            await session.commit()
+
+    await asyncio.gather(add(), add())
+
+    saved = (
+        (await db_session.execute(select(WishlistItem).where(WishlistItem.user_id == user.id)))
+        .scalars()
+        .all()
+    )
+    assert len(saved) == 1

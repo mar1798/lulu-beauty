@@ -1,3 +1,4 @@
+import asyncio
 import uuid
 from datetime import UTC, datetime
 
@@ -13,6 +14,7 @@ from app.cart.service import (
     ProductNotFoundError,
 )
 from app.common.limits import MAX_ITEM_QUANTITY
+from app.db import async_session
 from tests.integration.factories import (
     make_cycle,
     make_product,
@@ -158,3 +160,36 @@ async def test_a_discontinued_product_drops_out_of_the_cart(db_session: AsyncSes
 
     assert [item.product_slug for item in response.items] == ["live"]
     assert response.total_cents == 1000
+
+
+async def test_concurrent_add_item_creates_one_cart(db_session: AsyncSession) -> None:
+    """Два «в корзину» подряд — это два параллельных запроса на одного покупателя.
+
+    UNIQUE(user_id, cycle_id) означает, что корзину создаст только один из них; второй
+    обязан подобрать уже созданную, а не упасть пятисоткой на законном действии.
+
+    Барьер держит оба запроса до того момента, когда каждый уже убедился, что корзины
+    нет: без него планировщик обычно успевает провести их по очереди, и гонки не выходит.
+    """
+    user = await make_user(db_session)
+    cycle = await make_cycle(db_session)
+    first_product = await make_product(db_session, slug="p-1")
+    second_product = await make_product(db_session, slug="p-2")
+    await db_session.commit()
+
+    barrier = asyncio.Barrier(2)
+
+    async def add(product_id: uuid.UUID) -> None:
+        async with async_session() as session:
+            service = CartService(session)
+            await service._find_cart(user.id, cycle.id)
+            await barrier.wait()
+            await service.add_item(user.id, product_id, 1)
+            await session.commit()
+
+    await asyncio.gather(add(first_product.id), add(second_product.id))
+
+    carts = (await db_session.execute(select(Cart).where(Cart.user_id == user.id))).scalars().all()
+    assert len(carts) == 1
+    cart = await CartService(db_session).get_cart(user.id)
+    assert {item.product_id for item in cart.items} == {first_product.id, second_product.id}

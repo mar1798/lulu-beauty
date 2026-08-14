@@ -10,6 +10,11 @@ import * as styles from './Input.css'
  * лежат рядом: иначе скринридер прочитает подпись и молча пропустит причину,
  * по которой форма не отправилась. `id` генерируется автоматически, но его
  * можно задать снаружи — например, чтобы навести фокус после ответа сервера.
+ *
+ * Полю без видимой подписи имя даёт `ariaLabel`: placeholder именем не
+ * считается — он исчезает при первом же символе, а часть скринридеров его
+ * и вовсе не читает. При заданном `label` он игнорируется, иначе перебил бы
+ * подпись, уже связанную через `htmlFor`.
  */
 export const Input: FC<IInputProps & IBasicStyling> = ({
   value,
@@ -17,6 +22,7 @@ export const Input: FC<IInputProps & IBasicStyling> = ({
   id,
   name,
   label,
+  ariaLabel,
   hint,
   error,
   type = 'text',
@@ -70,6 +76,7 @@ export const Input: FC<IInputProps & IBasicStyling> = ({
           disabled={disabled}
           required={required}
           readOnly={readOnly}
+          aria-label={label === undefined ? ariaLabel : undefined}
           aria-invalid={hasError}
           aria-describedby={describedBy}
           onChange={event => onChange(event.target.value)}

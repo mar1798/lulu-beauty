@@ -1,5 +1,6 @@
 import uuid
 from collections import defaultdict
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
@@ -12,8 +13,6 @@ from app.catalog.models import Product
 from app.common.limits import MAX_WISHLIST_ITEMS
 from app.cycles.models import CycleStatus, OrderCycle
 from app.orders.models import Order, OrderStatus
-from app.telegram import messages
-from app.telegram.client import notifications_service
 from app.wishlist.models import WishlistItem
 
 
@@ -40,6 +39,24 @@ REMINDER_STAGES = (
     ReminderStage(window=timedelta(hours=24), sent_at_field="reminder_sent_at", last_chance=False),
 )
 WIDEST_REMINDER_WINDOW = max(stage.window for stage in REMINDER_STAGES)
+
+
+@dataclass(frozen=True)
+class CycleReminder:
+    """One cycle's nudge: who gets it, and which stages it settles once it has gone out.
+
+    Carries user ids rather than User rows: the recipients are re-read in the sending
+    session, which by then is the only one that still has a live transaction.
+
+    `sent_at_fields` is every stage this nudge answers for — the one being sent plus any
+    wider ones it overtook — so that stamping stays the same decision the planning was,
+    rather than being re-derived against a clock that has moved on since.
+    """
+
+    cycle: OrderCycle
+    user_ids: list[uuid.UUID]
+    last_chance: bool
+    sent_at_fields: tuple[str, ...]
 
 
 @dataclass(frozen=True)
@@ -81,7 +98,16 @@ class CycleSchedulerService:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
-    async def sweep_reminders(self) -> int:
+    async def plan_reminders(self) -> list[CycleReminder]:
+        """Works out who is due a nudge. Writes nothing and sends nothing.
+
+        Planning, sending and stamping are three steps on purpose, in that order. The
+        sending cannot happen here because a Telegram round-trip per recipient inside an
+        open write transaction held that transaction for as long as the fan-out took. And
+        the stamping cannot happen here either, because a stamp that lands before the
+        message means an outage loses the reminder outright — the shop would rather send
+        one twice than not at all, so the stamp follows the send (see `mark_reminders_sent`).
+        """
         now = datetime.now(UTC)
         result = await self._session.execute(
             select(OrderCycle).where(
@@ -97,7 +123,7 @@ class CycleSchedulerService:
         )
         cycles = list(result.scalars().all())
 
-        reminders_sent = 0
+        reminders = []
         for cycle in cycles:
             due = [
                 stage
@@ -109,39 +135,51 @@ class CycleSchedulerService:
                 continue
 
             # Only the most urgent stage is actually sent; the wider ones it overtook are
-            # stamped as handled. A cycle opened three hours before its deadline would
+            # settled along with it. A cycle opened three hours before its deadline would
             # otherwise fire both texts in the same tick — the day-ahead warning first,
             # immediately contradicted by "последний шанс".
-            reminders_sent += await self._remind_cycle(cycle, due[0])
-            for stage in due:
-                setattr(cycle, stage.sent_at_field, now)
+            #
+            # A cycle with nobody to notify is planned too, with an empty audience: there
+            # is no reminder to send, but the stages still have to be marked, or every
+            # later tick would re-examine the same cycle for as long as its window lasts.
+            reminders.append(
+                CycleReminder(
+                    cycle=cycle,
+                    user_ids=await self._reminder_recipients(cycle),
+                    last_chance=due[0].last_chance,
+                    sent_at_fields=tuple(stage.sent_at_field for stage in due),
+                )
+            )
 
+        return reminders
+
+    async def mark_reminders_sent(self, reminders: Sequence[CycleReminder]) -> None:
+        """Closes the stages a nudge has answered for. Call it after the send, not before.
+
+        Deliberately not idempotence-by-timestamp: the stamp is what makes the reminder
+        idempotent, and it is written once the message is out. A crash in between means
+        the next tick sends again — chosen over the alternative, where the same crash
+        means the reminder is never sent at all and nobody finds out.
+        """
+        now = datetime.now(UTC)
+        for reminder in reminders:
+            for field in reminder.sent_at_fields:
+                setattr(reminder.cycle, field, now)
         await self._session.flush()
-        return reminders_sent
 
-    async def _remind_cycle(self, cycle: OrderCycle, stage: ReminderStage) -> int:
+    async def _reminder_recipients(self, cycle: OrderCycle) -> list[uuid.UUID]:
+        """Who still has something in a cart for this cycle and hasn't checked out."""
         has_checked_out = select(Order.id).where(
             Order.user_id == User.id, Order.cycle_id == cycle.id
         )
         result = await self._session.execute(
-            select(User)
+            select(User.id)
             .join(Cart, Cart.user_id == User.id)
             .join(CartItem, CartItem.cart_id == Cart.id)
             .where(Cart.cycle_id == cycle.id, ~has_checked_out.exists())
             .distinct()
         )
-        users = list(result.scalars().all())
-
-        # cycle_title, not `cycle.label or "<something>"`: the label is optional, and the
-        # fallback goes straight into a Russian sentence the customer reads ("...по заказу
-        # «...»"). Naming an unlabelled cycle by its deadline is what every other message
-        # already does.
-        title = messages.cycle_title(cycle)
-        for user in users:
-            await notifications_service.send_reminder(
-                user, title, cycle.deadline_at, last_chance=stage.last_chance
-            )
-        return len(users)
+        return list(result.scalars().all())
 
     async def sweep_deadlines(self) -> list[CycleClosure]:
         now = datetime.now(UTC)

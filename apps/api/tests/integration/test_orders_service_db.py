@@ -508,3 +508,50 @@ async def test_admin_delete_removes_the_order_and_its_items(db_session: AsyncSes
 async def test_admin_delete_of_a_missing_order_raises(db_session: AsyncSession) -> None:
     with pytest.raises(OrderNotFoundError):
         await OrdersService(db_session).delete(uuid.uuid4())
+
+
+async def test_list_for_user_paginates_newest_first_and_reports_the_total(
+    db_session: AsyncSession,
+) -> None:
+    """История заявок не ограничена ничем, кроме пагинации.
+
+    Покупатель, заказывающий каждый сбор, иначе получал бы всю историю разом — и
+    каждую заявку со всеми её позициями.
+    """
+    user = await make_user(db_session)
+    stranger = await make_user(db_session)
+    product = await make_product(db_session)
+    service = OrdersService(db_session)
+
+    placed = []
+    for index in range(5):
+        cycle = await make_cycle(
+            db_session, deadline_at=datetime.now(UTC) + timedelta(hours=index + 1)
+        )
+        await CartService(db_session).add_item(user.id, product.id, 1)
+        order = await service.checkout(user.id, note=None)
+        # Явные метки времени: заявки создаются в одной транзакции, и полагаться
+        # на разрешение created_at для проверки порядка нельзя.
+        order.created_at = datetime.now(UTC) - timedelta(days=5 - index)
+        placed.append(order)
+        cycle.deadline_at = datetime.now(UTC) - timedelta(seconds=1)
+        await db_session.flush()
+
+    newest_first = list(reversed([order.id for order in placed]))
+
+    first_page, total = await service.list_for_user(user.id, page=1, page_size=2)
+    assert total == 5
+    assert [order.id for order in first_page] == newest_first[:2]
+
+    second_page, _ = await service.list_for_user(user.id, page=2, page_size=2)
+    assert [order.id for order in second_page] == newest_first[2:4]
+
+    last_page, _ = await service.list_for_user(user.id, page=3, page_size=2)
+    assert [order.id for order in last_page] == newest_first[4:]
+
+    # За пределами последней страницы — пусто, но общее число по-прежнему честное.
+    beyond, beyond_total = await service.list_for_user(user.id, page=4, page_size=2)
+    assert (beyond, beyond_total) == ([], 5)
+
+    # Чужие заявки не попадают ни в страницу, ни в счётчик.
+    assert await service.list_for_user(stranger.id, page=1, page_size=2) == ([], 0)

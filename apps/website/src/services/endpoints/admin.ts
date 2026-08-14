@@ -44,6 +44,8 @@ export const deleteCategory = (categoryId: string): Promise<void> =>
 export interface IAdminProductListParams {
   /** Slug категории — как и в публичном списке. */
   category?: string
+  /** Название бренда целиком — как и в публичном списке (слага у бренда нет). */
+  brand?: string
   inStock?: boolean
   q?: string
   /** Товары удаляются мягко; по умолчанию удалённые скрыты. */
@@ -51,6 +53,16 @@ export interface IAdminProductListParams {
   page?: number
   pageSize?: number
 }
+
+/**
+ * Бренды для админского фильтра.
+ *
+ * Отдельная от публичной ручка ради `includeDeleted`: с включённым показом
+ * удалённых в списке должны быть и бренды, оставшиеся только на удалённых
+ * товарах, иначе такую выборку нечем набрать.
+ */
+export const listAdminBrands = (includeDeleted = false): Promise<string[]> =>
+  api.get('/admin/brands', { query: { includeDeleted } })
 
 export interface IProductInput {
   name: string
@@ -68,6 +80,7 @@ export const listAdminProducts = (
   api.get('/admin/products', {
     query: {
       category: params.category,
+      brand: params.brand,
       inStock: params.inStock,
       q: params.q,
       includeDeleted: params.includeDeleted,

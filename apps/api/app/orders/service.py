@@ -133,14 +133,31 @@ class OrdersService:
         await self._session.flush()
         return order
 
-    async def list_for_user(self, user_id: uuid.UUID) -> list[Order]:
+    async def list_for_user(
+        self, user_id: uuid.UUID, page: int = 1, page_size: int = 20
+    ) -> tuple[list[Order], int]:
+        """One page of the customer's own orders, newest first, plus the total.
+
+        Paginated because nothing bounded this: a customer who has ordered in every cycle
+        for a year got the lot — with every line item of every order — in one response.
+        The total comes back so the caller can say how much more there is (the bot's
+        "…и ещё N" line, the site's pager) without asking for the rest.
+        """
+        total = (
+            await self._session.scalar(
+                select(func.count()).select_from(Order).where(Order.user_id == user_id)
+            )
+            or 0
+        )
         result = await self._session.execute(
             select(Order)
             .options(selectinload(Order.items))
             .where(Order.user_id == user_id)
             .order_by(Order.created_at.desc())
+            .offset((page - 1) * page_size)
+            .limit(page_size)
         )
-        return list(result.scalars().all())
+        return list(result.scalars().all()), total
 
     async def get_for_user(self, user_id: uuid.UUID, order_id: uuid.UUID) -> Order:
         result = await self._session.execute(

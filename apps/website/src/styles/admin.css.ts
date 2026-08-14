@@ -67,13 +67,21 @@ export const counterLabel = style({
 })
 
 /** Полоса фильтров над таблицей: на узком экране складывается в колонку. */
+/**
+ * Строка фильтров списка товаров: поиск, категория, бренд, показ удалённых.
+ *
+ * Поиск шире списков, но не вдвое: в него печатают, и обрезанный запрос читать
+ * сложнее, чем обрезанное название категории. При соотношении 2:1:1 спискам
+ * оставалось так мало, что даже «Все категории» не помещалось целиком — а это
+ * их состояние по умолчанию, то самое, которое видно чаще всего.
+ */
 export const filters = style({
   ...flexColumn(12),
   width: '100%',
   ...media({
     md: {
       display: 'grid',
-      gridTemplateColumns: 'minmax(0, 2fr) minmax(0, 1fr) auto',
+      gridTemplateColumns: 'minmax(0, 1.5fr) minmax(0, 1fr) minmax(0, 1fr) auto',
       gap: vars.space.md,
       alignItems: 'end',
     },
@@ -89,24 +97,6 @@ export const filtersWide = style({
       gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr) auto',
       gap: vars.space.md,
       alignItems: 'end',
-    },
-  }),
-})
-
-/**
- * На мобильном свой лейбл уже есть у `<Select>` внутри `CategoryFilter` —
- * этот заголовок продублировал бы его, поэтому появляется вместе с сеткой
- * чипов, то есть от `sm`.
- */
-export const categorySidebarTitle = style({
-  display: 'none',
-  ...media({
-    sm: {
-      display: 'block',
-      font: font('13/18', 600),
-      color: color.text('muted'),
-      textTransform: 'uppercase',
-      letterSpacing: vars.tracking.wide,
     },
   }),
 })

@@ -15,7 +15,9 @@ const Template: StoryFn<typeof CategoryFilter> = args => {
 
   return (
     <StoryWrapper>
-      <CategoryFilter {...args} selectedSlug={selectedSlug} onSelect={setSelectedSlug} />
+      <div style={{ width: 220 }}>
+        <CategoryFilter {...args} selectedSlug={selectedSlug} onSelect={setSelectedSlug} />
+      </div>
     </StoryWrapper>
   )
 }
@@ -26,25 +28,13 @@ Default.parameters = {
 }
 Default.args = feedCategoryFilter()
 
-/** Обёртка шириной 220px — ровно как боковая колонка админки. */
-const ColumnTemplate: StoryFn<typeof CategoryFilter> = args => {
-  const [selectedSlug, setSelectedSlug] = useState(args.selectedSlug)
-
-  return (
-    <StoryWrapper>
-      <div style={{ width: 220 }}>
-        <CategoryFilter {...args} selectedSlug={selectedSlug} onSelect={setSelectedSlug} />
-      </div>
-    </StoryWrapper>
-  )
-}
-
 /**
- * Раскладка для узкой боковой колонки: чипы столбцом во всю ширину, длинные
- * названия переносятся.
+ * Категорий больше, чем помещается в список: дальше `Select` упирается в свой
+ * потолок высоты и прокручивается внутри, а длинные названия обрезаются
+ * многоточием, а не растягивают поле.
  */
-export const Column = ColumnTemplate.bind({})
-Column.parameters = {
+export const ManyCategories = Template.bind({})
+ManyCategories.parameters = {
   layout: 'centered',
 }
-Column.args = { ...feedCategoryFilterMany(), layout: 'column' }
+ManyCategories.args = feedCategoryFilterMany()

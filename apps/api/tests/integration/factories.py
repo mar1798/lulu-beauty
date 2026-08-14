@@ -33,11 +33,13 @@ async def make_product(
     price_cents: int = 1000,
     in_stock: bool = True,
     slug: str | None = None,
+    brand: str | None = None,
     deleted_at: datetime | None = None,
 ) -> Product:
     product = Product(
         name=name,
         slug=slug or f"test-product-{uuid.uuid4().hex[:12]}",
+        brand=brand,
         price_cents=price_cents,
         in_stock=in_stock,
         deleted_at=deleted_at,

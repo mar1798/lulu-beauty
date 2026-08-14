@@ -111,15 +111,24 @@ async def checkout(
     return response
 
 
-@router.get("/orders", response_model=list[OrderResponse])
+@router.get("/orders", response_model=PageResponse[OrderResponse])
 async def list_my_orders(
+    page: int = Query(default=1, ge=1),
+    # snake_case, like the other customer-facing listing (`GET /products`); the camelCase
+    # variant belongs to the /admin/* endpoints. See the note in CLAUDE.md.
+    page_size: int = Query(default=20, ge=1, le=100),
     session: AsyncSession = Depends(get_session),
     current_user: CurrentUser = Depends(get_current_user),
-) -> list[OrderResponse]:
+) -> PageResponse[OrderResponse]:
     service = OrdersService(session)
-    orders = await service.list_for_user(current_user.id)
+    orders, total = await service.list_for_user(current_user.id, page, page_size)
     flags = await service.customer_flags(orders)
-    return [_order_response(order, flags.get(order.id, _NO_ACTIONS)) for order in orders]
+    return PageResponse(
+        items=[_order_response(order, flags.get(order.id, _NO_ACTIONS)) for order in orders],
+        total=total,
+        page=page,
+        page_size=page_size,
+    )
 
 
 @router.get("/orders/{order_id}", response_model=OrderResponse)

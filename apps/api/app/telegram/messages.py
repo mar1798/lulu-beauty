@@ -296,7 +296,13 @@ UNLINKED = (
 )
 
 
-def my_orders(orders: list[Order]) -> str:
+def my_orders(orders: list[Order], total: int | None = None) -> str:
+    """`total` is how many the customer has in all, not how many were passed in.
+
+    The caller now fetches only the page it shows, so the count of what is hidden can no
+    longer be derived from the list itself. It defaults to the number given, which keeps
+    the message honest if a caller does hand over everything.
+    """
     if not orders:
         return "У вас пока нет заявок."
 
@@ -307,8 +313,8 @@ def my_orders(orders: list[Order]) -> str:
         f"{format_price(order.total_cents)} — {ORDER_STATUS_LABEL[order.status]}"
         for order in shown
     ]
-    if len(orders) > len(shown):
-        hidden = len(orders) - len(shown)
+    hidden = (total if total is not None else len(orders)) - len(shown)
+    if hidden > 0:
         lines.append(f"…и ещё {hidden} — весь список на сайте.")
     return "\n".join(lines)
 

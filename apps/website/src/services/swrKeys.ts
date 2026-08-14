@@ -19,11 +19,31 @@ export const wishlistKey = (userId: string) => ['wishlist', userId] as const
 
 export const categoriesKey = ['categories'] as const
 
+export const brandsKey = ['brands'] as const
+
+/**
+ * Админский список брендов зависит от того, показаны ли удалённые товары:
+ * с ними в наборе появляются бренды, которых в живом каталоге уже нет.
+ */
+export const adminBrandsKey = (includeDeleted: boolean) =>
+  ['admin-brands', includeDeleted] as const
+
 export const cyclesKey = ['cycles'] as const
 
 export const activeCycleKey = ['active-cycle'] as const
 
-export const ordersKey = (userId: string) => ['orders', userId] as const
+export const ORDERS_TAG = 'orders'
+
+/**
+ * Свои заявки — постранично, поэтому в ключе есть номер страницы, а сбрасывать
+ * их нужно все разом: после оформления, отмены или правки меняется не только
+ * открытая страница, но и то, как заявки разложены по остальным.
+ */
+export const ordersKey = (userId: string, page: number) =>
+  [ORDERS_TAG, userId, page] as const
+
+export const isOrdersKey = (key: unknown): boolean =>
+  Array.isArray(key) && key[0] === ORDERS_TAG
 
 export const orderKey = (userId: string, orderId: string) => ['order', userId, orderId] as const
 
@@ -45,9 +65,10 @@ export const ADMIN_PRODUCTS_TAG = 'admin-products'
 export const adminProductsKey = (
   q: string,
   category: string,
+  brand: string,
   includeDeleted: boolean,
   page: number
-) => [ADMIN_PRODUCTS_TAG, q, category, includeDeleted, page] as const
+) => [ADMIN_PRODUCTS_TAG, q, category, brand, includeDeleted, page] as const
 
 export const adminProductKey = (id: string) => ['admin-product', id] as const
 
