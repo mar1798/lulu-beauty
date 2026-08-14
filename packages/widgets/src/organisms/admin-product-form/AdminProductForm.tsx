@@ -11,6 +11,7 @@ import { IconTrash } from '../../svg/icons'
 import { Alert } from '../../atoms/alert'
 import { AppImage } from '../../atoms/app-image'
 import { Button } from '../../atoms/button'
+import { Combobox } from '../../atoms/combobox'
 import { Heading } from '../../atoms/heading'
 import { IconButton } from '../../atoms/icon-button'
 import { Input } from '../../atoms/input'
@@ -29,6 +30,14 @@ import * as styles from './AdminProductForm.css'
  * Обратное («введите копейки») переложило бы на владельца арифметику,
  * в которой легко ошибиться на два порядка.
  *
+ * Производитель — поле со свободным вводом и подсказками (`brands`), а не
+ * список: своей таблицы у брендов нет, новый заводится тем, что его вписали.
+ * Регистр при этом не считается: «round lab» при заведённом «Round Lab» —
+ * он же, и сохранится под его написанием, иначе бренд разъехался бы надвое
+ * и фильтр каталога показывал бы половину его товаров. Поле обязательное:
+ * товар без бренда не находится фильтром каталога и выпадает из выдачи, где
+ * его ищут именно по производителю.
+ *
  * Адрес (slug) при создании подставляется транслитерацией названия, но
  * остаётся редактируемым: как только владелец правит его руками, автоподстановка
  * выключается — иначе она затирала бы правку на каждом нажатии в названии.
@@ -43,6 +52,9 @@ import * as styles from './AdminProductForm.css'
  * копится в форме и улетает вместе с остальными полями по сабмиту
  * (см. `IAdminProductValues.image`).
  */
+
+/** Столько же, сколько отводит колонка на бэкенде. */
+const BRAND_MAX_LENGTH = 255
 
 const IMAGE_MAX_BYTES = 5 * 1024 * 1024
 const IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp']
@@ -65,6 +77,7 @@ const parsePrice = (value: string): number | null => {
 
 export const AdminProductForm: FC<IAdminProductFormProps & IBasicStyling> = ({
   categories,
+  brands = [],
   product,
   onSubmit,
   isSubmitting = false,
@@ -111,12 +124,27 @@ export const AdminProductForm: FC<IAdminProductFormProps & IBasicStyling> = ({
 
   const priceCents = parsePrice(price)
 
+  /**
+   * Написание бренда, уже принятое в каталоге, если он там есть.
+   *
+   * Регистр бренд не различает: «round lab» и «Round Lab» — один и тот же
+   * производитель, и разъехавшись по регистру он развалил бы фильтр каталога
+   * надвое. Бэкенд делает ровно то же самое, но повторить это здесь дешевле,
+   * чем объяснять потом, почему сохранилось не то, что набрано.
+   */
+  const canonicalBrand = (typed: string): string => {
+    const trimmed = typed.trim()
+
+    return brands.find(known => known.toLowerCase() === trimmed.toLowerCase()) ?? trimmed
+  }
+
   const errors = {
     name: name.trim() === '' ? 'Укажите название.' : null,
     slug: /^[a-z0-9]+(-[a-z0-9]+)*$/.test(slug)
       ? null
       : 'Только латиница, цифры и дефис: например, rose-serum.',
     price: priceCents === null ? 'Цена в сомах, например 1250 или 1250.50.' : null,
+    brand: brand.trim() === '' ? 'Укажите производителя.' : null,
   }
 
   const categoryOptions: ISelectOption[] = categories.map(category => ({
@@ -128,7 +156,12 @@ export const AdminProductForm: FC<IAdminProductFormProps & IBasicStyling> = ({
     event.preventDefault()
     setIsSubmitted(true)
 
-    if (errors.name !== null || errors.slug !== null || priceCents === null) {
+    if (
+      errors.name !== null ||
+      errors.slug !== null ||
+      errors.brand !== null ||
+      priceCents === null
+    ) {
       return
     }
 
@@ -136,7 +169,12 @@ export const AdminProductForm: FC<IAdminProductFormProps & IBasicStyling> = ({
       name: name.trim(),
       slug: slug.trim(),
       description: description.trim(),
-      brand: brand.trim(),
+      /*
+        Ещё раз, хотя это же делает и само поле: сабмит по Enter уходит в том же
+        такте, в котором `Combobox` только просит поменять значение, и сюда
+        успевает долететь ровно то, что набрано.
+      */
+      brand: canonicalBrand(brand),
       priceCents,
       categoryId: categoryId === '' ? null : categoryId,
       inStock,
@@ -200,10 +238,16 @@ export const AdminProductForm: FC<IAdminProductFormProps & IBasicStyling> = ({
           />
         </div>
 
-        <Input
+        <Combobox
           label="Производитель"
           value={brand}
+          options={brands}
+          maxLength={BRAND_MAX_LENGTH}
+          required={true}
+          placeholder="Начните вводить название"
           hint="Показывается тэгом в каталоге и на странице товара, например Round Lab."
+          error={isSubmitted ? errors.brand : null}
+          emptyLabel="Такого производителя ещё нет — он заведётся сам."
           onChange={setBrand}
         />
 

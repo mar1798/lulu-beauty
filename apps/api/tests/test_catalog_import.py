@@ -140,8 +140,18 @@ def test_validate_headers_reports_missing_columns() -> None:
     assert "price" in error
 
 
-def test_validate_headers_passes_when_required_columns_present() -> None:
+def test_validate_headers_reports_a_missing_brand_column() -> None:
+    """A brand is mandatory per row, so a file without the column fails as a file.
+
+    Reported once here rather than as an identical error on every single line."""
     rows = [(2, {"name": "A", "slug": "a", "price": "1"})]
+    error = validate_headers(rows)
+    assert error is not None
+    assert "brand" in error
+
+
+def test_validate_headers_passes_when_required_columns_present() -> None:
+    rows = [(2, {"name": "A", "slug": "a", "price": "1", "brand": "Round Lab"})]
     assert validate_headers(rows) is None
 
 

@@ -1,12 +1,26 @@
 import uuid
 from datetime import datetime
 
-from pydantic import Field
+from pydantic import Field, field_validator
 
 from app.common.limits import MAX_PRICE_CENTS
 from app.common.schemas import CamelModel
 
 SLUG_PATTERN = r"^[a-z0-9]+(-[a-z0-9]+)*$"
+
+
+def require_brand(value: str | None) -> str:
+    """Every product carries a brand — and whitespace is not one.
+
+    Trimming happens here rather than in the service so that the length limit and the
+    stored value agree on what the string is. On PATCH an omitted field means
+    "unchanged", so the only way to reach this with None is an explicit `"brand": null`,
+    i.e. an attempt to clear the brand — which is exactly what this rejects.
+    """
+    brand = (value or "").strip()
+    if not brand:
+        raise ValueError("brand is required")
+    return brand
 
 
 class ProductImageResponse(CamelModel):
@@ -56,22 +70,34 @@ class ProductCreateRequest(CamelModel):
     name: str = Field(min_length=1, max_length=255)
     slug: str = Field(min_length=1, max_length=255, pattern=SLUG_PATTERN)
     description: str | None = None
-    brand: str | None = Field(default=None, max_length=255)
+    brand: str = Field(min_length=1, max_length=255)
     # Upper bound is the 32-bit column behind it: without it a fat-fingered price is a
     # 500 out of the driver instead of a field error the form can point at.
     price_cents: int = Field(ge=0, le=MAX_PRICE_CENTS)
     category_id: uuid.UUID | None = None
     in_stock: bool = True
 
+    @field_validator("brand")
+    @classmethod
+    def _validate_brand(cls, value: str) -> str:
+        return require_brand(value)
+
 
 class ProductUpdateRequest(CamelModel):
     name: str | None = Field(default=None, min_length=1, max_length=255)
     slug: str | None = Field(default=None, min_length=1, max_length=255, pattern=SLUG_PATTERN)
     description: str | None = None
+    # None is the "field omitted" default, not a permitted value: a product that has a
+    # brand can be given another one, never left without.
     brand: str | None = Field(default=None, max_length=255)
     price_cents: int | None = Field(default=None, ge=0, le=MAX_PRICE_CENTS)
     category_id: uuid.UUID | None = None
     in_stock: bool | None = None
+
+    @field_validator("brand")
+    @classmethod
+    def _validate_brand(cls, value: str | None) -> str:
+        return require_brand(value)
 
 
 class ImportRowErrorResponse(CamelModel):

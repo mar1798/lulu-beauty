@@ -22,7 +22,12 @@ import * as styles from '@/styles/admin.css'
 /**
  * Заявки покупателей: фильтр по сбору и статусу, смена статуса, выгрузка.
  *
- * Выгрузка качается через `fetch`, а не обычной ссылкой: ручка админская,
+ * Выгрузка — сводный лист закупки: одна строка на товар, количество
+ * просуммировано по всем заявкам, попавшим под текущие фильтры (сбор и
+ * статус), плюс итоговая строка. Фильтры уходят в выгрузку теми же, что
+ * стоят над таблицей.
+ *
+ * Качается через `fetch`, а не обычной ссылкой: ручка админская,
  * и отказ (403, 500) на ссылке превратился бы в скачанный файл с текстом
  * ошибки внутри. Имя файла берётся из `Content-Disposition` — там RFC 5987,
  * то есть кириллица в имени переживает прокси.
@@ -136,7 +141,10 @@ const AdminOrdersPage: React.FC = () => {
     setActionError(null)
 
     try {
-      const { blob, filename } = await downloadOrdersExport(cycleId === ALL ? undefined : cycleId)
+      const { blob, filename } = await downloadOrdersExport({
+        cycleId: cycleId === ALL ? undefined : cycleId,
+        status: status === ALL ? undefined : (status as OrderStatus),
+      })
       const url = URL.createObjectURL(blob)
       const link = document.createElement('a')
 

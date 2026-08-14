@@ -74,6 +74,19 @@ async def test_list_brands_returns_distinct_sorted_values(db_session: AsyncSessi
     assert await service.list_brands() == ["Bloom", "Lumen"]
 
 
+async def test_list_filters_by_brand_ignoring_case(db_session: AsyncSession) -> None:
+    """Rows that predate canonical_brand() may still differ in case — both must match."""
+    await make_product(db_session, name="Rose Serum", brand="Round Lab")
+    await make_product(db_session, name="Toner", brand="round lab")
+    await make_product(db_session, name="Lipstick", brand="Bloom")
+    service = ProductService(db_session)
+
+    found, total = await service.list_public(None, None, 1, 20, brand="ROUND LAB")
+
+    assert {product.name for product in found} == {"Rose Serum", "Toner"}
+    assert total == 2
+
+
 async def test_list_brands_covers_deleted_products_only_on_demand(
     db_session: AsyncSession,
 ) -> None:
@@ -83,6 +96,64 @@ async def test_list_brands_covers_deleted_products_only_on_demand(
 
     assert await service.list_brands() == ["Bloom"]
     assert await service.list_brands(include_deleted=True) == ["Bloom", "Gone"]
+
+
+async def test_list_brands_collapses_case_variants(db_session: AsyncSession) -> None:
+    """One entry per brand — which spelling survives is up to the collation, not us."""
+    await make_product(db_session, brand="Round Lab")
+    await make_product(db_session, brand="round lab")
+    await make_product(db_session, brand="ROUND LAB")
+    await make_product(db_session, brand="Bloom")
+    service = ProductService(db_session)
+
+    brands = await service.list_brands()
+
+    assert len(brands) == 2
+    assert brands[0] == "Bloom"
+    assert brands[1].lower() == "round lab"
+
+
+async def test_create_reuses_the_stored_spelling_of_a_known_brand(
+    db_session: AsyncSession,
+) -> None:
+    await make_product(db_session, slug="known", brand="Round Lab")
+    service = ProductService(db_session)
+
+    product = await service.create("Toner", "toner", None, "  rOUND lAB  ", 1000, None, True)
+
+    assert product.brand == "Round Lab"
+
+
+async def test_create_keeps_an_unknown_brand_exactly_as_typed(db_session: AsyncSession) -> None:
+    """Normalizing case is not the same as policing it — a new brand is taken at face value."""
+    service = ProductService(db_session)
+
+    product = await service.create("Toner", "toner", None, "  COSRX  ", 1000, None, True)
+
+    assert product.brand == "COSRX"
+
+
+async def test_create_matches_a_brand_left_only_on_a_deleted_product(
+    db_session: AsyncSession,
+) -> None:
+    await make_product(db_session, slug="gone", brand="Round Lab", deleted_at=datetime.now(UTC))
+    service = ProductService(db_session)
+
+    product = await service.create("Toner", "toner", None, "round lab", 1000, None, True)
+
+    assert product.brand == "Round Lab"
+
+
+async def test_update_canonicalizes_the_brand(db_session: AsyncSession) -> None:
+    """Заодно и про товар без бренда: строки, заведённые до того, как поле стало
+    обязательным, живут в базе дальше — их бренд проставляется первым же сохранением."""
+    await make_product(db_session, slug="known", brand="Round Lab")
+    target = await make_product(db_session, slug="toner", brand=None)
+    service = ProductService(db_session)
+
+    updated = await service.update(target.id, {"brand": "ROUND LAB"})
+
+    assert updated.brand == "Round Lab"
 
 
 async def test_add_image_replaces_every_previous_one(db_session: AsyncSession) -> None:
@@ -134,10 +205,10 @@ async def test_import_upserts_by_slug_against_the_existing_catalogue(
     await db_session.flush()
 
     content = (
-        "name,slug,price\n"
-        "Новое имя,krem-1,150.00\n"
-        "Вернулся,krem-2,90.50\n"
-        "Совсем новый,krem-3,10.00\n"
+        "name,slug,price,brand\n"
+        "Новое имя,krem-1,150.00,Round Lab\n"
+        "Вернулся,krem-2,90.50,Round Lab\n"
+        "Совсем новый,krem-3,10.00,COSRX\n"
     ).encode()
 
     summary = await CatalogImportService(db_session).import_file("catalog.csv", content)
@@ -157,9 +228,9 @@ async def test_import_folds_a_slug_repeated_inside_one_file(db_session: AsyncSes
     разрешаются заранее, и повтор должен попасть в тот же объект, что создала первая строка.
     """
     content = (
-        "name,slug,price\n"
-        "Первый вариант,povtor,100.00\n"
-        "Последний вариант,povtor,200.00\n"
+        "name,slug,price,brand\n"
+        "Первый вариант,povtor,100.00,Round Lab\n"
+        "Последний вариант,povtor,200.00,Round Lab\n"
     ).encode()
 
     summary = await CatalogImportService(db_session).import_file("catalog.csv", content)
@@ -174,3 +245,52 @@ async def test_import_folds_a_slug_repeated_inside_one_file(db_session: AsyncSes
     assert [(product.name, product.price_cents) for product in products] == [
         ("Последний вариант", 20000)
     ]
+
+
+async def test_import_folds_brand_case_variants(db_session: AsyncSession) -> None:
+    """Регистр бренда в файле не создаёт второй бренд.
+
+    Уже известный каталогу бренд приводится к его написанию, а новый — к тому,
+    как его написала первая строка файла.
+    """
+    await make_product(db_session, slug="known", brand="Round Lab")
+    await db_session.flush()
+
+    content = (
+        "name,slug,price,brand\n"
+        "Тонер,toner,100.00,round lab\n"
+        "Крем,krem,200.00,COSRX\n"
+        "Маска,maska,300.00,cosrx\n"
+    ).encode()
+
+    summary = await CatalogImportService(db_session).import_file("catalog.csv", content)
+    await db_session.flush()
+
+    assert summary.errors == []
+    brands = (
+        (await db_session.execute(select(Product.slug, Product.brand))).tuples().all()
+    )
+    assert dict(brands) == {
+        "known": "Round Lab",
+        "toner": "Round Lab",
+        "krem": "COSRX",
+        "maska": "COSRX",
+    }
+
+
+async def test_import_rejects_a_row_without_a_brand(db_session: AsyncSession) -> None:
+    """Бренд обязателен и в файле — иначе импортом заводились бы ровно те товары,
+    которых не даёт создать форма. Остальные строки при этом применяются."""
+    content = (
+        "name,slug,price,brand\n"
+        "Тонер,toner,100.00,Round Lab\n"
+        "Безымянный,bezymyannyj,200.00,   \n"
+    ).encode()
+
+    summary = await CatalogImportService(db_session).import_file("catalog.csv", content)
+    await db_session.flush()
+
+    assert (summary.created, summary.updated) == (1, 0)
+    assert [(error.row, error.message) for error in summary.errors] == [(3, "brand is required")]
+    slugs = (await db_session.execute(select(Product.slug))).scalars().all()
+    assert list(slugs) == ["toner"]

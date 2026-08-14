@@ -21,12 +21,22 @@ export const categoriesKey = ['categories'] as const
 
 export const brandsKey = ['brands'] as const
 
+export const ADMIN_BRANDS_TAG = 'admin-brands'
+
 /**
  * Админский список брендов зависит от того, показаны ли удалённые товары:
  * с ними в наборе появляются бренды, которых в живом каталоге уже нет.
  */
 export const adminBrandsKey = (includeDeleted: boolean) =>
-  ['admin-brands', includeDeleted] as const
+  [ADMIN_BRANDS_TAG, includeDeleted] as const
+
+/**
+ * Инвалидация обоих вариантов разом. Нужна после сохранения товара: вписанный
+ * там бренд обязан появиться в подсказках и в фильтре списка, а с какими
+ * `includeDeleted` они закешированы — дело страницы, а не сохраняющего.
+ */
+export const isAdminBrandsKey = (key: unknown): boolean =>
+  Array.isArray(key) && key[0] === ADMIN_BRANDS_TAG
 
 export const cyclesKey = ['cycles'] as const
 

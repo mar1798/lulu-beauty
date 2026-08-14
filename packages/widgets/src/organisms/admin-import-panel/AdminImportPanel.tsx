@@ -46,8 +46,9 @@ export const AdminImportPanel: FC<IAdminImportPanelProps & IBasicStyling> = ({
 
         <Text tone="secondary" size="sm">
           Обязательные колонки: <code className={styles.code}>name</code>,{' '}
-          <code className={styles.code}>slug</code>, <code className={styles.code}>price</code>.
-          Необязательные: <code className={styles.code}>description</code>,{' '}
+          <code className={styles.code}>slug</code>, <code className={styles.code}>price</code>,{' '}
+          <code className={styles.code}>brand</code>. Необязательные:{' '}
+          <code className={styles.code}>description</code>,{' '}
           <code className={styles.code}>category</code> (слаг категории),{' '}
           <code className={styles.code}>inStock</code>. Товар с уже существующим slug обновляется,
           новый — создаётся.

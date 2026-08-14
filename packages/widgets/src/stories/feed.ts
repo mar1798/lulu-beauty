@@ -28,6 +28,7 @@ import {
   ICheckoutFormProps,
   ICheckboxProps,
   IChipProps,
+  IComboboxProps,
   IConfirmDialogProps,
   IContainerProps,
   IDeadlineCountdownProps,
@@ -167,6 +168,16 @@ export const feedSelect = (): ISelectProps => ({
     { value: 'makeup', label: 'Макияж' },
     { value: 'hair', label: 'Волосы' },
   ],
+})
+
+/** Бренды — тот самый случай, ради которого поле и появилось. */
+export const feedCombobox = (): IComboboxProps => ({
+  value: '',
+  onChange: noop,
+  label: 'Производитель',
+  placeholder: 'Начните вводить название',
+  hint: 'Выберите из уже заведённых или впишите новый.',
+  options: ['COSRX', 'Laneige', 'Medi-Peel', 'Round Lab', 'Some By Mi'],
 })
 
 export const feedCheckbox = (): ICheckboxProps => ({
@@ -794,6 +805,7 @@ export const feedAdminProductForm = (): IAdminProductFormProps => {
 
   return {
     categories,
+    brands: ['COSRX', 'Laneige', 'Medi-Peel', 'Round Lab', 'Some By Mi'],
     product,
     onSubmit: noop,
     // У товара фотография одна — админка показывает ровно её.

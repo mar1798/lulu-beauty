@@ -13,7 +13,7 @@ from app.catalog.models import Category, Product
 from app.catalog.schemas import SLUG_PATTERN, ImportRowErrorResponse, ImportSummaryResponse
 from app.common.limits import MAX_PRICE_CENTS
 
-REQUIRED_HEADERS = {"name", "slug", "price"}
+REQUIRED_HEADERS = {"name", "slug", "price", "brand"}
 # How many slugs are looked up per round-trip when resolving a file against the catalogue.
 _SLUG_CHUNK = 5000
 TRUTHY_VALUES = {"true", "1", "yes", "y", "да"}
@@ -152,6 +152,7 @@ class CatalogImportService:
             )
 
         categories_by_slug = await self._load_categories()
+        brands_by_key = await self._load_brands()
 
         created = 0
         updated = 0
@@ -160,7 +161,7 @@ class CatalogImportService:
         validated: list[dict[str, object]] = []
         for row_number, row in rows:
             try:
-                validated.append(self._validate_row(row, categories_by_slug))
+                validated.append(self._validate_row(row, categories_by_slug, brands_by_key))
             except ImportRowError as error:
                 errors.append(ImportRowErrorResponse(row=row_number, message=str(error)))
 
@@ -181,7 +182,10 @@ class CatalogImportService:
         return ImportSummaryResponse(created=created, updated=updated, errors=errors)
 
     def _validate_row(
-        self, row: dict[str, str], categories_by_slug: dict[str, Category]
+        self,
+        row: dict[str, str],
+        categories_by_slug: dict[str, Category],
+        brands_by_key: dict[str, str],
     ) -> dict[str, object]:
         name = row.get("name", "").strip()
         if not name:
@@ -196,7 +200,18 @@ class CatalogImportService:
         price_cents = parse_price_cents(row.get("price"))
         in_stock = parse_in_stock(row.get("in_stock"))
         description = row.get("description", "").strip() or None
-        brand = row.get("brand", "").strip() or None
+        # Mandatory here for the same reason as in the product form: a product without
+        # a brand is invisible to the catalog's brand filter, and an upload is the
+        # easiest way to produce a few hundred of them at once.
+        brand = row.get("brand", "").strip()
+        if not brand:
+            raise ImportRowError("brand is required")
+        # One spelling per brand, whatever case the file happens to use: the brand
+        # column has no table behind it, so "round lab" would otherwise become a
+        # second brand alongside "Round Lab" and split the catalog filter in two.
+        # New brands register themselves, so case variants inside a single upload
+        # collapse onto the first row that named it.
+        brand = brands_by_key.setdefault(brand.lower(), brand)
 
         category_id = None
         category_slug = row.get("category", "").strip()
@@ -255,3 +270,15 @@ class CatalogImportService:
     async def _load_categories(self) -> dict[str, Category]:
         result = await self._session.execute(select(Category))
         return {category.slug: category for category in result.scalars().all()}
+
+    async def _load_brands(self) -> dict[str, str]:
+        """Brands the catalogue already knows, keyed by lowercase spelling.
+
+        Soft-deleted products count: a brand left only on discontinued rows is
+        still the spelling the catalogue uses, and re-importing it under another
+        case would revive it as a second brand.
+        """
+        result = await self._session.execute(
+            select(Product.brand).where(Product.brand.is_not(None), Product.brand != "").distinct()
+        )
+        return {brand.lower(): brand for brand in result.scalars().all() if brand is not None}

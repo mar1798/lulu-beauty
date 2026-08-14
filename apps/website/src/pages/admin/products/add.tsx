@@ -6,9 +6,14 @@ import { AdminProductForm } from 'widgets/organisms'
 import { useToast } from 'widgets/contexts'
 import { AdminShell } from '@/layouts/AdminShell'
 import { messageForError } from '@/services/apiErrors'
-import { createProduct, uploadProductImage } from '@/services/endpoints/admin'
+import { createProduct, listAdminBrands, uploadProductImage } from '@/services/endpoints/admin'
 import { listCategories } from '@/services/endpoints/catalog'
-import { categoriesKey, isAdminProductsKey } from '@/services/swrKeys'
+import {
+  adminBrandsKey,
+  categoriesKey,
+  isAdminBrandsKey,
+  isAdminProductsKey,
+} from '@/services/swrKeys'
 
 /**
  * Создание товара.
@@ -27,6 +32,13 @@ const AdminProductCreatePage: React.FC = () => {
 
   const { data: categories, isLoading } = useSWR(categoriesKey, () => listCategories())
 
+  /*
+    Бренды — подсказки для поля «Производитель». С удалёнными товарами: бренд,
+    оставшийся только на снятом с продажи, всё равно уже заведён, и подсказать
+    его написание нужно, иначе он вернётся в каталог вторым — в другом регистре.
+  */
+  const { data: brands } = useSWR(adminBrandsKey(true), () => listAdminBrands(true))
+
   const handleSubmit = async (values: IAdminProductValues): Promise<void> => {
     setIsSubmitting(true)
     setError(null)
@@ -36,7 +48,7 @@ const AdminProductCreatePage: React.FC = () => {
         name: values.name,
         slug: values.slug,
         description: values.description === '' ? null : values.description,
-        brand: values.brand === '' ? null : values.brand,
+        brand: values.brand,
         priceCents: values.priceCents,
         categoryId: values.categoryId,
         inStock: values.inStock,
@@ -65,6 +77,8 @@ const AdminProductCreatePage: React.FC = () => {
       notify({ tone: 'success', title: 'Товар создан', description: values.name })
       // Список товаров ещё не смонтирован — инвалидируем все его варианты фильтров разом.
       void globalMutate(isAdminProductsKey)
+      // Вписанный бренд обязан оказаться в подсказках следующего товара.
+      void globalMutate(isAdminBrandsKey)
       setFormVersion(current => current + 1)
     } catch (cause: unknown) {
       setError(messageForError(cause, 'admin.product.create'))
@@ -96,6 +110,7 @@ const AdminProductCreatePage: React.FC = () => {
           <AdminProductForm
             key={formVersion}
             categories={categories ?? []}
+            brands={brands}
             isSubmitting={isSubmitting}
             error={error}
             onSubmit={values => {

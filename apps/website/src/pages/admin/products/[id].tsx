@@ -12,12 +12,19 @@ import {
   deleteProduct,
   deleteProductImage,
   getAdminProduct,
+  listAdminBrands,
   restoreProduct,
   updateProduct,
   uploadProductImage,
 } from '@/services/endpoints/admin'
 import { listCategories } from '@/services/endpoints/catalog'
-import { adminProductKey, categoriesKey, isAdminProductsKey } from '@/services/swrKeys'
+import {
+  adminBrandsKey,
+  adminProductKey,
+  categoriesKey,
+  isAdminBrandsKey,
+  isAdminProductsKey,
+} from '@/services/swrKeys'
 
 /**
  * Карточка товара: поля и фотография.
@@ -64,6 +71,13 @@ const AdminProductPage: React.FC = () => {
   // Общий ключ с «Категориями» (`/admin/categories`): правка там видна тут без перезагрузки.
   const { data: categories } = useSWR(categoriesKey, () => listCategories())
 
+  /*
+    Бренды — подсказки для поля «Производитель». С удалёнными товарами: бренд,
+    оставшийся только на снятом с продажи, всё равно уже заведён, и подсказать
+    его написание нужно, иначе он вернётся в каталог вторым — в другом регистре.
+  */
+  const { data: brands } = useSWR(adminBrandsKey(true), () => listAdminBrands(true))
+
   const handleSubmit = async (values: IAdminProductValues): Promise<void> => {
     if (productId === null) {
       return
@@ -77,7 +91,7 @@ const AdminProductPage: React.FC = () => {
         name: values.name,
         slug: values.slug,
         description: values.description === '' ? null : values.description,
-        brand: values.brand === '' ? null : values.brand,
+        brand: values.brand,
         priceCents: values.priceCents,
         categoryId: values.categoryId,
         inStock: values.inStock,
@@ -85,6 +99,8 @@ const AdminProductPage: React.FC = () => {
 
       notify({ tone: 'success', title: 'Товар сохранён' })
       await mutate()
+      // Вписанный бренд обязан оказаться в подсказках и в фильтре списка.
+      void globalMutate(isAdminBrandsKey)
       setSaveVersion(current => current + 1)
     } catch (cause: unknown) {
       setFormError(messageForError(cause, 'admin.product.update'))
@@ -218,6 +234,7 @@ const AdminProductPage: React.FC = () => {
         <AdminProductForm
           key={saveVersion}
           categories={categories ?? []}
+          brands={brands}
           product={product}
           isSubmitting={isSubmitting}
           error={formError}
