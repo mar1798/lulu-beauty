@@ -1,4 +1,13 @@
-import React, { createContext, useCallback, useContext, useMemo, useRef, useState } from 'react'
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
+import { useRouter } from 'next/router'
 import useSWR from 'swr'
 import type { IWishlist } from 'widgets/types'
 import { messageForError, type ErrorScope } from '@/services/apiErrors'
@@ -57,6 +66,7 @@ const WishlistContext = createContext<IWishlistContextValue | null>(null)
 
 export const WishlistProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user } = useAuth()
+  const router = useRouter()
   const userId = user?.id ?? null
 
   const [busy, setBusy] = useState<readonly string[]>([])
@@ -115,6 +125,14 @@ export const WishlistProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         const message = messageForError(cause, errorScope)
 
         setError(message)
+        /*
+          Откат возвращает снимок кеша, а тот мог отстать от сервера: ответ
+          более ранней мутации SWR отбрасывает, если к его приходу успела
+          начаться следующая, — и тогда снимок не знает о позиции, которую
+          сервер уже принял. После осечки список перечитывается, а не
+          восстанавливается по памяти.
+        */
+        void swrMutate()
 
         return { ok: false, error: message }
       } finally {
@@ -154,6 +172,19 @@ export const WishlistProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   )
 
   const clearError = useCallback(() => setError(null), [])
+
+  /*
+    Ошибка последнего действия живёт в провайдере — а он смонтирован в
+    `_app.tsx`, над страницей, и переживает клиентские переходы. Гасилась она
+    только следующей мутацией, поэтому неудачное действие на /catalog доезжало
+    до другой страницы и всплывало там как «не загрузилось» над отлично
+    загруженным списком. Смена маршрута — конец жизни такой ошибки.
+  */
+  useEffect(() => {
+    router.events.on('routeChangeComplete', clearError)
+
+    return () => router.events.off('routeChangeComplete', clearError)
+  }, [router.events, clearError])
 
   const wishlist = userId === null ? null : (data ?? null)
 

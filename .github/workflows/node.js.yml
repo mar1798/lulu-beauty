@@ -30,4 +30,8 @@ jobs:
       - name: Install Dependencies
         run: npm ci
       - run: npm run check
+      # Types and lint are not the tests: the 70-odd vitest suites in packages/widgets
+      # cover behaviour that typechecks perfectly while being wrong, and nothing else in
+      # CI ran them — api.yml only covers apps/api.
+      - run: npm test
 

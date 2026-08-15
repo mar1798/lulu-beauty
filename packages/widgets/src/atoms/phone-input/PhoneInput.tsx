@@ -65,20 +65,42 @@ export const toE164 = (raw: string, dialCode: string = DEFAULT_DIAL_CODE): strin
   return national === '' ? '' : `+${dialCode}${national}`
 }
 
+/**
+ * Местный ли это номер — то есть можно ли показывать его национальной частью
+ * за статичным `+996`.
+ *
+ * Аккаунты заводит бот из телефона, которым поделились в Telegram, а
+ * `common/phone.py` нормализует его в E.164 без ограничения по стране. Чужой
+ * номер (`+79161234567`) через национальный вид проходил как кыргызский:
+ * `toNationalDigits` срезал его до девяти цифр, и покупатель видел в профиле
+ * «+996 791 61 23 45» — чужой код страны и потерянный хвост.
+ *
+ * Набор с клавиатуры сюда не попадает: пока поле пустое или в нём нет `+`,
+ * значение считается национальным.
+ */
+const isNationalNumber = (value: string, dialCode: string): boolean =>
+  !value.startsWith('+') || digitsOnly(value).startsWith(dialCode)
+
 export const PhoneInput: FC<IPhoneInputProps & IBasicStyling> = ({
   value,
   onChange,
   dialCode = DEFAULT_DIAL_CODE,
   ...rest
-}) => (
-  <Input
-    {...rest}
-    type="tel"
-    inputMode="tel"
-    autoComplete="tel"
-    placeholder="555 12 34 56"
-    prefix={<span className={styles.dialCode}>{`+${dialCode}`}</span>}
-    value={formatNational(toNationalDigits(value, dialCode))}
-    onChange={next => onChange(toE164(next, dialCode))}
-  />
-)
+}) => {
+  const isNational = isNationalNumber(value, dialCode)
+
+  return (
+    <Input
+      {...rest}
+      type="tel"
+      inputMode="tel"
+      autoComplete="tel"
+      placeholder="555 12 34 56"
+      prefix={isNational ? <span className={styles.dialCode}>{`+${dialCode}`}</span> : undefined}
+      value={isNational ? formatNational(toNationalDigits(value, dialCode)) : value}
+      onChange={next =>
+        onChange(isNational ? toE164(next, dialCode) : `+${digitsOnly(next)}`)
+      }
+    />
+  )
+}

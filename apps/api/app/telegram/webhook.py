@@ -62,8 +62,11 @@ async def telegram_webhook(request: Request) -> Response:
     if not is_enabled() or bot is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND)
 
-    provided = request.headers.get(SECRET_HEADER, "")
-    if not secrets.compare_digest(provided, settings.telegram_webhook_secret):
+    # Compared as bytes: `compare_digest` on `str` raises TypeError the moment either side
+    # is not ASCII-only, and the header is attacker-controlled — a single Cyrillic letter
+    # in it turned "wrong secret" into an unhandled 500 instead of the 403 below.
+    provided = request.headers.get(SECRET_HEADER, "").encode()
+    if not secrets.compare_digest(provided, settings.telegram_webhook_secret.encode()):
         logger.warning("Rejected a webhook call with a wrong or missing secret token")
         raise HTTPException(status.HTTP_403_FORBIDDEN, "telegram_webhook_forbidden")
 

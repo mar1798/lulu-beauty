@@ -19,6 +19,13 @@ ENV PATH="/app/.venv/bin:$PATH"
 WORKDIR /app
 RUN addgroup --system apigrp && adduser --system --ingroup apigrp --no-create-home apiusr
 COPY --from=builder --chown=apiusr:apigrp /app /app
+# The upload directory has to exist in the image, owned by the user that writes to it.
+# docker-compose mounts a named volume at /app/uploads: Docker seeds such a volume from
+# whatever the image has at that path, and creates the mount point as root:root when the
+# image has nothing there. On a clean checkout (CI, a new machine, production) apps/api/
+# uploads/ is git-ignored and so absent from the build context — the API came up fine and
+# then failed every product photo upload with PermissionError.
+RUN mkdir -p /app/uploads && chown apiusr:apigrp /app/uploads
 USER apiusr
 EXPOSE 3001
 CMD ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-3001}"]

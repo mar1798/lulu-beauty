@@ -40,6 +40,23 @@ ALLOWED_IMAGE_CONTENT_TYPES = set(IMAGE_EXTENSIONS)
 MAX_IMPORT_BYTES = 10 * 1024 * 1024
 
 
+async def _read_within(file: UploadFile, limit: int, code: str) -> bytes:
+    """The upload's bytes, refused before they are held in memory.
+
+    Starlette has already spooled the part to a temporary file by the time a handler runs
+    and knows how long it is, so the size is answerable without reading it. Reading first
+    and measuring after meant a gigabyte upload became a gigabyte `bytes` object for as
+    long as it took to decide it was too big.
+    """
+    if file.size is not None and file.size > limit:
+        raise HTTPException(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, code)
+
+    content = await file.read()
+    if len(content) > limit:
+        raise HTTPException(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, code)
+    return content
+
+
 @router.get("/categories", response_model=list[CategoryResponse])
 async def list_categories(session: AsyncSession = Depends(get_session)) -> list[CategoryResponse]:
     categories = await CategoryService(session).list()
@@ -266,9 +283,7 @@ async def upload_product_image(
     if file.content_type not in ALLOWED_IMAGE_CONTENT_TYPES:
         raise HTTPException(status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, "unsupported_image_type")
 
-    content = await file.read()
-    if len(content) > MAX_IMAGE_BYTES:
-        raise HTTPException(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, "image_too_large")
+    content = await _read_within(file, MAX_IMAGE_BYTES, "image_too_large")
 
     try:
         service = ProductService(session)
@@ -311,9 +326,7 @@ async def import_catalog(
     session: AsyncSession = Depends(get_session),
     _admin: CurrentUser = Depends(require_admin),
 ) -> ImportSummaryResponse:
-    content = await file.read()
-    if len(content) > MAX_IMPORT_BYTES:
-        raise HTTPException(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, "import_file_too_large")
+    content = await _read_within(file, MAX_IMPORT_BYTES, "import_file_too_large")
 
     summary = await CatalogImportService(session).import_file(file.filename or "", content)
     await session.commit()

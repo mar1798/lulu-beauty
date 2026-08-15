@@ -351,8 +351,17 @@ async def handle_order_action(query: CallbackQuery, callback_data: OrderAction) 
     if isinstance(query.message, Message):
         # Rewriting the text drops the keyboard with it: left in place, the message would
         # keep offering both actions as though nothing had been decided.
+        #
+        # Swallowed on failure, because the status change is already committed and the
+        # customer's notification is still to come: Telegram refuses to edit a message
+        # older than 48 hours (and answers "message is not modified" on a repeat press),
+        # and letting that escape meant a stale button in the owner's chat cost the
+        # customer the only word they get about their order.
         text = query.message.text or ""
-        await query.message.edit_text(f"{text}\n\n{messages.order_resolution(new_status)}")
+        try:
+            await query.message.edit_text(f"{text}\n\n{messages.order_resolution(new_status)}")
+        except Exception:  # noqa: BLE001 - cosmetic; the notification below is not
+            logger.exception("Failed to rewrite the order notification for %s", order_id)
 
     if changed:
         # Same customer-facing notification the admin panel triggers — pressing the button

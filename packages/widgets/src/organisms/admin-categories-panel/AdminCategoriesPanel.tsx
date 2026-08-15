@@ -31,6 +31,22 @@ const DEFAULT_SKELETON_ROWS = 4
 
 const emptyValues: IAdminCategoryValues = { name: '', slug: '', sortOrder: 0 }
 
+/**
+ * Порядок — целое число, и поле не должно уметь стать ничем другим.
+ *
+ * Прежнее `Number(next) || 0` пропускало «1.5» насквозь: бэкенд объявляет
+ * `sort_order: int`, pydantic дробное отвергает, и владелец получал общее «Не
+ * получилось» без единого намёка на то, какое поле виновато. Нецифровое
+ * нажатие теперь просто не проходит, а значение остаётся прежним.
+ */
+const parseSortOrder = (raw: string): number | null => {
+  if (!/^\d*$/.test(raw)) {
+    return null
+  }
+
+  return raw === '' ? 0 : Number(raw)
+}
+
 const isValid = (values: IAdminCategoryValues): boolean =>
   values.name.trim() !== '' && /^[a-z0-9]+(-[a-z0-9]+)*$/.test(values.slug)
 
@@ -107,7 +123,11 @@ export const AdminCategoriesPanel: FC<IAdminCategoriesPanelProps & IBasicStyling
                   value={String(draft.sortOrder)}
                   inputMode="numeric"
                   onChange={next => {
-                    setDraft(current => ({ ...current, sortOrder: Number(next) || 0 }))
+                    const sortOrder = parseSortOrder(next)
+
+                    if (sortOrder !== null) {
+                      setDraft(current => ({ ...current, sortOrder }))
+                    }
                   }}
                 />
 
@@ -202,7 +222,11 @@ export const AdminCategoriesPanel: FC<IAdminCategoriesPanelProps & IBasicStyling
             inputMode="numeric"
             hint="Меньше — выше в списке."
             onChange={next => {
-              setCreated(current => ({ ...current, sortOrder: Number(next) || 0 }))
+              const sortOrder = parseSortOrder(next)
+
+              if (sortOrder !== null) {
+                setCreated(current => ({ ...current, sortOrder }))
+              }
             }}
           />
         </div>

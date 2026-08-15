@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { screen } from '@testing-library/react'
+import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Modal } from '.'
 import { feedModal } from '../../stories/feed'
@@ -54,5 +54,22 @@ describe('Modal', () => {
     rerender(<Modal {...feedModal()} isDismissable={true} onClose={onClose} />)
     await user.click(overlay())
     expect(onClose).toHaveBeenCalledTimes(1)
+  })
+  it('забирает фокус внутрь, когда открыт уже при монтировании', async () => {
+    /*
+      Портал возвращает `null` до своего эффекта, поэтому на первом коммите
+      диалога в DOM ещё нет. Ловушка фокуса не должна на этом сдаваться:
+      именно так модалку и открывают — `isOpen` уже `true` в момент вставки.
+    */
+    const trigger = document.createElement('button')
+    document.body.append(trigger)
+    trigger.focus()
+
+    renderWidget(<Modal {...feedModal()} />)
+
+    const dialog = await screen.findByRole('dialog')
+    await waitFor(() => expect(dialog.contains(document.activeElement)).toBe(true))
+
+    trigger.remove()
   })
 })

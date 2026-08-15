@@ -12,17 +12,24 @@ import asyncio
 from sqlalchemy import select
 
 from app.auth.models import Role, User
+from app.common.phone import normalize_phone
 from app.config import settings
 from app.db import async_session
 
 
 async def seed_owner() -> None:
     async with async_session() as session:
-        result = await session.execute(select(User).where(User.phone == settings.owner_phone))
+        # Normalized to the same E.164 the bot writes when a contact is shared. Stored raw,
+        # an OWNER_PHONE written as "+996 555 123456" or "0555123456" never matched the row
+        # the bot went on to create — so the owner quietly ended up with a second, CUSTOMER
+        # account and no way into the admin panel.
+        phone = normalize_phone(settings.owner_phone)
+
+        result = await session.execute(select(User).where(User.phone == phone))
         owner = result.scalar_one_or_none()
 
         if owner is None:
-            owner = User(phone=settings.owner_phone)
+            owner = User(phone=phone)
             session.add(owner)
 
         owner.name = settings.owner_name

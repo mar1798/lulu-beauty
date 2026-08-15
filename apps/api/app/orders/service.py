@@ -91,8 +91,16 @@ class OrdersService:
         if cycle is None:
             raise NoActiveCycleError
 
+        # Locked, because the cart row is what makes a checkout unique. Two clicks on
+        # "оформить" (a double tap, a retry on a slow response) are two transactions that
+        # both read the same lines and both write a full-price order out of them — the
+        # customer gets one list, the owner gets two identical заявки and buys twice.
+        # The second transaction now waits here, and by the time it reads the items the
+        # winner has already emptied them, so it raises EmptyCartError instead.
         result = await self._session.execute(
-            select(Cart).where(Cart.user_id == user_id, Cart.cycle_id == cycle.id)
+            select(Cart)
+            .where(Cart.user_id == user_id, Cart.cycle_id == cycle.id)
+            .with_for_update()
         )
         cart = result.scalar_one_or_none()
         if cart is None:

@@ -54,6 +54,12 @@ def create_refresh_token(user_id: uuid.UUID) -> tuple[str, datetime]:
         "type": TokenType.REFRESH.value,
         "iat": now,
         "exp": expires_at,
+        # Without this the payload is a pure function of (user, second): `iat`/`exp` are
+        # encoded as whole seconds, so two refresh tokens issued for one user inside the
+        # same second are byte-identical — and `refresh_tokens.token_hash` is UNIQUE, so
+        # the second insert died as a 500 on an ordinary action (two tabs signing in, or
+        # two parallel refreshes). A random id per token makes each one its own row.
+        "jti": uuid.uuid4().hex,
     }
     token = jwt.encode(payload, settings.jwt_refresh_secret, algorithm="HS256")
     return token, expires_at

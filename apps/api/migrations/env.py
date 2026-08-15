@@ -20,7 +20,14 @@ if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 # DATABASE_URL is read from app settings (env), not hardcoded in alembic.ini.
-config.set_main_option("sqlalchemy.url", settings.database_url)
+#
+# Doubled percent signs, because alembic.ini uses configparser interpolation (it needs it
+# for `%(here)s`) and `set_main_option` runs the value through it. A `%` in the URL — which
+# is what a password containing "@", "/", ":", "#" or a space becomes once percent-encoded —
+# was read as an interpolation escape and raised ValueError. In Docker that happens inside
+# `alembic upgrade head && uvicorn …`, so the API never started and `restart: unless-stopped`
+# turned it into a crash loop pointing at configparser rather than at the password.
+config.set_main_option("sqlalchemy.url", settings.database_url.replace("%", "%%"))
 
 target_metadata = Base.metadata
 

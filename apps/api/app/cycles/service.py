@@ -5,7 +5,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.cycles.models import OrderCycle
+from app.cycles.models import CycleStatus, OrderCycle
 from app.orders.models import Order
 
 
@@ -67,6 +67,19 @@ class CyclesService:
 
         for field, value in updates.items():
             setattr(cycle, field, value)
+
+        # Moving a closed cycle's deadline back into the future reopens it — and until the
+        # rest of the row followed, that reopening was only half real: `get_active_cycle()`
+        # goes by the deadline alone, so the cycle started collecting orders again, while
+        # `sweep_deadlines` skips anything already CLOSED and so would never close it a
+        # second time. It also kept `closed_at` and both reminder stamps, so the new
+        # deadline would pass unannounced. UPCOMING rather than ACTIVE for the same reason
+        # `create()` leaves it there: the sweep promotes whichever cycle is next.
+        if cycle.status is CycleStatus.CLOSED and cycle.deadline_at > now:
+            cycle.status = CycleStatus.UPCOMING
+            cycle.closed_at = None
+            cycle.reminder_sent_at = None
+            cycle.final_reminder_sent_at = None
 
         await self._session.flush()
         return cycle

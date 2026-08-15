@@ -37,27 +37,46 @@ const requestHeaders = (req: NextApiRequest): Record<string, string> => {
   return headers
 }
 
-const targetPath = (req: NextApiRequest): string => {
+/** Сегменты пути так, как их уже раскодировал Next (`%2F` внутри сегмента — тоже `/`). */
+const pathSegments = (req: NextApiRequest): string[] => {
   const segments = req.query.path
 
   if (segments === undefined) {
-    return '/'
+    return []
   }
 
-  const parts = Array.isArray(segments) ? segments : [segments]
-
-  return `/${parts.map(part => encodeURIComponent(part)).join('/')}`
+  return Array.isArray(segments) ? segments : [segments]
 }
 
-const handler = async (req: NextApiRequest, res: NextApiResponse): Promise<void> => {
-  const path = targetPath(req)
+const targetPath = (parts: string[]): string =>
+  parts.length === 0 ? '/' : `/${parts.map(part => encodeURIComponent(part)).join('/')}`
 
-  // Ручки авторизации доступны только через /api/auth/*: иначе ответ с парой
-  // JWT ушёл бы в браузер, ради чего вся эта схема с cookie и затевалась.
-  if (path === '/auth' || path.startsWith('/auth/')) {
+/**
+ * Что прокси отказывается пересылать.
+ *
+ * Ручки авторизации доступны только через `/api/auth/*`: иначе ответ с парой JWT
+ * ушёл бы в браузер, ради чего вся эта схема с cookie и затевалась.
+ *
+ * Проверять готовую строку пути было нельзя: `%2F` Next раскодирует внутрь одного
+ * сегмента, `encodeURIComponent` кодирует его обратно — и `/auth%2Frefresh` мимо
+ * префиксной проверки уходил на бэкенд, где uvicorn снова раскодирует путь и
+ * маршрутизирует его как `/auth/refresh`. Поэтому решение принимается по
+ * раскодированным сегментам, а сегмент со слэшем внутри запрещён целиком: ни одна
+ * ручка API таких не имеет, а протащить через него можно что угодно.
+ */
+const isForbidden = (parts: string[]): boolean =>
+  parts[0]?.toLowerCase() === 'auth' ||
+  parts.some(part => part.includes('/') || part.includes('\\'))
+
+const handler = async (req: NextApiRequest, res: NextApiResponse): Promise<void> => {
+  const parts = pathSegments(req)
+
+  if (isForbidden(parts)) {
     res.status(404).json({ detail: 'not_found' })
     return
   }
+
+  const path = targetPath(parts)
 
   const method = req.method ?? 'GET'
   const bodyless = BODYLESS_METHODS.has(method)

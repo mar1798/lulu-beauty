@@ -193,3 +193,42 @@ async def test_concurrent_add_item_creates_one_cart(db_session: AsyncSession) ->
     assert len(carts) == 1
     cart = await CartService(db_session).get_cart(user.id)
     assert {item.product_id for item in cart.items} == {first_product.id, second_product.id}
+
+
+async def test_two_simultaneous_adds_of_one_product_merge_into_one_line(
+    db_session: AsyncSession,
+) -> None:
+    """(cart_id, product_id) is UNIQUE, and a double press on "в корзину" is two requests.
+
+    Both found no line and both inserted one; the loser surfaced as a 500 on an action the
+    customer had every right to perform. It now lands on the row the winner committed and
+    increments it, the way `_find_or_create_cart` already handled the same race one level up.
+    """
+    user = await make_user(db_session)
+    await make_cycle(db_session)
+    other = await make_product(db_session)
+    product = await make_product(db_session)
+    # The cart itself exists already, so this test is about the item row and nothing else.
+    await CartService(db_session).add_item(user.id, other.id, 1)
+    await db_session.commit()
+
+    loser_started = asyncio.Event()
+
+    async def winner() -> None:
+        async with async_session() as session:
+            await CartService(session).add_item(user.id, product.id, 1)
+            await loser_started.wait()
+            await asyncio.sleep(0.3)
+            await session.commit()
+
+    async def loser() -> None:
+        async with async_session() as session:
+            loser_started.set()
+            await CartService(session).add_item(user.id, product.id, 1)
+            await session.commit()
+
+    await asyncio.gather(winner(), loser())
+
+    cart = await CartService(db_session).get_cart(user.id)
+    lines = {item.product_id: item.quantity for item in cart.items}
+    assert lines[product.id] == 2

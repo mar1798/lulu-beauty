@@ -47,20 +47,44 @@ class CartService:
 
         cart = await self._find_or_create_cart(user_id, cycle.id)
 
-        result = await self._session.execute(
-            select(CartItem).where(CartItem.cart_id == cart.id, CartItem.product_id == product_id)
-        )
-        item = result.scalar_one_or_none()
-        if item is None:
-            self._session.add(CartItem(cart_id=cart.id, product_id=product_id, quantity=quantity))
-        else:
-            # Clamped, not rejected: pressing "в корзину" once more on a line that is
-            # already at the ceiling is not an error worth a red banner. Without this the
-            # per-request limit means nothing — it would just take a few more presses.
-            item.quantity = min(item.quantity + quantity, MAX_ITEM_QUANTITY)
+        await self._add_or_increment(cart, product_id, quantity)
 
         await self._session.flush()
         return await self._build_response(cycle, cart)
+
+    async def _add_or_increment(self, cart: Cart, product_id: uuid.UUID, quantity: int) -> None:
+        """One line per product in a cart, whether it is new or already there.
+
+        Racy in exactly the way `_find_or_create_cart` is, and for the same reason:
+        (cart_id, product_id) is UNIQUE, and a double press on "в корзину" is two parallel
+        requests that both find no line and both insert one. The loser surfaced as a 500 on
+        an action the customer had every right to perform — so the insert goes into a
+        savepoint, and on the conflict the row the winner committed is incremented instead.
+        """
+        item = await self._find_item(cart, product_id)
+
+        if item is None:
+            try:
+                async with self._session.begin_nested():
+                    self._session.add(
+                        CartItem(cart_id=cart.id, product_id=product_id, quantity=quantity)
+                    )
+                return
+            except IntegrityError:
+                item = await self._find_item(cart, product_id)
+                if item is None:
+                    raise
+
+        # Clamped, not rejected: pressing "в корзину" once more on a line that is
+        # already at the ceiling is not an error worth a red banner. Without this the
+        # per-request limit means nothing — it would just take a few more presses.
+        item.quantity = min(item.quantity + quantity, MAX_ITEM_QUANTITY)
+
+    async def _find_item(self, cart: Cart, product_id: uuid.UUID) -> CartItem | None:
+        result = await self._session.execute(
+            select(CartItem).where(CartItem.cart_id == cart.id, CartItem.product_id == product_id)
+        )
+        return result.scalar_one_or_none()
 
     async def set_item_quantity(
         self, user_id: uuid.UUID, product_id: uuid.UUID, quantity: int

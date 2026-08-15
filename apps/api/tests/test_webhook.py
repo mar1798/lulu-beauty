@@ -116,3 +116,23 @@ def test_the_mode_needs_a_secret_not_just_a_url(monkeypatch: pytest.MonkeyPatch)
 
     with patch.object(webhook, "bot", MagicMock()):
         assert webhook.is_enabled() is False
+
+
+async def test_a_non_ascii_secret_header_is_rejected_not_a_500(
+    client: AsyncClient, enabled: MagicMock
+) -> None:
+    """`secrets.compare_digest` on `str` raises TypeError the moment either side is not
+    ASCII-only, and the header is attacker-controlled.
+
+    Sent as raw bytes because that is the only way it can arrive: Starlette decodes header
+    bytes as latin-1, so any byte above 0x7f becomes a non-ASCII `str` — and comparing it
+    turned "wrong secret" into an unhandled 500 instead of the 403 below.
+    """
+    async with client as c:
+        response = await c.post(
+            "/telegram/webhook",
+            json=UPDATE,
+            headers={webhook.SECRET_HEADER: b"\xd1\x81\xd0\xb5\xd0\xba"},
+        )
+
+    assert response.status_code == 403

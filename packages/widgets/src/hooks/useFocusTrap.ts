@@ -1,4 +1,4 @@
-import { useEffect, useRef, type RefObject } from 'react'
+import { useEffect, useState, type RefObject } from 'react'
 
 /**
  * Удержание фокуса внутри модального слоя.
@@ -28,11 +28,35 @@ const focusableIn = (container: HTMLElement): HTMLElement[] =>
   )
 
 export const useFocusTrap = <T extends HTMLElement>(isActive: boolean): RefObject<T | null> => {
-  const ref = useRef<T | null>(null)
+  /*
+    Узел живёт в состоянии, а не только в `ref.current`, потому что появляется
+    он позже первого коммита: `Portal` до своего эффекта возвращает `null`, а
+    модалку почти всегда монтируют уже открытой. Эффект с зависимостью только
+    от `isActive` попадал в этот момент на пустой ref, выходил по раннему
+    возврату — и больше не запускался никогда, потому что `isActive` не менялся.
+    Ловушки не было вовсе: ни начального фокуса, ни зацикливания Tab, ни
+    возврата фокуса при закрытии.
+
+    Ref остаётся объектом (`ref={...}` у потребителей не меняется) — сеттер лишь
+    превращает присваивание React'а в перерисовку. React пишет в `current`
+    только при монтировании и размонтировании узла, так что цикла тут нет.
+  */
+  const [container, setContainer] = useState<T | null>(null)
+  const [ref] = useState<RefObject<T | null>>(() => {
+    let current: T | null = null
+
+    return {
+      get current(): T | null {
+        return current
+      },
+      set current(next: T | null) {
+        current = next
+        setContainer(next)
+      },
+    }
+  })
 
   useEffect(() => {
-    const container = ref.current
-
     if (!isActive || container === null) {
       return
     }
@@ -81,7 +105,7 @@ export const useFocusTrap = <T extends HTMLElement>(isActive: boolean): RefObjec
       document.removeEventListener('keydown', onKeyDown)
       restoreTo?.focus()
     }
-  }, [isActive])
+  }, [isActive, container])
 
   return ref
 }

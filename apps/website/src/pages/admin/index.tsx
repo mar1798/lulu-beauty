@@ -51,13 +51,21 @@ const AdminOverviewPage: React.FC = () => {
   } = useSWR(activeCycleKey, () => getActiveCycleOrNull())
   const cycle = cycleData ?? null
 
-  const { data: counts, isLoading: isCountsLoading } = useSWR(
-    isCycleLoading ? null : adminOverviewKey(cycle?.id ?? null),
-    () => loadCounts(cycle?.id)
+  const {
+    data: counts,
+    isLoading: isCountsLoading,
+    error: countsError,
+  } = useSWR(isCycleLoading ? null : adminOverviewKey(cycle?.id ?? null), () =>
+    loadCounts(cycle?.id)
   )
 
   const isLoading = isCycleLoading || isCountsLoading
-  const error = cycleError === undefined ? null : messageForError(cycleError, 'admin.orders')
+  // Оба запроса, а не только сбор: пять счётчиков ходят одним `Promise.all`, и
+  // отказ любого из них оставлял `counts` пустым — а плитки ниже честно
+  // печатали «0 заявок». Владелец заходит после дедлайна, видит пять нулей и
+  // решает, что никто ничего не заказал.
+  const failure = cycleError ?? countsError
+  const error = failure === undefined ? null : messageForError(failure, 'admin.orders')
 
   return (
     <AdminShell title="Обзор" summary={user === null ? undefined : `Вы вошли как ${user.name}.`}>
@@ -111,7 +119,8 @@ const AdminOverviewPage: React.FC = () => {
           <div className={styles.counters}>
             {STATUSES.map(status => (
               <div key={status} className={styles.counter}>
-                <span className={styles.counterValue}>{counts?.[status] ?? 0}</span>
+                {/* Прочерк, а не ноль: неизвестное число нельзя рисовать как «ни одной». */}
+                <span className={styles.counterValue}>{counts?.[status] ?? '—'}</span>
                 <span className={styles.counterLabel}>{orderStatusLabel(status)}</span>
               </div>
             ))}

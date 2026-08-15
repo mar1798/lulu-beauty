@@ -360,3 +360,64 @@ async def test_import_takes_a_category_written_as_a_name(db_session: AsyncSessio
     assert (summary.created, summary.updated, summary.errors) == (2, 0, [])
     categories = (await db_session.execute(select(Category.slug, Category.name))).tuples().all()
     assert dict(categories) == {"toner": "Тонеры", "uhod-za-glazami": "Уход за глазами"}
+
+
+async def test_import_leaves_columns_the_file_does_not_have_alone(
+    db_session: AsyncSession,
+) -> None:
+    """A supplier price list is name/slug/price and nothing else.
+
+    Every field used to be written on every row, defaults included, so re-importing such a
+    file wiped the brand, the description and the category off every product it touched and
+    put them all back in stock — silently, and reported as a successful update.
+    """
+    category = Category(name="Уход", slug="care", sort_order=0)
+    db_session.add(category)
+    await db_session.flush()
+
+    product = await make_product(db_session, slug="serum", brand="Round Lab", in_stock=False)
+    product.description = "Описание, написанное руками"
+    product.category_id = category.id
+    await db_session.flush()
+
+    content = "name,slug,price\nСыворотка,serum,150.00\n".encode()
+    summary = await CatalogImportService(db_session).import_file("prices.csv", content)
+    await db_session.flush()
+
+    assert (summary.created, summary.updated, summary.errors) == (0, 1, [])
+    await db_session.refresh(product)
+    assert product.price_cents == 15000
+    assert product.brand == "Round Lab"
+    assert product.description == "Описание, написанное руками"
+    assert product.category_id == category.id
+    assert product.in_stock is False
+
+
+async def test_import_reads_the_camel_case_in_stock_column(db_session: AsyncSession) -> None:
+    """"inStock" is the spelling the admin panel documents, and it used to be ignored."""
+    content = "name,slug,price,inStock\nСыворотка,serum,150.00,нет\n".encode()
+
+    summary = await CatalogImportService(db_session).import_file("catalog.csv", content)
+    await db_session.flush()
+
+    assert (summary.created, summary.errors) == (1, [])
+    product = (
+        await db_session.execute(select(Product).where(Product.slug == "serum"))
+    ).scalar_one()
+    assert product.in_stock is False
+
+
+async def test_import_reports_an_overlong_name_as_one_bad_row(db_session: AsyncSession) -> None:
+    """name/slug/brand are String(255); past that the row failed at flush, which is a 500
+    for the whole upload rather than one reported line."""
+    content = (
+        "name,slug,price\n"
+        f"{'я' * 300},too-long,100.00\n"
+        "Нормальная строка,fine,100.00\n"
+    ).encode()
+
+    summary = await CatalogImportService(db_session).import_file("catalog.csv", content)
+    await db_session.flush()
+
+    assert summary.created == 1
+    assert [error.row for error in summary.errors] == [2]

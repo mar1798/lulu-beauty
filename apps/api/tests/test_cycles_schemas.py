@@ -1,5 +1,8 @@
 from datetime import UTC, datetime
 
+import pytest
+from pydantic import ValidationError
+
 from app.cycles.schemas import CycleCreateRequest, CycleUpdateRequest
 
 
@@ -24,3 +27,17 @@ def test_cycle_update_all_fields_optional() -> None:
 def test_cycle_update_only_serializes_provided_fields() -> None:
     request = CycleUpdateRequest(label="Renamed")
     assert request.model_dump(exclude_unset=True) == {"label": "Renamed"}
+
+
+def test_cycle_deadline_must_carry_a_timezone() -> None:
+    """A naive deadline used to pass validation and die further down.
+
+    Every path that touches the deadline compares it against `datetime.now(UTC)`, and
+    Python refuses to compare aware with naive — so "2030-01-01T00:00:00" reached the
+    service and came back as a 500. Rejected here, it is a 422 naming the field.
+    """
+    for payload in ({"deadlineAt": "2030-01-01T00:00:00"}, {"deadlineAt": "2030-01-01"}):
+        with pytest.raises(ValidationError):
+            CycleCreateRequest.model_validate(payload)
+        with pytest.raises(ValidationError):
+            CycleUpdateRequest.model_validate(payload)

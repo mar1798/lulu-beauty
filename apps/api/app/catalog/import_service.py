@@ -14,6 +14,13 @@ from app.catalog.schemas import SLUG_PATTERN, ImportRowErrorResponse, ImportSumm
 from app.common.limits import MAX_PRICE_CENTS
 
 REQUIRED_HEADERS = {"name", "slug", "price"}
+# `normalize_header` only lowercases and turns spaces/dashes into underscores, so the
+# camelCase spelling the admin panel documents ("inStock") arrives as "instock" and used
+# to miss `row["in_stock"]` entirely — every row silently imported as in stock.
+HEADER_ALIASES = {"instock": "in_stock"}
+# The columns are String(255) in the database; past that the row failed at flush, which is
+# a 500 for the whole upload rather than one reported line.
+MAX_TEXT_LENGTH = 255
 # How many slugs are looked up per round-trip when resolving a file against the catalogue.
 _SLUG_CHUNK = 5000
 TRUTHY_VALUES = {"true", "1", "yes", "y", "да"}
@@ -40,7 +47,8 @@ class ImportRowError(Exception):
 
 
 def normalize_header(raw: str | None) -> str:
-    return (raw or "").strip().lower().replace(" ", "_").replace("-", "_")
+    normalized = (raw or "").strip().lower().replace(" ", "_").replace("-", "_")
+    return HEADER_ALIASES.get(normalized, normalized)
 
 
 def slugify(value: str) -> str:
@@ -61,25 +69,25 @@ def category_name_from_slug(slug: str) -> str:
 def parse_price_cents(raw: str | None) -> int:
     text = (raw or "").strip()
     if not text:
-        raise ImportRowError("price is required")
+        raise ImportRowError("не указана цена")
     try:
         value = Decimal(text)
     except InvalidOperation as error:
-        raise ImportRowError(f"invalid price: {raw!r}") from error
+        raise ImportRowError(f"цена не распознана: {raw!r}") from error
     # Decimal() happily parses "nan" and "inf". Both then blow up further down —
     # NaN raises on the comparison, Infinity on int() — and an exception here is not a
     # row error: it escapes import_file() and turns the whole upload into a 500, losing
     # every valid row in the file along with the report of what was wrong.
     if not value.is_finite():
-        raise ImportRowError(f"invalid price: {raw!r}")
+        raise ImportRowError(f"цена не распознана: {raw!r}")
     if value < 0:
-        raise ImportRowError("price must not be negative")
+        raise ImportRowError("цена не может быть отрицательной")
 
     cents = int((value * 100).to_integral_value(rounding=ROUND_HALF_UP))
     # price_cents is a 32-bit column; past that the row fails at flush, i.e. again as a
     # 500 for the whole file rather than as one reported line.
     if cents > MAX_PRICE_CENTS:
-        raise ImportRowError(f"price is too large: {raw!r}")
+        raise ImportRowError(f"слишком большая цена: {raw!r}")
     return cents
 
 
@@ -91,14 +99,14 @@ def parse_in_stock(raw: str | None) -> bool:
         return True
     if text in FALSY_VALUES:
         return False
-    raise ImportRowError(f"invalid inStock value: {raw!r}")
+    raise ImportRowError(f"непонятное значение в колонке «в наличии»: {raw!r}")
 
 
 def parse_csv_rows(content: bytes) -> list[tuple[int, dict[str, str]]]:
     try:
         text = content.decode("utf-8-sig")
     except UnicodeDecodeError as error:
-        raise ImportFileError("file is not valid UTF-8 text") from error
+        raise ImportFileError("файл не в кодировке UTF-8") from error
 
     reader = csv.DictReader(io.StringIO(text))
     if reader.fieldnames is None:
@@ -114,7 +122,7 @@ def parse_xlsx_rows(content: bytes) -> list[tuple[int, dict[str, str]]]:
     try:
         workbook = openpyxl.load_workbook(io.BytesIO(content), read_only=True, data_only=True)
     except Exception as error:  # noqa: BLE001 - openpyxl raises various errors for a corrupt file
-        raise ImportFileError(f"could not read xlsx file: {error}") from error
+        raise ImportFileError(f"не удалось прочитать xlsx-файл: {error}") from error
 
     sheet = workbook.active
     if sheet is None:
@@ -129,11 +137,18 @@ def parse_xlsx_rows(content: bytes) -> list[tuple[int, dict[str, str]]]:
 
     rows: list[tuple[int, dict[str, str]]] = []
     for row_number, values in enumerate(rows_iter, start=2):
-        row = {
-            headers[i]: ("" if v is None else str(v))
-            for i, v in enumerate(values)
-            if i < len(headers)
-        }
+        # Seeded with every header, so a short row still reports which columns the *file*
+        # has. Which columns are present is what decides whether an absent value means
+        # "leave it alone" or "clear it" (see `_validate_row`), and csv.DictReader answers
+        # the same question the same way — a missing cell is a key with an empty value.
+        row = dict.fromkeys(headers, "")
+        row.update(
+            {
+                headers[i]: ("" if v is None else str(v))
+                for i, v in enumerate(values)
+                if i < len(headers)
+            }
+        )
         if any(value for value in row.values()):
             rows.append((row_number, row))
     return rows
@@ -145,7 +160,7 @@ def parse_rows(filename: str, content: bytes) -> list[tuple[int, dict[str, str]]
         return parse_csv_rows(content)
     if suffix in (".xlsx", ".xlsm"):
         return parse_xlsx_rows(content)
-    raise ImportFileError(f"unsupported file type: {suffix or '(none)'}")
+    raise ImportFileError(f"неподдерживаемый тип файла: {suffix or 'без расширения'}")
 
 
 def validate_headers(rows: list[tuple[int, dict[str, str]]]) -> str | None:
@@ -153,7 +168,7 @@ def validate_headers(rows: list[tuple[int, dict[str, str]]]) -> str | None:
         return None
     missing = REQUIRED_HEADERS - set(rows[0][1].keys())
     if missing:
-        return f"missing required column(s): {', '.join(sorted(missing))}"
+        return f"в файле нет обязательных колонок: {', '.join(sorted(missing))}"
     return None
 
 
@@ -187,7 +202,7 @@ class CategoryIndex:
         if existing is not None:
             return existing
         if not slug:
-            raise ImportRowError(f"invalid category: {text!r}")
+            raise ImportRowError(f"категория не распознана: {text!r}")
 
         name = text if slug != text else category_name_from_slug(slug)
         category = Category(name=name[:255], slug=slug, sort_order=self._next_sort_order)
@@ -220,6 +235,11 @@ class CatalogImportService:
 
         categories = CategoryIndex(self._session, await self._load_categories())
         brands_by_key = await self._load_brands()
+        # Which columns the file actually carries. An absent column must leave the existing
+        # value alone: a supplier price list is name/slug/price and nothing else, and
+        # writing the defaults for everything it omits wiped the brand, description and
+        # category off every product it touched — and put them all back in stock.
+        columns = set(rows[0][1]) if rows else set()
 
         created = 0
         updated = 0
@@ -228,7 +248,7 @@ class CatalogImportService:
         validated: list[dict[str, object]] = []
         for row_number, row in rows:
             try:
-                validated.append(self._validate_row(row, categories, brands_by_key))
+                validated.append(self._validate_row(row, columns, categories, brands_by_key))
             except ImportRowError as error:
                 errors.append(ImportRowErrorResponse(row=row_number, message=str(error)))
 
@@ -251,48 +271,65 @@ class CatalogImportService:
     def _validate_row(
         self,
         row: dict[str, str],
+        columns: set[str],
         categories: CategoryIndex,
         brands_by_key: dict[str, str],
     ) -> dict[str, object]:
+        """The fields one line writes — only the ones its file actually has a column for.
+
+        `columns` is what keeps a partial file partial: `_upsert` assigns whatever comes
+        back from here, so a key present with a default is indistinguishable from a value
+        the owner meant to set.
+        """
         name = row.get("name", "").strip()
         if not name:
-            raise ImportRowError("name is required")
+            raise ImportRowError("не указано название")
+        if len(name) > MAX_TEXT_LENGTH:
+            raise ImportRowError(f"название длиннее {MAX_TEXT_LENGTH} символов")
 
         slug = row.get("slug", "").strip()
         if not slug:
-            raise ImportRowError("slug is required")
+            raise ImportRowError("не указан slug")
+        if len(slug) > MAX_TEXT_LENGTH:
+            raise ImportRowError(f"slug длиннее {MAX_TEXT_LENGTH} символов")
         if not re.fullmatch(SLUG_PATTERN, slug):
-            raise ImportRowError(f"invalid slug: {slug!r}")
+            raise ImportRowError(f"недопустимый slug: {slug!r} — только латиница, цифры и дефис")
 
-        price_cents = parse_price_cents(row.get("price"))
-        in_stock = parse_in_stock(row.get("in_stock"))
-        description = row.get("description", "").strip() or None
-        # Optional, unlike in the product form: a file is what the shop is stocked from,
-        # and one nameless brand is not a reason to reject the row it sits on. Such a
-        # product is invisible to the catalog's brand filter until the brand is filled in.
-        brand: str | None = row.get("brand", "").strip() or None
-        if brand is not None:
-            # One spelling per brand, whatever case the file happens to use: the brand
-            # column has no table behind it, so "round lab" would otherwise become a
-            # second brand alongside "Round Lab" and split the catalog filter in two.
-            # New brands register themselves, so case variants inside a single upload
-            # collapse onto the first row that named it.
-            brand = brands_by_key.setdefault(brand.lower(), brand)
-
-        # Last, so a row rejected further up never leaves a category behind with no
-        # products in it. The relationship rather than `category_id`: a category this
-        # file has just invented has no id until flush.
-        category = categories.resolve(row.get("category", ""))
-
-        return {
+        fields: dict[str, object] = {
             "name": name,
             "slug": slug,
-            "description": description,
-            "brand": brand,
-            "price_cents": price_cents,
-            "in_stock": in_stock,
-            "category": category,
+            "price_cents": parse_price_cents(row.get("price")),
         }
+
+        if "in_stock" in columns:
+            fields["in_stock"] = parse_in_stock(row.get("in_stock"))
+        if "description" in columns:
+            fields["description"] = row.get("description", "").strip() or None
+
+        if "brand" in columns:
+            # Optional, unlike in the product form: a file is what the shop is stocked
+            # from, and one nameless brand is not a reason to reject the row it sits on.
+            # Such a product is invisible to the catalog's brand filter until the brand
+            # is filled in.
+            brand: str | None = row.get("brand", "").strip() or None
+            if brand is not None:
+                if len(brand) > MAX_TEXT_LENGTH:
+                    raise ImportRowError(f"бренд длиннее {MAX_TEXT_LENGTH} символов")
+                # One spelling per brand, whatever case the file happens to use: the brand
+                # column has no table behind it, so "round lab" would otherwise become a
+                # second brand alongside "Round Lab" and split the catalog filter in two.
+                # New brands register themselves, so case variants inside a single upload
+                # collapse onto the first row that named it.
+                brand = brands_by_key.setdefault(brand.lower(), brand)
+            fields["brand"] = brand
+
+        if "category" in columns:
+            # Last, so a row rejected further up never leaves a category behind with no
+            # products in it. The relationship rather than `category_id`: a category this
+            # file has just invented has no id until flush.
+            fields["category"] = categories.resolve(row.get("category", ""))
+
+        return fields
 
     def _upsert(self, existing: dict[str, Product], fields: dict[str, object]) -> bool:
         """Upserts by slug; returns True if a new product was created, False if updated.

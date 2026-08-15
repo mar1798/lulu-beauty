@@ -1,8 +1,8 @@
 import enum
 import uuid
 
+from sqlalchemy import BigInteger, ForeignKey, Index, Integer, String, Text, text
 from sqlalchemy import Enum as SAEnum
-from sqlalchemy import ForeignKey, Index, Integer, String, Text, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.common.mixins import TimestampMixin, UUIDPrimaryKeyMixin
@@ -36,7 +36,11 @@ class Order(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     status: Mapped[OrderStatus] = mapped_column(
         SAEnum(OrderStatus, name="order_status"), default=OrderStatus.PENDING
     )
-    total_cents: Mapped[int] = mapped_column(Integer)
+    # 64-bit, unlike the per-line columns: this one is a sum. A single line stays inside
+    # int4 because MAX_PRICE_CENTS is set just under it, but MAX_PRICE_CENTS × quantity —
+    # let alone across lines — passes it easily, and the overflow landed as a 500 at flush
+    # on checkout, with no way for the customer to get past it.
+    total_cents: Mapped[int] = mapped_column(BigInteger)
     note: Mapped[str | None] = mapped_column(Text)
 
     items: Mapped[list["OrderItem"]] = relationship(

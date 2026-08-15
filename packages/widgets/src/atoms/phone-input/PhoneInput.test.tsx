@@ -71,4 +71,16 @@ describe('PhoneInput', () => {
 
     expect(onChange).toHaveBeenLastCalledWith('+9965')
   })
+  it('чужой номер показывает целиком, а не подгоняет под +996', () => {
+    /*
+      Аккаунт заводит бот из телефона в Telegram, а бэкенд нормализует его в
+      E.164 без ограничения по стране. Национальный вид резал такой номер до
+      девяти цифр и подставлял чужой код страны: `+79161234567` читался в
+      профиле как «+996 791 61 23 45».
+    */
+    renderWidget(<PhoneInput value="+79161234567" onChange={vi.fn()} label="Телефон" />)
+
+    expect(screen.getByLabelText('Телефон')).toHaveValue('+79161234567')
+    expect(screen.queryByText('+996')).not.toBeInTheDocument()
+  })
 })

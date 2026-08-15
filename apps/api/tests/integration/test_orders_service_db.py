@@ -1,3 +1,4 @@
+import asyncio
 import uuid
 from datetime import UTC, datetime, timedelta
 
@@ -7,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.cart.models import CartItem
 from app.cart.service import CartService
+from app.db import async_session
 from app.orders.models import Order, OrderItem, OrderStatus
 from app.orders.schemas import MAX_ITEM_QUANTITY
 from app.orders.service import (
@@ -555,3 +557,50 @@ async def test_list_for_user_paginates_newest_first_and_reports_the_total(
 
     # Чужие заявки не попадают ни в страницу, ни в счётчик.
     assert await service.list_for_user(stranger.id, page=1, page_size=2) == ([], 0)
+
+
+async def test_two_simultaneous_checkouts_produce_one_order(db_session: AsyncSession) -> None:
+    """A double tap on "оформить" is two transactions over one cart.
+
+    Both used to read the same lines and both wrote a full-price order out of them: the
+    customer saw one list, the owner got two identical заявки and bought twice. The cart
+    row is locked now, so the second transaction waits at the cart and only reaches the
+    items once the winner has emptied them.
+
+    Staged rather than merely concurrent: the two have to overlap in the one window that
+    matters — the loser reading the cart while the winner is past its own read and not yet
+    committed — and `asyncio.gather` alone does not guarantee landing in it.
+    """
+    user = await make_user(db_session)
+    await make_cycle(db_session)
+    product = await make_product(db_session, price_cents=1500)
+    await CartService(db_session).add_item(user.id, product.id, 2)
+    await db_session.commit()
+
+    loser_started = asyncio.Event()
+
+    async def winner() -> str:
+        async with async_session() as session:
+            await OrdersService(session).checkout(user.id, note=None)
+            # Holds the lock while the loser tries to take it.
+            await loser_started.wait()
+            await asyncio.sleep(0.3)
+            await session.commit()
+            return "ordered"
+
+    async def loser() -> str:
+        async with async_session() as session:
+            loser_started.set()
+            try:
+                await OrdersService(session).checkout(user.id, note=None)
+                await session.commit()
+            except EmptyCartError:
+                await session.rollback()
+                return "empty"
+            return "ordered"
+
+    outcomes = await asyncio.gather(winner(), loser())
+
+    assert outcomes == ["ordered", "empty"]
+    orders = (await db_session.execute(select(Order).where(Order.user_id == user.id))).scalars()
+    assert len(list(orders)) == 1

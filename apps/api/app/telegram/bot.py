@@ -72,7 +72,26 @@ async def _publish_mini_app_button(instance: Bot) -> None:
 
 async def _run(instance: Bot) -> None:
     await _publish_menu(instance)
-    await dispatcher.start_polling(instance)
+
+    # A registration left over from a previous run — a webhook deploy rolled back, a
+    # process killed before `stop()` — makes Telegram refuse `getUpdates` with a 409, and
+    # polling then loops on that error while the shop's only notification channel is
+    # silently dead. Taking it down first costs one call and is a no-op when there is none.
+    try:
+        await instance.delete_webhook()
+    except Exception:  # noqa: BLE001 - the same reasoning as the menu: not a reason to stay down
+        logger.exception("Failed to clear a stale webhook before polling")
+
+    await dispatcher.start_polling(
+        instance,
+        # Off, because this process is not the bot's: uvicorn installs its own
+        # SIGINT/SIGTERM handlers through the same `loop.add_signal_handler` slot, and
+        # aiogram — starting later, inside the lifespan — replaced them. The signal then
+        # only stopped polling, so the API itself never shut down: Ctrl+C did nothing in
+        # dev and `docker stop` waited out its timeout and killed the container. Shutdown
+        # is `stop()`'s job, which the lifespan already calls.
+        handle_signals=False,
+    )
 
 
 async def start() -> None:

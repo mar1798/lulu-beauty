@@ -50,4 +50,6 @@ async def test_health_reports_down_when_database_unreachable(client: AsyncClient
     body = response.json()
     assert body["status"] == "error"
     assert body["info"]["database"]["status"] == "down"
-    assert "connection refused" in body["info"]["database"]["message"]
+    # The endpoint is unauthenticated, so the driver's own text — which spells out the
+    # database host, port and user — stays in the logs rather than in the response.
+    assert "connection refused" not in body["info"]["database"]["message"]

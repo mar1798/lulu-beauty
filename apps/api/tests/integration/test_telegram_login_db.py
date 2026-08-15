@@ -175,3 +175,22 @@ async def test_a_signature_login_refuses_a_telegram_id_nobody_shared_a_number_fr
 
     with pytest.raises(TelegramAccountNotLinkedError):
         await TelegramLoginService(db_session).find_by_telegram_id(778)
+
+
+async def test_a_session_binds_to_one_chat_and_refuses_another(db_session: AsyncSession) -> None:
+    """Session fixation: the link payload is visible text in whichever chat it is pasted
+    into, so a second person who saw it could tap it in *their* Telegram, share *their*
+    contact — and the tab that started the login, still polling with its own secret, would
+    be let into their account. A repeat tap from the same chat is the only legal re-bind.
+    """
+    service, _, payload, _ = await _started(db_session)
+
+    first = await service.attach_chat(payload, 111)
+    assert first is not None
+
+    assert await service.attach_chat(payload, 222) is None
+    assert await service.attach_chat(payload, 111) is not None
+
+    auth_session = await db_session.get(TelegramAuthSession, first.id)
+    assert auth_session is not None
+    assert auth_session.chat_id == 111

@@ -98,7 +98,7 @@ export const ProfileForm: FC<IProfileFormProps & IBasicStyling> = ({
       */}
       <PhoneInput
         label="Телефон"
-        hint="Номер менять нельзя: по нему приходит код подтверждения"
+        hint="Номер менять нельзя: по нему аккаунт связан с Telegram"
         value={user.phone}
         onChange={() => undefined}
         readOnly={true}

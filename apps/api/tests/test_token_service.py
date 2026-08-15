@@ -63,3 +63,20 @@ def test_decode_access_token_rejects_expired_token(monkeypatch: pytest.MonkeyPat
 
     with pytest.raises(token_service.InvalidTokenError):
         token_service.decode_access_token(token)
+
+
+def test_refresh_tokens_issued_in_the_same_second_are_distinct() -> None:
+    """`refresh_tokens.token_hash` is UNIQUE, and iat/exp only have second resolution.
+
+    Without a per-token id the payload was a pure function of (user, second), so two
+    sign-ins a few milliseconds apart produced the same string — and the second insert
+    died as a 500 on an ordinary action.
+    """
+    user_id = uuid.uuid4()
+
+    first, _ = token_service.create_refresh_token(user_id)
+    second, _ = token_service.create_refresh_token(user_id)
+
+    assert first != second
+    assert token_service.decode_refresh_token(first).sub == str(user_id)
+    assert token_service.decode_refresh_token(second).sub == str(user_id)

@@ -78,15 +78,19 @@ const nextConfig = {
       'widgets/styling/mixin',
     ],
   },
+  /**
+   * `remotePatterns` намеренно пуст: все картинки сайта — свои.
+   *
+   * Фотографии товаров лежат на API, но браузеру отдаются через рерайт `/files/*`
+   * выше (абсолютный адрес в относительный превращает `src/components/Image.tsx`),
+   * то есть для оптимизатора они same-origin. Прежний `hostname: '**'` разрешал
+   * `/_next/image?url=https://любой-хост/...`, превращая сайт в открытый
+   * прокси-ресайзер чужих картинок за наш трафик и наш IP.
+   *
+   * Понадобится внешний хост — его нужно вписать сюда явным паттерном.
+   */
   images: {
-    remotePatterns: [
-      {
-        protocol: 'https',
-        hostname: '**',
-        port: '',
-        pathname: '**',
-      },
-    ],
+    remotePatterns: [],
     formats: ['image/avif', 'image/webp'],
   },
   webpack: config => {

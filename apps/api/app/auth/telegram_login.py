@@ -94,6 +94,14 @@ class TelegramLoginService:
         if auth_session is None or not self._is_open(auth_session):
             return None
 
+        # A session binds to the first chat that opened it and to no other. The payload is
+        # visible text in the chat it was pasted into, so without this a second person who
+        # saw the link could tap it in *their* Telegram, share *their* contact — and the
+        # tab that started the login, still polling with its own secret, would be let into
+        # their account. A repeat tap from the same chat is the only legitimate re-bind.
+        if auth_session.chat_id is not None and auth_session.chat_id != chat_id:
+            return None
+
         auth_session.chat_id = chat_id
         await self._session.flush()
         return auth_session

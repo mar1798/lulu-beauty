@@ -174,3 +174,28 @@ def test_slugify_matches_the_slug_pattern_the_backend_requires(raw: str, expecte
 def test_category_name_from_slug_is_readable_in_the_admin_list() -> None:
     assert category_name_from_slug("eye-cream") == "Eye Cream"
     assert category_name_from_slug("toner") == "Toner"
+
+
+def test_normalize_header_accepts_the_camel_case_spelling_the_admin_panel_documents() -> None:
+    """"inStock" has no space or dash to normalize, so it used to land as "instock" and
+    miss `row["in_stock"]` entirely — every row silently imported as in stock."""
+    assert normalize_header("inStock") == "in_stock"
+    assert normalize_header("InStock") == "in_stock"
+
+
+def test_xlsx_rows_carry_every_header_even_when_a_row_is_short() -> None:
+    """Which columns the file has is what decides whether an absent value means "leave it
+    alone" or "clear it", so a short row must not look like a file without the column."""
+    workbook = openpyxl.Workbook()
+    sheet = workbook.active
+    assert sheet is not None
+    sheet.append(["name", "slug", "price", "brand"])
+    sheet.append(["Serum", "serum", "10"])
+    buffer = io.BytesIO()
+    workbook.save(buffer)
+
+    rows = parse_xlsx_rows(buffer.getvalue())
+
+    assert len(rows) == 1
+    assert set(rows[0][1]) == {"name", "slug", "price", "brand"}
+    assert rows[0][1]["brand"] == ""
