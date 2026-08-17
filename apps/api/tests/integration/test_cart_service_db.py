@@ -16,6 +16,7 @@ from app.cart.service import (
 from app.common.limits import MAX_ITEM_QUANTITY
 from app.db import async_session
 from tests.integration.factories import (
+    make_category,
     make_cycle,
     make_product,
     make_product_image,
@@ -232,3 +233,33 @@ async def test_two_simultaneous_adds_of_one_product_merge_into_one_line(
     cart = await CartService(db_session).get_cart(user.id)
     lines = {item.product_id: item.quantity for item in cart.items}
     assert lines[product.id] == 2
+
+
+async def test_cart_line_carries_the_catalog_labels(db_session: AsyncSession) -> None:
+    """Brand, category and volume ride along so the cart draws the same row an order does.
+
+    Read live from the catalog rather than copied anywhere: nothing on a cart line is a
+    snapshot, and a product with no category must still produce a line.
+    """
+    user = await make_user(db_session)
+    await make_cycle(db_session)
+    category = await make_category(db_session, name="Тонеры")
+    labelled = await make_product(
+        db_session,
+        name="A Toner",
+        brand="Round lab",
+        volume_ml=500,
+        category_id=category.id,
+    )
+    bare = await make_product(db_session, name="B Nothing")
+
+    service = CartService(db_session)
+    await service.add_item(user.id, labelled.id, 1)
+    cart = await service.add_item(user.id, bare.id, 1)
+
+    lines = {item.product_id: item for item in cart.items}
+    assert lines[labelled.id].product_brand == "Round lab"
+    assert lines[labelled.id].product_category_name == "Тонеры"
+    assert lines[labelled.id].product_volume_ml == 500
+    assert lines[bare.id].product_category_name is None
+    assert lines[bare.id].product_brand is None

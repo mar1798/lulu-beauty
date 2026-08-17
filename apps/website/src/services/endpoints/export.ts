@@ -15,6 +15,12 @@ const PATH = '/admin/export/orders'
 export interface IOrdersExportFilters {
   cycleId?: string
   status?: OrderStatus
+  /**
+   * Нужны ли в листе колонки «Цена за штуку» и «Сумма». Лист часто уходит
+   * поставщику, а ему знать наши цены незачем. Пропущенный параметр бэк
+   * понимает как «с ценами» — умолчание для закупки самого владельца.
+   */
+  includePrices?: boolean
 }
 
 /** URL для `<a href … download>`: авторизация — на cookie, токен в адрес не попадает. */

@@ -3,13 +3,12 @@
  */
 
 export * from './breadcrumbs/index'
-export * from './cart-item-row/index'
 export * from './category-filter/index'
 export * from './deadline-countdown/index'
 export * from './empty-state/index'
 export * from './file-dropzone/index'
+export * from './item-row/index'
 export * from './order-card/index'
-export * from './order-item-row/index'
 export * from './order-status-badge/index'
 export * from './pagination/index'
 export * from './product-card/index'

@@ -23,6 +23,7 @@ from app.orders.service import (
     StatusNotAssignableError,
 )
 from tests.integration.factories import (
+    make_category,
     make_cycle,
     make_product,
     make_product_image,
@@ -139,6 +140,50 @@ async def test_load_customers_batches_users_for_admin_listing(db_session: AsyncS
 
 async def test_load_customers_on_empty_list_does_not_query(db_session: AsyncSession) -> None:
     assert await OrdersService(db_session).load_customers([]) == {}
+
+
+async def test_load_item_tags_reads_the_live_catalog(db_session: AsyncSession) -> None:
+    user = await make_user(db_session)
+    await make_cycle(db_session)
+    category = await make_category(db_session, name="Тонеры")
+    product = await make_product(
+        db_session, brand="Round lab", volume_ml=500, category_id=category.id
+    )
+    service = OrdersService(db_session)
+    await CartService(db_session).add_item(user.id, product.id, 1)
+    order = await service.checkout(user.id, note=None)
+
+    # A catalog edit after checkout: the labels only describe the product, so unlike the
+    # name and the price they are expected to follow it.
+    product.brand = "Round Lab"
+    await db_session.flush()
+
+    tags = await service.load_item_tags([order])
+
+    assert tags[product.id].brand == "Round Lab"
+    assert tags[product.id].category_name == "Тонеры"
+    assert tags[product.id].volume_ml == 500
+
+
+async def test_load_item_tags_survives_a_product_without_category_or_volume(
+    db_session: AsyncSession,
+) -> None:
+    user = await make_user(db_session)
+    await make_cycle(db_session)
+    product = await make_product(db_session, brand=None)
+    service = OrdersService(db_session)
+    await CartService(db_session).add_item(user.id, product.id, 1)
+    order = await service.checkout(user.id, note=None)
+
+    tags = await service.load_item_tags([order])
+
+    assert tags[product.id].brand is None
+    assert tags[product.id].category_name is None
+    assert tags[product.id].volume_ml is None
+
+
+async def test_load_item_tags_on_empty_list_does_not_query(db_session: AsyncSession) -> None:
+    assert await OrdersService(db_session).load_item_tags([]) == {}
 
 
 async def test_list_admin_page_filters_by_status_and_paginates(
@@ -636,6 +681,32 @@ async def test_reprice_product_updates_pending_orders(db_session: AsyncSession) 
     assert changes[0].old_price_cents == 1000
     assert changes[0].new_price_cents == 1500
     assert changes[0].total_cents == 3000
+
+
+async def test_reprice_product_covers_every_pending_order_of_one_customer(
+    db_session: AsyncSession,
+) -> None:
+    """One customer, several pending orders holding the product — a person orders in every
+    cycle, and the price has to move in all of them, newest first."""
+    user = await make_user(db_session)
+    await make_cycle(db_session)
+    product = await make_product(db_session, name="Rose Serum", price_cents=1000)
+    orders = OrdersService(db_session)
+
+    placed = []
+    for index, quantity in enumerate((1, 2, 3)):
+        await CartService(db_session).add_item(user.id, product.id, quantity)
+        order = await orders.checkout(user.id, note=None)
+        # created_at defaults to now(), which in Postgres is the *transaction* timestamp —
+        # all three checkouts share it here, unlike three separate requests in production.
+        order.created_at = datetime.now(UTC) + timedelta(minutes=index)
+        placed.append(order)
+    await db_session.flush()
+
+    changes = await orders.reprice_product(product.id, 1500)
+
+    assert [change.order_id for change in changes] == [order.id for order in reversed(placed)]
+    assert [order.total_cents for order in placed] == [1500, 3000, 4500]
 
 
 async def test_reprice_product_reports_nothing_when_price_is_unchanged(

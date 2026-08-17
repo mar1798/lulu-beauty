@@ -4,7 +4,7 @@ import type { IBasicStyling, ICheckoutPanelProps } from '../../types'
 import { AppLink } from '../../atoms/app-link'
 import { Heading } from '../../atoms/heading'
 import { Skeleton } from '../../atoms/skeleton'
-import { CartItemRow } from '../../molecules/cart-item-row'
+import { ItemRow } from '../../molecules/item-row'
 import * as styles from './CheckoutPanel.css'
 
 /**
@@ -54,7 +54,7 @@ export const CheckoutPanel: FC<ICheckoutPanelProps & IBasicStyling> = ({
 
       <div className={styles.list}>
         {/*
-          Скелетон повторяет геометрию `CartItemRow` (миниатюра 64px и две
+          Скелетон повторяет геометрию `ItemRow` (миниатюра 64px и две
           строки текста): после ответа список не переставляет форму рядом.
         */}
         {isLoading || cart === null
@@ -71,7 +71,7 @@ export const CheckoutPanel: FC<ICheckoutPanelProps & IBasicStyling> = ({
               </div>
             ))
           : cart.items.map(item => (
-              <CartItemRow
+              <ItemRow
                 key={item.productId}
                 item={item}
                 href={buildProductHref(item.productSlug)}

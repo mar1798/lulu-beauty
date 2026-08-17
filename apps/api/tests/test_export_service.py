@@ -24,8 +24,9 @@ def _row(**overrides: object) -> OrderExportRow:
     return OrderExportRow(**defaults)  # type: ignore[arg-type]
 
 
-def _sheet(rows: list[OrderExportRow]):  # type: ignore[no-untyped-def]
-    workbook = openpyxl.load_workbook(io.BytesIO(build_orders_workbook(rows)))
+def _sheet(rows: list[OrderExportRow], *, include_prices: bool = True):  # type: ignore[no-untyped-def]
+    content = build_orders_workbook(rows, include_prices=include_prices)
+    workbook = openpyxl.load_workbook(io.BytesIO(content))
     sheet = workbook.active
     assert sheet is not None
     return sheet
@@ -65,6 +66,24 @@ def test_build_orders_workbook_totals_row_on_an_empty_export_is_zeroed() -> None
     sheet = _sheet([])
 
     assert _values(sheet, 2) == [TOTAL_LABEL, None, 0, None, 0]
+
+
+def test_build_orders_workbook_without_prices_drops_both_money_columns() -> None:
+    rows = [_row(product_name="Крем", brand="Lulu", quantity=3, unit_price_cents=15000)]
+
+    sheet = _sheet(rows, include_prices=False)
+
+    assert _values(sheet, 1) == HEADER[:3]
+    assert _values(sheet, 2) == ["Крем", "Lulu", 3]
+    assert _values(sheet, 3) == [TOTAL_LABEL, None, 3]
+
+
+def test_build_orders_workbook_without_prices_keeps_the_quantity_format() -> None:
+    """Regression guard: the formats list is filtered alongside the columns, not by index."""
+    sheet = _sheet([_row(quantity=1200)], include_prices=False)
+
+    quantity_cell = next(sheet.iter_rows(min_row=2, max_row=2))[2]
+    assert quantity_cell.number_format == "#,##0"
 
 
 def test_build_orders_workbook_widens_columns_to_the_longest_value() -> None:

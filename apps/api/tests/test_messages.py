@@ -7,6 +7,7 @@ from app.catalog.schemas import ProductResponse
 from app.common.limits import MAX_WISHLIST_ITEMS
 from app.cycles.models import OrderCycle
 from app.orders.models import Order, OrderItem, OrderStatus
+from app.orders.service import OrderItemDrop, OrderPriceChange
 from app.telegram import messages
 from app.wishlist.schemas import WishlistItemResponse, WishlistResponse
 
@@ -104,6 +105,85 @@ def test_order_item_repriced_names_both_prices_and_the_new_total() -> None:
     assert messages.format_price(140_000) in text
     assert messages.format_price(280_000) in text
     assert "снизилась" in messages.order_item_repriced(order_id, "X", 140_000, 120_000, 240_000)
+
+
+def _price_change(order_id: uuid.UUID, total_cents: int) -> OrderPriceChange:
+    return OrderPriceChange(
+        order_id=order_id,
+        user_id=uuid.uuid4(),
+        product_name="Rose Serum",
+        old_price_cents=120_000,
+        new_price_cents=140_000,
+        total_cents=total_cents,
+    )
+
+
+def test_orders_repriced_keeps_the_single_order_wording() -> None:
+    order_id = uuid.UUID("a1b2c3d4-0000-0000-0000-000000000000")
+
+    assert messages.orders_repriced([_price_change(order_id, 280_000)]) == (
+        messages.order_item_repriced(order_id, "Rose Serum", 120_000, 140_000, 280_000)
+    )
+
+
+def test_orders_repriced_names_every_affected_order_in_one_text() -> None:
+    """Товар лежит в нескольких неподтверждённых заявках одного человека — это норма, и
+    новость про каждую обязана дойти. Telegram принимает примерно одно сообщение в
+    секунду на чат, поэтому это одно сообщение, а не по одному на заявку."""
+    first = uuid.UUID("a1b2c3d4-0000-0000-0000-000000000000")
+    second = uuid.UUID("b2c3d4e5-0000-0000-0000-000000000000")
+
+    text = messages.orders_repriced(
+        [_price_change(first, 280_000), _price_change(second, 420_000)]
+    )
+
+    assert "#a1b2c3d4" in text
+    assert "#b2c3d4e5" in text
+    assert messages.format_price(280_000) in text
+    assert messages.format_price(420_000) in text
+    assert text.count("выросла") == 2
+
+
+def _drop(order_id: uuid.UUID, *, is_cancelled: bool, name: str = "Rose Serum") -> OrderItemDrop:
+    return OrderItemDrop(
+        order_id=order_id,
+        user_id=uuid.uuid4(),
+        product_name=name,
+        total_cents=50_000,
+        is_cancelled=is_cancelled,
+    )
+
+
+def test_orders_items_dropped_keeps_the_single_order_wording() -> None:
+    order_id = uuid.UUID("a1b2c3d4-0000-0000-0000-000000000000")
+
+    assert messages.orders_items_dropped([_drop(order_id, is_cancelled=False)]) == (
+        messages.order_item_removed(order_id, "Rose Serum", 50_000)
+    )
+    assert messages.orders_items_dropped([_drop(order_id, is_cancelled=True)]) == (
+        messages.order_cancelled_last_item_removed(order_id, "Rose Serum")
+    )
+
+
+def test_orders_items_dropped_folds_several_orders_into_one_text() -> None:
+    """И несколько строк одной заявки — в одну строчку сообщения: заявка лишилась товаров
+    один раз, а не по разу на товар."""
+    first = uuid.UUID("a1b2c3d4-0000-0000-0000-000000000000")
+    second = uuid.UUID("b2c3d4e5-0000-0000-0000-000000000000")
+
+    text = messages.orders_items_dropped(
+        [
+            _drop(first, is_cancelled=False, name="Rose Serum"),
+            _drop(first, is_cancelled=False, name="Toner"),
+            _drop(second, is_cancelled=True, name="Rose Serum"),
+        ]
+    )
+
+    assert "2 ваших заявки" in text
+    assert text.count("#a1b2c3d4") == 1
+    assert "Rose Serum, Toner" in text
+    assert "отменена" in text
+    assert len(text.splitlines()) == 3
 
 
 def test_order_item_removed_is_not_the_cancellation_text() -> None:

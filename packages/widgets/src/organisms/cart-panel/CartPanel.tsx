@@ -7,8 +7,8 @@ import { Divider } from '../../atoms/divider'
 import { Price } from '../../atoms/price'
 import { Skeleton } from '../../atoms/skeleton'
 import { Text } from '../../atoms/text'
-import { CartItemRow } from '../../molecules/cart-item-row'
 import { DeadlineCountdown } from '../../molecules/deadline-countdown'
+import { ItemRow } from '../../molecules/item-row'
 import * as styles from './CartPanel.css'
 
 /**
@@ -92,11 +92,18 @@ export const CartPanel: FC<ICartPanelProps & IBasicStyling> = ({
     <div className={clsx(styles.container, className)}>
       <div className={styles.items}>
         {cart.items.map(item => (
-          <CartItemRow
+          <ItemRow
             key={item.productId}
             item={item}
             href={buildProductHref(item.productSlug)}
+            /*
+              Количество на время своего же запроса не гаснет (`isQuantityBusy`
+              не передан): оно меняется оптимистично, а запросы уходят по
+              очереди — быстрые нажатия должны складываться (2 → 3 → 4), а не
+              пропадать под курсором вместе с подсветкой кнопок.
+            */
             isBusy={isItemBusy === undefined ? isBusy : isItemBusy(item.productId)}
+            removeLabel={`Убрать из корзины: ${item.productName}`}
             onQuantityChange={quantity => onQuantityChange(item.productId, quantity)}
             onRemove={() => onRemove(item.productId)}
           />

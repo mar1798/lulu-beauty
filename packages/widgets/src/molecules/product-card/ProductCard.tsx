@@ -7,7 +7,7 @@ import { AppLink } from '../../atoms/app-link'
 import { Badge } from '../../atoms/badge'
 import { Price } from '../../atoms/price'
 import { Text } from '../../atoms/text'
-import { formatVolume } from '../../utils/volume'
+import { clampTag, productTags } from '../../utils/tags'
 import * as styles from './ProductCard.css'
 
 /**
@@ -26,19 +26,6 @@ export const primaryImage = (images: IProductImage[]): IProductImage | null =>
 
 const DEFAULT_SIZES = { fb: '50vw', sm: '50vw', lg: '25vw' } as const
 
-/**
- * Потолок длины метки под названием.
- *
- * Обрезка по символам, а не по ширине: метки стоят в одной строке, и та, что
- * длиннее остальных вместе взятых (случается у категорий из импорта), иначе
- * вытеснила бы их на вторую строку целиком. Значение подобрано под самую
- * узкую колонку сетки — две карточки в ряд на телефоне.
- */
-const TAG_MAX_CHARS = 18
-
-const clampTag = (value: string): string =>
-  value.length > TAG_MAX_CHARS ? `${value.slice(0, TAG_MAX_CHARS - 1).trimEnd()}…` : value
-
 export const ProductCard: FC<IProductCardProps & IBasicStyling> = ({
   product,
   href,
@@ -49,24 +36,8 @@ export const ProductCard: FC<IProductCardProps & IBasicStyling> = ({
   className,
 }) => {
   const image = primaryImage(product.images)
-  const brand = product.brand !== null && product.brand.trim() !== '' ? product.brand : null
-  const category =
-    categoryName !== undefined && categoryName !== null && categoryName.trim() !== ''
-      ? categoryName
-      : null
-  /*
-    Марка, категория и объём — приглушённые метки под названием. Каждая своим
-    элементом, а не одной склеенной строкой: склеенная обрезалась целиком по
-    ширине колонки, и от «Round lab · Cleanser · 1000 мл» на телефоне
-    оставалось «Round lab · Clea…» — категория и объём пропадали вместе.
-    Теперь длинная метка укорачивается сама (`clampTag`), а не съедает соседние,
-    и метки переносятся на вторую строку.
-
-    Объём последним — он уточняет товар, а не называет его.
-  */
-  const tags = [brand, category, formatVolume(product.volumeMl)].filter(
-    (value): value is string => value !== null
-  )
+  /* Марка, категория и объём — приглушённые метки под названием (см. `productTags`). */
+  const tags = productTags({ brand: product.brand, categoryName, volumeMl: product.volumeMl })
 
   return (
     <article className={clsx(styles.container, className)}>
@@ -109,7 +80,7 @@ export const ProductCard: FC<IProductCardProps & IBasicStyling> = ({
           {tags.length > 0 && (
             <span className={styles.tags}>
               {tags.map(tag => (
-                <Text key={tag} as="span" size="xs" tone="muted">
+                <Text key={tag} className={styles.tag} as="span" size="xs" tone="muted">
                   {clampTag(tag)}
                 </Text>
               ))}

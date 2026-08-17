@@ -28,6 +28,7 @@ def _mock_service(mock_service_cls: MagicMock) -> MagicMock:
     service = mock_service_cls.return_value
     service.list_admin_page = AsyncMock(return_value=([], 0))
     service.load_customers = AsyncMock(return_value={})
+    service.load_item_tags = AsyncMock(return_value={})
     return service
 
 
@@ -109,6 +110,7 @@ async def _patch_status(client: AsyncClient, order: Order, *, changed: bool) -> 
         service = mock_service_cls.return_value
         service.update_status = AsyncMock(return_value=(order, changed))
         service.load_customers = AsyncMock(return_value={})
+        service.load_item_tags = AsyncMock(return_value={})
         async with client as c:
             response = await c.patch(
                 f"/admin/orders/{order.id}/status", json={"status": order.status.value}

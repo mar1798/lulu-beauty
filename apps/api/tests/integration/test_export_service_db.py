@@ -61,6 +61,27 @@ async def test_export_rows_split_one_product_by_its_snapshotted_price(
     assert {(row.unit_price_cents, row.quantity) for row in rows} == {(15000, 2), (20000, 1)}
 
 
+async def test_export_rows_without_prices_merge_the_same_product_back_together(
+    db_session: AsyncSession,
+) -> None:
+    """Без цен разбивать по цене нечем: две одинаковые с виду строки читались бы как баг."""
+    user = await make_user(db_session)
+    await make_cycle(db_session)
+    product = await make_product(db_session, name="Крем", slug="krem", price_cents=15000)
+
+    await _place_order(db_session, user.id, product.id, 2)
+    product.price_cents = 20000
+    await db_session.flush()
+    await _place_order(db_session, user.id, product.id, 1)
+
+    rows = await ExportService(db_session)._export_rows(None, include_prices=False)
+
+    assert len(rows) == 1
+    assert rows[0].quantity == 3
+    # Цена в лист не пойдёт, поэтому и не выдумывается — одна из двух реальных была бы враньём.
+    assert rows[0].unit_price_cents == 0
+
+
 async def test_export_rows_can_be_scoped_to_a_cycle_and_a_status(
     db_session: AsyncSession,
 ) -> None:

@@ -1,4 +1,5 @@
 import uuid
+from collections.abc import Mapping
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -7,7 +8,7 @@ from app.auth.dependencies import CurrentUser, get_current_user, require_admin
 from app.auth.models import User
 from app.common.schemas import PageResponse
 from app.db import get_session
-from app.orders.models import Order, OrderStatus
+from app.orders.models import Order, OrderItem, OrderStatus
 from app.orders.schemas import (
     AdminOrderResponse,
     CheckoutRequest,
@@ -29,6 +30,7 @@ from app.orders.service import (
     OrderNotRestorableError,
     OrdersService,
     ProductNotFoundError,
+    ProductTags,
     StatusNotAssignableError,
 )
 from app.telegram.notify import notify_new_order, notify_order_deleted, notify_order_status
@@ -36,17 +38,32 @@ from app.telegram.notify import notify_new_order, notify_order_deleted, notify_o
 router = APIRouter(tags=["orders"])
 
 
-def _order_items(order: Order) -> list[OrderItemResponse]:
+_NO_TAGS = ProductTags(brand=None, category_name=None, volume_ml=None)
+
+
+def _order_item(item: OrderItem, tags: ProductTags) -> OrderItemResponse:
+    return OrderItemResponse(
+        id=item.id,
+        product_id=item.product_id,
+        product_name=item.product_name,
+        product_slug=item.product_slug,
+        product_image_url=item.product_image_url,
+        product_price_cents=item.product_price_cents,
+        quantity=item.quantity,
+        line_total_cents=item.product_price_cents * item.quantity,
+        product_brand=tags.brand,
+        product_category_name=tags.category_name,
+        product_volume_ml=tags.volume_ml,
+    )
+
+
+def _order_items(order: Order, tags: Mapping[uuid.UUID, ProductTags]) -> list[OrderItemResponse]:
+    # A line whose product is gone for good (product_id NULL) has no labels, and still
+    # renders off its own snapshot.
     return [
-        OrderItemResponse(
-            id=item.id,
-            product_id=item.product_id,
-            product_name=item.product_name,
-            product_slug=item.product_slug,
-            product_image_url=item.product_image_url,
-            product_price_cents=item.product_price_cents,
-            quantity=item.quantity,
-            line_total_cents=item.product_price_cents * item.quantity,
+        _order_item(
+            item,
+            _NO_TAGS if item.product_id is None else tags.get(item.product_id, _NO_TAGS),
         )
         for item in order.items
     ]
@@ -56,7 +73,11 @@ def _order_items(order: Order) -> list[OrderItemResponse]:
 _NO_ACTIONS = OrderFlags(is_editable=False, is_restorable=False)
 
 
-def _order_response(order: Order, flags: OrderFlags = _NO_ACTIONS) -> OrderResponse:
+def _order_response(
+    order: Order,
+    tags: Mapping[uuid.UUID, ProductTags],
+    flags: OrderFlags = _NO_ACTIONS,
+) -> OrderResponse:
     return OrderResponse(
         id=order.id,
         cycle_id=order.cycle_id,
@@ -64,7 +85,7 @@ def _order_response(order: Order, flags: OrderFlags = _NO_ACTIONS) -> OrderRespo
         total_cents=order.total_cents,
         note=order.note,
         created_at=order.created_at,
-        items=_order_items(order),
+        items=_order_items(order, tags),
         is_editable=flags.is_editable,
         is_restorable=flags.is_restorable,
     )
@@ -73,10 +94,13 @@ def _order_response(order: Order, flags: OrderFlags = _NO_ACTIONS) -> OrderRespo
 async def _one_order_response(service: OrdersService, order: Order) -> OrderResponse:
     """Response for a single order, with the flags the customer's UI branches on."""
     flags = await service.customer_flags([order])
-    return _order_response(order, flags.get(order.id, _NO_ACTIONS))
+    tags = await service.load_item_tags([order])
+    return _order_response(order, tags, flags.get(order.id, _NO_ACTIONS))
 
 
-def _admin_order_response(order: Order, customer: User | None) -> AdminOrderResponse:
+def _admin_order_response(
+    order: Order, customer: User | None, tags: Mapping[uuid.UUID, ProductTags]
+) -> AdminOrderResponse:
     return AdminOrderResponse(
         id=order.id,
         cycle_id=order.cycle_id,
@@ -84,7 +108,7 @@ def _admin_order_response(order: Order, customer: User | None) -> AdminOrderResp
         total_cents=order.total_cents,
         note=order.note,
         created_at=order.created_at,
-        items=_order_items(order),
+        items=_order_items(order, tags),
         # A deleted user cascades its orders away, so this is defensive only.
         customer_name=customer.name if customer is not None else "—",
         customer_phone=customer.phone if customer is not None else "—",
@@ -124,8 +148,9 @@ async def list_my_orders(
     service = OrdersService(session)
     orders, total = await service.list_for_user(current_user.id, page, page_size)
     flags = await service.customer_flags(orders)
+    tags = await service.load_item_tags(orders)
     return PageResponse(
-        items=[_order_response(order, flags.get(order.id, _NO_ACTIONS)) for order in orders],
+        items=[_order_response(order, tags, flags.get(order.id, _NO_ACTIONS)) for order in orders],
         total=total,
         page=page,
         page_size=page_size,
@@ -300,8 +325,11 @@ async def list_orders_admin(
     service = OrdersService(session)
     orders, total = await service.list_admin_page(cycle_id, order_status, page, page_size)
     customers = await service.load_customers(orders)
+    tags = await service.load_item_tags(orders)
     return PageResponse(
-        items=[_admin_order_response(order, customers.get(order.user_id)) for order in orders],
+        items=[
+            _admin_order_response(order, customers.get(order.user_id), tags) for order in orders
+        ],
         total=total,
         page=page,
         page_size=page_size,
@@ -326,10 +354,11 @@ async def update_order_status(
         raise HTTPException(status.HTTP_409_CONFLICT, "order_status_not_assignable") from error
 
     customers = await service.load_customers([order])
+    tags = await service.load_item_tags([order])
     await session.commit()
     if changed:
         background_tasks.add_task(notify_order_status, order.id)
-    return _admin_order_response(order, customers.get(order.user_id))
+    return _admin_order_response(order, customers.get(order.user_id), tags)
 
 
 @router.delete("/admin/orders/{order_id}", status_code=status.HTTP_204_NO_CONTENT)

@@ -17,7 +17,6 @@ import {
   IAuthUser,
   ICart,
   ICartItem,
-  ICartItemRowProps,
   ICartPanelProps,
   ICartTemplateProps,
   IBadgeProps,
@@ -48,6 +47,7 @@ import {
   IIconButtonProps,
   IImage,
   IInputProps,
+  IItemRowProps,
   ILink,
   IMobileMenuProps,
   IModalProps,
@@ -56,7 +56,6 @@ import {
   IOrderCycle,
   IOrderDetailsProps,
   IOrderItem,
-  IOrderItemRowProps,
   IOrderListProps,
   IOrderStatusBadgeProps,
   IPaginationProps,
@@ -551,6 +550,9 @@ export const feedCartItem = (quantity = 2): ICartItem => {
     productPriceCents: product.priceCents,
     quantity,
     lineTotalCents: product.priceCents * quantity,
+    productBrand: product.brand,
+    productCategoryName: 'Тонеры',
+    productVolumeMl: product.volumeMl,
   }
 }
 
@@ -573,17 +575,6 @@ export const feedQuantityStepper = (): IQuantityStepperProps => ({
   value: 2,
   onChange: noop,
 })
-
-export const feedCartItemRow = (): ICartItemRowProps => {
-  const item = feedCartItem()
-
-  return {
-    item,
-    href: `/catalog/${item.productSlug}`,
-    onQuantityChange: noop,
-    onRemove: noop,
-  }
-}
 
 export const feedCartPanel = (): ICartPanelProps => ({
   cart: feedCart(),
@@ -633,6 +624,9 @@ export const feedOrderItem = (overrides: Partial<IOrderItem> = {}): IOrderItem =
     productPriceCents: product.priceCents,
     quantity,
     lineTotalCents: product.priceCents * quantity,
+    productBrand: product.brand,
+    productCategoryName: 'Тонеры',
+    productVolumeMl: product.volumeMl,
     ...overrides,
   }
 }
@@ -667,7 +661,7 @@ export const feedOrderStatusBadge = (): IOrderStatusBadgeProps => ({
   status: 'CONFIRMED',
 })
 
-export const feedOrderItemRow = (): IOrderItemRowProps => {
+export const feedItemRow = (): IItemRowProps => {
   const item = feedOrderItem()
 
   return { item, href: `/catalog/${item.productSlug}` }

@@ -12,7 +12,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth.models import Role, User
 from app.auth.telegram_login import AuthSessionPendingError, TelegramLoginService
 from app.orders.models import Order, OrderStatus
-from app.telegram import recipients
+from app.orders.service import OrderPriceChange
+from app.telegram import messages, recipients
 from app.telegram.handlers import (
     handle_contact,
     handle_menu_action,
@@ -23,6 +24,8 @@ from app.telegram.handlers import (
     handle_wishlist,
 )
 from app.telegram.keyboards import MenuAction, OrderAction
+from app.telegram.notify import notify_orders_repriced
+from app.telegram.service import BroadcastResult
 from app.wishlist.models import WishlistItem
 from tests.integration.factories import make_cycle, make_product, make_user
 
@@ -435,3 +438,48 @@ async def test_get_owners_returns_every_admin(db_session: AsyncSession) -> None:
     owners = await recipients.get_owners(db_session)
 
     assert [owner.id for owner in owners] == [admin.id]
+
+
+async def test_repricing_sends_one_notice_per_customer_not_per_order(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A product sits in several pending orders of the same person — one per cycle they
+    ordered in. Telegram takes about a message per second per chat, so one message per
+    order arrived as the first one and three 429s: news about one order out of three."""
+
+    @asynccontextmanager
+    async def factory() -> AsyncIterator[AsyncSession]:
+        yield db_session
+
+    monkeypatch.setattr("app.telegram.notify.async_session", factory)
+    send = AsyncMock(return_value=BroadcastResult(sent=2, blocked_chat_ids=[]))
+    monkeypatch.setattr("app.telegram.notify.notifications_service.send_order_notices", send)
+
+    customer = await make_user(db_session, telegram_chat_id=555)
+    other = await make_user(db_session, phone="+996700333444", telegram_chat_id=556)
+    await db_session.flush()
+
+    def change(user_id: uuid.UUID, order_id: uuid.UUID, total_cents: int) -> OrderPriceChange:
+        return OrderPriceChange(
+            order_id=order_id,
+            user_id=user_id,
+            product_name="Rose Serum",
+            old_price_cents=1000,
+            new_price_cents=1500,
+            total_cents=total_cents,
+        )
+
+    first, second = uuid.uuid4(), uuid.uuid4()
+    await notify_orders_repriced(
+        [
+            change(customer.id, first, 1500),
+            change(customer.id, second, 3000),
+            change(other.id, uuid.uuid4(), 4500),
+        ]
+    )
+
+    (deliveries,) = send.await_args.args
+    assert [user.id for user, _ in deliveries] == [customer.id, other.id]
+    text = dict((user.id, message) for user, message in deliveries)[customer.id]
+    assert messages.order_reference(first) in text
+    assert messages.order_reference(second) in text

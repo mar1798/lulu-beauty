@@ -57,6 +57,13 @@ class OrderItemResponse(CamelModel):
     product_price_cents: int
     quantity: int
     line_total_cents: int
+    # Descriptive labels (brand · category · volume), read from the live catalog rather
+    # than snapshotted: unlike name and price, they are not part of what was agreed, and
+    # a line whose product has been hard-deleted (product_id NULL) simply has none.
+    # See OrdersService.load_item_tags.
+    product_brand: str | None = None
+    product_category_name: str | None = None
+    product_volume_ml: int | None = None
 
 
 class OrderResponse(CamelModel):

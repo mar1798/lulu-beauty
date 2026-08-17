@@ -26,6 +26,12 @@ class CartItemResponse(CamelModel):
     product_price_cents: int
     quantity: int
     line_total_cents: int
+    # The same labels an order line carries, and for the same reason: the cart and the
+    # order are drawn by one component, and a name alone does not tell two volumes of the
+    # same toner apart. Read live from the catalog — nothing here is a snapshot anyway.
+    product_brand: str | None = None
+    product_category_name: str | None = None
+    product_volume_ml: int | None = None
 
 
 class CartResponse(CamelModel):

@@ -8,7 +8,7 @@ from sqlalchemy.orm import selectinload
 from app.cart.models import Cart, CartItem
 from app.cart.schemas import CartItemResponse, CartResponse
 from app.catalog.images import primary_image_url
-from app.catalog.models import Product
+from app.catalog.models import Category, Product
 from app.common.limits import MAX_ITEM_QUANTITY
 from app.cycles.models import OrderCycle
 from app.cycles.service import CyclesService
@@ -174,9 +174,13 @@ class CartService:
         # they must not be shown or counted: adding a soft-deleted product is refused
         # everywhere else, and checkout reads this same join — so a line the customer can
         # see is exactly a line they can order.
+        # Category comes along in the same query (outer join — a product may have none):
+        # its name is one of the labels under the line, and reading it per row would be a
+        # round trip per position.
         result = await self._session.execute(
-            select(CartItem, Product)
+            select(CartItem, Product, Category.name)
             .join(Product, Product.id == CartItem.product_id)
+            .outerjoin(Category, Category.id == Product.category_id)
             .where(CartItem.cart_id == cart.id, Product.deleted_at.is_(None))
             .order_by(Product.name)
             .options(selectinload(Product.images))
@@ -184,7 +188,7 @@ class CartService:
 
         items: list[CartItemResponse] = []
         total_cents = 0
-        for cart_item, product in result.all():
+        for cart_item, product, category_name in result.all():
             line_total_cents = product.price_cents * cart_item.quantity
             total_cents += line_total_cents
             items.append(
@@ -196,6 +200,9 @@ class CartService:
                     product_price_cents=product.price_cents,
                     quantity=cart_item.quantity,
                     line_total_cents=line_total_cents,
+                    product_brand=product.brand,
+                    product_category_name=category_name,
+                    product_volume_ml=product.volume_ml,
                 )
             )
 

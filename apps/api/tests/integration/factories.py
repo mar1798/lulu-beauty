@@ -4,7 +4,7 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.models import Role, User
-from app.catalog.models import Product, ProductImage
+from app.catalog.models import Category, Product, ProductImage
 from app.cycles.models import CycleStatus, OrderCycle
 
 
@@ -35,12 +35,16 @@ async def make_product(
     in_stock: bool = True,
     slug: str | None = None,
     brand: str | None = None,
+    volume_ml: int | None = None,
+    category_id: uuid.UUID | None = None,
     deleted_at: datetime | None = None,
 ) -> Product:
     product = Product(
         name=name,
         slug=slug or f"test-product-{uuid.uuid4().hex[:12]}",
         brand=brand,
+        volume_ml=volume_ml,
+        category_id=category_id,
         price_cents=price_cents,
         in_stock=in_stock,
         deleted_at=deleted_at,
@@ -48,6 +52,23 @@ async def make_product(
     session.add(product)
     await session.flush()
     return product
+
+
+async def make_category(
+    session: AsyncSession,
+    *,
+    name: str = "Test Category",
+    slug: str | None = None,
+    sort_order: int = 0,
+) -> Category:
+    category = Category(
+        name=name,
+        slug=slug or f"test-category-{uuid.uuid4().hex[:12]}",
+        sort_order=sort_order,
+    )
+    session.add(category)
+    await session.flush()
+    return category
 
 
 async def make_product_image(

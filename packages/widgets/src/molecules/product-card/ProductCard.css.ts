@@ -1,7 +1,7 @@
 import { style } from '@vanilla-extract/css'
 // `media` здесь занято экспортом стиля картинки, поэтому хелпер медиазапросов взят под псевдонимом.
 import { color, media as mediaQuery, transition } from '../../styling/lib'
-import { flexColumn, flexRow, focusVisibleRing } from '../../styling/mixin'
+import { flexColumn, flexRow, focusVisibleRing, tagRow, tagSeparator } from '../../styling/mixin'
 import { vars } from '../../styling/themes/contract.css'
 
 /**
@@ -115,14 +115,10 @@ export const body = style({
   padding: `${vars.space.sm} ${vars.space.xs} ${vars.space.xxs}`,
 })
 
-/**
- * Метки под названием: марка, категория, объём. Каждая отдельным элементом и
- * с переносом — длинная не должна вытеснять соседние за край колонки.
- */
-export const tags = style({
-  ...flexRow(8),
-  flexWrap: 'wrap',
-})
+/** Метки под названием: марка, категория, объём — см. миксины `tagRow`/`tagSeparator`. */
+export const tags = style(tagRow())
+
+export const tag = style(tagSeparator())
 
 /** Цена и действие в одну строку, прижатые к низу карточки. */
 export const footer = style({

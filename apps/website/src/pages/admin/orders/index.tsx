@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import useSWR, { mutate as globalMutate } from 'swr'
 import type { IAdminOrder, IOrderCycle, ISelectOption, OrderStatus } from 'widgets/types'
-import { Alert, Button, Select } from 'widgets/atoms'
+import { Alert, Button, Select, Switch } from 'widgets/atoms'
 import { EmptyState, ORDER_STATUSES, Pagination, orderStatusLabel } from 'widgets/molecules'
 import { AdminOrdersTable } from 'widgets/organisms'
 import { useConfirm, useToast } from 'widgets/contexts'
@@ -27,6 +27,11 @@ import * as styles from '@/styles/admin.css'
  * просуммировано по всем заявкам, попавшим под текущие фильтры (сбор и
  * статус), плюс итоговая строка. Фильтры уходят в выгрузку теми же, что
  * стоят над таблицей.
+ *
+ * Тумблер «Цены в файле» убирает из листа колонки цены и суммы: тот же файл
+ * часто пересылают поставщику, и наши цены там лишние. Без цен строки одного
+ * товара, купленного по разной цене, бэк сливает в одну — иначе в листе стояли
+ * бы две неотличимые.
  *
  * Качается через `fetch`, а не обычной ссылкой: ручка админская,
  * и отказ (403, 500) на ссылке превратился бы в скачанный файл с текстом
@@ -79,6 +84,13 @@ const AdminOrdersPage: React.FC = () => {
   const [busyId, setBusyId] = useState<string | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
   const [isExporting, setIsExporting] = useState(false)
+  /*
+    Цены в выгрузке. По умолчанию включены — это закупка самого владельца.
+    Выключаются, когда тот же лист уходит поставщику: наши цены ему знать
+    незачем. Состояние живёт только на странице — на таблицу оно не влияет,
+    ключ SWR от него не зависит, перезапрашивать нечего.
+  */
+  const [includePrices, setIncludePrices] = useState(true)
 
   // Общий ключ со «Сборами» (`/admin/cycles`): список в фильтре не отстаёт от календаря.
   const { data: cycles } = useSWR(cyclesKey, () => listCycles())
@@ -186,6 +198,7 @@ const AdminOrdersPage: React.FC = () => {
       const { blob, filename } = await downloadOrdersExport({
         cycleId: cycleFilter,
         status: status === ALL ? undefined : (status as OrderStatus),
+        includePrices,
       })
       const url = URL.createObjectURL(blob)
       const link = document.createElement('a')
@@ -217,16 +230,25 @@ const AdminOrdersPage: React.FC = () => {
       title="Заявки"
       summary="Состав и цены — снимок на момент оформления, они не меняются вслед за каталогом."
       actions={
-        <Button
-          variant="secondary"
-          iconStart={<IconDownload />}
-          isLoading={isExporting}
-          onClick={() => {
-            void handleExport()
-          }}
-        >
-          Выгрузить в Excel
-        </Button>
+        <div className={styles.row}>
+          <Switch
+            label="Цены в файле"
+            checked={includePrices}
+            disabled={isExporting}
+            onChange={setIncludePrices}
+          />
+
+          <Button
+            variant="secondary"
+            iconStart={<IconDownload />}
+            isLoading={isExporting}
+            onClick={() => {
+              void handleExport()
+            }}
+          >
+            Выгрузить в Excel
+          </Button>
+        </div>
       }
     >
       <div className={styles.filtersWide}>

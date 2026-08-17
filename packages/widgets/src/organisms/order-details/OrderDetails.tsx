@@ -12,7 +12,7 @@ import { Skeleton } from '../../atoms/skeleton'
 import { Text } from '../../atoms/text'
 import { Textarea } from '../../atoms/textarea'
 import { ITEM_FORMS, orderNumber } from '../../molecules/order-card'
-import { OrderItemRow } from '../../molecules/order-item-row'
+import { ItemRow } from '../../molecules/item-row'
 import { OrderStatusBadge } from '../../molecules/order-status-badge'
 import * as styles from './OrderDetails.css'
 
@@ -235,30 +235,41 @@ export const OrderDetails: FC<IOrderDetailsProps & IBasicStyling> = ({
       <Divider />
 
       <div className={styles.items}>
-        {order.items.map(item => (
-          <OrderItemRow
-            key={item.id}
-            item={item}
-            href={item.productId === null ? null : buildProductHref(item.productSlug)}
-            onQuantityChange={
-              isEditable
-                ? quantity => {
-                    onItemQuantityChange?.(item.id, quantity)
-                  }
-                : undefined
-            }
-            onRemove={
-              isEditable && onItemRemove !== undefined
-                ? () => {
-                    onItemRemove(item.id)
-                  }
-                : undefined
-            }
-            // Последнюю позицию бэкенд убрать не даст — для этого есть отмена заявки.
-            canRemove={order.items.length > 1}
-            isBusy={isBusy && (busyItemId === null || busyItemId === item.id)}
-          />
-        ))}
+        {order.items.map(item => {
+          const isRowBusy = isBusy && (busyItemId === null || busyItemId === item.id)
+
+          return (
+            <ItemRow
+              key={item.id}
+              item={item}
+              href={item.productId === null ? null : buildProductHref(item.productSlug)}
+              onQuantityChange={
+                isEditable
+                  ? quantity => {
+                      onItemQuantityChange?.(item.id, quantity)
+                    }
+                  : undefined
+              }
+              onRemove={
+                isEditable && onItemRemove !== undefined
+                  ? () => {
+                      onItemRemove(item.id)
+                    }
+                  : undefined
+              }
+              // Последнюю позицию бэкенд убрать не даст — для этого есть отмена заявки.
+              canRemove={order.items.length > 1}
+              removeLabel={`Убрать из заявки: ${item.productName}`}
+              isBusy={isRowBusy}
+              /*
+                В заявке гаснет и количество: правка уходит на сервер как есть
+                (в отличие от корзины, где она оптимистичная), и второе нажатие
+                до ответа спорило бы с первым.
+              */
+              isQuantityBusy={isRowBusy}
+            />
+          )
+        })}
       </div>
 
       {/*

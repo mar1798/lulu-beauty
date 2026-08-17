@@ -20,10 +20,16 @@ async def export_orders(
     # be narrowable to exactly what the admin table above the button is showing — a purchase
     # list that silently counts the cancelled orders in too would be a wrong order.
     order_status: OrderStatus | None = Query(default=None, alias="status"),
+    # The money columns are optional because the same sheet gets forwarded to the supplier,
+    # who has no business seeing the shop's own prices. Default stays True — the owner's own
+    # purchase list is the common case, and an old client that omits the param keeps it.
+    include_prices: bool = Query(default=True, alias="includePrices"),
     session: AsyncSession = Depends(get_session),
     _admin: CurrentUser = Depends(require_admin),
 ) -> Response:
-    content, filename = await ExportService(session).export_orders(cycle_id, order_status)
+    content, filename = await ExportService(session).export_orders(
+        cycle_id, order_status, include_prices=include_prices
+    )
     return Response(
         content=content,
         media_type=XLSX_MEDIA_TYPE,

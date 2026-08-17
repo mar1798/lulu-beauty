@@ -7,6 +7,10 @@
  *
  * `null` на входе — «объём не указан» (патчи, тканевые маски), и на выходе
  * тогда тоже `null`: подписи «— мл» не бывает, строка просто не рисуется.
+ *
+ * `undefined` считается тем же «не указан», хотя по типам его быть не должно:
+ * данные приходят из сети, и API постарше поля просто не пришлёт — при
+ * шаблонной подстановке из этого получалась подпись «undefined мл».
  */
-export const formatVolume = (volumeMl: number | null): string | null =>
-  volumeMl === null || volumeMl <= 0 ? null : `${volumeMl} мл`
+export const formatVolume = (volumeMl: number | null | undefined): string | null =>
+  volumeMl === null || volumeMl === undefined || volumeMl <= 0 ? null : `${volumeMl} мл`

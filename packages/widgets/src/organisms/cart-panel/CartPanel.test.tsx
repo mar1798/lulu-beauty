@@ -53,6 +53,22 @@ describe('CartPanel', () => {
     expect(getByRole('button', { name: 'Оформить заявку' }).hasAttribute('disabled')).toBe(true)
   })
 
+  /*
+    Та же причина, но про саму позицию: строку рисует общий `ItemRow`, который
+    умеет гасить количество на время запроса, — корзине это гашение не нужно,
+    и передавать его она не должна, иначе быстрые нажатия `−`/`+` пропадут.
+  */
+  it('не гасит количество, пока идёт запрос по позиции', () => {
+    const { getAllByRole } = renderWidget(
+      <CartPanel {...feedCartPanel()} isItemBusy={() => true} />
+    )
+
+    // «+», а не «−»: у позиции с количеством 1 уменьшение отключено по минимуму.
+    const increase = getAllByRole('button', { name: /Увеличить количество/ })
+    expect(increase.length).toBeGreaterThan(0)
+    expect(increase.every(button => !button.hasAttribute('disabled'))).toBe(true)
+  })
+
   it('без ошибки пустая корзина остаётся пустым состоянием', () => {
     const { getByText } = renderWidget(
       <CartPanel {...feedCartPanel()} cart={null} emptyState={<p>Пока пусто</p>} />

@@ -135,17 +135,34 @@ export interface IProduct {
 }
 
 /**
- * Позиция корзины. Своего `id` у неё нет: и `PATCH`, и `DELETE`
- * в `/cart/items/{productId}` адресуются идентификатором товара.
+ * То, что нужно карточке позиции (`ItemRow`), чтобы себя нарисовать.
+ *
+ * Общий знаменатель корзины и заявки: строка у них одна и та же, и различаются
+ * они не тем, как позиция выглядит, а тем, чем она адресуется — товаром в
+ * корзине и собственным `id` в заявке.
  */
-export interface ICartItem {
-  productId: string
+export interface IItemRowItem {
   productName: string
-  productSlug: string
   productImageUrl: string | null
   productPriceCents: number
   quantity: number
   lineTotalCents: number
+  /**
+   * Метки товара — марка, категория, объём. Читаются из живого каталога, а не
+   * из снапшота позиции, поэтому у позиции удалённого товара все три `null`.
+   */
+  productBrand: string | null
+  productCategoryName: string | null
+  productVolumeMl: number | null
+}
+
+/**
+ * Позиция корзины. Своего `id` у неё нет: и `PATCH`, и `DELETE`
+ * в `/cart/items/{productId}` адресуются идентификатором товара.
+ */
+export interface ICartItem extends IItemRowItem {
+  productId: string
+  productSlug: string
 }
 
 /**
@@ -179,16 +196,11 @@ export interface IWishlist {
  * Позиция заявки — снапшот на момент чекаута, а не текущее состояние товара.
  * `productId` — `null`, если товар с тех пор удалён.
  */
-export interface IOrderItem {
+export interface IOrderItem extends IItemRowItem {
   /** Идентификатор строки заявки: правка и удаление адресуются им, а не товаром. */
   id: string
   productId: string | null
-  productName: string
   productSlug: string
-  productImageUrl: string | null
-  productPriceCents: number
-  quantity: number
-  lineTotalCents: number
 }
 
 export interface IOrder {
@@ -313,7 +325,7 @@ export interface IIconButtonProps {
   icon: ReactNode
   /** Обязателен: иконка без подписи для скринридера пуста. */
   label: string
-  variant?: 'ghost' | 'solid' | 'danger' | 'primary'
+  variant?: 'ghost' | 'solid' | 'danger' | 'dangerSoft' | 'primary'
   size?: IControlSize
   type?: 'button' | 'submit' | 'reset'
   disabled?: boolean
@@ -856,21 +868,6 @@ export interface IQuantityStepperProps {
   label?: string
 }
 
-export interface ICartItemRowProps {
-  item: ICartItem
-  href: string
-  /** Без него строка только читается: количество показывается текстом. */
-  onQuantityChange?: (quantity: number) => void
-  onRemove?: () => void
-  /**
-   * Идёт запрос по этой позиции: блокируется только удаление — второе нажатие
-   * на крестик отправило бы второй запрос по уже удалённой строке. Количество
-   * остаётся доступным: оно меняется оптимистично, и гасить его на время
-   * запроса значит терять быстрые нажатия.
-   */
-  isBusy?: boolean
-}
-
 export interface ICartPanelProps {
   cart: ICart | null
   buildProductHref: (productSlug: string) => string
@@ -944,25 +941,48 @@ export interface IOrderStatusBadgeProps {
   status: OrderStatus
 }
 
-export interface IOrderItemRowProps {
-  item: IOrderItem
+/**
+ * Одна карточка позиции — общая у корзины, оформления и заявки.
+ *
+ * Что это за список, строка не знает: слова «корзина»/«заявка» приходят
+ * подписями кнопки удаления, а всё остальное у трёх экранов одинаково.
+ */
+export interface IItemRowProps {
+  item: IItemRowItem
   /**
-   * `null` — товара больше нет в каталоге (`productId === null` в снапшоте),
-   * вести ссылке некуда, а название остаётся видно.
+   * `null` — товара больше нет в каталоге (`productId === null` в снапшоте
+   * заявки), вести ссылке некуда, а название остаётся видно.
    */
   href: string | null
   /**
    * Управление количеством и удалением. Обе отсутствуют — строка только для
-   * чтения: так заявка выглядит после дедлайна и у владельца в админке.
+   * чтения: так состав показан на оформлении, после дедлайна и в админке.
    */
   onQuantityChange?: (quantity: number) => void
   onRemove?: () => void
   /**
-   * Единственную позицию убрать нельзя — бэкенд ответит отказом. Кнопка
-   * остаётся видимой, но заблокированной, с подсказкой отменить заявку целиком.
+   * Единственную позицию заявки убрать нельзя — бэкенд ответит отказом. Кнопка
+   * остаётся видимой, но заблокированной, с подсказкой из `removeBlockedLabel`.
    */
   canRemove?: boolean
+  /** `aria-label` кнопки удаления: «убрать» откуда — знает вызывающий, не строка. */
+  removeLabel?: string
+  /** Подпись заблокированной кнопки (`canRemove === false`) — там же объяснение. */
+  removeBlockedLabel?: string
+  /**
+   * Идёт запрос по этой позиции: блокируется удаление — второе нажатие на
+   * крестик отправило бы второй запрос по уже удалённой строке.
+   */
   isBusy?: boolean
+  /**
+   * Гасить ли на время запроса и количество.
+   *
+   * В заявке — да: правка уходит на сервер как есть, и второе нажатие до
+   * ответа спорит с первым. В корзине — нет: там количество меняется
+   * оптимистично, а запросы уходят очередью, и быстрые нажатия должны
+   * складываться (2 → 3 → 4), а не пропадать под курсором.
+   */
+  isQuantityBusy?: boolean
 }
 
 export interface IOrderCardProps {

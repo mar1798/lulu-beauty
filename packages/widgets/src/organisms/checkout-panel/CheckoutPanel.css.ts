@@ -46,7 +46,7 @@ export const list = style({
   borderTop: border(1, color.border('subtle')),
 })
 
-/** Повторяет геометрию `CartItemRow`: миниатюра 64px и две строки текста. */
+/** Повторяет геометрию `ItemRow`: миниатюра 64px и две строки текста. */
 export const skeletonRow = style({
   ...flexRow(16),
   alignItems: 'flex-start',

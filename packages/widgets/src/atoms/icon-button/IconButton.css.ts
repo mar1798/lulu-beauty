@@ -55,6 +55,21 @@ export const variant = styleVariants({
       '&:hover:not([disabled]):not([aria-disabled="true"])': { backgroundColor: color.danger('100') },
     },
   },
+  /**
+   * Опасное действие с заливкой, но без крика: рядом со степпером в строке
+   * заявки прозрачный крестик читался как декоративный разделитель, а полная
+   * заливка `danger.700` перетягивала внимание с суммы.
+   */
+  dangerSoft: {
+    backgroundColor: color.danger('100'),
+    color: color.danger('700'),
+    selectors: {
+      '&:hover:not([disabled]):not([aria-disabled="true"])': {
+        backgroundColor: color.danger('300'),
+        color: color.danger('900'),
+      },
+    },
+  },
   /** Единственная заливка акцентом — как у `Button` variant="primary". */
   primary: {
     backgroundColor: color.brand('600'),

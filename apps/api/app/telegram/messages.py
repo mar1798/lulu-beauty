@@ -10,6 +10,7 @@ escaping and a product name with an underscore in it can't break a message.
 
 import logging
 import uuid
+from collections.abc import Sequence
 from datetime import datetime
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -19,6 +20,7 @@ from app.common.limits import MAX_WISHLIST_ITEMS
 from app.config import settings
 from app.cycles.models import OrderCycle
 from app.orders.models import CANCELLED_STATUSES, Order, OrderStatus
+from app.orders.service import OrderItemDrop, OrderPriceChange
 from app.wishlist.schemas import WishlistResponse
 
 logger = logging.getLogger("app.telegram.messages")
@@ -216,13 +218,79 @@ def order_item_repriced(
     Обе цены в тексте, а не одна новая: «стало 1 400» без «было 1 200» человек не с чем
     сравнить — он помнит сумму заявки, а не цену строки.
     """
-    direction = "выросла" if new_price_cents > old_price_cents else "снизилась"
+    direction = _price_direction(old_price_cents, new_price_cents)
     return (
         f"В заявке {order_reference(order_id)} изменилась цена.\n"
         f"{product_name}: {direction} с {format_price(old_price_cents)} "
         f"до {format_price(new_price_cents)}.\n"
         f"Сумма заявки теперь {format_price(total_cents)}."
     )
+
+
+def orders_repriced(changes: Sequence[OrderPriceChange]) -> str:
+    """Одна переоценка, все заявки одного человека — одним сообщением.
+
+    Товар, который лежит в нескольких неподтверждённых заявках, — это норма: человек
+    заказывает в каждом сборе. По сообщению на заявку Telegram присылал бы их подряд в
+    один чат, а он держит примерно одно сообщение в секунду на чат: очередь упиралась в
+    429, и до человека доходило только первое — про одну заявку из нескольких.
+    """
+    if len(changes) == 1:
+        change = changes[0]
+        return order_item_repriced(
+            change.order_id,
+            change.product_name,
+            change.old_price_cents,
+            change.new_price_cents,
+            change.total_cents,
+        )
+
+    lines = [f"Изменились цены в {len(changes)} ваших заявках."]
+    lines.extend(
+        f"{order_reference(change.order_id)} — {change.product_name}: "
+        f"{_price_direction(change.old_price_cents, change.new_price_cents)} "
+        f"с {format_price(change.old_price_cents)} до {format_price(change.new_price_cents)}. "
+        f"Сумма заявки теперь {format_price(change.total_cents)}."
+        for change in changes
+    )
+    return "\n".join(lines)
+
+
+def orders_items_dropped(drops: Sequence[OrderItemDrop]) -> str:
+    """Снятие товара с продажи, все заявки одного человека — одним сообщением.
+
+    По той же причине, что и `orders_repriced`, и с той же группировкой — плюс одна
+    заявка может лишиться сразу нескольких строк, и это тоже одна новость, а не две.
+    """
+    by_order: dict[uuid.UUID, list[OrderItemDrop]] = {}
+    for drop in drops:
+        by_order.setdefault(drop.order_id, []).append(drop)
+
+    if len(drops) == 1:
+        drop = drops[0]
+        return (
+            order_cancelled_last_item_removed(drop.order_id, drop.product_name)
+            if drop.is_cancelled
+            else order_item_removed(drop.order_id, drop.product_name, drop.total_cents)
+        )
+
+    count = len(by_order)
+    affected = plural(count, "заявку", "заявки", "заявок")
+    lines = [f"Владелец снял товары с продажи — это затронуло {count} ваших {affected}."]
+    for order_id, order_drops in by_order.items():
+        names = ", ".join(drop.product_name for drop in order_drops)
+        removed = plural(len(order_drops), "товар", "товара", "товаров")
+        tail = (
+            "заявка отменена, в ней больше не осталось позиций"
+            if order_drops[0].is_cancelled
+            else f"сумма заявки теперь {format_price(order_drops[0].total_cents)}"
+        )
+        lines.append(f"{order_reference(order_id)} — убран {removed}: {names}; {tail}.")
+    return "\n".join(lines)
+
+
+def _price_direction(old_price_cents: int, new_price_cents: int) -> str:
+    return "выросла" if new_price_cents > old_price_cents else "снизилась"
 
 
 def order_item_removed(order_id: uuid.UUID, product_name: str, total_cents: int) -> str:

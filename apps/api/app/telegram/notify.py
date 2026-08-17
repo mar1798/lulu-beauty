@@ -105,17 +105,8 @@ async def notify_orders_repriced(changes: Sequence[OrderPriceChange]) -> None:
     """
     await _fan_out_order_notices(
         [
-            (
-                change.user_id,
-                messages.order_item_repriced(
-                    change.order_id,
-                    change.product_name,
-                    change.old_price_cents,
-                    change.new_price_cents,
-                    change.total_cents,
-                ),
-            )
-            for change in changes
+            (user_id, messages.orders_repriced(group))
+            for user_id, group in _group_by_user(changes)
         ],
         "repricing",
     )
@@ -125,27 +116,37 @@ async def notify_orders_item_dropped(drops: Sequence[OrderItemDrop]) -> None:
     """Tells each customer that a product left the catalog and their order with it."""
     await _fan_out_order_notices(
         [
-            (
-                drop.user_id,
-                messages.order_cancelled_last_item_removed(drop.order_id, drop.product_name)
-                if drop.is_cancelled
-                else messages.order_item_removed(
-                    drop.order_id, drop.product_name, drop.total_cents
-                ),
-            )
-            for drop in drops
+            (user_id, messages.orders_items_dropped(group))
+            for user_id, group in _group_by_user(drops)
         ],
         "discontinuation",
     )
 
 
+def _group_by_user[T: (OrderPriceChange, OrderItemDrop)](
+    items: Sequence[T],
+) -> list[tuple[uuid.UUID, list[T]]]:
+    """One notice per customer, not per affected order.
+
+    A catalog edit routinely touches several pending orders of the *same* person — they
+    order in every cycle, and the product sits in each of those orders. Telegram takes
+    roughly one message per second per chat, so sending one per order queued them into
+    429s and only the first arrived: the customer heard about one order out of several.
+    """
+    grouped: dict[uuid.UUID, list[T]] = {}
+    for item in items:
+        grouped.setdefault(item.user_id, []).append(item)
+    return list(grouped.items())
+
+
 async def _fan_out_order_notices(
     notices: Sequence[tuple[uuid.UUID, str]], subject: str
 ) -> None:
-    """Delivers already-worded per-order news, throttled, clearing dead bindings.
+    """Delivers already-worded news, one notice per recipient, clearing dead bindings.
 
     Shared by the catalog-driven notifications because they differ only in wording: both
-    follow one committed edit that touched an unbounded number of pending orders.
+    follow one committed edit that touched an unbounded number of pending orders. One
+    notice per customer, never per order — see `_group_by_user`.
     """
     if not notices:
         return

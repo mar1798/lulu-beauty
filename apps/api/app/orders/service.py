@@ -9,7 +9,7 @@ from sqlalchemy.orm import selectinload
 from app.auth.models import User
 from app.cart.models import Cart, CartItem
 from app.catalog.images import primary_image_url
-from app.catalog.models import Product
+from app.catalog.models import Category, Product
 from app.cycles.models import CycleStatus, OrderCycle
 from app.cycles.service import CyclesService
 from app.orders.models import CANCELLED_STATUSES, Order, OrderItem, OrderStatus
@@ -73,6 +73,21 @@ class OrderFlags:
 
     is_editable: bool
     is_restorable: bool
+
+
+@dataclass(frozen=True)
+class ProductTags:
+    """The descriptive labels a product carries: brand, category, volume.
+
+    Not snapshotted onto the order line the way name and price are. Those two are what
+    the customer agreed to and must never move under them; these three only describe the
+    thing, so the current catalog is the better source — and it also gives the labels to
+    orders placed before they existed.
+    """
+
+    brand: str | None
+    category_name: str | None
+    volume_ml: int | None
 
 
 @dataclass(frozen=True)
@@ -215,6 +230,34 @@ class OrdersService:
         if order is None:
             raise OrderNotFoundError
         return order
+
+    async def load_item_tags(self, orders: list[Order]) -> dict[uuid.UUID, ProductTags]:
+        """Labels for every product behind these orders' lines — one query, keyed by product id.
+
+        Batched like `load_customers`: a page of orders is twenty orders' worth of lines,
+        and reading the catalog per line would be that many round trips.
+
+        Soft-deleted products are included on purpose — their rows survive precisely so an
+        order stays renderable, and the labels are as valid as the name next to them.
+        """
+        product_ids = {
+            item.product_id
+            for order in orders
+            for item in order.items
+            if item.product_id is not None
+        }
+        if not product_ids:
+            return {}
+
+        result = await self._session.execute(
+            select(Product.id, Product.brand, Product.volume_ml, Category.name)
+            .outerjoin(Category, Category.id == Product.category_id)
+            .where(Product.id.in_(product_ids))
+        )
+        return {
+            product_id: ProductTags(brand=brand, category_name=category_name, volume_ml=volume_ml)
+            for product_id, brand, volume_ml, category_name in result.all()
+        }
 
     async def _open_cycle_ids(self, orders: list[Order]) -> set[uuid.UUID]:
         """Of the cycles behind these orders, the ones still collecting — one query."""
@@ -411,6 +454,10 @@ class OrdersService:
                     select(OrderItem.order_id).where(OrderItem.product_id == product_id)
                 ),
             )
+            # Newest first, like every other listing: the notification that follows lists
+            # the affected orders, and it should read in the order the customer's own
+            # order list shows them.
+            .order_by(Order.created_at.desc())
         )
         return list(result.scalars().all())
 

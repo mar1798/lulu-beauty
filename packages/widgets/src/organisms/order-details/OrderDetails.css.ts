@@ -62,7 +62,7 @@ export const totalRow = style({
   justifyContent: 'space-between',
 })
 
-/** Скелетон позиции повторяет геометрию `OrderItemRow`: миниатюра и две строки. */
+/** Скелетон позиции повторяет геометрию `ItemRow`: миниатюра и две строки. */
 export const skeletonRow = style({
   ...flexRow(16),
   alignItems: 'flex-start',

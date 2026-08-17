@@ -1,3 +1,4 @@
+import functools
 import io
 import uuid
 from dataclasses import dataclass
@@ -8,7 +9,7 @@ from openpyxl import Workbook
 from openpyxl.cell import Cell, WriteOnlyCell
 from openpyxl.styles import Alignment, Font
 from openpyxl.utils import get_column_letter
-from sqlalchemy import func, select
+from sqlalchemy import func, literal, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.catalog.models import Product
@@ -23,6 +24,11 @@ HEADER = [
     f"Цена за штуку, {settings.currency}",
     f"Сумма, {settings.currency}",
 ]
+
+# Money columns are optional: the same sheet is used both as the owner's own purchase list
+# and as something handed to a supplier, and the latter has no business seeing what the shop
+# charges. Dropping them is a column filter over the full row, so nothing else has to know.
+MONEY_COLUMNS = (3, 4)
 
 TOTAL_LABEL = "Итого"
 
@@ -67,7 +73,18 @@ def _rendered_width(value: CellValue, number_format: str | None) -> int:
     return len(str(value))
 
 
-def build_orders_workbook(rows: list[OrderExportRow]) -> bytes:
+def _visible[T](values: list[T], *, include_prices: bool) -> list[T]:
+    """Drops the unit-price and line-total cells when the export is asked for without money.
+
+    Generic on purpose: the same filter runs over the header, the number formats and every
+    body row, so the money columns are described in exactly one place (MONEY_COLUMNS).
+    """
+    if include_prices:
+        return values
+    return [value for index, value in enumerate(values) if index not in MONEY_COLUMNS]
+
+
+def build_orders_workbook(rows: list[OrderExportRow], *, include_prices: bool = True) -> bytes:
     """Serializes the purchase list to xlsx bytes. Blocking CPU — call it off the event loop.
 
     write_only, because the default Workbook keeps every cell as a Python object until
@@ -81,23 +98,31 @@ def build_orders_workbook(rows: list[OrderExportRow]) -> bytes:
     workbook = Workbook(write_only=True)
     sheet = workbook.create_sheet(title="Заказ")
 
-    formats: list[str | None] = [None, None, QUANTITY_FORMAT, MONEY_FORMAT, MONEY_FORMAT]
+    all_formats: list[str | None] = [None, None, QUANTITY_FORMAT, MONEY_FORMAT, MONEY_FORMAT]
+    formats = _visible(all_formats, include_prices=include_prices)
+    header = _visible(HEADER, include_prices=include_prices)
     total_quantity = sum(row.quantity for row in rows)
     total_cents = sum(row.total_cents for row in rows)
 
     body: list[list[CellValue]] = [
-        [
-            row.product_name,
-            row.brand,
-            row.quantity,
-            _money(row.unit_price_cents),
-            _money(row.total_cents),
-        ]
+        _visible(
+            [
+                row.product_name,
+                row.brand,
+                row.quantity,
+                _money(row.unit_price_cents),
+                _money(row.total_cents),
+            ],
+            include_prices=include_prices,
+        )
         for row in rows
     ]
-    footer: list[CellValue] = [TOTAL_LABEL, "", total_quantity, "", _money(total_cents)]
+    footer: list[CellValue] = _visible(
+        [TOTAL_LABEL, "", total_quantity, "", _money(total_cents)],
+        include_prices=include_prices,
+    )
 
-    widths = [len(title) for title in HEADER]
+    widths = [len(str(title)) for title in header]
     for values in (*body, footer):
         for index, value in enumerate(values):
             widths[index] = max(widths[index], _rendered_width(value, formats[index]))
@@ -122,7 +147,7 @@ def build_orders_workbook(rows: list[OrderExportRow]) -> bytes:
         return written
 
     sheet.append(
-        [cell(title, index=index, bold=True) for index, title in enumerate(HEADER)],
+        [cell(title, index=index, bold=True) for index, title in enumerate(header)],
     )
     for values in body:
         sheet.append([cell(value, index=index) for index, value in enumerate(values)])
@@ -171,21 +196,31 @@ class ExportService:
         self._session = session
 
     async def export_orders(
-        self, cycle_id: uuid.UUID | None, status: OrderStatus | None = None
+        self,
+        cycle_id: uuid.UUID | None,
+        status: OrderStatus | None = None,
+        *,
+        include_prices: bool = True,
     ) -> tuple[bytes, str]:
-        rows = await self._export_rows(cycle_id, status)
+        rows = await self._export_rows(cycle_id, status, include_prices=include_prices)
 
         # In a worker thread: everything above is I/O the event loop can interleave, but
         # the xlsx serialization is pure CPU, and on a full export it ran long enough
         # (seconds) to stall every other request in the process — the API is single-
         # threaded, so a blocking call here is downtime for the whole shop, not just for
         # the owner waiting on their download.
-        content = await anyio.to_thread.run_sync(build_orders_workbook, rows)
+        content = await anyio.to_thread.run_sync(
+            functools.partial(build_orders_workbook, rows, include_prices=include_prices),
+        )
         filename = await self._filename(cycle_id)
         return content, filename
 
     async def _export_rows(
-        self, cycle_id: uuid.UUID | None, status: OrderStatus | None = None
+        self,
+        cycle_id: uuid.UUID | None,
+        status: OrderStatus | None = None,
+        *,
+        include_prices: bool = True,
     ) -> list[OrderExportRow]:
         """The purchase list: every ordered product summed across the orders in scope.
 
@@ -195,24 +230,33 @@ class ExportService:
         a price change are genuinely two lines on the supplier's list, not one line with an
         invented average.
 
+        That last part only holds while the price is on the sheet. With include_prices off
+        the price drops out of the grouping key too — otherwise the same product bought at
+        two prices would come out as two visually identical lines, which reads as a bug to
+        whoever gets the file. The price then stays 0 on the row: it is not written anywhere,
+        and carrying one of the two real prices would make the row quietly wrong.
+
         Brand is not snapshotted on the item, so it comes from a LEFT JOIN on products —
         soft-deleted products keep their row, but an item whose product_id went NULL (a hard
         delete) still belongs on the list, with the same "—" the admin listing shows.
         """
         quantity = func.sum(OrderItem.quantity)
+        price = OrderItem.product_price_cents if include_prices else literal(0)
         query = (
             select(
                 OrderItem.product_name,
                 Product.brand,
-                OrderItem.product_price_cents,
+                price.label("unit_price_cents"),
                 quantity,
             )
             .select_from(OrderItem)
             .join(Order, Order.id == OrderItem.order_id)
             .outerjoin(Product, Product.id == OrderItem.product_id)
-            .group_by(OrderItem.product_name, Product.brand, OrderItem.product_price_cents)
+            .group_by(OrderItem.product_name, Product.brand)
             .order_by(Product.brand.nulls_last(), OrderItem.product_name)
         )
+        if include_prices:
+            query = query.group_by(OrderItem.product_price_cents)
         if cycle_id is not None:
             query = query.where(Order.cycle_id == cycle_id)
         if status is not None:
