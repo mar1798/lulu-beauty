@@ -6,6 +6,7 @@ import { Heading } from '../../atoms/heading'
 import { Price } from '../../atoms/price'
 import { Text } from '../../atoms/text'
 import { ProductGallery } from '../../molecules/product-gallery'
+import { formatVolume } from '../../utils/volume'
 import * as styles from './ProductDetails.css'
 
 /**
@@ -23,51 +24,64 @@ export const ProductDetails: FC<IProductDetailsProps & IBasicStyling> = ({
   action,
   secondaryAction,
   className,
-}) => (
-  <div className={clsx(styles.container, className)}>
-    <ProductGallery images={product.images} productName={product.name} />
+}) => {
+  const volume = formatVolume(product.volumeMl)
 
-    <div className={styles.info}>
-      {(product.brand !== null || (categoryName !== undefined && categoryName !== null)) && (
-        <span className={styles.tags}>
-          {product.brand !== null && <Badge tone="neutral">{product.brand}</Badge>}
-          {categoryName !== undefined && categoryName !== null && (
-            <Badge tone="neutral">{categoryName}</Badge>
+  return (
+    <div className={clsx(styles.container, className)}>
+      <ProductGallery images={product.images} productName={product.name} />
+
+      <div className={styles.info}>
+        {(product.brand !== null ||
+          (categoryName !== undefined && categoryName !== null) ||
+          volume !== null) && (
+          <span className={styles.tags}>
+            {/*
+              Тон марки, а не нейтральный: справочные метки — единственный
+              цветной акцент над заголовком, и в сером они читались как
+              служебная подпись, а не как часть карточки товара.
+            */}
+            {product.brand !== null && <Badge tone="brand">{product.brand}</Badge>}
+            {categoryName !== undefined && categoryName !== null && (
+              <Badge tone="brand">{categoryName}</Badge>
+            )}
+            {/* Объём — такая же справочная метка, как марка и категория, и стоит с ними. */}
+            {volume !== null && <Badge tone="brand">{volume}</Badge>}
+          </span>
+        )}
+
+        <Heading level={1} size="lg">
+          {product.name}
+        </Heading>
+
+        <div className={styles.priceRow}>
+          <Price priceCents={product.priceCents} size="lg" />
+
+          {product.inStock ? (
+            <Badge tone="success" withDot={true}>
+              В наличии
+            </Badge>
+          ) : (
+            <Badge tone="neutral" withDot={true}>
+              Нет в наличии
+            </Badge>
           )}
-        </span>
-      )}
+        </div>
 
-      <Heading level={1} size="lg">
-        {product.name}
-      </Heading>
+        {product.description !== null && product.description !== '' && (
+          <Text className={styles.description} tone="secondary">
+            {product.description}
+          </Text>
+        )}
 
-      <div className={styles.priceRow}>
-        <Price priceCents={product.priceCents} size="lg" />
-
-        {product.inStock ? (
-          <Badge tone="success" withDot={true}>
-            В наличии
-          </Badge>
-        ) : (
-          <Badge tone="neutral" withDot={true}>
-            Нет в наличии
-          </Badge>
+        {(action !== undefined || secondaryAction !== undefined) && (
+          <div className={styles.action}>
+            {/* Оба действия — подписанными кнопками в одной строке, вторым «в избранное». */}
+            {action}
+            {secondaryAction}
+          </div>
         )}
       </div>
-
-      {product.description !== null && product.description !== '' && (
-        <Text className={styles.description} tone="secondary">
-          {product.description}
-        </Text>
-      )}
-
-      {(action !== undefined || secondaryAction !== undefined) && (
-        <div className={styles.action}>
-          {/* Оба действия — подписанными кнопками в одной строке, вторым «в избранное». */}
-          {action}
-          {secondaryAction}
-        </div>
-      )}
     </div>
-  </div>
-)
+  )
+}

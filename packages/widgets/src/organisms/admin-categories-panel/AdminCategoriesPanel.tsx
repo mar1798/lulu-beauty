@@ -13,6 +13,7 @@ import { IconButton } from '../../atoms/icon-button'
 import { Input } from '../../atoms/input'
 import { Skeleton } from '../../atoms/skeleton'
 import { Text } from '../../atoms/text'
+import { SearchField } from '../../molecules/search-field'
 import { slugify } from '../../utils/slug'
 import * as styles from './AdminCategoriesPanel.css'
 
@@ -22,33 +23,63 @@ import * as styles from './AdminCategoriesPanel.css'
  * Правка по месту, а не отдельной страницей: у категории три коротких поля,
  * и ради них уводить владельца с экрана и обратно — лишний путь.
  *
- * Порядок в списке задаёт `sortOrder`, но сортирует бэкенд — панель не
- * пересортировывает, иначе после сохранения строка прыгала бы дважды: сразу
- * и ещё раз после ответа.
+ * Порядок в списке задаёт `sortOrder`, но задаётся он сам: новая категория
+ * встаёт в конец (бэкенд, `CategoryService.create`). Поля для него нет — руками
+ * категории никто не переставлял, а обязательное число перед формой из двух
+ * полей было единственным, обо что там можно было споткнуться. Сортирует по
+ * нему по-прежнему бэкенд: пересортируй панель сама, строка после сохранения
+ * прыгала бы дважды — сразу и ещё раз после ответа.
+ *
+ * Поиск — по загруженному списку, а не запросом: категорий десятки, они уже все
+ * здесь, и ходить за подмножеством того, что лежит в памяти, незачем. Ищет и по
+ * названию, и по слагу: в импорте категория адресуется именно слагом.
  */
 
 const DEFAULT_SKELETON_ROWS = 4
 
-const emptyValues: IAdminCategoryValues = { name: '', slug: '', sortOrder: 0 }
+/** Столько же, сколько отводят колонки на бэкенде (`CategoryCreateRequest`). */
+const NAME_MAX_LENGTH = 255
+const SLUG_MAX_LENGTH = 255
 
-/**
- * Порядок — целое число, и поле не должно уметь стать ничем другим.
- *
- * Прежнее `Number(next) || 0` пропускало «1.5» насквозь: бэкенд объявляет
- * `sort_order: int`, pydantic дробное отвергает, и владелец получал общее «Не
- * получилось» без единого намёка на то, какое поле виновато. Нецифровое
- * нажатие теперь просто не проходит, а значение остаётся прежним.
- */
-const parseSortOrder = (raw: string): number | null => {
-  if (!/^\d*$/.test(raw)) {
-    return null
-  }
+const emptyValues: IAdminCategoryValues = { name: '', slug: '' }
 
-  return raw === '' ? 0 : Number(raw)
+/** Совпадение по названию или слагу, без учёта регистра и краевых пробелов. */
+const matches = (category: ICategory, query: string): boolean => {
+  const needle = query.trim().toLowerCase()
+
+  return (
+    needle === '' ||
+    category.name.toLowerCase().includes(needle) ||
+    category.slug.toLowerCase().includes(needle)
+  )
 }
 
+/**
+ * Ошибки полей категории — текстом, а не одним «нельзя сохранить».
+ *
+ * Раньше негодные значения только гасили кнопку, и в форме из двух полей
+ * приходилось догадываться, какое из них не нравится: чаще всего слаг, куда
+ * попала кириллица из названия (`slugify` отдаёт её как есть).
+ */
+const validate = (values: IAdminCategoryValues): Record<'name' | 'slug', string | null> => ({
+  name:
+    values.name.trim() === ''
+      ? 'Укажите название.'
+      : values.name.trim().length > NAME_MAX_LENGTH
+        ? `Название длиннее ${NAME_MAX_LENGTH} символов.`
+        : null,
+  slug:
+    values.slug.trim() === ''
+      ? 'Укажите адрес: например, tonery.'
+      : !/^[a-z0-9]+(-[a-z0-9]+)*$/.test(values.slug)
+        ? 'Только латиница, цифры и дефис: например, tonery.'
+        : values.slug.length > SLUG_MAX_LENGTH
+          ? `Адрес длиннее ${SLUG_MAX_LENGTH} символов.`
+          : null,
+})
+
 const isValid = (values: IAdminCategoryValues): boolean =>
-  values.name.trim() !== '' && /^[a-z0-9]+(-[a-z0-9]+)*$/.test(values.slug)
+  Object.values(validate(values)).every(message => message === null)
 
 export const AdminCategoriesPanel: FC<IAdminCategoriesPanelProps & IBasicStyling> = ({
   categories,
@@ -60,18 +91,24 @@ export const AdminCategoriesPanel: FC<IAdminCategoriesPanelProps & IBasicStyling
   error,
   className,
 }) => {
+  const [query, setQuery] = useState('')
   const [editingId, setEditingId] = useState<string | null>(null)
   const [draft, setDraft] = useState<IAdminCategoryValues>(emptyValues)
   const [created, setCreated] = useState<IAdminCategoryValues>(emptyValues)
   const [isSlugTouched, setIsSlugTouched] = useState(false)
+  const [isSubmitted, setIsSubmitted] = useState(false)
+
+  const createErrors = validate(created)
+  const draftErrors = validate(draft)
 
   const startEditing = (category: ICategory): void => {
     setEditingId(category.id)
-    setDraft({ name: category.name, slug: category.slug, sortOrder: category.sortOrder })
+    setDraft({ name: category.name, slug: category.slug })
   }
 
   const submitCreate = (event: FormEvent): void => {
     event.preventDefault()
+    setIsSubmitted(true)
 
     if (!isValid(created)) {
       return
@@ -80,7 +117,10 @@ export const AdminCategoriesPanel: FC<IAdminCategoriesPanelProps & IBasicStyling
     onCreate({ ...created, name: created.name.trim() })
     setCreated(emptyValues)
     setIsSlugTouched(false)
+    setIsSubmitted(false)
   }
+
+  const found = categories.filter(category => matches(category, query))
 
   return (
     <div className={clsx(styles.container, className)}>
@@ -88,6 +128,18 @@ export const AdminCategoriesPanel: FC<IAdminCategoriesPanelProps & IBasicStyling
         <Alert tone="danger" title="Не получилось">
           {error}
         </Alert>
+      )}
+
+      {/*
+        Поиск не рисуется, пока список грузится: поле, которому нечего фильтровать,
+        только предлагает набрать в пустоту.
+      */}
+      {!isLoading && categories.length > 0 && (
+        <SearchField
+          value={query}
+          onChange={setQuery}
+          placeholder="Поиск по названию или слагу"
+        />
       )}
 
       <div className={styles.list}>
@@ -100,13 +152,26 @@ export const AdminCategoriesPanel: FC<IAdminCategoriesPanelProps & IBasicStyling
           <Text tone="secondary" size="sm">
             Категорий пока нет. Товары без категории показываются в каталоге как обычно.
           </Text>
+        ) : found.length === 0 ? (
+          /* Отдельный текст: «категорий нет» и «по запросу ничего» — разные новости. */
+          <Text tone="secondary" size="sm">
+            {`По запросу «${query.trim()}» ничего не нашлось.`}
+          </Text>
         ) : (
-          categories.map(category =>
+          found.map(category =>
             editingId === category.id ? (
               <div key={category.id} className={styles.editRow}>
+                {/*
+                  Ошибка здесь видна сразу, без ожидания сабмита: строка открылась
+                  с уже верными значениями, и всё негодное в ней — то, что человек
+                  только что стёр или переписал сам.
+                */}
                 <Input
                   label="Название"
                   value={draft.name}
+                  maxLength={NAME_MAX_LENGTH}
+                  required={true}
+                  error={draftErrors.name}
                   onChange={next => {
                     setDraft(current => ({ ...current, name: next }))
                   }}
@@ -114,23 +179,13 @@ export const AdminCategoriesPanel: FC<IAdminCategoriesPanelProps & IBasicStyling
                 <Input
                   label="Адрес (slug)"
                   value={draft.slug}
+                  maxLength={SLUG_MAX_LENGTH}
+                  required={true}
+                  error={draftErrors.slug}
                   onChange={next => {
                     setDraft(current => ({ ...current, slug: next }))
                   }}
                 />
-                <Input
-                  label="Порядок"
-                  value={String(draft.sortOrder)}
-                  inputMode="numeric"
-                  onChange={next => {
-                    const sortOrder = parseSortOrder(next)
-
-                    if (sortOrder !== null) {
-                      setDraft(current => ({ ...current, sortOrder }))
-                    }
-                  }}
-                />
-
                 <div className={styles.rowActions}>
                   <IconButton
                     icon={<IconCheck />}
@@ -158,9 +213,7 @@ export const AdminCategoriesPanel: FC<IAdminCategoriesPanelProps & IBasicStyling
               <div key={category.id} className={styles.row}>
                 <div className={styles.info}>
                   <span className={styles.name}>{category.name}</span>
-                  <span className={styles.slug}>
-                    /{category.slug} · порядок {category.sortOrder}
-                  </span>
+                  <span className={styles.slug}>/{category.slug}</span>
                 </div>
 
                 <div className={styles.rowActions}>
@@ -198,7 +251,9 @@ export const AdminCategoriesPanel: FC<IAdminCategoriesPanelProps & IBasicStyling
           <Input
             label="Название"
             value={created.name}
+            maxLength={NAME_MAX_LENGTH}
             required={true}
+            error={isSubmitted ? createErrors.name : null}
             onChange={next => {
               setCreated(current => ({
                 ...current,
@@ -210,28 +265,22 @@ export const AdminCategoriesPanel: FC<IAdminCategoriesPanelProps & IBasicStyling
           <Input
             label="Адрес (slug)"
             value={created.slug}
+            maxLength={SLUG_MAX_LENGTH}
             required={true}
+            hint="Часть ссылки на каталог: /catalog?category=tonery"
+            error={isSubmitted ? createErrors.slug : null}
             onChange={next => {
               setIsSlugTouched(true)
               setCreated(current => ({ ...current, slug: next }))
             }}
           />
-          <Input
-            label="Порядок"
-            value={String(created.sortOrder)}
-            inputMode="numeric"
-            hint="Меньше — выше в списке."
-            onChange={next => {
-              const sortOrder = parseSortOrder(next)
-
-              if (sortOrder !== null) {
-                setCreated(current => ({ ...current, sortOrder }))
-              }
-            }}
-          />
         </div>
 
-        <Button type="submit" disabled={!isValid(created)} isLoading={isBusy}>
+        {/*
+          Кнопка живая и при негодных полях: заблокированная не объясняла, чем
+          именно недовольна, — теперь нажатие показывает это под самим полем.
+        */}
+        <Button type="submit" isLoading={isBusy}>
           Добавить
         </Button>
       </form>

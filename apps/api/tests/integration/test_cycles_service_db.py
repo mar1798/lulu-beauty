@@ -4,7 +4,7 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.cycles.models import CycleStatus
-from app.cycles.service import CyclesService, PastDeadlineError
+from app.cycles.service import ActiveCycleExistsError, CyclesService, PastDeadlineError
 from tests.integration.factories import make_cycle
 
 """update()'s deadline rule.
@@ -91,3 +91,44 @@ async def test_renaming_a_finished_cycle_leaves_it_closed(db_session: AsyncSessi
     assert updated.status is CycleStatus.CLOSED
     assert updated.closed_at is not None
     assert updated.label == "Ноябрьский сбор"
+
+
+"""Открытый сбор ровно один.
+
+Второй, созданный с более ранним дедлайном, молча становился *тем самым* сбором:
+`get_active_cycle` берёт ближайший дедлайн, а корзина привязана к своему сбору
+(`Unique(user_id, cycle_id)`) — и всё, что покупатели собрали в первом, пропадало с
+экрана. Правка даты у текущего сбора — то, ради чего второй и заводили.
+"""
+
+
+async def test_a_second_open_cycle_is_refused(db_session: AsyncSession) -> None:
+    await make_cycle(db_session, deadline_at=datetime.now(UTC) + timedelta(days=7))
+    service = CyclesService(db_session)
+
+    with pytest.raises(ActiveCycleExistsError):
+        await service.create(datetime.now(UTC) + timedelta(days=1), label="Второй")
+
+
+async def test_a_new_cycle_opens_once_the_previous_one_is_over(db_session: AsyncSession) -> None:
+    """Запрет — на второй **открытый**, а не на второй вообще: закончившийся сбор
+    следующему не мешает, иначе магазин закрылся бы навсегда."""
+    finished = await make_cycle(db_session, deadline_at=datetime.now(UTC) + timedelta(seconds=1))
+    finished.deadline_at = datetime.now(UTC) - timedelta(seconds=1)
+    await db_session.flush()
+
+    service = CyclesService(db_session)
+    created = await service.create(datetime.now(UTC) + timedelta(days=3), label="Новый")
+
+    assert (await service.get_active_cycle()) is not None
+    assert (await service.get_active_cycle()).id == created.id
+
+
+async def test_a_cycle_closed_early_stops_being_the_active_one(db_session: AsyncSession) -> None:
+    """Закрытие досрочное, дедлайн — прежний: активность считается ещё и по статусу,
+    иначе корзины набирались бы в сбор, по которому владелец уже уехал закупаться."""
+    cycle = await make_cycle(db_session, deadline_at=datetime.now(UTC) + timedelta(days=2))
+    cycle.status = CycleStatus.CLOSED
+    await db_session.flush()
+
+    assert await CyclesService(db_session).get_active_cycle() is None

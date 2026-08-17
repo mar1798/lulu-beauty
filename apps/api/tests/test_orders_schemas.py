@@ -77,7 +77,7 @@ def test_order_response_flags_default_to_closed_and_serialize_camel_case() -> No
     response = OrderResponse(
         id=uuid.uuid4(),
         cycle_id=uuid.uuid4(),
-        status=OrderStatus.CANCELLED,
+        status=OrderStatus.CANCELLED_BY_CUSTOMER,
         total_cents=0,
         note=None,
         created_at=datetime(2026, 1, 1, tzinfo=UTC),

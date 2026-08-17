@@ -27,9 +27,11 @@ const NotFoundPage: React.FC = () => (
       description="Возможно, ссылка устарела или товар убрали из каталога — состав меняется перед каждым сбором."
       actions={
         <>
-          <Button link={{ href: '/catalog' }}>В каталог</Button>
+          <Button link={{ href: '/catalog' }} isFullWidth="mobile">
+            В каталог
+          </Button>
 
-          <Button link={{ href: '/' }} variant="secondary">
+          <Button link={{ href: '/' }} variant="secondary" isFullWidth="mobile">
             На главную
           </Button>
         </>

@@ -35,6 +35,26 @@ const WEEKDAYS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс']
 const DAYS_IN_WEEK = 7
 const DEFAULT_TIME = '20:00'
 
+/**
+ * Почему второй сбор не назначить. Одной строкой и в двух местах сразу: скрытой
+ * подписью внутри заблокированной кнопки (иначе причину не узнает никто, кроме
+ * мыши) и обычным текстом под ней.
+ */
+const SECOND_CYCLE_REASON =
+  'Открытый сбор уже есть. Измените его дату и время вместо того, чтобы назначать второй, — ' +
+  'иначе корзины покупателей останутся в первом.'
+
+/**
+ * Почему на прошедший день сбор не назначить.
+ *
+ * Бэкенд отказывает тем же (`deadline_must_be_future`), но уже после отправки —
+ * а день в прошлом виден и здесь. Проверяется только дата: «сейчас» виджету не
+ * дают, поэтому сегодняшний день с уже прошедшим временем по-прежнему остаётся
+ * за бэкендом.
+ */
+const PAST_DAY_REASON =
+  'Этот день уже прошёл. Дедлайн должен быть в будущем — иначе сбор закроется сразу.'
+
 const STATUS_LABELS: Record<IOrderCycle['status'], string> = {
   UPCOMING: 'Запланирован',
   ACTIVE: 'Идёт',
@@ -80,6 +100,7 @@ export const AdminCycleCalendar: FC<IAdminCycleCalendarProps & IBasicStyling> = 
   onCreate,
   onUpdate,
   onDelete,
+  onClose,
   activeCycleId = null,
   today,
   isLoading = false,
@@ -105,6 +126,18 @@ export const AdminCycleCalendar: FC<IAdminCycleCalendarProps & IBasicStyling> = 
   }
 
   const selectedCycle = selectedDate === null ? null : (byDate.get(selectedDate)?.[0] ?? null)
+  const isActive = selectedCycle !== null && selectedCycle.id === activeCycleId
+  /* Новый сбор на день, где сбора нет, — но открытый уже идёт где-то ещё. */
+  const isSecondCycle = selectedCycle === null && activeCycleId !== null
+  /*
+    Только для нового сбора: у прошедшего можно править подпись, и бэкенд
+    держит дату в будущем лишь у ещё открытых (`CycleService.update`).
+  */
+  const isPastDay =
+    selectedCycle === null &&
+    today !== undefined &&
+    selectedDate !== null &&
+    selectedDate < today
 
   const selectDay = (date: string): void => {
     const existing = byDate.get(date)?.[0] ?? null
@@ -291,6 +324,14 @@ export const AdminCycleCalendar: FC<IAdminCycleCalendarProps & IBasicStyling> = 
               <Button
                 isLoading={isBusy}
                 disabled={draft.time === ''}
+                /*
+                  Второй открытый сбор бэкенд не заведёт (`active_cycle_exists`), и
+                  кнопка говорит об этом до нажатия. `unavailableReason`, а не
+                  `disabled`: причина должна доставаться и с клавиатуры.
+                */
+                unavailableReason={
+                  isPastDay ? PAST_DAY_REASON : isSecondCycle ? SECOND_CYCLE_REASON : null
+                }
                 onClick={() => {
                   if (selectedCycle === null) {
                     onCreate(draft)
@@ -301,6 +342,22 @@ export const AdminCycleCalendar: FC<IAdminCycleCalendarProps & IBasicStyling> = 
               >
                 {selectedCycle === null ? 'Назначить сбор' : 'Сохранить'}
               </Button>
+
+              {/*
+                Закрыть можно только тот сбор, который сейчас идёт: закрытие — это
+                конец приёма заявок, а у запланированного и у прошедшего его нет.
+              */}
+              {isActive && onClose !== undefined && (
+                <Button
+                  variant="secondary"
+                  disabled={isBusy}
+                  onClick={() => {
+                    onClose(selectedCycle)
+                  }}
+                >
+                  Закрыть сейчас
+                </Button>
+              )}
 
               {selectedCycle !== null && (
                 <Button
@@ -314,6 +371,20 @@ export const AdminCycleCalendar: FC<IAdminCycleCalendarProps & IBasicStyling> = 
                 </Button>
               )}
             </div>
+
+            {/* Тот же порядок, что и у `unavailableReason`: прошедший день важнее. */}
+            {(isPastDay || isSecondCycle) && (
+              <Text tone="secondary" size="sm">
+                {isPastDay ? PAST_DAY_REASON : SECOND_CYCLE_REASON}
+              </Text>
+            )}
+
+            {isActive && onClose !== undefined && (
+              <Text tone="muted" size="xs">
+                «Закрыть сейчас» делает то же, что дедлайн: заявки больше не принимаются,
+                неоформленные корзины переезжают в избранное, вам придёт итог сбора.
+              </Text>
+            )}
 
             {selectedCycle !== null && (
               <Text tone="muted" size="xs">

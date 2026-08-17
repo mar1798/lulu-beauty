@@ -25,6 +25,7 @@ const ServerErrorPage: React.FC = () => (
       actions={
         <>
           <Button
+            isFullWidth="mobile"
             onClick={() => {
               window.location.reload()
             }}
@@ -32,7 +33,7 @@ const ServerErrorPage: React.FC = () => (
             Обновить страницу
           </Button>
 
-          <Button link={{ href: '/catalog' }} variant="secondary">
+          <Button link={{ href: '/catalog' }} variant="secondary" isFullWidth="mobile">
             В каталог
           </Button>
         </>

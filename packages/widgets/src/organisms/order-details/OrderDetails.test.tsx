@@ -119,7 +119,7 @@ describe('OrderDetails', () => {
     renderWidget(
       <OrderDetails
         {...feedOrderDetails()}
-        order={feedOrder({ status: 'CANCELLED', isEditable: false, isRestorable: true })}
+        order={feedOrder({ status: 'CANCELLED_BY_CUSTOMER', isEditable: false, isRestorable: true })}
         onRestore={onRestore}
       />
     )
@@ -132,7 +132,7 @@ describe('OrderDetails', () => {
     renderWidget(
       <OrderDetails
         {...feedOrderDetails()}
-        order={feedOrder({ status: 'CANCELLED', isEditable: false, isRestorable: false })}
+        order={feedOrder({ status: 'CANCELLED_BY_CUSTOMER', isEditable: false, isRestorable: false })}
         isCurrentCycle={true}
         onRestore={vi.fn()}
       />
@@ -146,7 +146,7 @@ describe('OrderDetails', () => {
     renderWidget(
       <OrderDetails
         {...feedOrderDetails()}
-        order={feedOrder({ status: 'CANCELLED', isEditable: false, isRestorable: true })}
+        order={feedOrder({ status: 'CANCELLED_BY_CUSTOMER', isEditable: false, isRestorable: true })}
         isCurrentCycle={true}
         onRestore={vi.fn()}
       />

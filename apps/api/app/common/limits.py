@@ -17,3 +17,8 @@ MAX_WISHLIST_ITEMS = 200
 # products.price_cents is a 32-bit INTEGER: anything past this reaches Postgres as an
 # out-of-range value and fails the whole request (a whole catalog import) at flush time.
 MAX_PRICE_CENTS = 2_000_000_000
+
+# Объём в миллилитрах — необязательная подпись на карточке товара (50 мл, 500 мл).
+# Пятилитровой косметики не бывает, а опечатка вроде «50000» на витрине читается как
+# ошибка магазина, а не покупателя; колонка при этом всё та же 32-битная INTEGER.
+MAX_VOLUME_ML = 10_000

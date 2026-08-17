@@ -1,18 +1,34 @@
 import { style } from '@vanilla-extract/css'
-import { border, color, rem, transition } from '../../styling/lib'
+import { border, color, media, rem, transition } from '../../styling/lib'
 import { flexColumn, flexRow, focusVisibleRing } from '../../styling/mixin'
 import { vars } from '../../styling/themes/contract.css'
 
 export const container = style(flexColumn(12))
 
-/** Главный кадр — «карточка, которой и является картинка»: 28px и мягкая тень. */
+/**
+ * Главный кадр — «карточка, которой и является картинка»: 28px и мягкая тень.
+ *
+ * На мобилке кадр 4:5 во всю ширину съедал первый экран целиком — цена и
+ * кнопки уходили за сгиб. Ширина ограничена так, чтобы высота не превышала
+ * ~40svh (`40svh * 4 / 5`), а сам кадр центрируется; с `md` — как было, во всю
+ * колонку.
+ */
 export const main = style({
   position: 'relative',
+  width: '100%',
+  maxWidth: 'calc(40svh * 4 / 5)',
+  alignSelf: 'center',
   aspectRatio: '4 / 5',
   overflow: 'hidden',
   backgroundColor: color.surface('base'),
   borderRadius: vars.radius.xxl,
   boxShadow: vars.shadow.md,
+  ...media({
+    md: {
+      maxWidth: 'none',
+      alignSelf: 'stretch',
+    },
+  }),
 })
 
 export const placeholder = style({
@@ -25,9 +41,14 @@ export const placeholder = style({
   color: color.text('subtle'),
 })
 
+/* Миниатюры идут под центрированным кадром, поэтому центрируются вместе с ним. */
 export const thumbs = style({
   ...flexRow(8),
   flexWrap: 'wrap',
+  justifyContent: 'center',
+  ...media({
+    md: { justifyContent: 'flex-start' },
+  }),
 })
 
 export const thumb = style([

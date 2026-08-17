@@ -51,12 +51,21 @@ export const meta = style({
   flexWrap: 'wrap',
 })
 
-/** Степпер и крестик в режиме правки — как в строке корзины. */
+/**
+ * Степпер и крестик в режиме правки — как в строке корзины.
+ *
+ * Без переноса: крестик относится к количеству рядом с ним, а уехав на строку
+ * ниже, читался как действие над всей позицией. На узком экране пара влезает
+ * за счёт ужатого степпера (см. `QuantityStepper.css`) и меньшего зазора.
+ */
 export const controls = style({
-  ...flexRow(12),
+  ...flexRow(4),
   alignItems: 'center',
-  flexWrap: 'wrap',
+  flexWrap: 'nowrap',
   marginTop: vars.space.xs,
+  ...media({
+    sm: { gap: vars.space.sm },
+  }),
 })
 
 export const total = style({

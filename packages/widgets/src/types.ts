@@ -53,9 +53,13 @@ export interface IImageComponentProps {
   sizes: ISizes
   priority?: boolean
   /**
-   * Растянуть картинку по родителю (`object-fit: cover`) вместо собственных
+   * Вписать картинку в родителя (`object-fit: contain`) вместо собственных
    * размеров. Родитель обязан быть `position: relative` с заданной высотой
    * или `aspect-ratio`.
+   *
+   * Именно `contain`: в этом режиме здесь всегда фотография товара, а её
+   * пропорции — не наша забота (что прислали, то и показываем). `cover`
+   * обрезал высокие флаконы и растягивал широкие коробки.
    */
   fill?: boolean
   /**
@@ -74,7 +78,15 @@ export interface IImageComponentProps {
  * рантайм-объекта). Идентификаторы — UUID-строки, даты — ISO-строки.
  * ------------------------------------------------------------------ */
 
-export type OrderStatus = 'PENDING' | 'CONFIRMED' | 'READY' | 'COMPLETED' | 'CANCELLED'
+export type OrderStatus =
+  | 'PENDING'
+  | 'CONFIRMED'
+  | 'READY'
+  | 'COMPLETED'
+  /** Покупатель передумал сам (`POST /orders/{id}/cancel`). */
+  | 'CANCELLED_BY_CUSTOMER'
+  /** Владелец отменил — руками или сняв с продажи последний товар заявки. */
+  | 'CANCELLED_BY_OWNER'
 export type CycleStatus = 'UPCOMING' | 'ACTIVE' | 'CLOSED'
 export type Role = 'CUSTOMER' | 'ADMIN'
 
@@ -108,6 +120,8 @@ export interface IProduct {
   description: string | null
   brand: string | null
   priceCents: number
+  /** Объём в миллилитрах; `null` — у товара его нет (патчи, тканевые маски). */
+  volumeMl: number | null
   /** Публичный `GET /products?category=` фильтрует по **слагу**, а не по id — маппинг держит фронт. */
   categoryId: string | null
   inStock: boolean
@@ -192,7 +206,7 @@ export interface IOrder {
    */
   isEditable: boolean
   /**
-   * Обратная сторона того же дедлайна: заявка отменена (`CANCELLED`), но сбор
+   * Обратная сторона того же дедлайна: заявка отменена (любой из двух), но сбор
    * ещё открыт — отмену можно отозвать. Вместе с `isEditable` истинным не
    * бывает: заявка либо в работе, либо отменена.
    */
@@ -271,7 +285,12 @@ export interface IButtonProps {
   type?: 'button' | 'submit' | 'reset'
   isLoading?: boolean
   disabled?: boolean
-  isFullWidth?: boolean
+  /**
+   * Растянуть на всю ширину контейнера. `'mobile'` — только до `sm`: на
+   * телефоне главное действие экрана обязано быть во всю ширину, а на
+   * планшете и дальше кнопка по содержимому смотрится аккуратнее.
+   */
+  isFullWidth?: boolean | 'mobile'
   iconStart?: ReactNode
   iconEnd?: ReactNode
   /** Ссылочный режим: кнопка рендерится через `AppLink`, сохраняя внешность. */
@@ -840,9 +859,15 @@ export interface IQuantityStepperProps {
 export interface ICartItemRowProps {
   item: ICartItem
   href: string
-  onQuantityChange: (quantity: number) => void
-  onRemove: () => void
-  /** Идёт запрос: блокирует контролы, чтобы не отправить два подряд. */
+  /** Без него строка только читается: количество показывается текстом. */
+  onQuantityChange?: (quantity: number) => void
+  onRemove?: () => void
+  /**
+   * Идёт запрос по этой позиции: блокируется только удаление — второе нажатие
+   * на крестик отправило бы второй запрос по уже удалённой строке. Количество
+   * остаётся доступным: оно меняется оптимистично, и гасить его на время
+   * запроса значит терять быстрые нажатия.
+   */
   isBusy?: boolean
 }
 
@@ -859,8 +884,11 @@ export interface ICartPanelProps {
   isLoading?: boolean
   skeletonRows?: number
   /**
-   * Идёт хоть какой-то запрос по корзине: блокируется только переход к
-   * оформлению — состав под ним ещё меняется.
+   * Идёт запрос, меняющий состав корзины целиком (очистка, перезагрузка): под
+   * него блокируется переход к оформлению.
+   *
+   * Запросы по отдельным позициям сюда не попадают — иначе кнопка «Оформить»
+   * гасла бы на каждое нажатие `−`/`+`; за них отвечает `isItemBusy`.
    */
   isBusy?: boolean
   /**
@@ -883,6 +911,24 @@ export interface ICheckoutFormProps {
   isLoading?: boolean
   isSubmitting?: boolean
   error?: string | null
+}
+
+export interface ICheckoutPanelProps {
+  cart: ICart | null
+  buildProductHref: (productSlug: string) => string
+  /** Куда вести за правкой состава — состав здесь только читается. */
+  cartHref: string
+  /** Форма оформления: встаёт во вторую колонку, рядом с составом. */
+  form: ReactNode
+  /**
+   * Дозаказ: подборщик товаров под составом — тот же `ProductPicker`, что и в
+   * открытой заявке. Пока корзина грузится, слот не рисуется: добавлять в
+   * состав, которого ещё не видно, не к чему.
+   */
+  addItem?: ReactNode
+  /** Первая загрузка корзины: скелетоны в раскладке состава. */
+  isLoading?: boolean
+  skeletonRows?: number
 }
 
 export interface ICartTemplateProps {
@@ -986,6 +1032,12 @@ export interface IProductPickerProps {
   isSearching?: boolean
   /** Товары, которые уже есть в заявке: добавление сольётся с их строкой. */
   addedProductIds?: string[]
+  /**
+   * Подпись на бейдже такого товара. Меняется вместе с получателем: до
+   * оформления подборщик кладёт товар в корзину, а не в заявку, и «уже в
+   * заявке» там было бы неправдой.
+   */
+  addedLabel?: string
   onAdd: (productId: string) => void
   isBusy?: boolean
   /** Поиск не отдался. Отличается от пустого ответа: искать стоит ещё раз. */
@@ -1161,6 +1213,8 @@ export interface IAdminProductValues {
   description: string
   brand: string
   priceCents: number
+  /** `null` — объём не указан; бэкенд отвергает ноль, а не считает его пропуском. */
+  volumeMl: number | null
   categoryId: string | null
   inStock: boolean
   /** `null` в режиме редактирования и когда при создании фото не выбрано. */
@@ -1206,7 +1260,6 @@ export interface IAdminProductFormProps {
 export interface IAdminCategoryValues {
   name: string
   slug: string
-  sortOrder: number
 }
 
 export interface IAdminCategoriesPanelProps {
@@ -1247,9 +1300,18 @@ export interface IAdminCycleCalendarProps {
   onUpdate: (cycle: IOrderCycle, draft: ICycleDraft) => void
   onDelete: (cycle: IOrderCycle) => void
   /**
+   * Досрочное закрытие. Кнопка появляется только у сбора, который сейчас идёт:
+   * закрыть — значит прекратить приём заявок, а у запланированного и у
+   * прошедшего этого состояния нет.
+   */
+  onClose?: (cycle: IOrderCycle) => void
+  /**
    * id сбора, который бэкенд отдаёт как активный. Считается не по полю
-   * `status`, а по ближайшему будущему дедлайну — `status` переставляет
-   * планировщик, и до его прогона он отстаёт от факта.
+   * `status`, а по ближайшему будущему дедлайну и незакрытому статусу —
+   * `status` переставляет планировщик, и до его прогона он отстаёт от факта.
+   *
+   * Он же отвечает на вопрос, можно ли назначить новый сбор: открытый бывает
+   * только один (`active_cycle_exists`).
    */
   activeCycleId?: string | null
   /**
@@ -1261,6 +1323,29 @@ export interface IAdminCycleCalendarProps {
   isLoading?: boolean
   isBusy?: boolean
   error?: string | null
+}
+
+/**
+ * Аккаунт глазами владельца: то же, что у себя в профиле, плюс дата
+ * регистрации — по ней список и упорядочен после владельцев.
+ */
+export interface IAdminUser extends IAuthUser {
+  createdAt: string
+}
+
+export interface IAdminUsersTableProps {
+  users: IAdminUser[]
+  /**
+   * Свой аккаунт: его строка не меняется. Владелец, разжаловавший себя, закрывает
+   * магазину вход в собственную панель — бэкенд отвечает `own_role_change`.
+   */
+  currentUserId?: string | null
+  onRoleChange: (user: IAdminUser, role: Role) => void
+  isLoading?: boolean
+  skeletonRows?: number
+  /** id строки, по которой идёт запрос: блокируется только её кнопка. */
+  busyId?: string | null
+  emptyState?: ReactNode
 }
 
 export interface IAdminOrdersTableProps {

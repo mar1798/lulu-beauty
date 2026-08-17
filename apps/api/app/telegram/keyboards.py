@@ -56,7 +56,11 @@ def main_menu() -> ReplyKeyboardMarkup:
                 KeyboardButton(text=messages.MENU_WISHLIST),
                 KeyboardButton(text=messages.MENU_DEADLINE),
             ],
-            [KeyboardButton(text=messages.MENU_HELP)],
+            # Next to help rather than first in the list: the bot answers everything
+            # people come here for on its own, and leaving for a browser is the last
+            # option, not the first. A reply-keyboard button cannot be a url, so the
+            # address itself arrives as an inline button in the answer (`handle_site`).
+            [KeyboardButton(text=messages.MENU_SITE), KeyboardButton(text=messages.MENU_HELP)],
         ],
         resize_keyboard=True,
         is_persistent=True,
@@ -93,26 +97,34 @@ class OrderAction(CallbackData, prefix="order"):
 # not a moment anyone spends looking at a week-old notification.
 ACTION_STATUS: dict[OrderActionName, OrderStatus] = {
     "confirm": OrderStatus.CONFIRMED,
-    "cancel": OrderStatus.CANCELLED,
+    "cancel": OrderStatus.CANCELLED_BY_OWNER,
 }
 
 
 def order_actions(order_id: uuid.UUID) -> InlineKeyboardMarkup:
-    """Confirm/cancel under the owner's new-order notification."""
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text=messages.CONFIRM_BUTTON,
-                    callback_data=OrderAction(action="confirm", order_id=order_id).pack(),
-                ),
-                InlineKeyboardButton(
-                    text=messages.CANCEL_BUTTON,
-                    callback_data=OrderAction(action="cancel", order_id=order_id).pack(),
-                ),
-            ]
+    """Confirm/cancel under the owner's new-order notification, plus the way in.
+
+    The admin link is a second row rather than a third button: the two decisions belong
+    together, and "look at it properly first" is what the owner does when neither of them
+    is obvious from the notification alone. It is dropped when the site isn't addressable
+    from Telegram (`_site_button`), like every other link here.
+    """
+    rows = [
+        [
+            InlineKeyboardButton(
+                text=messages.CONFIRM_BUTTON,
+                callback_data=OrderAction(action="confirm", order_id=order_id).pack(),
+            ),
+            InlineKeyboardButton(
+                text=messages.CANCEL_BUTTON,
+                callback_data=OrderAction(action="cancel", order_id=order_id).pack(),
+            ),
         ]
-    )
+    ]
+    admin = _site_button(ADMIN_ORDERS_PATH, messages.ADMIN_ORDERS_BUTTON)
+    if admin is not None:
+        rows.append([admin])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 MenuActionName = Literal["unlink", "unlink_confirm", "unlink_cancel"]
@@ -133,6 +145,7 @@ CHECKOUT_PATH = "/checkout"
 WISHLIST_PATH = "/wishlist"
 CATALOG_PATH = "/catalog"
 ORDERS_PATH = "/orders"
+ADMIN_ORDERS_PATH = "/admin/orders"
 
 
 def help_actions() -> InlineKeyboardMarkup:
@@ -182,6 +195,22 @@ def catalog_link() -> InlineKeyboardMarkup | None:
 def orders_link() -> InlineKeyboardMarkup | None:
     """Under the order list, which the bot deliberately truncates to five."""
     return _site_link(ORDERS_PATH, messages.ORDERS_BUTTON)
+
+
+def site_link() -> InlineKeyboardMarkup | None:
+    """The site itself — under the «Сайт» reply, and wherever there is nowhere more
+    specific to point."""
+    return _site_link("", messages.SITE_BUTTON)
+
+
+def site_url() -> str:
+    """The address in words, for when Telegram won't take the button (`_is_public_url`)."""
+    return settings.website_base_url.rstrip("/")
+
+
+def admin_orders_link() -> InlineKeyboardMarkup | None:
+    """Under the owner's summaries: the tally is read in the chat, worked through here."""
+    return _site_link(ADMIN_ORDERS_PATH, messages.ADMIN_ORDERS_BUTTON)
 
 
 def checkout_link() -> InlineKeyboardMarkup | None:

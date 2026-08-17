@@ -76,7 +76,11 @@ const AccountPage: React.FC = () => {
         <EmptyState
           title="Профиль виден после входа"
           description="Войдите — и здесь можно будет поправить имя и привязать Telegram."
-          action={<Button link={{ href: '/login' }}>Войти</Button>}
+          action={
+            <Button link={{ href: '/login' }} isFullWidth="mobile">
+              Войти
+            </Button>
+          }
         />
       )
     }
@@ -104,6 +108,7 @@ const AccountPage: React.FC = () => {
 
               <Button
                 variant="secondary"
+                isFullWidth="mobile"
                 isLoading={isLoggingOut}
                 onClick={() => {
                   void handleLogout()

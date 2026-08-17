@@ -25,7 +25,7 @@ export const Cancelled = Template.bind({})
 Cancelled.parameters = { layout: 'centered' }
 Cancelled.args = {
   ...feedOrderDetails(),
-  order: feedOrder({ status: 'CANCELLED', isEditable: false, isRestorable: true }),
+  order: feedOrder({ status: 'CANCELLED_BY_CUSTOMER', isEditable: false, isRestorable: true }),
   onRestore: () => undefined,
 }
 

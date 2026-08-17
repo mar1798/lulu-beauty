@@ -81,7 +81,8 @@ export const thumbIcon = style({
 })
 
 export const thumbImage = style({
-  objectFit: 'cover',
+  // Фотография товара нигде не обрезается — см. `AppImage`/`components/Image.tsx`.
+  objectFit: 'contain',
 })
 
 export const productText = style({

@@ -12,6 +12,7 @@ from app.catalog.import_service import (
     parse_in_stock,
     parse_price_cents,
     parse_rows,
+    parse_volume_ml,
     parse_xlsx_rows,
     slugify,
     validate_headers,
@@ -49,6 +50,39 @@ def test_parse_price_cents_rejects_values_decimal_accepts_but_the_column_cannot(
     cell would 500 the whole upload instead of being reported as one bad line."""
     with pytest.raises(ImportRowError):
         parse_price_cents(raw)
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("50", 50),
+        ("50 мл", 50),
+        ("500ml", 500),
+        ("50,5", 51),
+        ("", None),
+        (None, None),
+    ],
+)
+def test_parse_volume_ml_reads_what_a_price_list_actually_writes(
+    raw: str | None, expected: int | None
+) -> None:
+    """Единицы в ячейке, запятая вместо точки и пустая ячейка — три способа записи,
+    которые встречаются в одном и том же прайсе."""
+    assert parse_volume_ml(raw) == expected
+
+
+@pytest.mark.parametrize("raw", ["0", "-50", "abc", "nan", "inf", "999999"])
+def test_parse_volume_ml_rejects_what_would_be_a_lie_on_the_card(raw: str) -> None:
+    """«0 мл» на карточке — утверждение, а не пропуск: пропуск — это пустая ячейка."""
+    with pytest.raises(ImportRowError):
+        parse_volume_ml(raw)
+
+
+def test_volume_header_aliases_meet_at_one_column() -> None:
+    """Прайс называет колонку как ему удобно; в строку она должна прийти одной."""
+    assert normalize_header("Volume") == "volume"
+    assert normalize_header("volume_ml") == "volume"
+    assert normalize_header("Объём") == "volume"
 
 
 @pytest.mark.parametrize("raw", ["true", "1", "yes", "y", "да", "TRUE", " Yes "])

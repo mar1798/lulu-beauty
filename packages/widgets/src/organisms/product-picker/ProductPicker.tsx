@@ -1,10 +1,11 @@
 import clsx from 'clsx'
 import { type FC, type ReactNode } from 'react'
 import type { IBasicStyling, IProduct, IProductPickerProps } from '../../types'
-import { IconBox } from '../../svg/icons'
+import { IconBox, IconPlus } from '../../svg/icons'
 import { AppImage } from '../../atoms/app-image'
 import { Badge } from '../../atoms/badge'
 import { Button } from '../../atoms/button'
+import { IconButton } from '../../atoms/icon-button'
 import { Price } from '../../atoms/price'
 import { Skeleton } from '../../atoms/skeleton'
 import { Text } from '../../atoms/text'
@@ -58,6 +59,7 @@ export const ProductPicker: FC<IProductPickerProps & IBasicStyling> = ({
   products,
   isSearching = false,
   addedProductIds = [],
+  addedLabel = 'Уже в заявке',
   onAdd,
   isBusy = false,
   error = null,
@@ -135,36 +137,65 @@ export const ProductPicker: FC<IProductPickerProps & IBasicStyling> = ({
 
                 <div className={styles.meta}>
                   <Price priceCents={product.priceCents} size="sm" />
-                  {isAdded && <Badge tone="neutral">Уже в заявке</Badge>}
+                  {isAdded && <Badge tone="neutral">{addedLabel}</Badge>}
                 </div>
               </div>
 
-              <Button
-                size="sm"
-                variant="secondary"
-                /*
-                  Нет в наличии — не повод прятать строку: человек ищет по
-                  названию и должен увидеть, что товар нашёлся, но недоступен.
-                */
-                disabled={isBusy || !product.inStock}
-                onClick={() => {
-                  onAdd(product.id)
-                }}
-              >
-                {product.inStock ? (
+              {/*
+                Одно и то же действие в двух формах: до `sm` — круглая кнопка с
+                плюсом, как в карточке каталога (подписи там некуда встать,
+                строка и так из миниатюры, названия и цены), дальше — кнопка со
+                словом. Переключаются подложками, а не по ширине окна в JS:
+                раскладка обязана быть верной уже в первом кадре.
+
+                Нет в наличии — не повод прятать строку: человек ищет по
+                названию и должен увидеть, что товар нашёлся, но недоступен.
+              */}
+              <span className={styles.addCompact}>
+                <IconButton
+                  icon={<IconPlus />}
+                  label={
+                    product.inStock
+                      ? `${addLabel(isAdded)}: ${product.name}`
+                      : `Нет в наличии: ${product.name}`
+                  }
+                  variant="primary"
+                  size="md"
+                  disabled={isBusy || !product.inStock}
+                  onClick={() => {
+                    onAdd(product.id)
+                  }}
+                />
+              </span>
+
+              <span className={styles.addWide}>
+                <Button
+                  size="sm"
                   /*
-                    Кнопок в списке много, и вне своей строки «Добавить» ни о чём
-                    не говорит: подпись для скринридера несёт и название. Видимая
-                    при этом скрыта от него — иначе слово прозвучало бы дважды.
+                    Акцентная, а не вторичная: добавление — единственное
+                    действие в строке, и спорить ей тут не с чем.
                   */
-                  <>
-                    <span aria-hidden={true}>{addLabel(isAdded)}</span>
-                    <VisuallyHidden>{`${addLabel(isAdded)}: ${product.name}`}</VisuallyHidden>
-                  </>
-                ) : (
-                  'Нет в наличии'
-                )}
-              </Button>
+                  variant="primary"
+                  disabled={isBusy || !product.inStock}
+                  onClick={() => {
+                    onAdd(product.id)
+                  }}
+                >
+                  {product.inStock ? (
+                    /*
+                      Кнопок в списке много, и вне своей строки «Добавить» ни о чём
+                      не говорит: подпись для скринридера несёт и название. Видимая
+                      при этом скрыта от него — иначе слово прозвучало бы дважды.
+                    */
+                    <>
+                      <span aria-hidden={true}>{addLabel(isAdded)}</span>
+                      <VisuallyHidden>{`${addLabel(isAdded)}: ${product.name}`}</VisuallyHidden>
+                    </>
+                  ) : (
+                    'Нет в наличии'
+                  )}
+                </Button>
+              </span>
             </div>
           )
         })}

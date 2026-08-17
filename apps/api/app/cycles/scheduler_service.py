@@ -12,7 +12,8 @@ from app.cart.models import Cart, CartItem
 from app.catalog.models import Product
 from app.common.limits import MAX_WISHLIST_ITEMS
 from app.cycles.models import CycleStatus, OrderCycle
-from app.orders.models import Order, OrderStatus
+from app.cycles.service import CycleAlreadyClosedError, CycleNotFoundError
+from app.orders.models import CANCELLED_STATUSES, Order
 from app.wishlist.models import WishlistItem
 
 
@@ -200,27 +201,54 @@ class CycleSchedulerService:
         await self._session.flush()
         return closures
 
+    async def close_now(self, cycle_id: uuid.UUID) -> CycleClosure:
+        """Closes a cycle before its deadline, on the owner's say-so.
+
+        Exactly what the deadline sweep does to it — carts into wishlists, tally counted,
+        the next cycle promoted — because half of that would be worse than none: a cycle
+        that stops taking orders while its carts sit in it is a cart nobody can rescue
+        later (the sweep skips anything already CLOSED).
+
+        The deadline is left alone. `get_active_cycle` checks the status too, so the
+        cycle stops collecting either way, and rewriting the date would erase what the
+        customers were promised — `closed_at` is where "actually ended" lives.
+        """
+        cycle = await self._session.get(OrderCycle, cycle_id)
+        if cycle is None:
+            raise CycleNotFoundError
+        if cycle.status is CycleStatus.CLOSED:
+            raise CycleAlreadyClosedError
+
+        now = datetime.now(UTC)
+        closure = await self._close_cycle(cycle, now)
+        await self._activate_next_upcoming(now)
+        await self._session.flush()
+        return closure
+
     async def _close_cycle(self, cycle: OrderCycle, now: datetime) -> CycleClosure:
-        rescued = await self._rescue_abandoned_carts(cycle)
+        rescued = await self.rescue_carts(cycle)
 
         cycle.status = CycleStatus.CLOSED
         cycle.closed_at = now
         return await self._tally(cycle, rescued)
 
-    async def _rescue_abandoned_carts(self, cycle: OrderCycle) -> list[CartRescue]:
-        """Empties the carts nobody checked out — into wishlists, not into nothing.
+    async def rescue_carts(self, cycle: OrderCycle) -> list[CartRescue]:
+        """Empties the carts left in a cycle — into wishlists, not into nothing.
 
-        A cart belongs to its cycle, so it cannot outlive the deadline. But picking the
-        products was the customer's work, and deleting the lot made them redo it from
-        memory next time round. The wishlist is the one list here that is deliberately
-        cycle-independent (see wishlist/models.py), which is exactly what that needs.
+        A cart belongs to its cycle, so it cannot outlive it. But picking the products was
+        the customer's work, and deleting the lot made them redo it from memory next time
+        round. The wishlist is the one list here that is deliberately cycle-independent
+        (see wishlist/models.py), which is exactly what that needs.
+
+        Every cart that still holds something, whoever owns it. It used to skip anyone who
+        had checked out in this cycle, on the theory that their cart was empty anyway —
+        and empty carts are skipped further down regardless (`_save_to_wishlists`). What
+        the filter actually did was lose the carts of the people who *kept shopping after
+        ordering*: they placed an order, went on adding to the cart for the next one, and
+        at the deadline that second selection was deleted without ever reaching a wishlist.
         """
-        checked_out_user_ids = select(Order.user_id).where(Order.cycle_id == cycle.id)
         result = await self._session.execute(
-            select(Cart.id, Cart.user_id).where(
-                Cart.cycle_id == cycle.id,
-                Cart.user_id.not_in(checked_out_user_ids),
-            )
+            select(Cart.id, Cart.user_id).where(Cart.cycle_id == cycle.id)
         )
         # One cart per user per cycle (Unique(user_id, cycle_id)), so this stays 1:1.
         user_by_cart = {cart_id: user_id for cart_id, user_id in result.all()}
@@ -302,7 +330,7 @@ class CycleSchedulerService:
                 select(
                     func.count(Order.id),
                     func.coalesce(func.sum(Order.total_cents), 0),
-                ).where(Order.cycle_id == cycle.id, Order.status != OrderStatus.CANCELLED)
+                ).where(Order.cycle_id == cycle.id, Order.status.notin_(CANCELLED_STATUSES))
             )
         ).one()
         return CycleClosure(

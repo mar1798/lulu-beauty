@@ -21,6 +21,21 @@ class CycleHasOrdersError(Exception):
     pass
 
 
+class CycleAlreadyClosedError(Exception):
+    """Closing a closed cycle: nothing to do, and the second tally would be a lie."""
+
+
+class ActiveCycleExistsError(Exception):
+    """There is already a cycle collecting orders, and there can only be one.
+
+    Two open cycles do not divide the shop in two — they break it. A cart belongs to one
+    cycle (`Unique(user_id, cycle_id)`), and `get_active_cycle` picks the nearest deadline,
+    so a second cycle created with an earlier deadline silently becomes *the* cycle and
+    every cart collected under the first one drops out of sight. Editing the open cycle's
+    deadline is the operation the owner actually wanted.
+    """
+
+
 class CyclesService:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
@@ -30,17 +45,32 @@ class CyclesService:
         return list(result.scalars().all())
 
     async def get_active_cycle(self) -> OrderCycle | None:
+        """The cycle currently collecting orders, if any.
+
+        Not by deadline alone: the owner can close a cycle before its deadline (see
+        `CycleSchedulerService.close_now`), and a cycle whose carts have already been
+        emptied into wishlists must not go on accepting new ones just because the date
+        it was going to end on hasn't arrived yet.
+        """
         result = await self._session.execute(
             select(OrderCycle)
-            .where(OrderCycle.deadline_at > datetime.now(UTC))
+            .where(
+                OrderCycle.deadline_at > datetime.now(UTC),
+                OrderCycle.status != CycleStatus.CLOSED,
+            )
             .order_by(OrderCycle.deadline_at.asc())
             .limit(1)
         )
         return result.scalar_one_or_none()
 
+    async def get(self, cycle_id: uuid.UUID) -> OrderCycle | None:
+        return await self._session.get(OrderCycle, cycle_id)
+
     async def create(self, deadline_at: datetime, label: str | None) -> OrderCycle:
         if deadline_at <= datetime.now(UTC):
             raise PastDeadlineError
+        if await self.get_active_cycle() is not None:
+            raise ActiveCycleExistsError
 
         cycle = OrderCycle(deadline_at=deadline_at, label=label)
         self._session.add(cycle)

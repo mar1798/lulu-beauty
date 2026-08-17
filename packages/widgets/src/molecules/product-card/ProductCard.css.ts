@@ -115,6 +115,15 @@ export const body = style({
   padding: `${vars.space.sm} ${vars.space.xs} ${vars.space.xxs}`,
 })
 
+/**
+ * Метки под названием: марка, категория, объём. Каждая отдельным элементом и
+ * с переносом — длинная не должна вытеснять соседние за край колонки.
+ */
+export const tags = style({
+  ...flexRow(8),
+  flexWrap: 'wrap',
+})
+
 /** Цена и действие в одну строку, прижатые к низу карточки. */
 export const footer = style({
   ...flexRow(8),

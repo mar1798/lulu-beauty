@@ -1,5 +1,5 @@
 import { style } from '@vanilla-extract/css'
-import { border, color } from '../../styling/lib'
+import { border, color, media } from '../../styling/lib'
 import { flexColumn, flexRow } from '../../styling/mixin'
 import { vars } from '../../styling/themes/contract.css'
 
@@ -72,4 +72,26 @@ export const skeletonLines = style({
   ...flexColumn(8),
   flex: 1,
   minWidth: 0,
+})
+
+/**
+ * Две формы кнопки добавления в строке результата: круглая с плюсом до `sm`,
+ * со словом — дальше. Переключаются подложками, а не классом на самой кнопке:
+ * у той есть собственный `display`, и спор двух правил зависел бы от порядка
+ * файлов в бандле.
+ */
+export const addCompact = style({
+  display: 'inline-flex',
+  flexShrink: 0,
+  ...media({
+    sm: { display: 'none' },
+  }),
+})
+
+export const addWide = style({
+  display: 'none',
+  flexShrink: 0,
+  ...media({
+    sm: { display: 'inline-flex' },
+  }),
 })

@@ -83,11 +83,41 @@ def test_order_deleted_stays_silent_on_what_was_already_finished() -> None:
     order_id = uuid.UUID("a1b2c3d4-0000-0000-0000-000000000000")
 
     assert messages.order_deleted(order_id, OrderStatus.COMPLETED) is None
-    assert messages.order_deleted(order_id, OrderStatus.CANCELLED) is None
+    assert messages.order_deleted(order_id, OrderStatus.CANCELLED_BY_CUSTOMER) is None
     for status in (OrderStatus.PENDING, OrderStatus.CONFIRMED, OrderStatus.READY):
         text = messages.order_deleted(order_id, status)
         assert text is not None
         assert "#a1b2c3d4" in text
+
+
+def test_order_item_repriced_names_both_prices_and_the_new_total() -> None:
+    """Одна новая цена ни о чём не говорит: человек помнит сумму заявки, а не цену
+    строки, и «стало 1 400» без «было 1 200» ему не с чем сравнить."""
+    order_id = uuid.UUID("a1b2c3d4-0000-0000-0000-000000000000")
+
+    text = messages.order_item_repriced(order_id, "Rose Serum", 120_000, 140_000, 280_000)
+
+    assert "#a1b2c3d4" in text
+    assert "Rose Serum" in text
+    assert "выросла" in text
+    assert messages.format_price(120_000) in text
+    assert messages.format_price(140_000) in text
+    assert messages.format_price(280_000) in text
+    assert "снизилась" in messages.order_item_repriced(order_id, "X", 140_000, 120_000, 240_000)
+
+
+def test_order_item_removed_is_not_the_cancellation_text() -> None:
+    """Убрать одну строку из трёх и отменить заявку целиком — разные новости, и «сумма
+    заявки теперь 0» вместо второй из них не описывает случившегося."""
+    order_id = uuid.UUID("a1b2c3d4-0000-0000-0000-000000000000")
+
+    removed = messages.order_item_removed(order_id, "Rose Serum", 50_000)
+    cancelled = messages.order_cancelled_last_item_removed(order_id, "Rose Serum")
+
+    assert messages.format_price(50_000) in removed
+    assert "отменена" not in removed
+    assert "отменена" in cancelled
+    assert "Rose Serum" in cancelled
 
 
 def test_cart_last_chance_is_not_the_day_ahead_reminder_again() -> None:
@@ -195,6 +225,7 @@ def _wishlist(names: list[str]) -> WishlistResponse:
                     description=None,
                     brand=None,
                     price_cents=125_000,
+                    volume_ml=None,
                     category_id=None,
                     in_stock=True,
                     images=[],
@@ -235,3 +266,35 @@ def test_my_wishlist_truncates_like_every_other_list_here() -> None:
 
 def test_current_deadline_between_cycles_is_not_an_error() -> None:
     assert "закрыт" in messages.current_deadline(None)
+
+
+def test_cycle_deadline_changed_names_both_dates_and_the_direction() -> None:
+    """Без прежнего срока сообщение неотличимо от обычного напоминания, а без
+    направления («раньше»/«позже») человек не понимает, стало ли у него меньше времени."""
+    cycle = OrderCycle(deadline_at=datetime(2030, 6, 10, 17, tzinfo=UTC), label="Июнь")
+
+    text = messages.cycle_deadline_changed(cycle, datetime(2030, 6, 12, 17, tzinfo=UTC))
+
+    assert "раньше" in text
+    assert "10.06.2030" in text
+    assert "12.06.2030" in text
+
+
+def test_cycle_deadline_changed_does_not_hurry_a_postponed_cycle() -> None:
+    cycle = OrderCycle(deadline_at=datetime(2030, 6, 14, 17, tzinfo=UTC), label="Июнь")
+
+    text = messages.cycle_deadline_changed(cycle, datetime(2030, 6, 12, 17, tzinfo=UTC))
+
+    assert "позже" in text
+    assert "Успейте" not in text
+
+
+def test_cycle_closed_for_customer_says_the_order_can_no_longer_be_changed() -> None:
+    """Именно это и перестаёт работать на сайте в момент закрытия — иначе человек
+    упирается в недоступные кнопки и считает их поломкой."""
+    cycle = OrderCycle(deadline_at=datetime(2030, 6, 12, tzinfo=UTC), label="Июнь")
+
+    text = messages.cycle_closed_for_customer(cycle)
+
+    assert "«Июнь»" in text
+    assert "нельзя" in text

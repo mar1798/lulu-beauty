@@ -21,7 +21,10 @@ export const form = style({
   ...panel(),
 })
 
-/** Цена и категория — короткие поля, на широком экране им незачем занимать строку каждому. */
+/**
+ * Цена, объём, категория и производитель — короткие поля, на широком экране им
+ * незачем занимать строку каждому: встают парами по две колонки.
+ */
 export const row = style({
   ...flexColumn(16),
   ...media({
@@ -42,10 +45,22 @@ export const formActions = style({
   paddingTop: vars.space.xs,
 })
 
-/** Панель фотографий; имя не `media` — оно занято хелпером медиазапросов. */
+/**
+ * Панель фотографий; имя не `media` — оно занято хелпером медиазапросов.
+ *
+ * В одну колонку (до `lg`) стоит **над** формой: заводя товар, владелец
+ * начинает со снимка, а под формой на полтора экрана вниз панель просто не
+ * попадалась на глаза. Порядком, а не перестановкой в разметке: с `lg`
+ * container — сетка, и там панель обязана остаться в правой колонке, то есть
+ * второй по документу.
+ */
 export const mediaPanel = style({
   ...flexColumn(16),
   ...panel(),
+  order: -1,
+  ...media({
+    lg: { order: 0 },
+  }),
 })
 
 export const gallery = style({
@@ -67,7 +82,8 @@ export const thumb = style({
 })
 
 export const thumbImage = style({
-  objectFit: 'cover',
+  // Фотография товара нигде не обрезается — см. `AppImage`/`components/Image.tsx`.
+  objectFit: 'contain',
 })
 
 export const thumbDelete = style({

@@ -14,7 +14,16 @@ class OrderStatus(enum.StrEnum):
     CONFIRMED = "CONFIRMED"
     READY = "READY"
     COMPLETED = "COMPLETED"
-    CANCELLED = "CANCELLED"
+    # Cancellation says who did it. One CANCELLED left both sides guessing: the customer
+    # couldn't tell "я передумал" from "владелец не смог достать", and the owner couldn't
+    # tell an order they'd dropped themselves from one that walked away.
+    CANCELLED_BY_CUSTOMER = "CANCELLED_BY_CUSTOMER"
+    CANCELLED_BY_OWNER = "CANCELLED_BY_OWNER"
+
+
+# Everything that means "this order is off". Membership, not equality, is the test —
+# a cancelled order is cancelled whoever ended it.
+CANCELLED_STATUSES = frozenset({OrderStatus.CANCELLED_BY_CUSTOMER, OrderStatus.CANCELLED_BY_OWNER})
 
 
 class Order(UUIDPrimaryKeyMixin, TimestampMixin, Base):

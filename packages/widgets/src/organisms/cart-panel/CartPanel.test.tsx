@@ -34,6 +34,25 @@ describe('CartPanel', () => {
     expect(queryByText('Пока пусто')).toBeNull()
   })
 
+  /*
+    Запрос по одной позиции не повод гасить «Оформить»: количество меняется
+    оптимистично, и на каждое нажатие `−`/`+` кнопка мигала бы disabled-видом.
+  */
+  it('не блокирует оформление, пока меняется количество одной позиции', () => {
+    const props = feedCartPanel()
+    const { getByRole } = renderWidget(
+      <CartPanel {...props} isBusy={false} isItemBusy={() => true} />
+    )
+
+    expect(getByRole('button', { name: 'Оформить заявку' }).hasAttribute('disabled')).toBe(false)
+  })
+
+  it('блокирует оформление, пока меняется состав корзины целиком', () => {
+    const { getByRole } = renderWidget(<CartPanel {...feedCartPanel()} isBusy={true} />)
+
+    expect(getByRole('button', { name: 'Оформить заявку' }).hasAttribute('disabled')).toBe(true)
+  })
+
   it('без ошибки пустая корзина остаётся пустым состоянием', () => {
     const { getByText } = renderWidget(
       <CartPanel {...feedCartPanel()} cart={null} emptyState={<p>Пока пусто</p>} />

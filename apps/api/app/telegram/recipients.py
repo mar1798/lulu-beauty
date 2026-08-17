@@ -7,10 +7,12 @@ each grow their own copy of these queries).
 import uuid
 from collections.abc import Sequence
 
-from sqlalchemy import select, update
+from sqlalchemy import select, union, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.models import Role, User
+from app.cart.models import Cart
+from app.orders.models import CANCELLED_STATUSES, Order
 
 
 async def get_owners(session: AsyncSession) -> list[User]:
@@ -33,6 +35,39 @@ async def get_broadcast_audience(session: AsyncSession) -> list[User]:
     """
     result = await session.execute(select(User).where(User.telegram_chat_id.is_not(None)))
     return list(result.scalars().all())
+
+
+async def get_cycle_participants(
+    session: AsyncSession, cycle_id: uuid.UUID, *, with_carts: bool = True
+) -> list[User]:
+    """Everyone a change to this cycle actually reaches: carts left in it, orders placed
+    in it.
+
+    Not the broadcast audience: a moved deadline is news for the people whose cart dies
+    with it and whose order stops being editable, and a shop-wide message about a cycle
+    someone never touched is the kind of noise that gets a bot muted.
+
+    Cancelled orders are out — that order ended before the cycle did. `with_carts=False`
+    is for the closing notice, where cart holders are told something else entirely
+    (`cart_moved_to_wishlist`) and would otherwise get both.
+    """
+    sources = [
+        select(Order.user_id).where(
+            Order.cycle_id == cycle_id, Order.status.not_in(CANCELLED_STATUSES)
+        )
+    ]
+    if with_carts:
+        sources.append(select(Cart.user_id).where(Cart.cycle_id == cycle_id))
+
+    result = await session.execute(union(*sources) if len(sources) > 1 else sources[0])
+    user_ids = [row[0] for row in result.all()]
+    if not user_ids:
+        return []
+
+    users = await session.execute(
+        select(User).where(User.id.in_(user_ids), User.telegram_chat_id.is_not(None))
+    )
+    return list(users.scalars().all())
 
 
 async def get_users(session: AsyncSession, user_ids: Sequence[uuid.UUID]) -> dict[uuid.UUID, User]:

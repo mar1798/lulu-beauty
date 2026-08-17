@@ -29,6 +29,7 @@ from app.orders.service import (
     OrderNotRestorableError,
     OrdersService,
     ProductNotFoundError,
+    StatusNotAssignableError,
 )
 from app.telegram.notify import notify_new_order, notify_order_deleted, notify_order_status
 
@@ -320,6 +321,9 @@ async def update_order_status(
         order, changed = await service.update_status(order_id, body.status)
     except OrderNotFoundError as error:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "order_not_found") from error
+    except StatusNotAssignableError as error:
+        # "Отменена покупателем" is the customer's own act; the owner cancels as themselves.
+        raise HTTPException(status.HTTP_409_CONFLICT, "order_status_not_assignable") from error
 
     customers = await service.load_customers([order])
     await session.commit()

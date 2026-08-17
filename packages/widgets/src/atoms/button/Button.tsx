@@ -46,7 +46,8 @@ export const Button: FC<IButtonProps & IBasicStyling> = ({
     styles.container,
     styles.variant[variant],
     styles.size[size],
-    isFullWidth && styles.fullWidth,
+    isFullWidth === true && styles.fullWidth,
+    isFullWidth === 'mobile' && styles.fullWidthMobile,
     className
   )
 

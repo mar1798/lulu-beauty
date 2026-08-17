@@ -97,9 +97,11 @@ const HomePage: React.FC<IHomePageProps> = ({ cycle, featured }) => (
           description="Мы собираем общий заказ к дедлайну: вы отправляете заявку, владелец подтверждает её в Telegram и договаривается о выдаче лично."
           actions={
             <>
-              <Button link={{ href: '/catalog' }}>Смотреть каталог</Button>
+              <Button link={{ href: '/catalog' }} isFullWidth="mobile">
+                Смотреть каталог
+              </Button>
 
-              <Button link={{ href: '/orders' }} variant="secondary">
+              <Button link={{ href: '/orders' }} variant="secondary" isFullWidth="mobile">
                 Мои заявки
               </Button>
             </>

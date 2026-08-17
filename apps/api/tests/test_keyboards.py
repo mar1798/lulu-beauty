@@ -94,7 +94,7 @@ def test_order_actions_offers_both_moves_for_the_same_order() -> None:
     assert {action.order_id for action in actions} == {order_id}
     assert {keyboards.ACTION_STATUS[a.action] for a in actions} == {
         OrderStatus.CONFIRMED,
-        OrderStatus.CANCELLED,
+        OrderStatus.CANCELLED_BY_OWNER,
     }
 
 
@@ -158,3 +158,51 @@ def test_local_development_publishes_no_mini_app_button(
     monkeypatch.setattr("app.config.settings.website_base_url", "http://localhost:3000")
 
     assert keyboards.mini_app_url() is None
+
+
+def test_site_and_admin_links_point_where_they_say(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Кнопка «Сайт» ведёт на корень, владельческая сводка — сразу в заявки админки."""
+    monkeypatch.setattr("app.config.settings.website_base_url", "https://lulu.example.com/")
+
+    site = keyboards.site_link()
+    admin = keyboards.admin_orders_link()
+
+    assert site is not None
+    assert admin is not None
+    assert site.inline_keyboard[0][0].url == "https://lulu.example.com"
+    assert admin.inline_keyboard[0][0].url == "https://lulu.example.com/admin/orders"
+
+
+def test_site_link_disarms_itself_on_a_non_public_host(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Telegram отказывает всему сообщению, а не одной кнопке, — поэтому её и нет;
+    адрес в этом случае договаривает текст (`messages.site_unavailable`)."""
+    monkeypatch.setattr("app.config.settings.website_base_url", "http://localhost:3000")
+
+    assert keyboards.site_link() is None
+    assert keyboards.site_url() == "http://localhost:3000"
+
+
+def test_order_actions_add_the_admin_link_when_the_site_is_addressable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Подтвердить и отменить — решения, которые принимаются по самому уведомлению;
+    ссылка нужна для случая, когда по нему решить нельзя."""
+    monkeypatch.setattr("app.config.settings.website_base_url", "https://lulu.example.com")
+
+    rows = keyboards.order_actions(uuid.uuid4()).inline_keyboard
+
+    assert len(rows) == 2
+    assert rows[1][0].url == "https://lulu.example.com/admin/orders"
+
+
+def test_order_actions_keep_working_without_a_public_site(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """BUTTON_URL_INVALID валит весь sendMessage, поэтому на localhost кнопки нет —
+    но подтверждение и отмена остаются."""
+    monkeypatch.setattr("app.config.settings.website_base_url", "http://localhost:3000")
+
+    rows = keyboards.order_actions(uuid.uuid4()).inline_keyboard
+
+    assert len(rows) == 1
+    assert len(rows[0]) == 2

@@ -9,6 +9,7 @@ import {
   toStoreParts,
 } from './datetime'
 import { plural, pluralize } from './plural'
+import { formatVolume } from './volume'
 
 /**
  * Форматирование данных заявки: склонения и даты.
@@ -95,5 +96,18 @@ describe('календарные величины магазина', () => {
 
   it('называет месяц по-русски', () => {
     expect(formatMonth('2026-08')).toBe('август 2026 г.')
+  })
+})
+
+describe('formatVolume', () => {
+  it('подписывает объём миллилитрами, не пересчитывая в литры', () => {
+    expect(formatVolume(50)).toBe('50 мл')
+    expect(formatVolume(500)).toBe('500 мл')
+  })
+
+  /* «Не указан» — это не ноль: подписи «0 мл» не бывает, строка просто не рисуется. */
+  it('на отсутствующем объёме возвращает null', () => {
+    expect(formatVolume(null)).toBeNull()
+    expect(formatVolume(0)).toBeNull()
   })
 })

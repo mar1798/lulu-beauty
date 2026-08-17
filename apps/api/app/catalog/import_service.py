@@ -11,13 +11,20 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.catalog.models import Category, Product
 from app.catalog.schemas import SLUG_PATTERN, ImportRowErrorResponse, ImportSummaryResponse
-from app.common.limits import MAX_PRICE_CENTS
+from app.common.limits import MAX_PRICE_CENTS, MAX_VOLUME_ML
 
 REQUIRED_HEADERS = {"name", "slug", "price"}
 # `normalize_header` only lowercases and turns spaces/dashes into underscores, so the
 # camelCase spelling the admin panel documents ("inStock") arrives as "instock" and used
 # to miss `row["in_stock"]` entirely — every row silently imported as in stock.
-HEADER_ALIASES = {"instock": "in_stock"}
+# `volume_ml`/`объем` are what a supplier's price list actually calls the column the
+# admin panel documents as "volume" — all three mean the same millilitres.
+HEADER_ALIASES = {
+    "instock": "in_stock",
+    "volume_ml": "volume",
+    "объем": "volume",
+    "объём": "volume",
+}
 # The columns are String(255) in the database; past that the row failed at flush, which is
 # a 500 for the whole upload rather than one reported line.
 MAX_TEXT_LENGTH = 255
@@ -89,6 +96,31 @@ def parse_price_cents(raw: str | None) -> int:
     if cents > MAX_PRICE_CENTS:
         raise ImportRowError(f"слишком большая цена: {raw!r}")
     return cents
+
+
+def parse_volume_ml(raw: str | None) -> int | None:
+    """`"50"`, `"50 мл"`, `"50,5"` → millilitres, or None for an empty cell.
+
+    Rounded rather than refused: a price list writes 50.5 ml as often as 50, and the
+    volume is a caption on a card, not money. Zero and negatives *are* refused — «0 мл»
+    on a card says something false, and the empty cell already means "unknown".
+    """
+    text = (raw or "").strip().lower().removesuffix("мл").removesuffix("ml").strip()
+    if not text:
+        return None
+    try:
+        value = Decimal(text.replace(",", "."))
+    except InvalidOperation as error:
+        raise ImportRowError(f"объём не распознан: {raw!r}") from error
+    if not value.is_finite():
+        raise ImportRowError(f"объём не распознан: {raw!r}")
+
+    millilitres = int(value.to_integral_value(rounding=ROUND_HALF_UP))
+    if millilitres <= 0:
+        raise ImportRowError(f"объём должен быть больше нуля: {raw!r}")
+    if millilitres > MAX_VOLUME_ML:
+        raise ImportRowError(f"слишком большой объём: {raw!r}")
+    return millilitres
 
 
 def parse_in_stock(raw: str | None) -> bool:
@@ -301,6 +333,8 @@ class CatalogImportService:
             "price_cents": parse_price_cents(row.get("price")),
         }
 
+        if "volume" in columns:
+            fields["volume_ml"] = parse_volume_ml(row.get("volume"))
         if "in_stock" in columns:
             fields["in_stock"] = parse_in_stock(row.get("in_stock"))
         if "description" in columns:

@@ -6,6 +6,7 @@ import { EmptyState } from 'widgets/molecules'
 import { CartPanel } from 'widgets/organisms'
 import { CartTemplate } from 'widgets/templates'
 import { SiteLayout } from '@/layouts/SiteLayout'
+import { EditableOrderNotice } from '@/components/EditableOrderNotice'
 import { useAuth } from '@/contexts/AuthContext'
 import { useCart } from '@/contexts/CartContext'
 
@@ -20,7 +21,7 @@ import { useCart } from '@/contexts/CartContext'
 const CartPage: React.FC = () => {
   const router = useRouter()
   const { user, isLoading: isAuthLoading } = useAuth()
-  const { cart, isLoading, isBusy, isItemBusy, error, updateItem, removeItem } = useCart()
+  const { cart, isLoading, isWholeCartBusy, isItemBusy, error, updateItem, removeItem } = useCart()
 
   const content = (): React.ReactNode => {
     // Пока сессия не проверена, «войдите» показывать нельзя: у залогиненного
@@ -30,43 +31,60 @@ const CartPage: React.FC = () => {
         <EmptyState
           title="Корзина у каждого своя"
           description="Войдите, чтобы собрать заявку — она сохранится до закрытия сбора."
-          action={<Button link={{ href: '/login' }}>Войти</Button>}
+          action={
+            <Button link={{ href: '/login' }} isFullWidth="mobile">
+              Войти
+            </Button>
+          }
         />
       )
     }
 
     return (
-      <CartPanel
-        cart={cart}
-        // Скелетон, а не спиннер: раскладка корзины известна заранее, и
-        // подменять её кружком значит переложить страницу дважды.
-        isLoading={isAuthLoading || isLoading}
-        // Оформление ждёт любой запрос по корзине, контролы строки — только свой.
-        isBusy={isBusy}
-        isItemBusy={isItemBusy}
-        error={error}
-        buildProductHref={slug => `/catalog/${slug}`}
-        onQuantityChange={(productId, quantity) => {
-          void updateItem(productId, quantity)
-        }}
-        onRemove={productId => {
-          void removeItem(productId)
-        }}
-        onCheckout={() => {
-          void router.push('/checkout')
-        }}
-        emptyState={
-          <EmptyState
-            title="Пока пусто"
-            // Вторая фраза — не реклама избранного, а ответ на «где мой прошлый
-            // выбор»: корзину закрывшегося сбора туда переносит планировщик
-            // (apps/api/app/cycles/scheduler_service.py), и человек, пропустивший
-            // уведомление бота, узнаёт об этом только здесь.
-            description="Загляните в каталог — товары появляются перед каждым сбором. То, что вы не успели оформить в прошлом сборе, ждёт в избранном."
-            action={<Button link={{ href: '/catalog' }}>В каталог</Button>}
-          />
-        }
-      />
+      <>
+        {/*
+          Только над непустой корзиной: у пустой добавлять в открытую заявку
+          нечего, и врезка была бы просто ещё одним сообщением на экране.
+        */}
+        {cart !== null && cart.items.length > 0 && <EditableOrderNotice />}
+
+        <CartPanel
+          cart={cart}
+          // Скелетон, а не спиннер: раскладка корзины известна заранее, и
+          // подменять её кружком значит переложить страницу дважды.
+          isLoading={isAuthLoading || isLoading}
+          // Оформление ждёт только запрос по корзине целиком: на изменение
+          // количества оно не реагирует, иначе кнопка мигала бы на каждое нажатие.
+          isBusy={isWholeCartBusy}
+          isItemBusy={isItemBusy}
+          error={error}
+          buildProductHref={slug => `/catalog/${slug}`}
+          onQuantityChange={(productId, quantity) => {
+            void updateItem(productId, quantity)
+          }}
+          onRemove={productId => {
+            void removeItem(productId)
+          }}
+          onCheckout={() => {
+            void router.push('/checkout')
+          }}
+          emptyState={
+            <EmptyState
+              title="Пока пусто"
+              // Вторая фраза — не реклама избранного, а ответ на «где мой прошлый
+              // выбор»: корзину закрывшегося сбора туда переносит планировщик
+              // (apps/api/app/cycles/scheduler_service.py), и человек, пропустивший
+              // уведомление бота, узнаёт об этом только здесь.
+              description="Загляните в каталог — товары появляются перед каждым сбором. То, что вы не успели оформить в прошлом сборе, ждёт в избранном."
+              action={
+                <Button link={{ href: '/catalog' }} isFullWidth="mobile">
+                  В каталог
+                </Button>
+              }
+            />
+          }
+        />
+      </>
     )
   }
 

@@ -50,6 +50,7 @@ const AdminProductCreatePage: React.FC = () => {
         description: values.description === '' ? null : values.description,
         brand: values.brand,
         priceCents: values.priceCents,
+        volumeMl: values.volumeMl,
         categoryId: values.categoryId,
         inStock: values.inStock,
       })

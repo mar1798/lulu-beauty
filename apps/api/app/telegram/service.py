@@ -98,7 +98,11 @@ class NotificationsService:
         message = messages.order_status_changed(order)
         if message is None:
             return
-        if await self._try_send(user.telegram_chat_id, message):
+        # With the link: a status change is precisely the reason to open the list, and
+        # without a button that means going to find the site by hand.
+        if await self._try_send(
+            user.telegram_chat_id, message, reply_markup=keyboards.orders_link()
+        ):
             logger.info("Notified %s about order %s → %s", user.phone, order.id, order.status)
             return
         logger.warning(
@@ -115,7 +119,9 @@ class NotificationsService:
         message = messages.order_deleted(order_id, status)
         if message is None:
             return
-        if await self._try_send(user.telegram_chat_id, message):
+        if await self._try_send(
+            user.telegram_chat_id, message, reply_markup=keyboards.orders_link()
+        ):
             logger.info("Notified %s that order %s was deleted", user.phone, order_id)
             return
         logger.warning(
@@ -126,7 +132,10 @@ class NotificationsService:
         self, owner: User, cycle: OrderCycle, orders_count: int, total_cents: int
     ) -> None:
         message = messages.cycle_closed_for_owner(cycle, orders_count, total_cents)
-        if await self._try_send(owner.telegram_chat_id, message):
+        # The tally is read in the chat and worked through in the admin panel.
+        if await self._try_send(
+            owner.telegram_chat_id, message, reply_markup=keyboards.admin_orders_link()
+        ):
             logger.info("Sent closing summary for cycle %s to owner %s", cycle.id, owner.phone)
             return
         logger.warning(
@@ -136,8 +145,40 @@ class NotificationsService:
     # ─── Fan-out ─────────────────────────────────────────────────────────────────
 
     async def send_cycle_opened(self, users: list[User], cycle: OrderCycle) -> BroadcastResult:
+        """The one announcement that exists to be acted on: the catalog is taking orders
+        right now, and the button saves the whole way from "oh, it's open" to a cart."""
         message = messages.cycle_opened(cycle)
-        return await self._broadcast([(user, message) for user in users])
+        return await self._broadcast(
+            [(user, message) for user in users], reply_markup=keyboards.catalog_link()
+        )
+
+    async def send_cycle_deadline_changed(
+        self, users: Sequence[User], cycle: OrderCycle, previous_deadline_at: datetime
+    ) -> BroadcastResult:
+        """Tells the people already in a cycle that its deadline moved.
+
+        A fan-out rather than point-to-point for the same reason as the reminder: it goes
+        to everyone holding a cart or an order in that cycle at once. The button is
+        checkout, because a moved deadline is only ever acted on in one place.
+        """
+        message = messages.cycle_deadline_changed(cycle, previous_deadline_at)
+        return await self._broadcast(
+            [(user, message) for user in users], reply_markup=keyboards.checkout_link()
+        )
+
+    async def send_cycle_closed_for_customers(
+        self, users: Sequence[User], cycle: OrderCycle
+    ) -> BroadcastResult:
+        """The closing, to the customers who did place an order in the cycle.
+
+        The ones who left a cart instead hear about the same event from
+        `send_cart_rescued`, which has more to tell them; these people would otherwise
+        learn that the cycle ended only by finding the edit buttons gone.
+        """
+        message = messages.cycle_closed_for_customer(cycle)
+        return await self._broadcast(
+            [(user, message) for user in users], reply_markup=keyboards.orders_link()
+        )
 
     async def broadcast_reminder(self, users: Sequence[User], message: str) -> BroadcastResult:
         """The deadline nudge, fanned out under the same throttle as any other broadcast.
@@ -170,6 +211,17 @@ class NotificationsService:
             ],
             reply_markup=keyboard,
         )
+
+    async def send_order_notices(self, deliveries: Sequence[tuple[User, str]]) -> BroadcastResult:
+        """Per-order news to whoever it concerns — one text each, one catalog edit behind.
+
+        A fan-out rather than a loop of `_try_send`: repricing or discontinuing a popular
+        product touches every pending order that holds it at once, which is broadcast
+        volume even though each message is personal. Texts arrive ready-made, like
+        `broadcast_reminder`'s — deciding what to say about an order is not a transport
+        concern.
+        """
+        return await self._broadcast(deliveries, reply_markup=keyboards.orders_link())
 
     async def _broadcast(
         self,

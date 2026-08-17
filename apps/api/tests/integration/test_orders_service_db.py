@@ -20,6 +20,7 @@ from app.orders.service import (
     OrderNotRestorableError,
     OrdersService,
     ProductNotFoundError,
+    StatusNotAssignableError,
 )
 from tests.integration.factories import (
     make_cycle,
@@ -398,7 +399,7 @@ async def test_cancel_marks_the_order_and_closes_further_editing(
 
     cancelled = await service.cancel(user_id, order.id)
 
-    assert cancelled.status == OrderStatus.CANCELLED
+    assert cancelled.status == OrderStatus.CANCELLED_BY_CUSTOMER
     # The order stays visible to the owner, but the customer can no longer touch it.
     assert (await service.customer_flags([cancelled]))[order.id].is_editable is False
     with pytest.raises(OrderNotEditableError):
@@ -604,3 +605,116 @@ async def test_two_simultaneous_checkouts_produce_one_order(db_session: AsyncSes
     assert outcomes == ["ordered", "empty"]
     orders = (await db_session.execute(select(Order).where(Order.user_id == user.id))).scalars()
     assert len(list(orders)) == 1
+
+
+# ─── Catalog edits reaching pending orders ───────────────────────────────────────
+
+
+async def _order_with(
+    session: AsyncSession, *, price_cents: int, quantity: int = 2
+) -> tuple[Order, uuid.UUID]:
+    """A pending order holding one product, plus that product's id."""
+    user = await make_user(session)
+    await make_cycle(session)
+    product = await make_product(session, name="Rose Serum", price_cents=price_cents)
+    await CartService(session).add_item(user.id, product.id, quantity)
+    order = await OrdersService(session).checkout(user.id, note=None)
+    return order, product.id
+
+
+async def test_reprice_product_updates_pending_orders(db_session: AsyncSession) -> None:
+    order, product_id = await _order_with(db_session, price_cents=1000, quantity=2)
+
+    changes = await OrdersService(db_session).reprice_product(product_id, 1500)
+
+    assert order.items[0].product_price_cents == 1500
+    assert order.total_cents == 3000
+    assert len(changes) == 1
+    assert changes[0].order_id == order.id
+    assert changes[0].user_id == order.user_id
+    assert changes[0].product_name == "Rose Serum"
+    assert changes[0].old_price_cents == 1000
+    assert changes[0].new_price_cents == 1500
+    assert changes[0].total_cents == 3000
+
+
+async def test_reprice_product_reports_nothing_when_price_is_unchanged(
+    db_session: AsyncSession,
+) -> None:
+    """The router calls this on every price field that was *sent*, not every one that
+    differs — a PATCH re-submitting the same number must not notify anyone."""
+    _, product_id = await _order_with(db_session, price_cents=1000)
+
+    assert await OrdersService(db_session).reprice_product(product_id, 1000) == []
+
+
+async def test_reprice_product_leaves_confirmed_orders_alone(db_session: AsyncSession) -> None:
+    """Past PENDING the owner has already bought against the list: the snapshot stands."""
+    order, product_id = await _order_with(db_session, price_cents=1000, quantity=2)
+    order.status = OrderStatus.CONFIRMED
+    await db_session.flush()
+
+    changes = await OrdersService(db_session).reprice_product(product_id, 1500)
+
+    assert changes == []
+    assert order.items[0].product_price_cents == 1000
+    assert order.total_cents == 2000
+
+
+async def test_drop_product_removes_the_line_and_recomputes_the_total(
+    db_session: AsyncSession,
+) -> None:
+    user = await make_user(db_session)
+    await make_cycle(db_session)
+    kept = await make_product(db_session, name="Toner", price_cents=500)
+    dropped = await make_product(db_session, name="Rose Serum", price_cents=1000)
+    cart = CartService(db_session)
+    await cart.add_item(user.id, kept.id, 1)
+    await cart.add_item(user.id, dropped.id, 2)
+    order = await OrdersService(db_session).checkout(user.id, note=None)
+
+    drops = await OrdersService(db_session).drop_product(dropped.id)
+
+    assert [item.product_name for item in order.items] == ["Toner"]
+    assert order.total_cents == 500
+    assert order.status == OrderStatus.PENDING
+    assert len(drops) == 1
+    assert drops[0].product_name == "Rose Serum"
+    assert drops[0].total_cents == 500
+    assert drops[0].is_cancelled is False
+
+
+async def test_drop_product_cancels_an_order_left_with_nothing(
+    db_session: AsyncSession,
+) -> None:
+    """An empty order is not something either side can act on — it's cancelled instead."""
+    order, product_id = await _order_with(db_session, price_cents=1000)
+
+    drops = await OrdersService(db_session).drop_product(product_id)
+
+    assert order.items == []
+    assert order.status == OrderStatus.CANCELLED_BY_OWNER
+    assert drops[0].is_cancelled is True
+
+    # And it can't be walked back into an order with nothing in it.
+    flags = await OrdersService(db_session).customer_flags([order])
+    assert flags[order.id].is_restorable is False
+    with pytest.raises(OrderNotRestorableError):
+        await OrdersService(db_session).restore(order.user_id, order.id)
+
+
+async def test_owner_cannot_mark_an_order_cancelled_by_the_customer(
+    db_session: AsyncSession,
+) -> None:
+    """«Отменена покупателем» — утверждение о его действии; у владельца своя отмена."""
+    order, _ = await _order_with(db_session, price_cents=1000)
+    service = OrdersService(db_session)
+
+    with pytest.raises(StatusNotAssignableError):
+        await service.update_status(order.id, OrderStatus.CANCELLED_BY_CUSTOMER)
+
+    updated, changed = await service.update_status(order.id, OrderStatus.CANCELLED_BY_OWNER)
+    assert changed is True
+    assert updated.status == OrderStatus.CANCELLED_BY_OWNER
+    # Отмена владельца обратима, пока сбор открыт, — как и отмена покупателя.
+    assert (await service.customer_flags([updated]))[order.id].is_restorable is True

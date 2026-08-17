@@ -10,9 +10,9 @@ from app.auth.models import User
 from app.cart.models import Cart, CartItem
 from app.catalog.images import primary_image_url
 from app.catalog.models import Product
-from app.cycles.models import OrderCycle
+from app.cycles.models import CycleStatus, OrderCycle
 from app.cycles.service import CyclesService
-from app.orders.models import Order, OrderItem, OrderStatus
+from app.orders.models import CANCELLED_STATUSES, Order, OrderItem, OrderStatus
 from app.orders.schemas import MAX_ITEM_QUANTITY
 
 
@@ -50,8 +50,16 @@ class ProductNotFoundError(Exception):
 class OrderNotRestorableError(Exception):
     """Nothing to undo, or the window to undo it in has closed.
 
-    Either the order isn't CANCELLED at all, or the cycle deadline has passed and the
+    Either the order isn't cancelled at all, or the cycle deadline has passed and the
     owner is already buying against the list this order is no longer on.
+    """
+
+
+class StatusNotAssignableError(Exception):
+    """The owner tried to set a status that is not theirs to set.
+
+    CANCELLED_BY_CUSTOMER is a statement about what the customer did; the owner putting
+    it on an order would be putting words in their mouth. Theirs is CANCELLED_BY_OWNER.
     """
 
 
@@ -65,6 +73,36 @@ class OrderFlags:
 
     is_editable: bool
     is_restorable: bool
+
+
+@dataclass(frozen=True)
+class OrderPriceChange:
+    """A pending order whose line was repriced by a catalog edit.
+
+    Travels by value for the same reason `DeletedOrder` does: the notification runs after
+    the commit, and the price the customer has to be told about — the old one — is exactly
+    what the row no longer holds.
+    """
+
+    order_id: uuid.UUID
+    user_id: uuid.UUID
+    product_name: str
+    old_price_cents: int
+    new_price_cents: int
+    total_cents: int
+
+
+@dataclass(frozen=True)
+class OrderItemDrop:
+    """A pending order that lost a line because the product left the catalog."""
+
+    order_id: uuid.UUID
+    user_id: uuid.UUID
+    product_name: str
+    total_cents: int
+    # The dropped line was the only one: an order with nothing in it is not an order, so
+    # it is cancelled rather than left empty — and that is different news for the customer.
+    is_cancelled: bool
 
 
 @dataclass(frozen=True)
@@ -186,7 +224,12 @@ class OrdersService:
 
         result = await self._session.execute(
             select(OrderCycle.id).where(
-                OrderCycle.id.in_(cycle_ids), OrderCycle.deadline_at > datetime.now(UTC)
+                OrderCycle.id.in_(cycle_ids),
+                OrderCycle.deadline_at > datetime.now(UTC),
+                # Closed early by the owner: the deadline hasn't arrived, but the shopping
+                # list has already been drawn up, and editing an order against it now
+                # would change what the owner is out buying.
+                OrderCycle.status != CycleStatus.CLOSED,
             )
         )
         return set(result.scalars().all())
@@ -202,8 +245,12 @@ class OrdersService:
         return {
             order.id: OrderFlags(
                 is_editable=order.status == OrderStatus.PENDING and order.cycle_id in open_cycles,
-                is_restorable=order.status == OrderStatus.CANCELLED
-                and order.cycle_id in open_cycles,
+                # `order.items` too: an order cancelled because its last product left the
+                # catalog (see `drop_product`) has nothing to come back to, and offering
+                # the button would only earn a 409.
+                is_restorable=order.status in CANCELLED_STATUSES
+                and order.cycle_id in open_cycles
+                and bool(order.items),
             )
             for order in orders
         }
@@ -301,9 +348,10 @@ class OrdersService:
         return order
 
     async def cancel(self, user_id: uuid.UUID, order_id: uuid.UUID) -> Order:
-        """Customer-side "delete": the owner keeps seeing the order, marked CANCELLED."""
+        """Customer-side "delete": the owner keeps seeing the order, marked as cancelled
+        *by the customer* — which is the whole difference from the owner dropping it."""
         order = await self._get_editable(user_id, order_id)
-        order.status = OrderStatus.CANCELLED
+        order.status = OrderStatus.CANCELLED_BY_CUSTOMER
         await self._session.flush()
         return order
 
@@ -315,12 +363,17 @@ class OrdersService:
         as the deadline hasn't passed. The order returns to PENDING exactly as it was:
         cancelling never touched the lines or their snapshot prices.
 
-        The order doesn't record *who* cancelled it, so an owner-side cancellation is
-        restorable too. That's deliberate: the owner's way of making an order stay gone
-        is deleting it, not leaving it in a status the customer can walk out of.
+        An owner-side cancellation is restorable too, even though the order now records
+        who ended it. That's deliberate: the owner's way of making an order stay gone is
+        deleting it, not leaving it in a status the customer can walk out of.
         """
         order = await self.get_for_user(user_id, order_id)
         if not (await self._flags_for(order)).is_restorable:
+            raise OrderNotRestorableError
+        # Nothing left to restore: the cancellation came from `drop_product` taking the
+        # order's last line out of the catalog, and an empty PENDING order is a state
+        # neither the site nor the owner's list can do anything with.
+        if not order.items:
             raise OrderNotRestorableError
 
         order.status = OrderStatus.PENDING
@@ -340,6 +393,107 @@ class OrdersService:
         deleted = DeletedOrder(order_id=order.id, user_id=order.user_id, status=order.status)
         await self._session.delete(order)
         return deleted
+
+    async def _pending_orders_with(self, product_id: uuid.UUID) -> list[Order]:
+        """Orders still awaiting confirmation that contain the product.
+
+        PENDING only, whatever cycle they belong to: past that status the owner has
+        already bought against the list, and a catalog edit made afterwards must not
+        rewrite what was agreed. A subquery rather than a join so `selectinload` still
+        gets whole orders — the totals are recomputed from *all* of their lines.
+        """
+        result = await self._session.execute(
+            select(Order)
+            .options(selectinload(Order.items))
+            .where(
+                Order.status == OrderStatus.PENDING,
+                Order.id.in_(
+                    select(OrderItem.order_id).where(OrderItem.product_id == product_id)
+                ),
+            )
+        )
+        return list(result.scalars().all())
+
+    async def reprice_product(
+        self, product_id: uuid.UUID, price_cents: int
+    ) -> list[OrderPriceChange]:
+        """Pulls a catalog price change through every order still awaiting confirmation.
+
+        Lines are snapshots on purpose (`OrderItem` denormalises name and price at
+        checkout), and that stays true for everything the owner has already confirmed.
+        But while an order is PENDING nothing has been bought yet, and the owner charging one
+        price while the customer's order shows another is the worse inconsistency.
+
+        Returns what each affected customer has to be told; the caller commits first and
+        notifies after (see `app/telegram/notify.py`).
+        """
+        changes: list[OrderPriceChange] = []
+
+        for order in await self._pending_orders_with(product_id):
+            for item in order.items:
+                if item.product_id != product_id or item.product_price_cents == price_cents:
+                    continue
+
+                old_price_cents = item.product_price_cents
+                item.product_price_cents = price_cents
+                self._recalculate_total(order)
+                changes.append(
+                    OrderPriceChange(
+                        order_id=order.id,
+                        user_id=order.user_id,
+                        product_name=item.product_name,
+                        old_price_cents=old_price_cents,
+                        new_price_cents=price_cents,
+                        total_cents=order.total_cents,
+                    )
+                )
+
+        if changes:
+            await self._session.flush()
+        return changes
+
+    async def drop_product(self, product_id: uuid.UUID) -> list[OrderItemDrop]:
+        """Takes a product out of every order still awaiting confirmation.
+
+        Follows a soft-delete in the catalog: the owner isn't going to buy the thing, so
+        leaving the line in would have them reconciling a list they can't fulfil.
+        Confirmed and later orders keep their lines — those are a record of what was
+        agreed, and the product row itself survives the soft-delete to back them.
+
+        An order left with no lines is cancelled rather than kept at zero: an empty order
+        is not something the customer can act on, and the site has no state for it.
+        """
+        drops: list[OrderItemDrop] = []
+
+        for order in await self._pending_orders_with(product_id):
+            dropped = [item for item in order.items if item.product_id == product_id]
+            if not dropped:
+                continue
+
+            for item in dropped:
+                order.items.remove(item)
+
+            self._recalculate_total(order)
+            is_cancelled = not order.items
+            if is_cancelled:
+                # The owner's doing, even though nobody pressed "cancel": they took the
+                # product out of the catalog, and the order went with it.
+                order.status = OrderStatus.CANCELLED_BY_OWNER
+
+            drops.extend(
+                OrderItemDrop(
+                    order_id=order.id,
+                    user_id=order.user_id,
+                    product_name=item.product_name,
+                    total_cents=order.total_cents,
+                    is_cancelled=is_cancelled,
+                )
+                for item in dropped
+            )
+
+        if drops:
+            await self._session.flush()
+        return drops
 
     def _admin_query(
         self, cycle_id: uuid.UUID | None, status: OrderStatus | None
@@ -402,6 +556,9 @@ class OrdersService:
         order = result.scalar_one_or_none()
         if order is None:
             raise OrderNotFoundError
+
+        if new_status is OrderStatus.CANCELLED_BY_CUSTOMER:
+            raise StatusNotAssignableError
 
         changed = order.status != new_status
         order.status = new_status

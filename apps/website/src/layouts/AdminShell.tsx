@@ -10,6 +10,7 @@ import {
   IconTags,
   IconUpload,
   IconCart,
+  IconUser,
 } from 'widgets/svg'
 import { AdminLayout } from 'widgets/templates'
 import { SiteLayout } from '@/layouts/SiteLayout'
@@ -35,6 +36,7 @@ const NAVIGATION: IAdminNavItem[] = [
   { label: 'Импорт', link: { href: '/admin/import' }, icon: <IconUpload /> },
   { label: 'Сборы', link: { href: '/admin/cycles' }, icon: <IconCalendar /> },
   { label: 'Заявки', link: { href: '/admin/orders' }, icon: <IconCart /> },
+  { label: 'Доступ', link: { href: '/admin/users' }, icon: <IconUser /> },
 ]
 
 /**

@@ -198,12 +198,18 @@ async def handle_orders(message: Message) -> None:
         orders, total = await OrdersService(session).list_for_user(
             user.id, page=1, page_size=messages.MAX_LISTED_ORDERS
         )
+        # Only asked for when there are no orders: the button under an empty list is an
+        # invitation to make one, and inviting into a catalog that can't take an order
+        # (no cycle open) is the same mistake `_cart_actions` avoids.
+        cycle = None if orders else await CyclesService(session).get_active_cycle()
 
-    # The link only when there is a list to be a truncation of — under "у вас пока нет
-    # заявок" a button promising the full list would be pointing at the same nothing.
+    # "Все заявки на сайте" only when there is a list to be a truncation of — under
+    # "у вас пока нет заявок" it would point at the same nothing.
     await message.answer(
         messages.my_orders(orders, total),
-        reply_markup=keyboards.orders_link() if orders else None,
+        reply_markup=keyboards.orders_link()
+        if orders
+        else (keyboards.catalog_link() if cycle is not None else None),
     )
 
 
@@ -256,7 +262,32 @@ async def handle_deadline(message: Message) -> None:
     async with async_session() as session:
         cycle = await CyclesService(session).get_active_cycle()
 
-    await message.answer(messages.current_deadline(cycle))
+    # An open cycle is an invitation, not a fact: a deadline with no way into the catalog
+    # leaves someone holding a date and nothing to do about it. Between cycles the
+    # catalog is still worth opening — saving to the wishlist works with no cycle at all —
+    # but the wording there is about the shop, not about ordering, so the button is too.
+    await message.answer(
+        messages.current_deadline(cycle),
+        reply_markup=keyboards.catalog_link() if cycle is not None else keyboards.site_link(),
+    )
+
+
+@router.message(or_f(Command("site"), F.text == messages.MENU_SITE))
+async def handle_site(message: Message) -> None:
+    """The way out to the browser — deliberately a whole reply rather than a keyboard
+    button, because a reply keyboard cannot carry a url and an inline one cannot stay.
+
+    Open to unlinked chats too: the storefront is public, and asking for a phone number
+    first would be a step in front of the one action that needs no account at all.
+    """
+    keyboard = keyboards.site_link()
+    if keyboard is None:
+        # Telegram refuses a button pointing at a non-addressable host (local dev) — and
+        # refuses the whole message, not just the button.
+        await message.answer(messages.site_unavailable(keyboards.site_url()))
+        return
+
+    await message.answer(messages.SITE_PROMPT, reply_markup=keyboard)
 
 
 @router.message(Command("unlink"))

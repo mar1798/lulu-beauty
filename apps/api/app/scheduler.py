@@ -10,6 +10,7 @@ from app.db import async_session
 from app.telegram.notify import (
     notify_carts_rescued,
     notify_cycle_closed,
+    notify_cycle_closed_for_customers,
     notify_cycle_reminders,
 )
 
@@ -53,6 +54,10 @@ async def _run_deadline_sweep() -> None:
                 session, closure.cycle, closure.orders_count, closure.total_cents
             )
             await notify_carts_rescued(session, closure.cycle, closure.rescued_carts)
+            # Cart holders have just been told the same thing with more detail; this is
+            # for the people whose orders are in the cycle and who would otherwise learn
+            # that it ended only by finding their order no longer editable.
+            await notify_cycle_closed_for_customers(session, closure.cycle)
     if closures:
         logger.info("Deadline sweep closed %d cycle(s)", len(closures))
 

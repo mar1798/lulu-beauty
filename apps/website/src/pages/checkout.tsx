@@ -4,14 +4,17 @@ import { mutate as globalMutate } from 'swr'
 import type { IOrder } from 'widgets/types'
 import { Alert, Button, Text } from 'widgets/atoms'
 import { EmptyState } from 'widgets/molecules'
-import { CheckoutForm } from 'widgets/organisms'
+import { CheckoutForm, CheckoutPanel, ProductPicker } from 'widgets/organisms'
 import { ITEM_FORMS, orderNumber } from 'widgets/molecules'
+import { useToast } from 'widgets/contexts'
 import { pluralize } from 'widgets/utils'
 import { CartTemplate } from 'widgets/templates'
 import { SiteLayout } from '@/layouts/SiteLayout'
+import { EditableOrderNotice } from '@/components/EditableOrderNotice'
 import * as styles from '@/styles/layout.css'
 import { useAuth } from '@/contexts/AuthContext'
 import { useCart } from '@/contexts/CartContext'
+import { useProductSearch } from '@/hooks/useProductSearch'
 import { messageForError } from '@/services/apiErrors'
 import { checkout } from '@/services/endpoints/orders'
 import { isOrdersKey } from '@/services/swrKeys'
@@ -22,14 +25,36 @@ import { isOrdersKey } from '@/services/swrKeys'
  * После успеха бэкенд забирает позиции из корзины в заявку, поэтому корзина
  * перезагружается — иначе счётчик в шапке остался бы висеть. Список заявок
  * тоже ревалидируется, чтобы новая заявка была видна на `/orders` сразу.
+ *
+ * Забытый товар добавляется здесь же — тем же `ProductPicker`, что и в уже
+ * поданной заявке. Разница только в получателе: до отправки товар кладётся в
+ * корзину (заявки ещё нет), после — прямо в заявку (`/orders/[id]`).
  */
 const CheckoutPage: React.FC = () => {
   const { user, isLoading: isAuthLoading } = useAuth()
-  const { cart, isLoading, reload } = useCart()
+  const { cart, isLoading, reload, addItem } = useCart()
+  const { notify } = useToast()
+  const search = useProductSearch()
 
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [order, setOrder] = useState<IOrder | null>(null)
+  /** Идёт добавление: подборщик блокируется целиком, чтобы не задвоить товар. */
+  const [isAdding, setIsAdding] = useState(false)
+
+  const handleAdd = async (productId: string): Promise<void> => {
+    setIsAdding(true)
+
+    const result = await addItem(productId)
+
+    setIsAdding(false)
+
+    notify(
+      result.ok
+        ? { tone: 'success', title: 'Товар добавлен' }
+        : { tone: 'danger', title: 'Не получилось', description: result.error ?? undefined }
+    )
+  }
 
   const handleSubmit = async (note: string | null): Promise<void> => {
     setIsSubmitting(true)
@@ -65,9 +90,11 @@ const CheckoutPage: React.FC = () => {
           </Text>
 
           <div className={styles.actions}>
-            <Button link={{ href: `/orders/${order.id}` }}>Открыть заявку</Button>
+            <Button link={{ href: `/orders/${order.id}` }} isFullWidth="mobile">
+              Открыть заявку
+            </Button>
 
-            <Button link={{ href: '/catalog' }} variant="secondary">
+            <Button link={{ href: '/catalog' }} variant="secondary" isFullWidth="mobile">
               Вернуться в каталог
             </Button>
           </div>
@@ -82,7 +109,11 @@ const CheckoutPage: React.FC = () => {
         <EmptyState
           title="Нужен вход"
           description="Заявка оформляется на аккаунт — в привязанный к нему чат придёт подтверждение."
-          action={<Button link={{ href: '/login' }}>Войти</Button>}
+          action={
+            <Button link={{ href: '/login' }} isFullWidth="mobile">
+              Войти
+            </Button>
+          }
         />
       )
     }
@@ -92,7 +123,11 @@ const CheckoutPage: React.FC = () => {
         <EmptyState
           title="Оформлять нечего"
           description="Соберите корзину — и возвращайтесь сюда."
-          action={<Button link={{ href: '/catalog' }}>В каталог</Button>}
+          action={
+            <Button link={{ href: '/catalog' }} isFullWidth="mobile">
+              В каталог
+            </Button>
+          }
         />
       )
     }
@@ -106,21 +141,53 @@ const CheckoutPage: React.FC = () => {
     }
 
     /*
-      Пока корзина грузится, форма рисуется скелетоном в своей же раскладке:
-      спиннер сменился бы формой другой высоты, и страница дёрнулась бы.
+      Пока корзина грузится, и состав, и форма рисуются скелетонами в своих же
+      раскладках: спиннер сменился бы содержимым другой высоты, и страница
+      дёрнулась бы.
     */
     return (
-      <CheckoutForm
-        totalCents={cart?.totalCents ?? 0}
-        itemCount={cart?.items.reduce((sum, item) => sum + item.quantity, 0) ?? 0}
-        deadlineAt={cart?.cycleDeadlineAt ?? null}
-        isLoading={isCartLoading}
-        isSubmitting={isSubmitting}
-        error={error}
-        onSubmit={note => {
-          void handleSubmit(note)
-        }}
-      />
+      <>
+        {/* Врезка над составом: решение «добавить в открытую заявку» принимают
+            до отправки, а не после. */}
+        <EditableOrderNotice />
+
+        <CheckoutPanel
+          cart={cart}
+          buildProductHref={slug => `/catalog/${slug}`}
+          cartHref="/cart"
+          isLoading={isCartLoading}
+          addItem={
+            <ProductPicker
+              query={search.query}
+              onQueryChange={search.setQuery}
+              products={search.products}
+              isSearching={search.isSearching}
+              error={search.error}
+              addedProductIds={cart?.items.map(item => item.productId) ?? []}
+              addedLabel="Уже в корзине"
+              onAdd={productId => {
+                void handleAdd(productId)
+              }}
+              isBusy={isAdding || isSubmitting}
+              label="Проверьте — возможно, вы что-то забыли"
+              hint="Найденный товар попадёт в корзину и уйдёт в эту же заявку."
+            />
+          }
+          form={
+            <CheckoutForm
+              totalCents={cart?.totalCents ?? 0}
+              itemCount={cart?.items.reduce((sum, item) => sum + item.quantity, 0) ?? 0}
+              deadlineAt={cart?.cycleDeadlineAt ?? null}
+              isLoading={isCartLoading}
+              isSubmitting={isSubmitting}
+              error={error}
+              onSubmit={note => {
+                void handleSubmit(note)
+              }}
+            />
+          }
+        />
+      </>
     )
   }
 

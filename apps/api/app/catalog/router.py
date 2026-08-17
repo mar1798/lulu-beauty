@@ -1,6 +1,16 @@
 import uuid
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    Query,
+    UploadFile,
+    status,
+)
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import CurrentUser, require_admin
@@ -26,7 +36,9 @@ from app.catalog.service import (
 )
 from app.common.schemas import PageResponse
 from app.db import get_session
+from app.orders.service import OrdersService
 from app.storage.service import storage_service
+from app.telegram.notify import notify_orders_item_dropped, notify_orders_repriced
 
 router = APIRouter(tags=["catalog"])
 
@@ -212,6 +224,7 @@ async def create_product(
             body.price_cents,
             body.category_id,
             body.in_stock,
+            body.volume_ml,
         )
     except SlugAlreadyExistsError as error:
         raise HTTPException(status.HTTP_409_CONFLICT, "slug_already_exists") from error
@@ -224,6 +237,7 @@ async def create_product(
 async def update_product(
     product_id: uuid.UUID,
     body: ProductUpdateRequest,
+    background_tasks: BackgroundTasks,
     session: AsyncSession = Depends(get_session),
     _admin: CurrentUser = Depends(require_admin),
 ) -> ProductResponse:
@@ -235,13 +249,25 @@ async def update_product(
     except SlugAlreadyExistsError as error:
         raise HTTPException(status.HTTP_409_CONFLICT, "slug_already_exists") from error
 
+    # A price edit is not only a catalog edit: orders still awaiting confirmation quote
+    # this product, and leaving them on the old price means the owner charges one number
+    # while the customer sees another. Only PENDING ones move — see `reprice_product`.
+    changes = (
+        await OrdersService(session).reprice_product(product.id, product.price_cents)
+        if "price_cents" in updates
+        else []
+    )
+
+    response = product_response(product)
     await session.commit()
-    return product_response(product)
+    background_tasks.add_task(notify_orders_repriced, changes)
+    return response
 
 
 @router.delete("/admin/products/{product_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_product(
     product_id: uuid.UUID,
+    background_tasks: BackgroundTasks,
     session: AsyncSession = Depends(get_session),
     _admin: CurrentUser = Depends(require_admin),
 ) -> None:
@@ -250,7 +276,13 @@ async def delete_product(
     except ProductNotFoundError as error:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "product_not_found") from error
 
+    # The owner isn't going to buy a discontinued product, so it leaves the orders that
+    # are still waiting for their answer. Confirmed and later ones keep it: those are a
+    # record of what was agreed (see `drop_product`).
+    drops = await OrdersService(session).drop_product(product_id)
+
     await session.commit()
+    background_tasks.add_task(notify_orders_item_dropped, drops)
 
 
 @router.post("/admin/products/{product_id}/restore", response_model=ProductResponse)

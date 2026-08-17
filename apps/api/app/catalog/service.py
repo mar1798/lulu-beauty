@@ -57,9 +57,11 @@ class CategoryService:
         )
         return list(result.scalars().all())
 
-    async def create(self, name: str, slug: str, sort_order: int) -> Category:
+    async def create(self, name: str, slug: str, sort_order: int | None = None) -> Category:
         if await self._slug_taken(slug):
             raise SlugAlreadyExistsError
+        if sort_order is None:
+            sort_order = await self._next_sort_order()
         category = Category(name=name, slug=slug, sort_order=sort_order)
         async with _slug_conflict_as_error(self._session):
             self._session.add(category)
@@ -86,6 +88,16 @@ class CategoryService:
         if category is None:
             raise CategoryNotFoundError
         await self._session.delete(category)
+
+    async def _next_sort_order(self) -> int:
+        """One past the last category — the same rule the xlsx import follows.
+
+        Zero would have been simpler and wrong: every category created without a number
+        would share it, and their order between themselves would then be whatever the
+        database felt like on the day.
+        """
+        highest = await self._session.scalar(select(func.max(Category.sort_order)))
+        return 0 if highest is None else highest + 1
 
     async def _slug_taken(self, slug: str) -> bool:
         result = await self._session.execute(select(Category.id).where(Category.slug == slug))
@@ -249,6 +261,7 @@ class ProductService:
         price_cents: int,
         category_id: uuid.UUID | None,
         in_stock: bool,
+        volume_ml: int | None = None,
     ) -> Product:
         if await self._slug_taken(slug):
             raise SlugAlreadyExistsError
@@ -258,6 +271,7 @@ class ProductService:
             description=description,
             brand=await self.canonical_brand(brand),
             price_cents=price_cents,
+            volume_ml=volume_ml,
             category_id=category_id,
             in_stock=in_stock,
         )

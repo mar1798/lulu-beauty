@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { OrderStatusBadge, orderStatusLabel } from '.'
+import { ORDER_STATUSES, OrderStatusBadge, orderStatusLabel } from '.'
 import { feedOrderStatusBadge } from '../../stories/feed'
 import type { OrderStatus } from '../../types'
 import { renderWidget } from '../../testing/render'
@@ -10,7 +10,7 @@ import { renderWidget } from '../../testing/render'
  * пропущенный статус выглядел бы пустой меткой, а не ошибкой.
  */
 
-const ALL_STATUSES: OrderStatus[] = ['PENDING', 'CONFIRMED', 'READY', 'COMPLETED', 'CANCELLED']
+const ALL_STATUSES: OrderStatus[] = ORDER_STATUSES
 
 describe('OrderStatusBadge', () => {
   it('рендерится с фикстурой из feed', () => {

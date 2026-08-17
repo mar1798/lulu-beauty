@@ -51,7 +51,10 @@ export const Image: React.FC<IBasicStyling & IImageComponentProps> = ({
       priority={priority}
       onError={onError}
       {...(useFill
-        ? { fill: true, style: { objectFit: 'cover' as const } }
+        ? // `contain`, а не `cover`: в режиме `fill` тут всегда фотография товара, и
+          // обрезать её по краям коробки — значит терять как раз то, по чему товар
+          // узнают. Пустоту по бокам закрывает фон родителя.
+          { fill: true, style: { objectFit: 'contain' as const } }
         : { width: image.width, height: image.height })}
     />
   )

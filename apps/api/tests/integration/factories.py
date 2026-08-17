@@ -12,12 +12,13 @@ async def make_user(
     session: AsyncSession,
     *,
     phone: str | None = None,
+    name: str = "Test User",
     role: Role = Role.CUSTOMER,
     telegram_chat_id: int | None = None,
 ) -> User:
     user = User(
         phone=phone or f"+1{uuid.uuid4().int % 10**10:010d}",
-        name="Test User",
+        name=name,
         role=role,
         telegram_chat_id=telegram_chat_id,
     )

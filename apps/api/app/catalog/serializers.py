@@ -23,6 +23,7 @@ def product_response(product: Product) -> ProductResponse:
         description=product.description,
         brand=product.brand,
         price_cents=product.price_cents,
+        volume_ml=product.volume_ml,
         category_id=product.category_id,
         in_stock=product.in_stock,
         deleted_at=product.deleted_at,

@@ -1,4 +1,9 @@
-"""Upserts the single ADMIN owner account from OWNER_* env vars.
+"""Upserts the first ADMIN owner account from OWNER_* env vars.
+
+The first, not the only one: further owners are granted in the admin panel
+(`PATCH /admin/users/{id}/role`), and every notification meant for "the owner" already
+goes to every ADMIN (`telegram/recipients.get_owners`). This script exists to bootstrap
+the very first one, who has nobody to be granted access by.
 
 No credentials to seed: the owner signs in through the bot like everyone else, so the
 one thing this cannot do is bind their Telegram — that happens the first time they share

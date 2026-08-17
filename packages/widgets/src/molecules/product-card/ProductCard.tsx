@@ -7,6 +7,7 @@ import { AppLink } from '../../atoms/app-link'
 import { Badge } from '../../atoms/badge'
 import { Price } from '../../atoms/price'
 import { Text } from '../../atoms/text'
+import { formatVolume } from '../../utils/volume'
 import * as styles from './ProductCard.css'
 
 /**
@@ -25,6 +26,19 @@ export const primaryImage = (images: IProductImage[]): IProductImage | null =>
 
 const DEFAULT_SIZES = { fb: '50vw', sm: '50vw', lg: '25vw' } as const
 
+/**
+ * Потолок длины метки под названием.
+ *
+ * Обрезка по символам, а не по ширине: метки стоят в одной строке, и та, что
+ * длиннее остальных вместе взятых (случается у категорий из импорта), иначе
+ * вытеснила бы их на вторую строку целиком. Значение подобрано под самую
+ * узкую колонку сетки — две карточки в ряд на телефоне.
+ */
+const TAG_MAX_CHARS = 18
+
+const clampTag = (value: string): string =>
+  value.length > TAG_MAX_CHARS ? `${value.slice(0, TAG_MAX_CHARS - 1).trimEnd()}…` : value
+
 export const ProductCard: FC<IProductCardProps & IBasicStyling> = ({
   product,
   href,
@@ -41,11 +55,18 @@ export const ProductCard: FC<IProductCardProps & IBasicStyling> = ({
       ? categoryName
       : null
   /*
-    Марка и категория — одной приглушённой строкой под названием, а не двумя
-    бейджами: в референсе под заголовком идёт ровно одна вторичная подпись, и
-    на узкой мобильной колонке пара бейджей всё равно переносилась на две строки.
+    Марка, категория и объём — приглушённые метки под названием. Каждая своим
+    элементом, а не одной склеенной строкой: склеенная обрезалась целиком по
+    ширине колонки, и от «Round lab · Cleanser · 1000 мл» на телефоне
+    оставалось «Round lab · Clea…» — категория и объём пропадали вместе.
+    Теперь длинная метка укорачивается сама (`clampTag`), а не съедает соседние,
+    и метки переносятся на вторую строку.
+
+    Объём последним — он уточняет товар, а не называет его.
   */
-  const subtitle = [brand, category].filter(value => value !== null).join(' · ')
+  const tags = [brand, category, formatVolume(product.volumeMl)].filter(
+    (value): value is string => value !== null
+  )
 
   return (
     <article className={clsx(styles.container, className)}>
@@ -85,10 +106,14 @@ export const ProductCard: FC<IProductCardProps & IBasicStyling> = ({
             {product.name}
           </Text>
 
-          {subtitle !== '' && (
-            <Text as="span" size="xs" tone="muted" clamp={1}>
-              {subtitle}
-            </Text>
+          {tags.length > 0 && (
+            <span className={styles.tags}>
+              {tags.map(tag => (
+                <Text key={tag} as="span" size="xs" tone="muted">
+                  {clampTag(tag)}
+                </Text>
+              ))}
+            </span>
           )}
         </AppLink>
 

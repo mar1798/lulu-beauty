@@ -16,6 +16,7 @@ has nothing useful to do with the failure beyond what these logs already record.
 import logging
 import uuid
 from collections.abc import Sequence
+from datetime import datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -26,6 +27,7 @@ from app.cycles.models import OrderCycle
 from app.cycles.scheduler_service import CartRescue, CycleReminder
 from app.db import async_session
 from app.orders.models import Order, OrderStatus
+from app.orders.service import OrderItemDrop, OrderPriceChange
 from app.telegram import messages, recipients
 from app.telegram.client import notifications_service
 from app.telegram.service import CartRescueNotice
@@ -95,6 +97,85 @@ async def notify_order_deleted(
         logger.exception("Failed to announce deletion of order %s", order_id)
 
 
+async def notify_orders_repriced(changes: Sequence[OrderPriceChange]) -> None:
+    """Tells each customer that a line in their pending order costs something else now.
+
+    By value, like the deletion notice: the old price is what the repriced row no longer
+    holds, and this runs after the commit that overwrote it.
+    """
+    await _fan_out_order_notices(
+        [
+            (
+                change.user_id,
+                messages.order_item_repriced(
+                    change.order_id,
+                    change.product_name,
+                    change.old_price_cents,
+                    change.new_price_cents,
+                    change.total_cents,
+                ),
+            )
+            for change in changes
+        ],
+        "repricing",
+    )
+
+
+async def notify_orders_item_dropped(drops: Sequence[OrderItemDrop]) -> None:
+    """Tells each customer that a product left the catalog and their order with it."""
+    await _fan_out_order_notices(
+        [
+            (
+                drop.user_id,
+                messages.order_cancelled_last_item_removed(drop.order_id, drop.product_name)
+                if drop.is_cancelled
+                else messages.order_item_removed(
+                    drop.order_id, drop.product_name, drop.total_cents
+                ),
+            )
+            for drop in drops
+        ],
+        "discontinuation",
+    )
+
+
+async def _fan_out_order_notices(
+    notices: Sequence[tuple[uuid.UUID, str]], subject: str
+) -> None:
+    """Delivers already-worded per-order news, throttled, clearing dead bindings.
+
+    Shared by the catalog-driven notifications because they differ only in wording: both
+    follow one committed edit that touched an unbounded number of pending orders.
+    """
+    if not notices:
+        return
+
+    try:
+        async with async_session() as session:
+            users = await recipients.get_users(session, [user_id for user_id, _ in notices])
+            result = await notifications_service.send_order_notices(
+                [
+                    (users[user_id], message)
+                    for user_id, message in notices
+                    # Deleted between the catalog edit and this task running.
+                    if user_id in users
+                ]
+            )
+
+            cleared = await recipients.clear_stale_bindings(session, result.blocked_chat_ids)
+            await session.commit()
+
+            logger.info(
+                "Catalog %s: %d/%d order notice(s) delivered; %d stale binding(s) cleared",
+                subject,
+                result.sent,
+                len(notices),
+                cleared,
+            )
+    except Exception:  # noqa: BLE001 - the orders are already changed; see module docstring
+        logger.exception("Failed to announce a catalog %s to affected orders", subject)
+
+
 async def _load_order(session: AsyncSession, order_id: uuid.UUID) -> Order | None:
     """Items eagerly, always: the messages count them, and a lazy load on an async
     session raises MissingGreenlet rather than returning the wrong number."""
@@ -132,6 +213,72 @@ async def notify_cycle_opened(cycle_id: uuid.UUID) -> None:
             )
     except Exception:  # noqa: BLE001 - the cycle is already committed; see module docstring
         logger.exception("Failed to announce cycle %s", cycle_id)
+
+
+async def notify_cycle_deadline_changed(
+    cycle_id: uuid.UUID, previous_deadline_at: datetime
+) -> None:
+    """Announces a moved deadline to everyone already in the cycle.
+
+    Takes the old deadline by value — the row now holds the new one, and the message is
+    about the difference. Its own session and its own background task, like the opening
+    announcement: this is a throttled fan-out, and the owner's PATCH must not wait on it.
+    """
+    try:
+        async with async_session() as session:
+            cycle = await session.get(OrderCycle, cycle_id)
+            if cycle is None:  # deleted between the commit and this task running
+                return
+
+            audience = await recipients.get_cycle_participants(session, cycle_id)
+            if not audience:
+                return
+
+            result = await notifications_service.send_cycle_deadline_changed(
+                audience, cycle, previous_deadline_at
+            )
+
+            cleared = await recipients.clear_stale_bindings(session, result.blocked_chat_ids)
+            await session.commit()
+
+            logger.info(
+                "Cycle %s deadline change announced to %d/%d chat(s); %d stale binding(s) cleared",
+                cycle_id,
+                result.sent,
+                len(audience),
+                cleared,
+            )
+    except Exception:  # noqa: BLE001 - the cycle is already changed; see module docstring
+        logger.exception("Failed to announce the new deadline of cycle %s", cycle_id)
+
+
+async def notify_cycle_closed_for_customers(session: AsyncSession, cycle: OrderCycle) -> None:
+    """Tells the customers who ordered in a cycle that it has closed.
+
+    Runs in the caller's session, like the other closing notices (the owner's tally and
+    the cart rescue), so that all three go out after the one commit that closed the cycle.
+    Cart holders are excluded here: `notify_carts_rescued` is telling them the same news
+    plus where their products went.
+    """
+    try:
+        audience = await recipients.get_cycle_participants(session, cycle.id, with_carts=False)
+        if not audience:
+            return
+
+        result = await notifications_service.send_cycle_closed_for_customers(audience, cycle)
+
+        cleared = await recipients.clear_stale_bindings(session, result.blocked_chat_ids)
+        await session.commit()
+
+        logger.info(
+            "Cycle %s closing announced to %d/%d customer chat(s); %d stale binding(s) cleared",
+            cycle.id,
+            result.sent,
+            len(audience),
+            cleared,
+        )
+    except Exception:  # noqa: BLE001 - the cycle is already closed; see module docstring
+        logger.exception("Failed to announce the closing of cycle %s to customers", cycle.id)
 
 
 async def notify_cycle_reminders(

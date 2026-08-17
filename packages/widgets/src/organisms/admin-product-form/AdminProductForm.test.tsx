@@ -49,6 +49,50 @@ describe('AdminProductForm', () => {
     )
   })
 
+  it('называет предел, когда объём больше допустимого', async () => {
+    // Раньше «50000» разбиралось как «набрано не число» и получало текст
+    // «целым числом: например, 50» — про опечатку, которой не было.
+    const onSubmit = vi.fn()
+    const feed = feedAdminProductForm()
+
+    renderWidget(<AdminProductForm {...feed} onSubmit={onSubmit} />)
+
+    const volume = screen.getByRole('textbox', { name: 'Объём, мл' })
+    await userEvent.clear(volume)
+    await userEvent.type(volume, '50000')
+    await userEvent.click(screen.getByRole('button', { name: 'Сохранить' }))
+
+    expect(onSubmit).not.toHaveBeenCalled()
+    expect(screen.getByRole('alert')).toHaveTextContent('Объём не больше 10 000 мл.')
+  })
+
+  it('не даёт набрать в объём больше пяти знаков', async () => {
+    const feed = feedAdminProductForm()
+
+    renderWidget(<AdminProductForm {...feed} />)
+
+    const volume = screen.getByRole('textbox', { name: 'Объём, мл' })
+    await userEvent.clear(volume)
+    await userEvent.type(volume, '1234567')
+
+    expect(volume).toHaveValue('12345')
+  })
+
+  it('не сохраняет цену выше потолка колонки', async () => {
+    const onSubmit = vi.fn()
+    const feed = feedAdminProductForm()
+
+    renderWidget(<AdminProductForm {...feed} onSubmit={onSubmit} />)
+
+    const price = screen.getByRole('textbox', { name: 'Цена, сом' })
+    await userEvent.clear(price)
+    await userEvent.type(price, '30000000')
+    await userEvent.click(screen.getByRole('button', { name: 'Сохранить' }))
+
+    expect(onSubmit).not.toHaveBeenCalled()
+    expect(screen.getByRole('alert')).toHaveTextContent('Цена не больше 20 000 000 сом.')
+  })
+
   it('не сохраняет товар без производителя', async () => {
     // Бренд обязателен: без него товар не находится фильтром каталога.
     const onSubmit = vi.fn()

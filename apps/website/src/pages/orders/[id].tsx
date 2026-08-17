@@ -172,7 +172,11 @@ const OrderPage: React.FC = () => {
         <EmptyState
           title="Заявка видна после входа"
           description="Войдите тем же номером, с которого её оформляли."
-          action={<Button link={{ href: '/login' }}>Войти</Button>}
+          action={
+            <Button link={{ href: '/login' }} isFullWidth="mobile">
+              Войти
+            </Button>
+          }
         />
       )
     }
@@ -187,7 +191,11 @@ const OrderPage: React.FC = () => {
         <EmptyState
           title="Заявка не найдена"
           description="Возможно, ссылка устарела или заявка оформлена на другой аккаунт."
-          action={<Button link={{ href: '/orders' }}>К моим заявкам</Button>}
+          action={
+            <Button link={{ href: '/orders' }} isFullWidth="mobile">
+              К моим заявкам
+            </Button>
+          }
         />
       )
     }

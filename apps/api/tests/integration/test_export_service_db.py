@@ -85,12 +85,12 @@ async def test_export_rows_can_be_scoped_to_a_cycle_and_a_status(
     assert [row.quantity for row in scoped] == [2]
 
     # Отменённая заявка не должна попадать в лист закупки.
-    newer_order.status = OrderStatus.CANCELLED
+    newer_order.status = OrderStatus.CANCELLED_BY_CUSTOMER
     await db_session.flush()
 
     pending = await service._export_rows(None, OrderStatus.PENDING)
     assert [row.quantity for row in pending] == [5]
-    cancelled = await service._export_rows(None, OrderStatus.CANCELLED)
+    cancelled = await service._export_rows(None, OrderStatus.CANCELLED_BY_CUSTOMER)
     assert [row.quantity for row in cancelled] == [2]
 
 

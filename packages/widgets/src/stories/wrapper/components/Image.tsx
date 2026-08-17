@@ -11,7 +11,8 @@ const fillStyle: CSSProperties = {
   inset: 0,
   width: '100%',
   height: '100%',
-  objectFit: 'cover',
+  // Как и в `apps/website/src/components/Image.tsx`: картинка товара не обрезается.
+  objectFit: 'contain',
 }
 
 /**

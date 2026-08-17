@@ -2,12 +2,13 @@ import React, { useState } from 'react'
 import useSWR, { mutate as globalMutate } from 'swr'
 import type { IAdminOrder, IOrderCycle, ISelectOption, OrderStatus } from 'widgets/types'
 import { Alert, Button, Select } from 'widgets/atoms'
-import { EmptyState, Pagination, orderStatusLabel } from 'widgets/molecules'
+import { EmptyState, ORDER_STATUSES, Pagination, orderStatusLabel } from 'widgets/molecules'
 import { AdminOrdersTable } from 'widgets/organisms'
 import { useConfirm, useToast } from 'widgets/contexts'
 import { formatDate } from 'widgets/utils'
 import { IconDownload } from 'widgets/svg'
 import { AdminShell } from '@/layouts/AdminShell'
+import { useActiveCycle } from '@/hooks/useActiveCycle'
 import { messageForError } from '@/services/apiErrors'
 import {
   deleteOrder,
@@ -38,34 +39,78 @@ const ALL = ''
 
 const STATUS_OPTIONS: ISelectOption[] = [
   { value: ALL, label: 'Любой статус' },
-  ...(['PENDING', 'CONFIRMED', 'READY', 'COMPLETED', 'CANCELLED'] as OrderStatus[]).map(
-    status => ({ value: status, label: orderStatusLabel(status) })
-  ),
+  // Обе отмены — отдельными пунктами: владельцу нужно уметь отобрать именно те,
+  // от которых отказался покупатель.
+  ...ORDER_STATUSES.map(status => ({ value: status, label: orderStatusLabel(status) })),
 ]
 
 const cycleLabel = (cycle: IOrderCycle): string =>
   `${cycle.label ?? 'Без подписи'} — ${formatDate(cycle.deadlineAt)}`
 
+/**
+ * Какой сбор стоит в фильтре при первом открытии страницы: открытый сейчас, а
+ * если открытого нет — последний закрытый. «Все сборы» остаются доступны, но
+ * только явным выбором: по умолчанию владельцу нужен текущий сбор, а не вся
+ * история заявок вперемешку.
+ *
+ * `list` на бэкенде отдаёт сборы по возрастанию дедлайна, поэтому последний
+ * закрытый — последний в отфильтрованном списке.
+ */
+const defaultCycleId = (cycles: IOrderCycle[], active: IOrderCycle | null): string => {
+  if (active !== null) {
+    return active.id
+  }
+
+  return cycles.filter(cycle => cycle.status === 'CLOSED').at(-1)?.id ?? ALL
+}
+
 const AdminOrdersPage: React.FC = () => {
   const { notify } = useToast()
   const { confirm } = useConfirm()
 
-  const [cycleId, setCycleId] = useState(ALL)
+  /*
+    Выбор владельца, а не действующий фильтр: пока он ничего не выбрал (`null`),
+    фильтр берётся по умолчанию — текущим сбором (см. `cycleId` ниже). Явно
+    выбранные «Все сборы» — это `ALL`, и умолчание его уже не перебьёт.
+  */
+  const [chosenCycleId, setChosenCycleId] = useState<string | null>(null)
   const [status, setStatus] = useState(ALL)
   const [page, setPage] = useState(1)
   const [busyId, setBusyId] = useState<string | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
   const [isExporting, setIsExporting] = useState(false)
 
+  // Общий ключ со «Сборами» (`/admin/cycles`): список в фильтре не отстаёт от календаря.
+  const { data: cycles } = useSWR(cyclesKey, () => listCycles())
+
+  /*
+    Открытый сбор берём у той же ручки, что и витрина, а не вычисляем по
+    статусу из списка: статус переставляет планировщик, и только что созданный
+    сбор ещё числится `UPCOMING`, хотя приём заявок по нему уже идёт.
+  */
+  const { cycle: activeCycle, isLoading: isActiveCycleLoading } = useActiveCycle()
+
+  /*
+    Действующий фильтр: выбор владельца, а до него — умолчание. `null` значит
+    «ещё не знаем»: списки не приехали, и запрашивать заявки не за что.
+  */
+  const cycleId =
+    chosenCycleId ??
+    (cycles === undefined || isActiveCycleLoading ? null : defaultCycleId(cycles, activeCycle))
+
+  /** Фильтр в том виде, в каком его понимает API: `undefined` — «все сборы». */
+  const cycleFilter = cycleId === null || cycleId === ALL ? undefined : cycleId
+
   const {
     data,
     error: fetchError,
     mutate,
   } = useSWR(
-    adminOrdersKey(cycleId, status, page),
+    // Пока сбор не выбран, запроса нет: иначе первая выдача пришла бы за все сборы.
+    cycleId === null ? null : adminOrdersKey(cycleId, status, page),
     () =>
       listAdminOrders({
-        cycleId: cycleId === ALL ? undefined : cycleId,
+        cycleId: cycleFilter,
         status: status === ALL ? undefined : (status as OrderStatus),
         page,
         pageSize: PAGE_SIZE,
@@ -80,9 +125,6 @@ const AdminOrdersPage: React.FC = () => {
     `keepPreviousData`, из-за чего таблица мигала скелетоном на каждый клик.
   */
   const isFirstLoad = data === undefined
-
-  // Общий ключ со «Сборами» (`/admin/cycles`): список в фильтре не отстаёт от календаря.
-  const { data: cycles } = useSWR(cyclesKey, () => listCycles())
 
   const error = fetchError === undefined ? null : messageForError(fetchError, 'admin.orders')
 
@@ -142,7 +184,7 @@ const AdminOrdersPage: React.FC = () => {
 
     try {
       const { blob, filename } = await downloadOrdersExport({
-        cycleId: cycleId === ALL ? undefined : cycleId,
+        cycleId: cycleFilter,
         status: status === ALL ? undefined : (status as OrderStatus),
       })
       const url = URL.createObjectURL(blob)
@@ -190,10 +232,10 @@ const AdminOrdersPage: React.FC = () => {
       <div className={styles.filtersWide}>
         <Select
           label="Сбор"
-          value={cycleId}
+          value={cycleId ?? ALL}
           options={cycleOptions}
           onChange={next => {
-            setCycleId(next)
+            setChosenCycleId(next)
             setPage(1)
           }}
         />

@@ -1,5 +1,6 @@
 import type {
   IAdminOrder,
+  IAdminUser,
   ICategory,
   IImportSummary,
   IOrderCycle,
@@ -7,6 +8,7 @@ import type {
   IProduct,
   IProductImage,
   OrderStatus,
+  Role,
 } from 'widgets/types'
 import { api } from '../api'
 
@@ -38,6 +40,32 @@ export const updateCategory = (
 
 export const deleteCategory = (categoryId: string): Promise<void> =>
   api.remove(`/admin/categories/${encodeURIComponent(categoryId)}`)
+
+// --- Аккаунты и роли ---
+
+export interface IAdminUserListParams {
+  q?: string
+  page?: number
+  pageSize?: number
+}
+
+/**
+ * Аккаунты магазина. Владельцы идут первыми — за этим список и открывают;
+ * дальше по дате регистрации, новые сверху.
+ */
+export const listAdminUsers = (params: IAdminUserListParams = {}): Promise<IPage<IAdminUser>> =>
+  api.get('/admin/users', {
+    query: { q: params.q, page: params.page, pageSize: params.pageSize },
+  })
+
+/**
+ * Выдать или снять доступ в админку. Владельцев может быть сколько угодно:
+ * уведомления бота и так уходят каждому `ADMIN`, а сид заводит только первого.
+ *
+ * Свою роль изменить нельзя — бэкенд ответит `own_role_change`.
+ */
+export const updateUserRole = (userId: string, role: Role): Promise<IAdminUser> =>
+  api.patch(`/admin/users/${encodeURIComponent(userId)}/role`, { body: { role } })
 
 // --- Товары ---
 
@@ -71,6 +99,8 @@ export interface IProductInput {
   /** Обязателен: бэкенд не примет ни создание, ни изменение товара без бренда. */
   brand: string
   priceCents: number
+  /** Объём в миллилитрах; `null` стирает его у товара, где он был. */
+  volumeMl?: number | null
   categoryId?: string | null
   inStock?: boolean
 }
@@ -165,6 +195,14 @@ export const updateCycle = (
   cycleId: string,
   input: Partial<ICycleInput>
 ): Promise<IOrderCycle> => api.patch(`/admin/cycles/${encodeURIComponent(cycleId)}`, { body: input })
+
+/**
+ * Досрочное закрытие сбора. Делает ровно то же, что дедлайн: перестаёт принимать
+ * заявки, переносит неоформленные корзины в избранное и шлёт владельцу итог, —
+ * поэтому и живёт отдельной ручкой, а не `PATCH` со статусом.
+ */
+export const closeCycle = (cycleId: string): Promise<IOrderCycle> =>
+  api.post(`/admin/cycles/${encodeURIComponent(cycleId)}/close`)
 
 export const deleteCycle = (cycleId: string): Promise<void> =>
   api.remove(`/admin/cycles/${encodeURIComponent(cycleId)}`)

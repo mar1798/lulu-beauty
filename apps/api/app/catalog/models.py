@@ -46,6 +46,9 @@ class Product(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     description: Mapped[str | None] = mapped_column(Text)
     brand: Mapped[str | None] = mapped_column(String(255))
     price_cents: Mapped[int] = mapped_column(Integer)
+    # Millilitres, optional: half the catalog is bottles where 50 vs 500 is the whole
+    # difference, and the other half (pads, sheet masks) has no volume to speak of.
+    volume_ml: Mapped[int | None] = mapped_column(Integer)
     category_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("categories.id", ondelete="SET NULL"), index=True
     )

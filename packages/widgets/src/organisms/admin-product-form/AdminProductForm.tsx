@@ -53,8 +53,26 @@ import * as styles from './AdminProductForm.css'
  * (см. `IAdminProductValues.image`).
  */
 
+/*
+  Пределы полей повторяют схемы бэкенда (`apps/api/app/catalog/schemas.py`,
+  `app/common/limits.py`). Держать их здесь — не дублирование ради дублирования:
+  без них форма отправляет заведомо отказное и показывает общий текст ответа
+  вместо ошибки у того поля, в котором опечатка.
+*/
+
 /** Столько же, сколько отводит колонка на бэкенде. */
 const BRAND_MAX_LENGTH = 255
+const NAME_MAX_LENGTH = 255
+const SLUG_MAX_LENGTH = 255
+
+/** `MAX_VOLUME_ML` бэкенда: пятилитровой косметики не бывает. */
+const MAX_VOLUME_ML = 10_000
+
+/** Длина ввода объёма — ровно под потолок: «10000» это пять знаков. */
+const VOLUME_MAX_LENGTH = String(MAX_VOLUME_ML).length
+
+/** `MAX_PRICE_CENTS` бэкенда, в сомах: дальше не проходит 32-битная колонка. */
+const MAX_PRICE = 20_000_000
 
 const IMAGE_MAX_BYTES = 5 * 1024 * 1024
 const IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp']
@@ -63,6 +81,24 @@ const CENTS = 100
 
 const priceToInput = (priceCents: number): string =>
   priceCents % CENTS === 0 ? String(priceCents / CENTS) : (priceCents / CENTS).toFixed(2)
+
+/**
+ * Объём в миллилитрах: пусто — «не указан», а не ноль. `undefined` — набрано что-то,
+ * что объёмом быть не может, и сохранять это нельзя.
+ *
+ * Число длиннее потолка разбирается как число, а не отбрасывается в `undefined`:
+ * «50000» — не «набрано не то», а «столько не бывает», и сказать об этом нужно
+ * по-разному.
+ */
+const parseVolume = (value: string): number | null | undefined => {
+  const normalized = value.trim()
+
+  if (normalized === '') {
+    return null
+  }
+
+  return /^\d+$/.test(normalized) && Number(normalized) > 0 ? Number(normalized) : undefined
+}
 
 /** «1 250,50» и «1250.5» — одно и то же; `null`, если это не число. */
 const parsePrice = (value: string): number | null => {
@@ -96,6 +132,9 @@ export const AdminProductForm: FC<IAdminProductFormProps & IBasicStyling> = ({
   const [description, setDescription] = useState(product?.description ?? '')
   const [brand, setBrand] = useState(product?.brand ?? '')
   const [price, setPrice] = useState(product === undefined ? '' : priceToInput(product.priceCents))
+  const [volume, setVolume] = useState(
+    product?.volumeMl === undefined || product.volumeMl === null ? '' : String(product.volumeMl)
+  )
   const [categoryId, setCategoryId] = useState(product?.categoryId ?? '')
   const [inStock, setInStock] = useState(product?.inStock ?? true)
   const [isSubmitted, setIsSubmitted] = useState(false)
@@ -123,6 +162,7 @@ export const AdminProductForm: FC<IAdminProductFormProps & IBasicStyling> = ({
   )
 
   const priceCents = parsePrice(price)
+  const volumeMl = parseVolume(volume)
 
   /**
    * Написание бренда, уже принятое в каталоге, если он там есть.
@@ -138,13 +178,61 @@ export const AdminProductForm: FC<IAdminProductFormProps & IBasicStyling> = ({
     return brands.find(known => known.toLowerCase() === trimmed.toLowerCase()) ?? trimmed
   }
 
+  /**
+   * Тексты ошибок разведены по причинам: пустое поле, набранное не тем и
+   * выход за предел — разные новости, и общий на всех текст («например, 50»)
+   * на «50000» просто не про то, из-за чего форма не отправилась.
+   */
+  const validateSlug = (): string | null => {
+    if (slug.trim() === '') {
+      return 'Укажите адрес: например, rose-serum.'
+    }
+
+    if (!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(slug)) {
+      return 'Только латиница, цифры и дефис: например, rose-serum.'
+    }
+
+    return slug.length > SLUG_MAX_LENGTH
+      ? `Адрес длиннее ${SLUG_MAX_LENGTH} символов.`
+      : null
+  }
+
+  const validatePrice = (): string | null => {
+    if (price.trim() === '') {
+      return 'Укажите цену.'
+    }
+
+    if (priceCents === null) {
+      return 'Цена в сомах, например 1250 или 1250.50.'
+    }
+
+    return priceCents > MAX_PRICE * CENTS ? 'Цена не больше 20 000 000 сом.' : null
+  }
+
+  const validateVolume = (): string | null => {
+    if (volumeMl === undefined) {
+      return 'Объём в миллилитрах, целым числом: например, 50.'
+    }
+
+    return volumeMl !== null && volumeMl > MAX_VOLUME_ML ? 'Объём не больше 10 000 мл.' : null
+  }
+
   const errors = {
-    name: name.trim() === '' ? 'Укажите название.' : null,
-    slug: /^[a-z0-9]+(-[a-z0-9]+)*$/.test(slug)
-      ? null
-      : 'Только латиница, цифры и дефис: например, rose-serum.',
-    price: priceCents === null ? 'Цена в сомах, например 1250 или 1250.50.' : null,
-    brand: brand.trim() === '' ? 'Укажите производителя.' : null,
+    name:
+      name.trim() === ''
+        ? 'Укажите название.'
+        : name.trim().length > NAME_MAX_LENGTH
+          ? `Название длиннее ${NAME_MAX_LENGTH} символов.`
+          : null,
+    slug: validateSlug(),
+    price: validatePrice(),
+    volume: validateVolume(),
+    brand:
+      brand.trim() === ''
+        ? 'Укажите производителя.'
+        : brand.trim().length > BRAND_MAX_LENGTH
+          ? `Название производителя длиннее ${BRAND_MAX_LENGTH} символов.`
+          : null,
   }
 
   const categoryOptions: ISelectOption[] = categories.map(category => ({
@@ -156,12 +244,17 @@ export const AdminProductForm: FC<IAdminProductFormProps & IBasicStyling> = ({
     event.preventDefault()
     setIsSubmitted(true)
 
-    if (
-      errors.name !== null ||
-      errors.slug !== null ||
-      errors.brand !== null ||
-      priceCents === null
-    ) {
+    /*
+      Одна проверка на всё — тот же `errors`, что рисуется под полями: пока
+      сабмит держал свой список условий, поле с ошибкой могло подсветиться,
+      а форма всё равно уходила на сервер.
+    */
+    if (Object.values(errors).some(message => message !== null)) {
+      return
+    }
+
+    // Сюда не дойти с непрошедшими проверками — но их сужение типа нужно ниже.
+    if (priceCents === null || volumeMl === undefined) {
       return
     }
 
@@ -176,6 +269,7 @@ export const AdminProductForm: FC<IAdminProductFormProps & IBasicStyling> = ({
       */
       brand: canonicalBrand(brand),
       priceCents,
+      volumeMl,
       categoryId: categoryId === '' ? null : categoryId,
       inStock,
       image: pendingImage === null ? null : { file: pendingImage, alt: pendingImageAlt.trim() },
@@ -196,6 +290,7 @@ export const AdminProductForm: FC<IAdminProductFormProps & IBasicStyling> = ({
         <Input
           label="Название"
           value={name}
+          maxLength={NAME_MAX_LENGTH}
           required={true}
           error={isSubmitted ? errors.name : null}
           onChange={next => {
@@ -210,6 +305,7 @@ export const AdminProductForm: FC<IAdminProductFormProps & IBasicStyling> = ({
         <Input
           label="Адрес (slug)"
           value={slug}
+          maxLength={SLUG_MAX_LENGTH}
           required={true}
           hint="Часть ссылки на товар: /catalog/rose-serum"
           error={isSubmitted ? errors.slug : null}
@@ -229,27 +325,42 @@ export const AdminProductForm: FC<IAdminProductFormProps & IBasicStyling> = ({
             onChange={setPrice}
           />
 
+          <Combobox
+            label="Производитель"
+            value={brand}
+            options={brands}
+            maxLength={BRAND_MAX_LENGTH}
+            required={true}
+            placeholder="Начните вводить название"
+            hint="Показывается тэгом в каталоге и на странице товара, например Round Lab."
+            error={isSubmitted ? errors.brand : null}
+            emptyLabel="Такого производителя ещё нет — он заведётся сам."
+            onChange={setBrand}
+          />
+
           <Select
             label="Категория"
             value={categoryId}
             options={categoryOptions}
             placeholder="Без категории"
+            hint="Необязательно. По ней товар отбирают в каталоге."
             onChange={setCategoryId}
           />
-        </div>
 
-        <Combobox
-          label="Производитель"
-          value={brand}
-          options={brands}
-          maxLength={BRAND_MAX_LENGTH}
-          required={true}
-          placeholder="Начните вводить название"
-          hint="Показывается тэгом в каталоге и на странице товара, например Round Lab."
-          error={isSubmitted ? errors.brand : null}
-          emptyLabel="Такого производителя ещё нет — он заведётся сам."
-          onChange={setBrand}
-        />
+          {/*
+            Объём необязателен: у половины каталога (патчи, тканевые маски) его нет,
+            а у флаконов 50 и 500 мл — это вся разница между ними.
+          */}
+          <Input
+            label="Объём, мл"
+            value={volume}
+            inputMode="numeric"
+            maxLength={VOLUME_MAX_LENGTH}
+            hint="Необязательно, до 10 000 мл. Показывается в карточке товара."
+            error={isSubmitted ? errors.volume : null}
+            onChange={setVolume}
+          />
+        </div>
 
         <Textarea
           label="Описание"

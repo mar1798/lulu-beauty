@@ -9,7 +9,7 @@ import { SiteLayout } from '@/layouts/SiteLayout'
 import { ACCOUNT_NAVIGATION } from '@/layouts/accountNavigation'
 import { useAuth } from '@/contexts/AuthContext'
 import { messageForError } from '@/services/apiErrors'
-import { listMyOrders } from '@/services/endpoints/orders'
+import { listMyOrders, MY_ORDERS_PAGE_SIZE } from '@/services/endpoints/orders'
 import { ordersKey } from '@/services/swrKeys'
 
 /**
@@ -19,8 +19,6 @@ import { ordersKey } from '@/services/swrKeys'
  * нечего. Гостя не редиректим — как и в корзине, предлагаем войти, чтобы
  * переход из шапки не выглядел ошибкой.
  */
-const PAGE_SIZE = 10
-
 const OrdersPage: React.FC = () => {
   const { user, isLoading: isAuthLoading } = useAuth()
   const userId = user?.id ?? null
@@ -34,7 +32,7 @@ const OrdersPage: React.FC = () => {
     mutate,
   } = useSWR(
     userId === null ? null : ordersKey(userId, page),
-    () => listMyOrders({ page, pageSize: PAGE_SIZE }),
+    () => listMyOrders({ page, pageSize: MY_ORDERS_PAGE_SIZE }),
     // Перелистывание не должно ронять список в скелетон — как в админском списке заявок.
     { keepPreviousData: true }
   )
@@ -49,7 +47,11 @@ const OrdersPage: React.FC = () => {
         <EmptyState
           title="Заявки видны после входа"
           description="Войдите — и здесь появится история ваших заявок по сборам."
-          action={<Button link={{ href: '/login' }}>Войти</Button>}
+          action={
+            <Button link={{ href: '/login' }} isFullWidth="mobile">
+              Войти
+            </Button>
+          }
         />
       )
     }
@@ -88,12 +90,16 @@ const OrdersPage: React.FC = () => {
             <EmptyState
               title="Заявок пока нет"
               description="Соберите корзину и оформите заявку — она появится здесь."
-              action={<Button link={{ href: '/catalog' }}>В каталог</Button>}
+              action={
+                <Button link={{ href: '/catalog' }} isFullWidth="mobile">
+                  В каталог
+                </Button>
+              }
             />
           }
         />
 
-        {data !== undefined && data.total > PAGE_SIZE && (
+        {data !== undefined && data.total > MY_ORDERS_PAGE_SIZE && (
           <Pagination
             page={data.page}
             pageSize={data.pageSize}

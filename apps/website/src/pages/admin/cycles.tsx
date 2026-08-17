@@ -6,7 +6,13 @@ import { useConfirm, useToast } from 'widgets/contexts'
 import { storeIso, storeToday } from 'widgets/utils'
 import { AdminShell } from '@/layouts/AdminShell'
 import { messageForError } from '@/services/apiErrors'
-import { createCycle, deleteCycle, listCycles, updateCycle } from '@/services/endpoints/admin'
+import {
+  closeCycle,
+  createCycle,
+  deleteCycle,
+  listCycles,
+  updateCycle,
+} from '@/services/endpoints/admin'
 import { getActiveCycleOrNull } from '@/services/endpoints/cycles'
 import { activeCycleKey, cyclesKey } from '@/services/swrKeys'
 
@@ -80,6 +86,20 @@ const AdminCyclesPage: React.FC = () => {
   /** Дата и время «по магазину» → мгновение, которое ждёт бэкенд. */
   const toDeadline = (draft: ICycleDraft): string => storeIso(draft.date, draft.time)
 
+  const handleClose = async (cycle: IOrderCycle): Promise<void> => {
+    const confirmed = await confirm({
+      title: 'Закрыть сбор сейчас?',
+      description:
+        'Приём заявок прекратится немедленно, как по дедлайну: неоформленные корзины покупателей ' +
+        'переедут в избранное, а вам придёт итог сбора. Отменить это нельзя — сбор придётся открыть заново.',
+      confirmLabel: 'Закрыть сбор',
+    })
+
+    if (confirmed) {
+      await run(() => closeCycle(cycle.id), 'Сбор закрыт')
+    }
+  }
+
   const handleDelete = async (cycle: IOrderCycle): Promise<void> => {
     const confirmed = await confirm({
       title: 'Удалить сбор?',
@@ -96,7 +116,7 @@ const AdminCyclesPage: React.FC = () => {
   return (
     <AdminShell
       title="Сборы заказов"
-      summary="Дедлайн закрывает приём заявок: после него неоформленные корзины покупателей переезжают в избранное, а открытым становится следующий сбор."
+      summary="Открытый сбор всегда один: дедлайн закрывает приём заявок, неоформленные корзины переезжают в избранное, а открытым становится следующий. Закрыть сбор можно и досрочно."
     >
       <AdminCycleCalendar
         cycles={cycles ?? []}
@@ -126,6 +146,9 @@ const AdminCyclesPage: React.FC = () => {
               }),
             'Сбор сохранён'
           )
+        }}
+        onClose={cycle => {
+          void handleClose(cycle)
         }}
         onDelete={cycle => {
           void handleDelete(cycle)

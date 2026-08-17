@@ -1,5 +1,5 @@
 import { style } from '@vanilla-extract/css'
-import { border, color } from '../../styling/lib'
+import { border, color, media } from '../../styling/lib'
 import { flexColumn, flexRow } from '../../styling/mixin'
 import { vars } from '../../styling/themes/contract.css'
 
@@ -47,7 +47,11 @@ export const items = style({
  */
 export const footer = style({
   ...flexColumn(12),
-  alignItems: 'flex-start',
+  /* До `sm` кнопка решения тянется во всю ширину — как и прочие CTA на телефоне. */
+  alignItems: 'stretch',
+  ...media({
+    sm: { alignItems: 'flex-start' },
+  }),
   paddingTop: vars.space.md,
   borderTop: border(1, color.border('subtle')),
 })

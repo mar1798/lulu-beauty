@@ -37,7 +37,14 @@ describe('ProductPicker', () => {
 
     renderWidget(<ProductPicker {...feedProductPicker()} products={[product]} onAdd={onAdd} />)
 
-    await user.click(screen.getByRole('button', { name: 'Добавить: Сыворотка с ниацинамидом' }))
+    /*
+      Кнопок две: круглая для узкого экрана и со словом для широкого (одна из
+      них всегда скрыта медиазапросом, а в jsdom стилей нет). Нажимаем первую —
+      обе делают одно и то же.
+    */
+    const [add] = screen.getAllByRole('button', { name: 'Добавить: Сыворотка с ниацинамидом' })
+
+    await user.click(add)
 
     expect(onAdd).toHaveBeenCalledWith(product.id)
   })
@@ -54,7 +61,9 @@ describe('ProductPicker', () => {
     )
 
     expect(screen.getByText('Уже в заявке')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Ещё одну: Крем для рук' })).toBeEnabled()
+    for (const button of screen.getAllByRole('button', { name: 'Ещё одну: Крем для рук' })) {
+      expect(button).toBeEnabled()
+    }
   })
 
   it('товар не в наличии показывает, но добавить не даёт', () => {
@@ -64,5 +73,6 @@ describe('ProductPicker', () => {
 
     expect(screen.getByText('Тушь')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Нет в наличии' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Нет в наличии: Тушь' })).toBeDisabled()
   })
 })

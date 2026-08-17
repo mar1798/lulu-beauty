@@ -1,5 +1,5 @@
 import { style, styleVariants } from '@vanilla-extract/css'
-import { border, color, font, rem, transition } from '../../styling/lib'
+import { border, color, font, media, rem, transition } from '../../styling/lib'
 import { flexRow, focusVisibleRing } from '../../styling/mixin'
 import { vars } from '../../styling/themes/contract.css'
 
@@ -56,6 +56,18 @@ export const loader = style({
 
 export const fullWidth = style({
   width: '100%',
+})
+
+/**
+ * Во всю ширину только на телефоне. Главное действие экрана там должно быть
+ * шириной с контейнер — попасть по нему пальцем важнее, чем сэкономить
+ * пиксели; с `sm` кнопка снова по содержимому.
+ */
+export const fullWidthMobile = style({
+  width: '100%',
+  ...media({
+    sm: { width: 'auto' },
+  }),
 })
 
 export const size = styleVariants({

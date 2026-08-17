@@ -1,7 +1,7 @@
 import clsx from 'clsx'
 import { type FC, type FormEvent, useState } from 'react'
 import type { IBasicStyling, IProfileFormProps } from '../../types'
-import { validateName } from '../../utils'
+import { NAME_MAX_LENGTH, validateName } from '../../utils'
 import { FIELD_HEIGHT } from '../../styling/mixin'
 import { Alert } from '../../atoms/alert'
 import { Button } from '../../atoms/button'
@@ -86,6 +86,7 @@ export const ProfileForm: FC<IProfileFormProps & IBasicStyling> = ({
         label="Имя"
         autoComplete="name"
         value={name}
+        maxLength={NAME_MAX_LENGTH}
         onChange={setName}
         error={isTouched ? nameError : null}
         disabled={isSubmitting}

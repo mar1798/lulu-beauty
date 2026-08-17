@@ -125,6 +125,12 @@ export const CartPanel: FC<ICartPanelProps & IBasicStyling> = ({
           <Price priceCents={cart.totalCents} size="lg" />
         </div>
 
+        {/*
+          Кнопка не реагирует на запросы по отдельным позициям: изменение
+          количества применяется оптимистично, и гасить из-за него переход к
+          оформлению — значит мигать кнопкой на каждое нажатие `−`/`+`. Ждёт
+          она только изменения состава целиком (`isBusy`, см. тип).
+        */}
         <Button isFullWidth={true} disabled={!hasCycle || isBusy} onClick={onCheckout}>
           Оформить заявку
         </Button>

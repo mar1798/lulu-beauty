@@ -2,7 +2,7 @@ import React from 'react'
 import useSWR from 'swr'
 import type { OrderStatus } from 'widgets/types'
 import { Alert, Badge, Button, Skeleton, Text } from 'widgets/atoms'
-import { DeadlineCountdown, orderStatusLabel } from 'widgets/molecules'
+import { DeadlineCountdown, ORDER_STATUSES, orderStatusLabel } from 'widgets/molecules'
 import { formatDateTime } from 'widgets/utils'
 import { AdminShell } from '@/layouts/AdminShell'
 import { useAuth } from '@/contexts/AuthContext'
@@ -24,7 +24,7 @@ import * as styles from '@/styles/admin.css'
  * видна здесь без захода на эту страницу заново.
  */
 
-const STATUSES: OrderStatus[] = ['PENDING', 'CONFIRMED', 'READY', 'COMPLETED', 'CANCELLED']
+const STATUSES = ORDER_STATUSES
 
 const loadCounts = async (cycleId: string | undefined): Promise<Record<OrderStatus, number>> => {
   const totals = await Promise.all(

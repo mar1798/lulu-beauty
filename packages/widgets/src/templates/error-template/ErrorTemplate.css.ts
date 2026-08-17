@@ -1,5 +1,5 @@
 import { style } from '@vanilla-extract/css'
-import { color, rem } from '../../styling/lib'
+import { color, media, rem } from '../../styling/lib'
 import { flexColumn, flexRow } from '../../styling/mixin'
 import { vars } from '../../styling/themes/contract.css'
 
@@ -47,10 +47,19 @@ export const head = style({
   alignItems: 'center',
 })
 
+/*
+  На телефоне строка действий растянута по карточке, чтобы кнопкам с
+  `isFullWidth="mobile"` было что заполнять; с `sm` — снова по содержимому,
+  по центру.
+*/
 export const actions = style({
   ...flexRow(12),
   flexWrap: 'wrap',
   justifyContent: 'center',
+  alignSelf: 'stretch',
+  ...media({
+    sm: { alignSelf: 'center' },
+  }),
 })
 
 export const details = style({

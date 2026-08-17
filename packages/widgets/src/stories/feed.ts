@@ -9,6 +9,8 @@ import {
   IAdminOrdersTableProps,
   IAdminProductFormProps,
   IAdminProductsTableProps,
+  IAdminUser,
+  IAdminUsersTableProps,
   IAlertProps,
   IAppearProps,
   IAuthTemplateProps,
@@ -26,6 +28,7 @@ import {
   ICategory,
   ICategoryFilterProps,
   ICheckoutFormProps,
+  ICheckoutPanelProps,
   ICheckboxProps,
   IChipProps,
   IComboboxProps,
@@ -398,6 +401,7 @@ export const feedProduct = (overrides: Partial<IProduct> = {}): IProduct => ({
   description: faker.commerce.productDescription(),
   brand: faker.company.name(),
   priceCents: faker.number.int({ min: PRICE_MIN, max: PRICE_MAX }),
+  volumeMl: faker.helpers.arrayElement([30, 50, 100, 150, 500]),
   categoryId: faker.string.uuid(),
   inStock: true,
   images: [feedProductImageDto(true, 0), feedProductImageDto(false, 1)],
@@ -594,6 +598,16 @@ export const feedCheckoutForm = (): ICheckoutFormProps => ({
   itemCount: 4,
   deadlineAt: feedDeadline(),
   onSubmit: noop,
+})
+
+/*
+  Без `form`: форму оформления подставляет сам вызывающий — фикстура живёт в
+  `.ts` и JSX собрать не может.
+*/
+export const feedCheckoutPanel = (): Omit<ICheckoutPanelProps, 'form'> => ({
+  cart: feedCart(),
+  buildProductHref: slug => `/catalog/${slug}`,
+  cartHref: '/cart',
 })
 
 export const feedCartTemplate = (): ICartTemplateProps => ({
@@ -876,6 +890,27 @@ export const feedAdminOrder = (overrides: Partial<IAdminOrder> = {}): IAdminOrde
   customerPhone: '+996555123456',
   ...overrides,
 })
+
+export const feedAdminUser = (overrides: Partial<IAdminUser> = {}): IAdminUser => ({
+  ...feedAuthUser(),
+  createdAt: new Date(Date.now() - DAY_MS).toISOString(),
+  telegramLinked: true,
+  ...overrides,
+})
+
+export const feedAdminUsersTable = (): IAdminUsersTableProps => {
+  const owner = feedAdminUser({ name: 'Айгуль', role: 'ADMIN' })
+
+  return {
+    users: [
+      owner,
+      feedAdminUser({ name: 'Бакыт', phone: '+996555222333' }),
+      feedAdminUser({ name: 'Чолпон', phone: '+996555444555' }),
+    ],
+    currentUserId: owner.id,
+    onRoleChange: noop,
+  }
+}
 
 export const feedAdminOrdersTable = (): IAdminOrdersTableProps => ({
   orders: [

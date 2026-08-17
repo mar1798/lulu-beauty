@@ -89,12 +89,15 @@ export interface ICartContextValue {
   /** Первая загрузка корзины ещё идёт. */
   isLoading: boolean
   /**
-   * Идёт хоть какое-то изменение корзины. Блокировать по нему **весь** экран
-   * нельзя: запрос по одной позиции не повод гасить кнопки у остальных — так
-   * добавление одного товара мигало бы всей сеткой каталога. Годится там, где
-   * важен состав целиком, — например, для перехода к оформлению.
+   * Идёт запрос, меняющий корзину **целиком** (очистка, перезагрузка), —
+   * только под него имеет смысл гасить общие действия вроде перехода к
+   * оформлению.
+   *
+   * Флага «идёт хоть какой-то запрос» здесь намеренно нет: по нему кнопка
+   * «Оформить» мигала бы на каждое нажатие `−`/`+` — количество меняется
+   * оптимистично, состав корзины при этом не под вопросом.
    */
-  isBusy: boolean
+  isWholeCartBusy: boolean
   /** Занята ли конкретная позиция: блокируется только она. */
   isItemBusy: (productId: string) => boolean
   error: string | null
@@ -296,7 +299,7 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
       cart,
       itemCount: cart?.items.reduce((sum, item) => sum + item.quantity, 0) ?? 0,
       isLoading: userId !== null && isLoading,
-      isBusy: busy.length > 0,
+      isWholeCartBusy: busy.includes(WHOLE_CART),
       isItemBusy,
       error: visibleError,
       addItem,

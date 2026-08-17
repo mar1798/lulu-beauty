@@ -45,6 +45,13 @@ export const name = style([
   focusVisibleRing(),
 ])
 
+/** Строка «2 шт × цена» — режим без правки (оформление). */
+export const meta = style({
+  ...flexRow(6),
+  alignItems: 'baseline',
+  flexWrap: 'wrap',
+})
+
 export const controls = style({
   ...flexRow(12),
   alignItems: 'center',

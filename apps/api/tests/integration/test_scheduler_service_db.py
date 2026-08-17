@@ -10,6 +10,7 @@ from app.cart.models import CartItem
 from app.cart.service import CartService
 from app.cycles.models import CycleStatus
 from app.cycles.scheduler_service import CartRescue, CycleSchedulerService
+from app.cycles.service import CycleAlreadyClosedError, CyclesService
 from app.orders.service import OrdersService
 from app.telegram.notify import notify_carts_rescued, notify_cycle_reminders
 from app.telegram.service import BroadcastResult
@@ -373,3 +374,62 @@ async def test_sweep_deadlines_activates_next_upcoming_cycle_every_tick(
 
     await db_session.refresh(upcoming)
     assert upcoming.status == CycleStatus.ACTIVE
+
+
+async def test_cart_rescue_covers_someone_who_kept_shopping_after_ordering(
+    db_session: AsyncSession,
+) -> None:
+    """Та самая пропажа из BUGS п. 11: заявка оформлена, покупатель продолжил набирать
+    корзину — и на дедлайне вторая охапка удалялась, ни разу не побывав в избранном.
+
+    Фильтр «у кого нет заявки в этом сборе» отбрасывал такие корзины целиком, хотя
+    защищал он ровно от одного — сообщения «корзина в избранном» тому, у кого она
+    пустая. Пустые и так пропускаются ниже, по составу.
+    """
+    user = await make_user(db_session)
+    cycle = await make_cycle(db_session, deadline_at=datetime.now(UTC) + timedelta(seconds=1))
+    ordered = await make_product(db_session, name="Крем")
+    later = await make_product(db_session, name="Сыворотка")
+
+    cart = CartService(db_session)
+    await cart.add_item(user.id, ordered.id, 1)
+    await OrdersService(db_session).checkout(user.id, note=None)
+    await cart.add_item(user.id, later.id, 2)
+
+    cycle.deadline_at = datetime.now(UTC) - timedelta(seconds=1)
+    await db_session.flush()
+
+    closures = await CycleSchedulerService(db_session).sweep_deadlines()
+
+    assert [(r.saved, r.dropped) for r in closures[0].rescued_carts] == [(1, 0)]
+    saved = await WishlistService(db_session).get_wishlist(user.id)
+    assert {item.product.name for item in saved.items} == {"Сыворотка"}
+
+
+async def test_close_now_does_everything_the_deadline_would_have(
+    db_session: AsyncSession,
+) -> None:
+    """Досрочное закрытие — не «перестать принимать», а тот же самый конец сбора:
+    корзины в избранное, итог владельцу, следующий сбор — на очередь."""
+    user = await make_user(db_session)
+    cycle = await make_cycle(db_session, deadline_at=datetime.now(UTC) + timedelta(days=3))
+    product = await make_product(db_session, name="Крем", price_cents=1500)
+    await CartService(db_session).add_item(user.id, product.id, 2)
+
+    service = CycleSchedulerService(db_session)
+    closure = await service.close_now(cycle.id)
+
+    assert closure.cycle.status is CycleStatus.CLOSED
+    assert closure.cycle.closed_at is not None
+    # Дедлайн не переписывается: обещание покупателям остаётся в истории как было.
+    assert closure.cycle.deadline_at > datetime.now(UTC)
+    assert [(r.saved, r.dropped) for r in closure.rescued_carts] == [(1, 0)]
+    saved = await WishlistService(db_session).get_wishlist(user.id)
+    assert {item.product.name for item in saved.items} == {"Крем"}
+
+    # И, главное, сбор перестал быть активным — иначе корзины набирались бы заново
+    # в уже закупленный сбор.
+    assert await CyclesService(db_session).get_active_cycle() is None
+
+    with pytest.raises(CycleAlreadyClosedError):
+        await service.close_now(cycle.id)

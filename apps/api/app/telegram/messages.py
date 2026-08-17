@@ -18,7 +18,7 @@ from app.cart.schemas import CartResponse
 from app.common.limits import MAX_WISHLIST_ITEMS
 from app.config import settings
 from app.cycles.models import OrderCycle
-from app.orders.models import Order, OrderStatus
+from app.orders.models import CANCELLED_STATUSES, Order, OrderStatus
 from app.wishlist.schemas import WishlistResponse
 
 logger = logging.getLogger("app.telegram.messages")
@@ -88,7 +88,8 @@ ORDER_STATUS_LABEL = {
     OrderStatus.CONFIRMED: "Подтверждена",
     OrderStatus.READY: "Готова к выдаче",
     OrderStatus.COMPLETED: "Выдана",
-    OrderStatus.CANCELLED: "Отменена",
+    OrderStatus.CANCELLED_BY_CUSTOMER: "Отменена покупателем",
+    OrderStatus.CANCELLED_BY_OWNER: "Отменена владельцем",
 }
 
 
@@ -164,7 +165,9 @@ _ORDER_STATUS_NEWS = {
     OrderStatus.CONFIRMED: "подтверждена — владелец начал закупку.",
     OrderStatus.READY: "готова к выдаче. О получении договоритесь лично.",
     OrderStatus.COMPLETED: "выдана. Спасибо за заказ!",
-    OrderStatus.CANCELLED: "отменена владельцем. Если это ошибка — напишите ему.",
+    OrderStatus.CANCELLED_BY_OWNER: "отменена владельцем. Если это ошибка — напишите ему.",
+    # Про свою же отмену покупателю сообщать нечего: он её и сделал, а уведомление
+    # выглядело бы так, будто её сделал кто-то другой.
 }
 
 
@@ -183,7 +186,7 @@ def order_status_changed(order: Order) -> str | None:
 # Статусы, на которых удаление заявки — уже не новость: выданную покупатель забрал,
 # отменённую он (или владелец) списал ещё раньше. В обоих случаях строка исчезает из
 # таблицы у владельца, а для покупателя не меняется ничего, чего он ещё ждёт.
-SILENT_DELETION_STATUSES = frozenset({OrderStatus.COMPLETED, OrderStatus.CANCELLED})
+SILENT_DELETION_STATUSES = frozenset({OrderStatus.COMPLETED, *CANCELLED_STATUSES})
 
 
 def order_deleted(order_id: uuid.UUID, status: OrderStatus) -> str | None:
@@ -201,10 +204,90 @@ def order_deleted(order_id: uuid.UUID, status: OrderStatus) -> str | None:
     )
 
 
+def order_item_repriced(
+    order_id: uuid.UUID,
+    product_name: str,
+    old_price_cents: int,
+    new_price_cents: int,
+    total_cents: int,
+) -> str:
+    """Владелец переоценил товар, который лежит в неподтверждённой заявке.
+
+    Обе цены в тексте, а не одна новая: «стало 1 400» без «было 1 200» человек не с чем
+    сравнить — он помнит сумму заявки, а не цену строки.
+    """
+    direction = "выросла" if new_price_cents > old_price_cents else "снизилась"
+    return (
+        f"В заявке {order_reference(order_id)} изменилась цена.\n"
+        f"{product_name}: {direction} с {format_price(old_price_cents)} "
+        f"до {format_price(new_price_cents)}.\n"
+        f"Сумма заявки теперь {format_price(total_cents)}."
+    )
+
+
+def order_item_removed(order_id: uuid.UUID, product_name: str, total_cents: int) -> str:
+    """Товар сняли с продажи, и заявка лишилась строки — но не вся."""
+    return (
+        f"Из заявки {order_reference(order_id)} убран товар: {product_name} — "
+        "владелец снял его с продажи.\n"
+        f"Сумма заявки теперь {format_price(total_cents)}."
+    )
+
+
+def order_cancelled_last_item_removed(order_id: uuid.UUID, product_name: str) -> str:
+    """Та же новость, когда убранный товар был в заявке единственным.
+
+    Отдельный текст: «сумма заявки теперь 0» — это не то, что случилось. Заявки больше
+    нет в работе, и сказать надо именно это.
+    """
+    return (
+        f"Заявка {order_reference(order_id)} отменена: владелец снял с продажи "
+        f"единственный товар в ней — {product_name}.\n"
+        "Соберите новую заявку, пока сбор открыт."
+    )
+
+
 def cycle_opened(cycle: OrderCycle) -> str:
     return (
         f"Открыт новый сбор {cycle_title(cycle)}.\n"
         f"Заявки принимаются до {format_deadline(cycle.deadline_at)}."
+    )
+
+
+def cycle_deadline_changed(cycle: OrderCycle, previous_deadline_at: datetime) -> str:
+    """Владелец сдвинул дедлайн сбора, в котором у человека лежит корзина или заявка.
+
+    Сдвиг назад и сдвиг вперёд — разные новости, и молчать про первый нельзя совсем:
+    корзина исчезает по часам, и человек, который рассчитывал оформить её «завтра»,
+    иначе узнаёт о переносе уже по опустевшей корзине. Прежний срок в тексте есть —
+    без него сообщение не отличить от обычного напоминания.
+    """
+    moved_earlier = cycle.deadline_at < previous_deadline_at
+    news = "раньше" if moved_earlier else "позже"
+    lines = [
+        f"Сбор {cycle_title(cycle)} закроется {news}, чем планировалось.",
+        f"Было: {format_deadline(previous_deadline_at)}.",
+        f"Стало: {format_deadline(cycle.deadline_at)}.",
+    ]
+    if moved_earlier:
+        lines.append("Успейте оформить заявку — после закрытия корзина уедет в избранное.")
+    else:
+        lines.append("Время собрать заявку ещё есть.")
+    return "\n".join(lines)
+
+
+def cycle_closed_for_customer(cycle: OrderCycle) -> str:
+    """Сбор закрылся, а заявка у человека есть — в отличие от `cart_moved_to_wishlist`,
+    которое уходит тем, кто её так и не оформил.
+
+    Про «изменить нельзя» прямо: до закрытия состав заявки правился на сайте, и именно
+    это перестало работать — без строки об этом человек упирается в недоступные кнопки
+    и считает их поломкой.
+    """
+    return (
+        f"Сбор {cycle_title(cycle)} закрыт — заявки приняты.\n"
+        "Изменить состав уже нельзя. Владелец подтвердит вашу заявку и напишет сюда, "
+        "когда всё будет готово к выдаче."
     )
 
 
@@ -250,6 +333,7 @@ MENU_CART = "🛒 Корзина"
 MENU_ORDERS = "📦 Мои заявки"
 MENU_WISHLIST = "⭐ Избранное"
 MENU_DEADLINE = "📅 Текущий сбор"
+MENU_SITE = "🌐 Сайт"
 MENU_HELP = "ℹ️ Помощь"
 
 # Sent with the keyboard itself, when there is nothing else to say — after linking, or
@@ -265,6 +349,7 @@ WISHLIST_BUTTON = "Посмотреть избранное"
 CATALOG_BUTTON = "Открыть каталог"
 ORDERS_BUTTON = "Все заявки на сайте"
 SITE_BUTTON = "Открыть сайт"
+ADMIN_ORDERS_BUTTON = "Заявки в админке"
 
 # Подпись кнопки слева от поля ввода (`set_chat_menu_button`), открывающей Mini App.
 # «Каталог», а не «Открыть сайт»: это не ссылка наружу, а магазин внутри Telegram,
@@ -333,6 +418,7 @@ HELP = (
     f"{MENU_ORDERS} — ваши заявки и их статусы\n"
     f"{MENU_WISHLIST} — сохранённые товары; они переживают закрытие сбора\n"
     f"{MENU_DEADLINE} — когда закрывается текущий сбор\n"
+    f"{MENU_SITE} — открыть магазин в браузере\n"
     f"{MENU_HELP} — этот экран; отсюда же можно отвязать чат\n\n"
     "Сам напишу, когда откроется новый сбор, когда до дедлайна останутся сутки "
     "и когда изменится статус вашей заявки.\n\n"
@@ -343,6 +429,17 @@ HELP = (
 # чаще всего это как раз человек, у которого кнопки свёрнуты и который поэтому пишет
 # словами, — и тогда ответ должен не объяснять, а вернуть кнопки.
 FALLBACK = "Не понял вас. Выберите кнопку ниже 👇"
+
+# Ответ кнопки «Сайт». Сама ссылка приходит кнопкой под сообщением — в тексте её
+# дублировать незачем; а если сайт по конфигурации не адресуем из Telegram (локальная
+# разработка), кнопки не будет, и тогда сообщение обязано назвать адрес словами.
+SITE_PROMPT = "Магазин, корзина и заявки — на сайте:"
+
+
+def site_unavailable(url: str) -> str:
+    """Кнопку Telegram не примет — остаётся адрес текстом."""
+    return f"{SITE_PROMPT}\n{url}"
+
 
 UNLINKED = "Чат отвязан. Подтверждения заявок и напоминания сюда больше не придут."
 

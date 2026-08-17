@@ -82,6 +82,15 @@ export const adminProductsKey = (
 
 export const adminProductKey = (id: string) => ['admin-product', id] as const
 
+export const ADMIN_USERS_TAG = 'admin-users'
+
+/** Аккаунты магазина: поиск и страница — как у списка товаров. */
+export const adminUsersKey = (q: string, page: number) => [ADMIN_USERS_TAG, q, page] as const
+
+/** Смена роли меняет порядок строк (владельцы идут первыми) — сбрасываются все страницы. */
+export const isAdminUsersKey = (key: unknown): boolean =>
+  Array.isArray(key) && key[0] === ADMIN_USERS_TAG
+
 export const productSearchKey = (q: string, limit: number) => ['product-search', q, limit] as const
 
 /** Инвалидация всех вариантов фильтров/страниц списка админ-товаров разом. */
