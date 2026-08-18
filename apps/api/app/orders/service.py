@@ -1,4 +1,5 @@
 import uuid
+from collections.abc import Collection
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
@@ -151,9 +152,7 @@ class OrdersService:
         # The second transaction now waits here, and by the time it reads the items the
         # winner has already emptied them, so it raises EmptyCartError instead.
         result = await self._session.execute(
-            select(Cart)
-            .where(Cart.user_id == user_id, Cart.cycle_id == cycle.id)
-            .with_for_update()
+            select(Cart).where(Cart.user_id == user_id, Cart.cycle_id == cycle.id).with_for_update()
         )
         cart = result.scalar_one_or_none()
         if cart is None:
@@ -195,7 +194,11 @@ class OrdersService:
         return order
 
     async def list_for_user(
-        self, user_id: uuid.UUID, page: int = 1, page_size: int = 20
+        self,
+        user_id: uuid.UUID,
+        page: int = 1,
+        page_size: int = 20,
+        statuses: Collection[OrderStatus] | None = None,
     ) -> tuple[list[Order], int]:
         """One page of the customer's own orders, newest first, plus the total.
 
@@ -203,17 +206,22 @@ class OrdersService:
         for a year got the lot — with every line item of every order — in one response.
         The total comes back so the caller can say how much more there is (the bot's
         "…и ещё N" line, the site's pager) without asking for the rest.
+
+        `statuses` narrows both the page and the total — they have to agree, or "…и ещё N"
+        counts rows the caller has just decided not to show. None means the whole history,
+        which is what the site asks for; the bot passes `OPEN_STATUSES`.
         """
+        conditions = [Order.user_id == user_id]
+        if statuses is not None:
+            conditions.append(Order.status.in_(list(statuses)))
         total = (
-            await self._session.scalar(
-                select(func.count()).select_from(Order).where(Order.user_id == user_id)
-            )
+            await self._session.scalar(select(func.count()).select_from(Order).where(*conditions))
             or 0
         )
         result = await self._session.execute(
             select(Order)
             .options(selectinload(Order.items))
-            .where(Order.user_id == user_id)
+            .where(*conditions)
             # `id` breaks the tie: `created_at` is a server default, so orders placed in
             # the same tick share it, and Postgres is free to order them differently for
             # each page — which shows one order twice and hides another entirely.
@@ -453,9 +461,7 @@ class OrdersService:
             .options(selectinload(Order.items))
             .where(
                 Order.status == OrderStatus.PENDING,
-                Order.id.in_(
-                    select(OrderItem.order_id).where(OrderItem.product_id == product_id)
-                ),
+                Order.id.in_(select(OrderItem.order_id).where(OrderItem.product_id == product_id)),
             )
             # Newest first, like every other listing: the notification that follows lists
             # the affected orders, and it should read in the order the customer's own

@@ -29,6 +29,7 @@ from app.cart.service import CartService
 from app.common.phone import normalize_phone
 from app.cycles.service import CyclesService
 from app.db import async_session
+from app.orders.models import OPEN_STATUSES
 from app.orders.service import OrderNotFoundError, OrdersService
 from app.telegram import keyboards, messages, recipients
 from app.telegram.keyboards import MenuAction, OrderAction
@@ -195,8 +196,13 @@ async def handle_orders(message: Message) -> None:
             return
         # Only the page the message shows: the bot never listed more than
         # MAX_LISTED_ORDERS, and `total` is what the "…и ещё N" line needs.
+        #
+        # OPEN_STATUSES because five lines is not a history: someone who has ordered in
+        # every cycle for a year has the five newest all finished, and the one order they
+        # are actually waiting on ends up hidden behind "…и ещё N". Cancelled and handed
+        # over orders are still on the site, which is what the button underneath is for.
         orders, total = await OrdersService(session).list_for_user(
-            user.id, page=1, page_size=messages.MAX_LISTED_ORDERS
+            user.id, page=1, page_size=messages.MAX_LISTED_ORDERS, statuses=OPEN_STATUSES
         )
         # Only asked for when there are no orders: the button under an empty list is an
         # invitation to make one, and inviting into a catalog that can't take an order

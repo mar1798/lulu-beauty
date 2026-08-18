@@ -12,6 +12,7 @@ coverage/
 =======
 # Local
 .env
+.env.prod
 dist
 .turbo
 

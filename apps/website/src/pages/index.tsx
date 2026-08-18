@@ -356,7 +356,7 @@ const HomePage: React.FC<IHomePageProps> = ({ cycle, featured, categories, brand
               title={['С заботой о вас', 'и о вашем бюджете']}
               description="Косметика и уход по самым низким ценам: берём напрямую и общим заказом."
               background={<DecorField spots={HERO_SPOTS} containerRef={heroRef} />}
-              scrollHint="Ниже — что можно взять сейчас"
+              scrollHint="Ниже — как это работает"
               actions={
                 <>
                   <Button link={{ href: '/catalog' }} isFullWidth="mobile">
@@ -373,6 +373,21 @@ const HomePage: React.FC<IHomePageProps> = ({ cycle, featured, categories, brand
           </div>
         }
       >
+        <HomeSection
+          sectionRef={stepsRef}
+          background={<DecorField spots={STEPS_SPOTS} containerRef={stepsRef} />}
+        >
+          <Reveal>
+            <SectionHeading
+              eyebrow="Как это работает"
+              title="Заявка вместо оплаты"
+              description="Онлайн-оплаты нет: всё, что нужно, — успеть до закрытия сбора."
+            />
+          </Reveal>
+
+          <StepList steps={STEPS} />
+        </HomeSection>
+
         {/*
           Подборку прячем целиком, если товаров нет: пустая сетка с «ничего не
           нашлось» на главной читается как поломка, хотя это ровно то же
@@ -447,21 +462,6 @@ const HomePage: React.FC<IHomePageProps> = ({ cycle, featured, categories, brand
             )}
           </HomeSection>
         )}
-
-        <HomeSection
-          sectionRef={stepsRef}
-          background={<DecorField spots={STEPS_SPOTS} containerRef={stepsRef} />}
-        >
-          <Reveal>
-            <SectionHeading
-              eyebrow="Как это работает"
-              title="Заявка вместо оплаты"
-              description="Онлайн-оплаты нет: всё, что нужно, — успеть до закрытия сбора."
-            />
-          </Reveal>
-
-          <StepList steps={STEPS} />
-        </HomeSection>
 
         <HomeSection
           sectionRef={faqRef}

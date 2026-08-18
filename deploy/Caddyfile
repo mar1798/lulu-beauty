@@ -1,0 +1,37 @@
+{
+	# Сюда Let's Encrypt пишет о проблемах с продлением сертификата.
+	email {$ACME_EMAIL}
+}
+
+{$SITE_DOMAIN} {
+	encode zstd gzip
+
+	# Единственный путь, ведущий в API напрямую: Telegram обязан достучаться
+	# до вебхука сам, через прокси Next он не пойдёт.
+	#
+	# Всё остальное API закрыто снаружи намеренно — браузер ходит в него через
+	# /api/proxy/* самого Next, который прикладывает httpOnly-куки. Открой мы
+	# API целиком, куки перестали бы быть единственным входом.
+	#
+	# Путь совпадает с тем, что регистрирует бот: TELEGRAM_WEBHOOK_URL — это
+	# база, к которой app/telegram/bot.py дописывает /telegram/webhook.
+	handle /telegram/webhook {
+		reverse_proxy api:3001
+	}
+
+	handle {
+		# Фотографии товаров (/files/*) тоже идут сюда: Next рерайтит их на API
+		# сам (см. next.config.js), поэтому отдельного маршрута им не нужно.
+		reverse_proxy website:3000
+	}
+
+	# Заголовки безопасности (CSP, HSTS, Permissions-Policy) выставляет сам Next
+	# в next.config.js — дублировать их здесь значит однажды разойтись с ним.
+
+	log {
+		output file /data/access.log {
+			roll_size 10MiB
+			roll_keep 5
+		}
+	}
+}

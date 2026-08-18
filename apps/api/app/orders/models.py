@@ -25,6 +25,12 @@ class OrderStatus(enum.StrEnum):
 # a cancelled order is cancelled whoever ended it.
 CANCELLED_STATUSES = frozenset({OrderStatus.CANCELLED_BY_CUSTOMER, OrderStatus.CANCELLED_BY_OWNER})
 
+# Everything the customer is still waiting on. The complement of "off" plus COMPLETED:
+# a handed-over order is as finished as a cancelled one, it just ended well. Used where
+# a short list has room only for what still needs the person's attention (the bot's
+# "Мои заявки"), never on the site — there the full history is the point.
+OPEN_STATUSES = frozenset({OrderStatus.PENDING, OrderStatus.CONFIRMED, OrderStatus.READY})
+
 
 class Order(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "orders"

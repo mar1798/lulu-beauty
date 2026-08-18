@@ -1,0 +1,26 @@
+# Контекст сборки apps/website/Dockerfile — корень репозитория.
+# (У apps/api свой .dockerignore: он собирается с контекстом apps/api.)
+
+.git
+.github
+node_modules
+**/node_modules
+**/.next
+**/.turbo
+**/storybook-static
+**/tsconfig.tsbuildinfo
+**/*.log
+
+# Бэкенд в сборке фронта не участвует.
+apps/api
+
+# Секреты не должны попадать в слои образа.
+**/.env
+**/.env.*
+!**/.env.example
+
+docker-compose*.yml
+Caddyfile
+deploy
+README.md
+CLAUDE.md

@@ -521,12 +521,16 @@ def my_orders(orders: list[Order], total: int | None = None) -> str:
     The caller now fetches only the page it shows, so the count of what is hidden can no
     longer be derived from the list itself. It defaults to the number given, which keeps
     the message honest if a caller does hand over everything.
+
+    The wording says «активные» because the caller (`handle_orders`) asks only for
+    `OPEN_STATUSES`: «у вас пока нет заявок» would be a plain lie to someone whose
+    orders are all handed over, and a bare «Ваши заявки» would read as the full history.
     """
     if not orders:
-        return "У вас пока нет заявок."
+        return "Активных заявок нет — всё, что было раньше, осталось на сайте."
 
     shown = orders[:MAX_LISTED_ORDERS]
-    lines = ["Ваши заявки:"]
+    lines = ["Ваши активные заявки:"]
     lines += [
         f"{order_reference(order.id)} — {_items_count(order)}, "
         f"{format_price(order.total_cents)} — {ORDER_STATUS_LABEL[order.status]}"

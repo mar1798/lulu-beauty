@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.cart.models import CartItem
 from app.cart.service import CartService
 from app.db import async_session
-from app.orders.models import Order, OrderItem, OrderStatus
+from app.orders.models import OPEN_STATUSES, Order, OrderItem, OrderStatus
 from app.orders.schemas import MAX_ITEM_QUANTITY
 from app.orders.service import (
     EmptyCartError,
@@ -603,6 +603,47 @@ async def test_list_for_user_paginates_newest_first_and_reports_the_total(
 
     # Чужие заявки не попадают ни в страницу, ни в счётчик.
     assert await service.list_for_user(stranger.id, page=1, page_size=2) == ([], 0)
+
+
+async def test_list_for_user_can_narrow_to_open_statuses(db_session: AsyncSession) -> None:
+    """Фильтр сужает и страницу, и счётчик — иначе «…и ещё N» у бота считал бы то,
+    что сам же решил не показывать.
+    """
+    user = await make_user(db_session)
+    product = await make_product(db_session)
+    service = OrdersService(db_session)
+
+    placed = []
+    for index, status in enumerate(
+        [
+            OrderStatus.PENDING,
+            OrderStatus.COMPLETED,
+            OrderStatus.CANCELLED_BY_CUSTOMER,
+            OrderStatus.CANCELLED_BY_OWNER,
+            OrderStatus.READY,
+        ]
+    ):
+        cycle = await make_cycle(
+            db_session, deadline_at=datetime.now(UTC) + timedelta(hours=index + 1)
+        )
+        await CartService(db_session).add_item(user.id, product.id, 1)
+        order = await service.checkout(user.id, note=None)
+        order.status = status
+        placed.append(order)
+        cycle.deadline_at = datetime.now(UTC) - timedelta(seconds=1)
+        await db_session.flush()
+
+    open_ids = {placed[0].id, placed[4].id}
+
+    orders, total = await service.list_for_user(
+        user.id, page=1, page_size=10, statuses=OPEN_STATUSES
+    )
+    assert total == 2
+    assert {order.id for order in orders} == open_ids
+
+    # Без фильтра — вся история, как её показывает сайт.
+    _, everything = await service.list_for_user(user.id, page=1, page_size=10)
+    assert everything == 5
 
 
 async def test_two_simultaneous_checkouts_produce_one_order(db_session: AsyncSession) -> None:

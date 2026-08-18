@@ -1,0 +1,110 @@
+# Продовый стек: Caddy (TLS) → website (Next) → api (FastAPI) → db (Postgres).
+#
+#   cp deploy/.env.prod.example .env.prod   # и заполнить
+#   docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --build
+#
+# Наружу смотрит только Caddy. `db`, `api` и `website` портов не публикуют:
+# API доступен браузеру исключительно через прокси Next (`/api/proxy/*`),
+# ровно как задумано в apps/website/src/pages/api/proxy/[...path].ts.
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-lulu}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?задайте POSTGRES_PASSWORD в .env.prod}
+      POSTGRES_DB: ${POSTGRES_DB:-lulu}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-lulu} -d ${POSTGRES_DB:-lulu}']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: apps/api
+    restart: unless-stopped
+    env_file:
+      - .env.prod
+    environment:
+      # Как и в dev-compose: адрес БД — всегда сервис `db` по имени в сети
+      # compose, что бы ни лежало в .env.prod.
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-lulu}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-lulu}
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      # Фотографии товаров. Единственное состояние вне БД — попадает в бэкап
+      # отдельно от pg_dump.
+      - uploads:/app/uploads
+    healthcheck:
+      # /health делает настоящий SELECT 1, а не просто отвечает 200.
+      test:
+        [
+          'CMD-SHELL',
+          'python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen(''http://127.0.0.1:3001/health'').status==200 else 1)"',
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  website:
+    build:
+      # Контекст — корень репозитория: Next компилирует `widgets` из исходников.
+      context: .
+      dockerfile: apps/website/Dockerfile
+      args:
+        # Подставляются в клиентский бандл на этапе сборки — после правки
+        # нужен `up -d --build website`, перезапуска мало.
+        NEXT_PUBLIC_API_BASE_URL: https://${SITE_DOMAIN}
+        NEXT_PUBLIC_TELEGRAM_BOT_USERNAME: ${TELEGRAM_BOT_USERNAME}
+        NEXT_PUBLIC_TELEGRAM_LOGIN_WIDGET: ${NEXT_PUBLIC_TELEGRAM_LOGIN_WIDGET:-true}
+    restart: unless-stopped
+    environment:
+      # Server-to-server: getStaticProps, ISR и Next API routes ходят в API
+      # напрямую по внутренней сети, минуя Caddy.
+      API_BASE_URL: http://api:3001
+      AUTH_COOKIE_SECURE: 'true'
+      # Перед Next действительно стоит Caddy, и он выставляет X-Forwarded-For —
+      # без этого лимитер API считал бы всех посетителей одним адресом.
+      TRUST_PROXY_HEADERS: 'true'
+    depends_on:
+      - api
+    healthcheck:
+      test: ['CMD-SHELL', 'node -e "fetch(''http://127.0.0.1:3000/'').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"']
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - '80:80'
+      - '443:443'
+      # HTTP/3. Без UDP Caddy молча откатывается на TCP — работает, но медленнее.
+      - '443:443/udp'
+    environment:
+      # Домен, на который Caddy выпускает сертификат.
+      SITE_DOMAIN: "${SITE_DOMAIN:?нужен домен, на него Caddy выпускает сертификат}"
+      # Адрес, на который Let's Encrypt шлёт предупреждения об истечении.
+      ACME_EMAIL: "${ACME_EMAIL:?нужен email для Let's Encrypt}"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      # Сертификаты. Потеряв этот том, при каждом пересоздании контейнера
+      # упираешься в недельные лимиты Let's Encrypt.
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - website
+
+volumes:
+  pgdata:
+  uploads:
+  caddy_data:
+  caddy_config:

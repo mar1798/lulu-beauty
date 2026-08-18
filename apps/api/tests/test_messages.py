@@ -253,7 +253,11 @@ def test_my_orders_truncates_and_says_so() -> None:
 
 
 def test_my_orders_on_an_empty_list() -> None:
-    assert messages.my_orders([]) == "У вас пока нет заявок."
+    # «Активных», not «нет заявок»: the caller filters to OPEN_STATUSES, so someone
+    # whose orders are all handed over lands here too.
+    assert (
+        messages.my_orders([]) == "Активных заявок нет — всё, что было раньше, осталось на сайте."
+    )
 
 
 def _cart(*, items: list[CartItemResponse], deadline: datetime | None) -> CartResponse:
