@@ -1,6 +1,6 @@
 import clsx from 'clsx'
-import { useRef, type CSSProperties, type FC, type RefObject } from 'react'
-import { motion, useInView } from 'motion/react'
+import { useRef, type CSSProperties, type FC, type ReactNode, type RefObject } from 'react'
+import { motion, useInView, useReducedMotion } from 'motion/react'
 import type { IBasicStyling, IDecorFieldProps, IDecorSpot } from '../../types'
 import { AppImage } from '../../atoms/app-image'
 import { useParallaxOffset } from '../../hooks/useParallaxOffset'
@@ -45,15 +45,67 @@ const floatTiming = (baseMs: number, phase: number): CSSProperties => {
   return { animationDuration: `${duration}ms`, animationDelay: `${-phase * duration}ms` }
 }
 
+/**
+ * Едущий слой пятна — отдельным компонентом, чтобы `useParallaxOffset`
+ * вызывался только тогда, когда параллакс вообще нужен.
+ *
+ * Условно позвать хук правила React не дают, а звать его при сокращённом
+ * движении незачем: `useScroll` внутри подписался бы и продолжил мерить
+ * геометрию ради смещения, которое всё равно не применяется. На главной пятен
+ * семь — это семь холостых подписок у человека, попросившего систему поменьше
+ * двигаться. Ветвление по компоненту решает это честно.
+ */
+const SpotDrift: FC<{
+  containerRef: RefObject<HTMLElement | null>
+  depth: number
+  isActive: boolean
+  children: ReactNode
+}> = ({ containerRef, depth, isActive, children }) => {
+  const y = useParallaxOffset(containerRef, DECOR_PARALLAX_PX * depth)
+
+  return (
+    <motion.div className={clsx(styles.drift, isActive && styles.moving)} style={{ y }}>
+      {children}
+    </motion.div>
+  )
+}
+
 const Spot: FC<{
   spot: IDecorSpot
   containerRef: RefObject<HTMLElement | null>
   isActive: boolean
-}> = ({ spot, containerRef, isActive }) => {
-  const y = useParallaxOffset(containerRef, DECOR_PARALLAX_PX * spot.depth)
+  isReduced: boolean
+}> = ({ spot, containerRef, isActive, isReduced }) => {
   const phase = spot.floatPhase ?? 0
   const halo = spot.halo ?? 'brand'
-  const isMoving = y !== undefined && isActive
+
+  const layers = (
+    <>
+      {halo !== 'none' && (
+        /* Тайминги дрейфа — от floatPhase, см. floatTiming. */
+        <span
+          className={clsx(styles.halo, styles.haloTone[halo], !isActive && styles.paused)}
+          style={floatTiming(HALO_FLOAT_DURATION_MS, phase)}
+        />
+      )}
+
+      <div
+        className={clsx(styles.float, !isActive && styles.paused)}
+        style={floatTiming(DECOR_FLOAT_DURATION_MS, phase)}
+      >
+        <AppImage
+          className={clsx(
+            styles.image,
+            spot.isStrong === true && styles.strong,
+            spot.isFlipped === true && styles.flipped,
+          )}
+          image={spot.image}
+          sizes={{ fb: SIZE_CEILING[spot.size] }}
+          priority={spot.isPriority}
+        />
+      </div>
+    </>
+  )
 
   return (
     <div
@@ -61,33 +113,17 @@ const Spot: FC<{
       /* Позиция — данные конкретного пятна, в CSS ей взяться неоткуда. */
       style={{ top: spot.top, [spot.side]: spot.offsetX }}
     >
-      <motion.div
-        className={clsx(styles.drift, isMoving && styles.moving)}
-        style={y === undefined ? undefined : { y }}
-      >
-        {halo !== 'none' && (
-          /* Тайминги дрейфа — от floatPhase, см. floatTiming. */
-          <span
-            className={clsx(styles.halo, styles.haloTone[halo], !isActive && styles.paused)}
-            style={floatTiming(HALO_FLOAT_DURATION_MS, phase)}
-          />
-        )}
-
-        <div
-          className={clsx(styles.float, !isActive && styles.paused)}
-          style={floatTiming(DECOR_FLOAT_DURATION_MS, phase)}
-        >
-          <AppImage
-            className={clsx(
-              styles.image,
-              spot.isStrong === true && styles.strong,
-              spot.isFlipped === true && styles.flipped,
-            )}
-            image={spot.image}
-            sizes={{ fb: SIZE_CEILING[spot.size] }}
-          />
-        </div>
-      </motion.div>
+      {isReduced ? (
+        /*
+          Тот же слой, но обычным блоком: `will-change` не ставим — промотировать
+          неподвижный слой не за чем (та же логика, что у класса `moving`).
+        */
+        <div className={styles.drift}>{layers}</div>
+      ) : (
+        <SpotDrift containerRef={containerRef} depth={spot.depth} isActive={isActive}>
+          {layers}
+        </SpotDrift>
+      )}
     </div>
   )
 }
@@ -121,6 +157,9 @@ export const DecorField: FC<IDecorFieldProps & IBasicStyling> = ({
   */
   const isActive = useInView(fieldRef, { margin: ACTIVATION_MARGIN })
 
+  /* Флаг читается здесь, один раз на поле, и раздаётся пятнам пропсом. */
+  const isReduced = useReducedMotion() ?? false
+
   return (
     <div ref={fieldRef} className={clsx(styles.container, className)} aria-hidden={true}>
       {spots.map(spot => (
@@ -129,6 +168,7 @@ export const DecorField: FC<IDecorFieldProps & IBasicStyling> = ({
           spot={spot}
           containerRef={containerRef}
           isActive={isActive}
+          isReduced={isReduced}
         />
       ))}
     </div>

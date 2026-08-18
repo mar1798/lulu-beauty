@@ -132,3 +132,68 @@ async def test_a_cycle_closed_early_stops_being_the_active_one(db_session: Async
     await db_session.flush()
 
     assert await CyclesService(db_session).get_active_cycle() is None
+
+
+async def test_reopening_a_finished_cycle_is_refused_while_another_collects(
+    db_session: AsyncSession,
+) -> None:
+    """The rule `create()` enforces, on the path that used to get around it.
+
+    Moving a closed cycle's deadline into the future reopens it, and with another cycle
+    already collecting that leaves two open at once — `get_active_cycle()` then picks the
+    nearer deadline, and every cart gathered under the other one drops out of sight.
+    """
+    now = datetime.now(UTC)
+    finished = await make_cycle(db_session, deadline_at=now - timedelta(days=7))
+    finished.status = CycleStatus.CLOSED
+    finished.closed_at = now - timedelta(days=7)
+    await make_cycle(db_session, deadline_at=now + timedelta(days=3))
+    await db_session.flush()
+
+    with pytest.raises(ActiveCycleExistsError):
+        await CyclesService(db_session).update(
+            finished.id, {"deadline_at": now + timedelta(days=10)}
+        )
+
+
+async def test_reopening_a_finished_cycle_is_allowed_when_nothing_else_collects(
+    db_session: AsyncSession,
+) -> None:
+    now = datetime.now(UTC)
+    finished = await make_cycle(db_session, deadline_at=now - timedelta(days=7))
+    finished.status = CycleStatus.CLOSED
+    await db_session.flush()
+
+    reopened = await CyclesService(db_session).update(
+        finished.id, {"deadline_at": now + timedelta(days=10)}
+    )
+
+    assert reopened.status is CycleStatus.UPCOMING
+
+
+async def test_editing_the_open_cycle_is_not_blocked_by_itself(db_session: AsyncSession) -> None:
+    """The guard only fires on a cycle *becoming* open — extending the live one is the
+    ordinary use of this endpoint."""
+    now = datetime.now(UTC)
+    cycle = await make_cycle(db_session, deadline_at=now + timedelta(days=1))
+
+    updated = await CyclesService(db_session).update(
+        cycle.id, {"deadline_at": now + timedelta(days=5), "label": "Июль"}
+    )
+
+    assert updated.label == "Июль"
+    assert updated.deadline_at > now + timedelta(days=4)
+
+
+async def test_renaming_a_finished_cycle_is_never_blocked(db_session: AsyncSession) -> None:
+    """A past cycle stays past when only its label changes, so no guard applies."""
+    now = datetime.now(UTC)
+    finished = await make_cycle(db_session, deadline_at=now - timedelta(days=7))
+    finished.status = CycleStatus.CLOSED
+    await make_cycle(db_session, deadline_at=now + timedelta(days=3))
+    await db_session.flush()
+
+    updated = await CyclesService(db_session).update(finished.id, {"label": "Май"})
+
+    assert updated.label == "Май"
+    assert updated.status is CycleStatus.CLOSED

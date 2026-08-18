@@ -107,6 +107,10 @@ async def update_cycle(
         raise HTTPException(
             status.HTTP_422_UNPROCESSABLE_ENTITY, "deadline_must_be_future"
         ) from error
+    except ActiveCycleExistsError as error:
+        # Reopening a finished cycle while another one is collecting — the same 409 (and
+        # the same message) creating a second cycle gets, because it is the same rule.
+        raise HTTPException(status.HTTP_409_CONFLICT, "active_cycle_exists") from error
 
     response = _cycle_response(cycle)
     await session.commit()

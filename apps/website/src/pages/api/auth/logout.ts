@@ -1,5 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from 'next'
 import { apiUrl, methodNotAllowed } from '@/server/apiFetch'
+import { clientHeaders } from '@/server/clientAddress'
 import { clearAuthCookies, readAuthTokens } from '@/server/cookies'
 
 /**
@@ -18,7 +19,7 @@ const handler = async (req: NextApiRequest, res: NextApiResponse): Promise<void>
     try {
       await fetch(apiUrl('/auth/logout'), {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...clientHeaders(req) },
         body: JSON.stringify({ refreshToken }),
       })
     } catch {

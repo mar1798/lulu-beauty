@@ -49,5 +49,17 @@ class Settings(BaseSettings):
     scheduler_enabled: bool = True
     scheduler_interval_seconds: int = 300
 
+    # Per-caller HTTP budgets (see app/common/rate_limit.py). The general one is sized for
+    # a page of catalog plus its images, the strict one for signing in — which is a handful
+    # of calls, and the only anonymous surface here that writes to the database.
+    rate_limit_enabled: bool = True
+    rate_limit_per_minute: int = 300
+    rate_limit_auth_per_minute: int = 20
+    # Whether `X-Forwarded-For` may be believed. True because the API is meant to sit
+    # behind the website's proxy, where it is the only thing that tells two visitors
+    # apart; turn it off if the API is ever reachable directly, since the header is then
+    # attacker-chosen and would hand every caller unlimited identities.
+    rate_limit_trust_forwarded_for: bool = True
+
 
 settings = Settings()  # type: ignore[call-arg]  # fields are sourced from env/.env at runtime

@@ -23,7 +23,7 @@ const handler = async (req: NextApiRequest, res: NextApiResponse): Promise<void>
     return
   }
 
-  await signInThroughTelegram(res, '/auth/telegram/mini-app', { initData })
+  await signInThroughTelegram(req, res, '/auth/telegram/mini-app', { initData })
 }
 
 export default handler

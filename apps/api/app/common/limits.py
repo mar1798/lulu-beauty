@@ -18,7 +18,7 @@ MAX_WISHLIST_ITEMS = 200
 # out-of-range value and fails the whole request (a whole catalog import) at flush time.
 MAX_PRICE_CENTS = 2_000_000_000
 
-# Объём в миллилитрах — необязательная подпись на карточке товара (50 мл, 500 мл).
-# Пятилитровой косметики не бывает, а опечатка вроде «50000» на витрине читается как
-# ошибка магазина, а не покупателя; колонка при этом всё та же 32-битная INTEGER.
+# Millilitres — the optional caption on a product card ("50 мл", "500 мл"). There is no
+# five-litre cosmetics, and a typo like "50000" on the storefront reads as the shop's
+# mistake rather than the customer's; the column behind it is the same 32-bit INTEGER.
 MAX_VOLUME_ML = 10_000

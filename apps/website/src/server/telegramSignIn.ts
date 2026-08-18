@@ -1,5 +1,6 @@
-import type { NextApiResponse } from 'next'
+import type { NextApiRequest, NextApiResponse } from 'next'
 import { apiUrl } from '@/server/apiFetch'
+import { clientHeaders } from '@/server/clientAddress'
 import { setAuthCookies, type IAuthTokens } from '@/server/cookies'
 
 /**
@@ -21,13 +22,14 @@ interface ITokensResponse {
 }
 
 export const signInThroughTelegram = async (
+  req: NextApiRequest,
   res: NextApiResponse,
   path: string,
   body: unknown
 ): Promise<void> => {
   const response = await fetch(apiUrl(path), {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...clientHeaders(req) },
     body: JSON.stringify(body),
   })
 
@@ -53,7 +55,7 @@ export const signInThroughTelegram = async (
     запрос, выставленных мгновение назад cookie там нет (то же, что в `telegram/poll`).
   */
   const me = await fetch(apiUrl('/users/me'), {
-    headers: { Authorization: `Bearer ${tokens.accessToken}` },
+    headers: { Authorization: `Bearer ${tokens.accessToken}`, ...clientHeaders(req) },
   })
 
   res.status(200).json({ user: me.ok ? await me.json() : null })

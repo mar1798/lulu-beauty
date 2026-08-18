@@ -142,7 +142,10 @@ class ProductService:
 
         result = await self._session.execute(
             query.options(selectinload(Product.images))
-            .order_by(Product.name)
+            # Product names are not unique (two volumes of the same toner, a re-imported
+            # duplicate), so name alone leaves the order of the equal rows to the planner
+            # — and a paginated listing then repeats one product and skips another.
+            .order_by(Product.name, Product.id)
             .offset((page - 1) * page_size)
             .limit(page_size)
         )
@@ -314,20 +317,29 @@ class ProductService:
         await self._session.flush()
         return product
 
-    async def add_image(self, product_id: uuid.UUID, url: str, alt: str | None) -> ProductImage:
+    async def add_image(
+        self, product_id: uuid.UUID, url: str, alt: str | None
+    ) -> tuple[ProductImage, list[str]]:
         """Sets the product's photo, dropping whatever it had before.
 
         A product carries exactly one photo, so an upload is a replacement rather
         than an append. Doing it here (instead of asking the caller to delete
         first) keeps the product from being briefly photo-less between the two
         requests, and cleans up rows left by earlier multi-image data.
+
+        Returns the new image and the urls of the ones it replaced. The files behind
+        those are the caller's to remove, and only once this transaction has committed:
+        deleting them here would strand a live row on a missing file the moment anything
+        further down the request rolled back.
         """
         await self.get_by_id(product_id)  # 404s if missing/soft-deleted
 
         existing = await self._session.execute(
             select(ProductImage).where(ProductImage.product_id == product_id)
         )
+        replaced_urls = []
         for image in existing.scalars():
+            replaced_urls.append(image.url)
             await self._session.delete(image)
         await self._session.flush()
 
@@ -340,9 +352,11 @@ class ProductService:
         )
         self._session.add(image)
         await self._session.flush()
-        return image
+        return image, replaced_urls
 
-    async def delete_image(self, product_id: uuid.UUID, image_id: uuid.UUID) -> None:
+    async def delete_image(self, product_id: uuid.UUID, image_id: uuid.UUID) -> str:
+        """Drops the row and hands back the url, so the caller can remove the file after
+        the commit — same reasoning as `add_image`."""
         result = await self._session.execute(
             select(ProductImage).where(
                 ProductImage.id == image_id, ProductImage.product_id == product_id
@@ -351,7 +365,10 @@ class ProductService:
         image = result.scalar_one_or_none()
         if image is None:
             raise ProductImageNotFoundError
+
+        url = image.url
         await self._session.delete(image)
+        return url
 
     async def _slug_taken(self, slug: str) -> bool:
         result = await self._session.execute(select(Product.id).where(Product.slug == slug))

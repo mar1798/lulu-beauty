@@ -1,5 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from 'next'
 import { apiUrl, methodNotAllowed } from '@/server/apiFetch'
+import { clientHeaders } from '@/server/clientAddress'
 import { setLoginSession } from '@/server/cookies'
 
 /**
@@ -25,7 +26,9 @@ const handler = async (req: NextApiRequest, res: NextApiResponse): Promise<void>
 
   const response = await fetch(apiUrl('/auth/telegram/session'), {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    // Единственная анонимная ручка, которая пишет в базу: ради неё у бэкенда и
+    // появился строгий лимит, а он бесполезен, пока все гости выглядят одинаково.
+    headers: { 'Content-Type': 'application/json', ...clientHeaders(req) },
     body: '{}',
   })
 

@@ -4,7 +4,7 @@ from datetime import datetime
 from pydantic import Field, field_validator
 
 from app.common.limits import MAX_PRICE_CENTS, MAX_VOLUME_ML
-from app.common.schemas import CamelModel
+from app.common.schemas import CamelModel, require_not_null
 
 SLUG_PATTERN = r"^[a-z0-9]+(-[a-z0-9]+)*$"
 
@@ -49,9 +49,17 @@ class CategoryCreateRequest(CamelModel):
 
 
 class CategoryUpdateRequest(CamelModel):
+    # All three default to None to mean "omitted, leave it alone"; all three sit on NOT
+    # NULL columns, so an explicit `null` is refused rather than assigned (see
+    # `require_not_null`).
     name: str | None = Field(default=None, min_length=1, max_length=255)
     slug: str | None = Field(default=None, min_length=1, max_length=255, pattern=SLUG_PATTERN)
     sort_order: int | None = None
+
+    @field_validator("name", "slug", "sort_order", mode="before")
+    @classmethod
+    def _reject_null(cls, value: object) -> object:
+        return require_not_null(value)
 
 
 class ProductResponse(CamelModel):
@@ -109,6 +117,13 @@ class ProductUpdateRequest(CamelModel):
     @classmethod
     def _validate_brand(cls, value: str | None) -> str:
         return require_brand(value)
+
+    # The columns behind these four are NOT NULL — unlike description/volume_ml/category_id
+    # just above, which a PATCH may legitimately clear.
+    @field_validator("name", "slug", "price_cents", "in_stock", mode="before")
+    @classmethod
+    def _reject_null(cls, value: object) -> object:
+        return require_not_null(value)
 
 
 class ImportRowErrorResponse(CamelModel):

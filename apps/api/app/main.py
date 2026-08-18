@@ -10,6 +10,7 @@ from app import scheduler
 from app.auth.router import router as auth_router
 from app.cart.router import router as cart_router
 from app.catalog.router import router as catalog_router
+from app.common.rate_limit import RateLimitMiddleware
 from app.config import settings
 from app.cycles.router import router as cycles_router
 from app.export.router import router as export_router
@@ -40,6 +41,10 @@ def create_app() -> FastAPI:
     logging.basicConfig(level=logging.INFO)
 
     app = FastAPI(lifespan=lifespan)
+    # Added first, so it runs last: Starlette applies middleware in reverse, and the limit
+    # has to be inside CORS — a 429 that arrives without the CORS headers reads in the
+    # browser as a network failure rather than as the refusal it is.
+    app.add_middleware(RateLimitMiddleware)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=[settings.cors_origin],

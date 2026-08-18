@@ -53,6 +53,21 @@ export const useTelegramLogin = (isEnabled: boolean): ITelegramLoginState => {
    */
   const isCancelled = useRef(false)
 
+  /**
+   * Номер попытки, для которой сессия уже открыта.
+   *
+   * `StrictMode` в разработке прогоняет эффект дважды, а сессия открывается
+   * сразу на монтировании — без этой отметки каждый заход на `/login` заводил
+   * на бэкенде две сессии вместо одной: первую тут же бросала отмена, вторую
+   * человек и подтверждал. На пользователей это не влияло (в проде
+   * `StrictMode` не работает), но лимитер частоты и таблицу сессий
+   * замусоривало, а отладку их показаний делало вдвое веселее.
+   *
+   * `null` — ещё ни одной; `retry` меняет `attempt`, и новая попытка честно
+   * заводит свою сессию.
+   */
+  const startedAttempt = useRef<number | null>(null)
+
   useEffect(() => {
     if (!isEnabled) {
       return
@@ -60,6 +75,19 @@ export const useTelegramLogin = (isEnabled: boolean): ITelegramLoginState => {
 
     isCancelled.current = false
     let timer: ReturnType<typeof setTimeout> | undefined
+
+    /*
+      Повтор того же прогона (StrictMode) новую сессию не открывает.
+
+      Цикл первого прогона при этом не теряется: `run` в момент «уборки» висит
+      на `await` открытия сессии, а `isCancelled` — общий на все прогоны ref, и
+      строка выше уже вернула его в `false`. Когда ответ доедет, проверка
+      отмены его пропустит, и опрос пойдёт как ни в чём не бывало — уже по той
+      единственной сессии, что успела открыться.
+    */
+    const isRepeat = startedAttempt.current === attempt
+
+    startedAttempt.current = attempt
 
     const stop = (next: TelegramLoginStatus, message: string | null = null): void => {
       if (isCancelled.current) {
@@ -125,7 +153,9 @@ export const useTelegramLogin = (isEnabled: boolean): ITelegramLoginState => {
       timer = setTimeout(() => void poll(), POLL_INTERVAL_MS)
     }
 
-    void run()
+    if (!isRepeat) {
+      void run()
+    }
 
     return () => {
       isCancelled.current = true

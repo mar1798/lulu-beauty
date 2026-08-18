@@ -39,6 +39,12 @@ const serverValues = {
   apiBaseUrl: process.env.API_BASE_URL ?? 'http://localhost:3001',
   /** Флаг `Secure` у cookie авторизации: снимается только для локального http. */
   authCookieSecure: process.env.AUTH_COOKIE_SECURE !== 'false',
+  /**
+   * Верить ли входящему `x-forwarded-for` при определении адреса посетителя
+   * (`server/clientAddress.ts`). Включать, только если перед Next действительно
+   * стоит балансировщик: иначе заголовок выставляет сам браузер.
+   */
+  trustProxyHeaders: process.env.TRUST_PROXY_HEADERS === 'true',
 } as const
 
 export const serverConfig = <K extends keyof typeof serverValues>(

@@ -2,83 +2,67 @@
 
 Lulu Beauty is an online catalog/ordering platform — customers browse a product catalog, add items to a cart, and submit a request before an owner-defined deadline (there is no online payment; the owner fulfills requests offline and exports them to Excel). This is a Turborepo monorepo containing the frontend, the UI component library it's built from, and the backend API.
 
-See `PLAN.md` at the repo root for the full backend architecture/design and a running `## Done` log of what's actually been implemented so far.
+## Apps and packages
 
-## Packages
+- `apps/website`: Next.js 16 app (Pages Router) that renders the site — public catalog, cart/checkout, customer account, and the owner-only `/admin/*` section. Built from `widgets`.
+- `apps/api`: FastAPI + SQLAlchemy/Alembic + PostgreSQL backend (managed with `uv`), runs via Docker. **Not** an npm workspace — it has no `package.json` and is excluded from Turborepo.
+- `packages/widgets`: UI component library (React + vanilla-extract), developed in Storybook.
 
-- `widgets`: UI component library.
+The JS side uses **npm** on Node 22.23.1 (pinned in `engines` and `.nvmrc`); `apps/api` uses `uv`.
 
-## Apps 
+## Getting started
 
-- `website`: an application that uses nextjs, and the widgets package to render the website. 
-- `api`: FastAPI + SQLAlchemy/Alembic + PostgreSQL backend (managed with `uv`), runs via Docker.
-
-
-## Commands
-
-To check the project
-
-```bash
-npm run check
-```
-
-
-### ENV Variables:
-
-Each app documents its own env vars in a `.env.example` file — copy it to `.env` before running:
+Copy the env files first — each app documents its own variables in `.env.example`:
 
 ```bash
 cp apps/website/.env.example apps/website/.env
 cp apps/api/.env.example apps/api/.env
+npm ci
 ```
+
+Then start what you need (all commands run from the repo root):
+
+| Command | Starts | Ports |
+| --- | --- | --- |
+| `npm run dev:web` | frontend only | 3000 |
+| `npm run dev:api` | backend + database in Docker, logs in the foreground | 3001, 5432 |
+| `npm run dev:all` | backend detached + frontend in the foreground | 3000, 3001 |
+| `npm run dev:storybook` | Storybook for `widgets` | 6006 |
+| `npm run dev:api:stop` | stops the containers `dev:api`/`dev:all` started | — |
+
+`dev:all` runs the api with `-d`, so `Ctrl+C` only stops the frontend — use `npm run dev:api:stop` for the containers. None of these rebuild the api image; after changing `apps/api/Dockerfile` run `docker compose up --build api`.
+
+## Checks
+
+Before pushing:
+
+- `npm run check` — types + lint for `website`/`widgets`.
+- `npm test` — tests for the JS workspaces (vitest in `widgets`).
+- for `apps/api` changes, also run `uv run pytest && uv run ruff check . && uv run mypy app` from `apps/api` — it's a separate Python project, not covered by `npm run check`.
+
+CI runs the same two halves: `.github/workflows/node.js.yml` and `.github/workflows/api.yml`.
 
 ## Package `widgets`
 
-Currently, includes React components (organized by folder following the recommendations of [atomic design](https://bradfrost.com/blog/post/atomic-web-design/)).
+A library of React components grouped by the [atomic design principle](https://bradfrost.com/blog/post/atomic-web-design/) — `atoms`, `molecules`, `organisms`, `templates`. Shared styles, themes and style utilities live here too.
 
-Commonly used styles and themes are also located here.
+Everything is fairly standard except the styling, which uses [vanilla-extract](https://vanilla-extract.style/) — essentially "CSS modules with TypeScript". All `*.css.ts` files are compiled to real CSS at build time; there is no runtime. Shared styles and the utilities for writing them are in `/src/styling`.
 
-Hooks and contexts are also located here.
+The package is framework-independent on purpose: it never imports `next/link` or `next/image`. The website injects those adapters through `ServicesContext`, and Storybook injects its own stubs.
 
-Creating a new component looks like this:
+### Folder descriptions
 
-```bash
-npm run generate -w widgets
-```
+- `/src/contexts` — React contexts
+- `/src/hooks` — custom React hooks
+- `/src/svg` — icons
+- `/src/types.ts` — shared type definitions (those likely to be reused by external packages; preferably JSON-serializable only)
+- `/src/utils` — common utilities that don't belong in a more specific directory
+- `/src/testing` — utilities for tests and Storybook
+- `/tools` — scripts for console utilities (currently the component boilerplate generator, see below)
 
-Widget development and testing takes place through [storybook](https://storybook.js.org/)
+Many of these folders contain automatically generated `index.ts` barrel files — regenerated after scaffolding a component, or manually with `npm run barrels`. Don't hand-edit them; the generation settings live in [`.barrelsby.json`](https://www.npmjs.com/package/barrelsby).
 
-```bash
-npm run storybook -w widgets
-```
-
-## Widgets package:
-
-A library of components grouped according to the [atomic design principle](https://bradfrost.com/blog/post/atomic-web-design/). Everything is quite standard except for styling, which uses the [vanilla-extract-css library](https://vanilla-extract.style/).
-
-### Vanilla-extract-css:
-
-In essence, vanilla-extract-css can be considered as "CSS modules with TypeScript." All css.ts files are compiled into CSS during the project build, so this should be taken into account. The library does not have a runtime. All shared styles, as well as utilities for writing styles, are located in the /src/styling folder.
-
-### Folder descriptions:
-
-`/src/contexts` - React contexts
-
-`/src/hooks` - Custom React hooks
-
-`/src/svg` - Icons
-
-`/src/types` - Definitions of shared types (those that are likely to be reused in external packages, preferably include only JSON-serializable types here)
-
-`/src/util` - Set of common utilities that couldn't be categorized into other specific directories
-
-`/src/testing` - Utilities for testing and Storybook
-
-`/tools` - Set of scripts for console utilities (currently used for generating component boilerplates, more on that later)
-
-Many of these folders contain automatically generated index.ts files (they are generated after generating atoms/molecules/organisms, and they can also be generated manually using npm run barrels). The generation settings are stored in [.barrels.json files](https://www.npmjs.com/package/barrelsby). This also applies to the front-website package.
-
-### Generating component boilerplates:
+### Generating component boilerplates
 
 To create a template for an `atom/molecule/organism`, run:
 
@@ -86,19 +70,40 @@ To create a template for an `atom/molecule/organism`, run:
 npm run generate -w widgets
 ```
 
-Then choose the desired component type and specify its name.
+Then choose the desired component type and specify its name. This creates a folder with the component file, a Storybook story, and boilerplate for styles and tests. After that, start Storybook and begin developing:
 
-This will create a folder with the component, including the component file, Storybook, boilerplate files for styles and tests.
+```bash
+npm run storybook -w widgets
+```
 
-After that, you can start the Storybook with `npm run storybook -w widgets` and begin developing the component.
+To run the tests, or a single test file:
 
-## Website app:
+```bash
+npm test -w widgets
+cd packages/widgets && npx vitest run src/atoms/button/Button.test.tsx
+```
 
-...
+## Website app
 
-## Api app:
+Next.js 16 on the Pages Router, consuming `widgets` as TypeScript source (`transpilePackages`). Every page is static (SSG/ISR) — there is no `getServerSideProps` anywhere in the app.
 
-FastAPI backend with PostgreSQL (via SQLAlchemy 2.0 async + Alembic migrations), dependencies managed with [uv](https://docs.astral.sh/uv/). Runs in Docker together with its database. Not part of the npm/Turborepo workspace — it has no `package.json`.
+```bash
+npm run dev:web              # http://localhost:3000
+npm run build -w website
+npm run analyze -w website   # bundle report in .next/analyze/client.html
+```
+
+Notable pieces:
+
+- **Auth is Telegram-only** — no password and no code to type: the site opens a sign-in session, the bot confirms it, and the tab picks the confirmed session up. JWTs never reach the browser; they live in httpOnly cookies set by the `pages/api/auth/*` routes.
+- `pages/api/proxy/[...path].ts` is the only route through which the browser reaches the API, and it deliberately 404s `/auth/*` so token pairs can't leak through it.
+- `src/services/endpoints/*` — one module per domain; all API calls go through these, never raw `fetch` in a page. Client-side data fetching uses [SWR](https://swr.vercel.app/).
+- `src/services/apiErrors.ts` — the API returns machine-readable error codes, and this table maps them to the Russian messages the UI shows. A new error code on the backend needs an entry here.
+- Security headers (including two CSPs, one enforced and one report-only) live in `next.config.js`.
+
+## Api app
+
+FastAPI backend with PostgreSQL (via SQLAlchemy 2.0 async + Alembic migrations), dependencies managed with [uv](https://docs.astral.sh/uv/). Runs in Docker together with its database.
 
 Setup:
 
@@ -128,14 +133,20 @@ uv run ruff check .  # lint
 uv run mypy app      # type check
 ```
 
-See `PLAN.md` for the full domain model (users, cart, orders, order deadlines, Telegram OTP auth, catalog import/export) and implementation status.
+Migrations and the owner account:
 
+```bash
+uv run alembic revision --autogenerate -m "<message>"   # commit the generated file
+uv run alembic upgrade head
+uv run python -m app.scripts.seed                       # upserts the ADMIN owner from OWNER_* env vars
+```
 
-## General:
+Domain modules under `app/` cover auth, users, catalog (with xlsx/csv import), cart, orders, order cycles/deadlines, the wishlist, the Telegram bot, xlsx export and file storage.
 
-It is important to separate the API interaction logic from the visual component library. Also, specific things unrelated to the website's appearance (such as analytics) should be separated. This is why the code is divided into front-website and widgets.
+> ⚠️ The DB-backed tests under `tests/integration/` truncate every table between tests, and `DATABASE_URL` from your environment or `.env` wins over the test default — so never point the suite at your dev database. Create a separate one (`lulu_test`), run `alembic upgrade head` against it, and prefix `uv run pytest` with that `DATABASE_URL`. Without a reachable Postgres those tests skip themselves, so a green local run may not have executed them; CI does.
 
-Before pushing changes, run:
+## General
 
-- `npm run check` - checks types and lints `website`/`widgets`.
-- for `apps/api` changes, also run `uv run pytest && uv run ruff check . && uv run mypy app` from `apps/api` (it's a separate Python project, not covered by `npm run check`).
+It is important to separate the API interaction logic from the visual component library. Also, specific things unrelated to the website's appearance (such as analytics) should be separated. This is why the code is divided into `website` and `widgets`.
+
+All user-facing copy is in Russian — UI strings, bot messages, xlsx export headers, import errors. Comments and docstrings are Russian in `website`/`widgets` and English in `apps/api`.

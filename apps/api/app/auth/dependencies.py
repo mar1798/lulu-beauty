@@ -25,10 +25,14 @@ async def get_current_user(
 
     try:
         payload = token_service.decode_access_token(credentials.credentials)
-    except token_service.InvalidTokenError as error:
+        # Inside the same guard as the decode: `sub` is a string in the JWT, and one that
+        # isn't a uuid is an invalid token rather than an unhandled ValueError two frames
+        # below, where it surfaced as a 500.
+        user_id = uuid.UUID(payload.sub)
+    except (token_service.InvalidTokenError, ValueError) as error:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "invalid_token") from error
 
-    return CurrentUser(id=uuid.UUID(payload.sub), role=payload.role)
+    return CurrentUser(id=user_id, role=payload.role)
 
 
 async def require_admin(current_user: CurrentUser = Depends(get_current_user)) -> CurrentUser:

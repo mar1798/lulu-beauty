@@ -134,6 +134,16 @@ def build_orders_workbook(rows: list[OrderExportRow], *, include_prices: bool = 
 
     def cell(value: CellValue, *, index: int, bold: bool = False) -> Cell:
         written = WriteOnlyCell(sheet, value=value)
+        # A product name is text, and openpyxl infers otherwise: it writes any string
+        # starting with "=" as a real <f> formula. Product names come from the catalog
+        # import, and this sheet is explicitly meant to be forwarded to a supplier — so a
+        # row named "=1+1" (or something that reads a cell, or worse) would arrive as a
+        # live formula in somebody else's Excel. Declaring the type keeps the text exactly
+        # as typed, with none of the leading apostrophe the usual workaround leaves behind.
+        # Only "=" is affected: "+", "-" and "@" are already written as strings, and in
+        # xlsx — unlike csv — Excel does not re-interpret those.
+        if isinstance(value, str):
+            written.data_type = "s"
         written.alignment = Alignment(
             wrap_text=index in TEXT_COLUMNS,
             vertical="center",

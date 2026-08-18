@@ -1,5 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from 'next'
 import { apiUrl, methodNotAllowed } from '@/server/apiFetch'
+import { clientHeaders } from '@/server/clientAddress'
 import { clearLoginSession, readLoginSession, setAuthCookies } from '@/server/cookies'
 
 /**
@@ -31,7 +32,7 @@ const handler = async (req: NextApiRequest, res: NextApiResponse): Promise<void>
 
   const response = await fetch(apiUrl('/auth/telegram/claim'), {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...clientHeaders(req) },
     body: JSON.stringify(session),
   })
 
@@ -59,7 +60,7 @@ const handler = async (req: NextApiRequest, res: NextApiResponse): Promise<void>
     прочитанный запрос, выставленных мгновение назад cookie там нет.
   */
   const me = await fetch(apiUrl('/users/me'), {
-    headers: { Authorization: `Bearer ${claim.tokens.accessToken}` },
+    headers: { Authorization: `Bearer ${claim.tokens.accessToken}`, ...clientHeaders(req) },
   })
 
   if (!me.ok) {

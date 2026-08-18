@@ -1,6 +1,8 @@
 import io
+import zipfile
 
 import openpyxl
+from openpyxl import load_workbook
 
 from app.export.service import (
     HEADER,
@@ -139,3 +141,23 @@ def test_content_disposition_is_latin1_encodable_and_keeps_extension() -> None:
 def test_content_disposition_handles_ascii_filename_unchanged() -> None:
     header = content_disposition("orders-all-cycles.xlsx")
     assert 'filename="orders-all-cycles.xlsx"' in header
+
+
+def test_a_product_name_that_looks_like_a_formula_stays_text() -> None:
+    """openpyxl writes any string starting with "=" as a real formula, and this sheet is
+    forwarded to suppliers — so a catalog row named "=1+1" must not arrive live."""
+    rows = [
+        OrderExportRow(
+            product_name="=1+1", brand="Round Lab", quantity=1, unit_price_cents=1000
+        )
+    ]
+
+    content = build_orders_workbook(rows)
+
+    sheet_xml = zipfile.ZipFile(io.BytesIO(content)).read("xl/worksheets/sheet1.xml").decode()
+    assert "<f>" not in sheet_xml
+    assert "=1+1" in sheet_xml
+
+    workbook = load_workbook(io.BytesIO(content))
+    assert workbook.active["A2"].value == "=1+1"
+    assert workbook.active["A2"].data_type == "s"

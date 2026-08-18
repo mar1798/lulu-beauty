@@ -214,7 +214,10 @@ class OrdersService:
             select(Order)
             .options(selectinload(Order.items))
             .where(Order.user_id == user_id)
-            .order_by(Order.created_at.desc())
+            # `id` breaks the tie: `created_at` is a server default, so orders placed in
+            # the same tick share it, and Postgres is free to order them differently for
+            # each page — which shows one order twice and hides another entirely.
+            .order_by(Order.created_at.desc(), Order.id.desc())
             .offset((page - 1) * page_size)
             .limit(page_size)
         )
@@ -545,7 +548,14 @@ class OrdersService:
     def _admin_query(
         self, cycle_id: uuid.UUID | None, status: OrderStatus | None
     ) -> Select[tuple[Order]]:
-        query = select(Order).options(selectinload(Order.items)).order_by(Order.created_at.desc())
+        # Tie broken by id, for the same reason the customer listing breaks it: this
+        # query is paginated, and equal timestamps otherwise make the page boundary
+        # arbitrary. The export reads the same ordering and simply benefits from it.
+        query = (
+            select(Order)
+            .options(selectinload(Order.items))
+            .order_by(Order.created_at.desc(), Order.id.desc())
+        )
         if cycle_id is not None:
             query = query.where(Order.cycle_id == cycle_id)
         if status is not None:

@@ -42,9 +42,18 @@ class UsersService:
         is the version of this list nobody would open twice.
         """
         query = select(User)
-        if search:
-            needle = f"%{search.strip()}%"
-            query = query.where(or_(User.name.ilike(needle), User.phone.ilike(needle)))
+        if search and search.strip():
+            # Wildcards escaped, like the catalogue search does it: "%" and "_" are LIKE
+            # syntax, so an owner typing "_" into the box matched every single-character
+            # difference and a bare "%" matched the whole table.
+            needle = search.strip().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+            pattern = f"%{needle}%"
+            query = query.where(
+                or_(
+                    User.name.ilike(pattern, escape="\\"),
+                    User.phone.ilike(pattern, escape="\\"),
+                )
+            )
 
         total = await self._session.scalar(select(func.count()).select_from(query.subquery())) or 0
         result = await self._session.execute(
@@ -53,6 +62,10 @@ class UsersService:
                 # a rule nobody wrote down: the ordering is spelled out instead.
                 case((User.role == Role.ADMIN, 0), else_=1),
                 User.created_at.desc(),
+                # Same tiebreak the order listings need: accounts created in one tick
+                # (the seed, a burst of sign-ups) otherwise straddle the page boundary
+                # differently on each request.
+                User.id.desc(),
             )
             .offset((page - 1) * page_size)
             .limit(page_size)

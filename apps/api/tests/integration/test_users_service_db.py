@@ -41,3 +41,33 @@ async def test_update_with_no_fields_is_a_noop(db_session: AsyncSession) -> None
     updated = await UsersService(db_session).update(user.id, {})
 
     assert updated.name == original_name
+
+
+async def test_search_treats_like_wildcards_as_literal_text(db_session: AsyncSession) -> None:
+    """"%" and "_" are LIKE syntax, and the owner types them as characters.
+
+    Unescaped, "_" matched any single character — so searching for a name containing an
+    underscore returned every account whose name differed by one letter, and a lone "%"
+    returned the whole table under the guise of a filter.
+    """
+    await make_user(db_session, name="Аня_К", phone="+996700000001")
+    await make_user(db_session, name="АняЛК", phone="+996700000002")
+    await make_user(db_session, name="Борис", phone="+996700000003")
+
+    service = UsersService(db_session)
+
+    underscore, total = await service.list_page(search="Аня_")
+    assert [user.name for user in underscore] == ["Аня_К"]
+    assert total == 1
+
+    percent, total = await service.list_page(search="%")
+    assert percent == []
+    assert total == 0
+
+
+async def test_blank_search_is_not_a_filter(db_session: AsyncSession) -> None:
+    await make_user(db_session, name="Аня", phone="+996700000004")
+
+    _, total = await UsersService(db_session).list_page(search="   ")
+
+    assert total == 1

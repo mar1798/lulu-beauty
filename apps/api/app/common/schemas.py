@@ -23,3 +23,22 @@ class PageResponse(CamelModel, Generic[T]):  # noqa: UP046 - PEP 695 generics ar
     total: int
     page: int
     page_size: int
+
+
+def require_not_null[T](value: T) -> T:
+    """Rejects an explicit `null` for a field that is optional only in the PATCH sense.
+
+    A PATCH schema spells every field `X | None = None` so that omitting it means "leave
+    it alone" — `model_dump(exclude_unset=True)` then never mentions it. But `None` is
+    also a value a client can send, and the services assign whatever the dump contains
+    straight onto the model: for a NOT NULL column that reached the database as a null
+    write and came back as an IntegrityError, i.e. a 500 on a malformed request where a
+    422 naming the field is what the caller needed.
+
+    Used as a `mode="before"` validator, which pydantic runs only for fields that were
+    actually supplied — so "omitted" and "explicitly null" stay distinguishable, which is
+    the whole point of the pattern.
+    """
+    if value is None:
+        raise ValueError("не может быть null")
+    return value

@@ -30,10 +30,118 @@ const withBundleAnalyzer = require('@next/bundle-analyzer')({
   enabled: process.env.ANALYZE === 'true',
 })
 
+/**
+ * Источники, которые политика обязана пропускать, — все до одного из-за Telegram.
+ *
+ * `telegram.org` — два чужих скрипта: SDK мини-приложения
+ * (`utils/telegramMiniApp.ts`) и виджет входа (`components/TelegramLoginWidget.tsx`).
+ * `oauth.telegram.org` — iframe самой кнопки «Log in with Telegram»: она обязана
+ * быть настоящим фреймом с домена Telegram, иначе Telegram по ней не авторизует.
+ * `web.telegram.org` во `frame-ancestors` — наоборот, про нас: сайт открывается
+ * как Mini App **внутри** Telegram, поэтому запретить фрейминг целиком нельзя.
+ */
+const TELEGRAM_SCRIPTS = 'https://telegram.org'
+const TELEGRAM_WIDGET_FRAME = 'https://oauth.telegram.org'
+const TELEGRAM_HOSTS = "https://web.telegram.org https://*.web.telegram.org https://telegram.org"
+
+/**
+ * Часть политики, которую можно включать принудительно уже сейчас.
+ *
+ * Здесь только директивы, про которые точно известно, что сайт их не нарушает:
+ * форм наружу нет, `<base>` нет, плагинных объектов нет. Ошибиться нечем, а
+ * закрывают они самое неприятное — угон отправки формы и подмену базового
+ * адреса, если разметка когда-нибудь протечёт.
+ */
+const ENFORCED_CSP = [
+  "base-uri 'self'",
+  "form-action 'self'",
+  "object-src 'none'",
+  `frame-ancestors 'self' ${TELEGRAM_HOSTS}`,
+].join('; ')
+
+/**
+ * Полная политика — пока **только отчётом**.
+ *
+ * Включать её принудительно вслепую нельзя: страницы отдаются статикой, а
+ * значит nonce на каждый запрос не выдать, и inline-скрипты Next (тот самый
+ * `__NEXT_DATA__`) держатся на `'unsafe-inline'`. Пока это так, польза от
+ * `script-src` невелика, зато шанс молча погасить кнопку входа — вполне
+ * реален. Поэтому сначала браузеры присылают нарушения, и только потом,
+ * разобрав их, политику имеет смысл переводить в принудительный режим.
+ *
+ * `blob:` в `img-src` — предпросмотр картинки товара в админке
+ * (`AdminProductForm`), `data:` — QR-код входа (`useQrCode`).
+ * `style-src 'unsafe-inline'` — inline-стили Next и позиционирование
+ * выпадающих списков; vanilla-extract здесь ни при чём, он отдаёт настоящие
+ * файлы.
+ */
+const REPORT_ONLY_CSP = [
+  "default-src 'self'",
+  `script-src 'self' 'unsafe-inline' ${TELEGRAM_SCRIPTS}`,
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' data: blob:",
+  "font-src 'self'",
+  // Весь обмен с API идёт через свой же `/api/proxy` — чужих адресов нет.
+  "connect-src 'self'",
+  `frame-src ${TELEGRAM_WIDGET_FRAME}`,
+  "worker-src 'self' blob:",
+  "manifest-src 'self'",
+  "base-uri 'self'",
+  "form-action 'self'",
+  "object-src 'none'",
+  `frame-ancestors 'self' ${TELEGRAM_HOSTS}`,
+].join('; ')
+
+/**
+ * Возможности браузера, которые магазину косметики не нужны ни на одной
+ * странице. Пустой список источников — «никому, включая нас самих».
+ */
+const PERMISSIONS_POLICY = [
+  'camera=()',
+  'microphone=()',
+  'geolocation=()',
+  'payment=()',
+  'usb=()',
+  'interest-cohort=()',
+].join(', ')
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   output: 'standalone',
   outputFileTracingRoot: MONOREPO_ROOT,
+  /**
+   * Заголовки безопасности на весь сайт.
+   *
+   * `X-Frame-Options` здесь намеренно **нет**: он умеет только `DENY`
+   * и `SAMEORIGIN`, а нам нужно разрешить ровно один чужой домен (Telegram) —
+   * это выражается только через `frame-ancestors`, и там оно и написано.
+   *
+   * `Strict-Transport-Security` ставится только в проде: на `localhost` он
+   * заставил бы браузер запомнить обязательный https для всего порта и
+   * сломал бы локальную разработку — причём надолго, до ручной чистки.
+   * @returns {Promise<import('next').Header[]>}
+   */
+  async headers() {
+    const headers = [
+      { key: 'Content-Security-Policy', value: ENFORCED_CSP },
+      { key: 'Content-Security-Policy-Report-Only', value: REPORT_ONLY_CSP },
+      // Браузер не должен угадывать тип: выгрузка xlsx и картинки товаров
+      // отдаются с честным Content-Type, угадывание тут может только навредить.
+      { key: 'X-Content-Type-Options', value: 'nosniff' },
+      { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
+      { key: 'Permissions-Policy', value: PERMISSIONS_POLICY },
+      { key: 'X-DNS-Prefetch-Control', value: 'on' },
+    ]
+
+    if (process.env.NODE_ENV === 'production') {
+      headers.push({
+        key: 'Strict-Transport-Security',
+        value: 'max-age=63072000; includeSubDomains',
+      })
+    }
+
+    return [{ source: '/:path*', headers }]
+  },
   /**
    * Картинки товаров лежат на API (`PUBLIC_FILES_BASE_URL`), но браузеру и
    * `next/image` отдаются как **свои** — `/files/*`.

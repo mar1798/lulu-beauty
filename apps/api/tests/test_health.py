@@ -53,3 +53,14 @@ async def test_health_reports_down_when_database_unreachable(client: AsyncClient
     # The endpoint is unauthenticated, so the driver's own text — which spells out the
     # database host, port and user — stays in the logs rather than in the response.
     assert "connection refused" not in body["info"]["database"]["message"]
+
+
+def test_the_rate_limiter_is_mounted_on_the_real_app() -> None:
+    """The unit tests build their own app, so nothing else would notice `create_app()`
+    losing the middleware."""
+    from app.common.rate_limit import RateLimitMiddleware
+    from app.main import create_app
+
+    assert any(
+        middleware.cls is RateLimitMiddleware for middleware in create_app().user_middleware
+    )

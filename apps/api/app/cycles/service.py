@@ -66,6 +66,25 @@ class CyclesService:
     async def get(self, cycle_id: uuid.UUID) -> OrderCycle | None:
         return await self._session.get(OrderCycle, cycle_id)
 
+    async def _other_open_cycle(self, cycle_id: uuid.UUID, now: datetime) -> OrderCycle | None:
+        """Any cycle other than this one that is still collecting.
+
+        Not `get_active_cycle()`: that answers "which cycle is *the* one" by nearest
+        deadline, and the question here is whether some *other* row already holds that
+        position — which is a different query the moment the cycle being edited would
+        itself win the comparison.
+        """
+        result = await self._session.execute(
+            select(OrderCycle)
+            .where(
+                OrderCycle.id != cycle_id,
+                OrderCycle.deadline_at > now,
+                OrderCycle.status != CycleStatus.CLOSED,
+            )
+            .limit(1)
+        )
+        return result.scalar_one_or_none()
+
     async def create(self, deadline_at: datetime, label: str | None) -> OrderCycle:
         if deadline_at <= datetime.now(UTC):
             raise PastDeadlineError
@@ -94,6 +113,21 @@ class CyclesService:
         deadline_at = updates.get("deadline_at")
         if deadline_at is not None and deadline_at <= now and cycle.deadline_at > now:
             raise PastDeadlineError
+
+        # The same rule `create()` enforces, on the one path that could get around it.
+        # Moving a finished cycle's deadline into the future reopens it (see below), and
+        # nothing here checked whether the shop already had a cycle collecting — so the
+        # calendar could produce by edit exactly the state `ActiveCycleExistsError`
+        # exists to prevent, with the earlier-deadline row silently becoming *the* cycle
+        # and every cart gathered under the other one dropping out of sight.
+        #
+        # Only a cycle that is *becoming* open is checked. Editing one that is already
+        # collecting — extending its deadline, renaming it — is the ordinary use of this
+        # endpoint and must stay free of a guard that would refuse it against itself.
+        was_open = cycle.deadline_at > now and cycle.status is not CycleStatus.CLOSED
+        will_be_open = (deadline_at or cycle.deadline_at) > now
+        if will_be_open and not was_open and await self._other_open_cycle(cycle.id, now):
+            raise ActiveCycleExistsError
 
         for field, value in updates.items():
             setattr(cycle, field, value)

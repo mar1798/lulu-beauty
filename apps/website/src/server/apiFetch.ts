@@ -1,6 +1,7 @@
 import type { NextApiResponse } from 'next'
 import type { Readable } from 'node:stream'
 import { serverConfig } from '@/сonfig'
+import { clientHeaders, type IClientRequest } from './clientAddress'
 import {
   ACCESS_COOKIE,
   REFRESH_COOKIE,
@@ -76,9 +77,16 @@ const sendApi = async (
   path: string,
   search: string,
   request: IApiRequest,
-  accessToken: string | null
+  accessToken: string | null,
+  client: IClientRequest | undefined
 ): Promise<Response> => {
-  const headers: Record<string, string> = { ...request.headers }
+  // Адрес посетителя — чтобы лимитер бэкенда не считал всех гостей одним клиентом
+  // (см. server/clientAddress.ts). Для запросов с токеном он избыточен, но ставится
+  // всегда: одна ветка вместо двух, а лишний заголовок ничего не стоит.
+  const headers: Record<string, string> = {
+    ...request.headers,
+    ...(client === undefined ? {} : clientHeaders(client)),
+  }
 
   if (accessToken !== null) {
     headers.Authorization = `Bearer ${accessToken}`
@@ -116,10 +124,16 @@ const exchanges = new Map<string, Promise<IAuthTokens>>()
 const EXCHANGE_GRACE_MS = 10_000
 
 /** Сам поход за новой парой; 401 отделён от сетевого сбоя — реагируют на них по-разному. */
-const rotateTokens = async (refreshToken: string): Promise<IAuthTokens> => {
+const rotateTokens = async (
+  refreshToken: string,
+  client: IClientRequest | undefined
+): Promise<IAuthTokens> => {
   const response = await fetch(apiUrl('/auth/refresh'), {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      ...(client === undefined ? {} : clientHeaders(client)),
+    },
     body: JSON.stringify({ refreshToken }),
   })
 
@@ -130,14 +144,17 @@ const rotateTokens = async (refreshToken: string): Promise<IAuthTokens> => {
   return (await response.json()) as IAuthTokens
 }
 
-const exchangeTokens = (refreshToken: string): Promise<IAuthTokens> => {
+const exchangeTokens = (
+  refreshToken: string,
+  client: IClientRequest | undefined
+): Promise<IAuthTokens> => {
   const pending = exchanges.get(refreshToken)
 
   if (pending !== undefined) {
     return pending
   }
 
-  const started = rotateTokens(refreshToken)
+  const started = rotateTokens(refreshToken, client)
 
   exchanges.set(refreshToken, started)
 
@@ -156,7 +173,8 @@ const exchangeTokens = (refreshToken: string): Promise<IAuthTokens> => {
 /** Меняет пару токенов по refresh-cookie и переставляет cookie в ответе. */
 export const refreshTokens = async (
   req: ICookieRequest,
-  res: ICookieResponse
+  res: ICookieResponse,
+  client?: IClientRequest
 ): Promise<string> => {
   const { refreshToken } = readAuthTokens(req)
 
@@ -167,7 +185,7 @@ export const refreshTokens = async (
   let tokens: IAuthTokens
 
   try {
-    tokens = await exchangeTokens(refreshToken)
+    tokens = await exchangeTokens(refreshToken, client)
   } catch (error) {
     // Cookie стираются только на отказ бэкенда: недоступный API — это сбой
     // запроса, а не разлогин, и переживать его пользователь должен молча.
@@ -196,13 +214,16 @@ export interface IAuthedFetchOptions {
 }
 
 export const fetchWithAuth = async (
-  req: ICookieRequest,
+  req: ICookieRequest & Partial<IClientRequest>,
   res: ICookieResponse,
   path: string,
   search: string,
   request: IApiRequest,
   options: IAuthedFetchOptions = {}
 ): Promise<Response> => {
+  // Только когда запрос действительно пришёл по сети: `ICookieRequest` — минимальный
+  // структурный тип, и в тестах у него ни заголовков, ни сокета нет.
+  const client = req.headers === undefined ? undefined : (req as IClientRequest)
   const { accessToken, refreshToken } = readAuthTokens(req)
   const anonymous = accessToken === undefined && refreshToken === undefined
 
@@ -211,12 +232,12 @@ export const fetchWithAuth = async (
       throw new UnauthenticatedError()
     }
 
-    return sendApi(path, search, request, null)
+    return sendApi(path, search, request, null, client)
   }
 
   const fresh = accessToken !== undefined && !isExpired(accessToken)
-  const token = fresh ? accessToken : await refreshTokens(req, res)
-  const response = await sendApi(path, search, request, token)
+  const token = fresh ? accessToken : await refreshTokens(req, res, client)
+  const response = await sendApi(path, search, request, token, client)
 
   if (response.status !== UNAUTHORIZED) {
     return response
@@ -226,7 +247,13 @@ export const fetchWithAuth = async (
     return response
   }
 
-  const retried = await sendApi(path, search, request, await refreshTokens(req, res))
+  const retried = await sendApi(
+    path,
+    search,
+    request,
+    await refreshTokens(req, res, client),
+    client
+  )
 
   if (retried.status === UNAUTHORIZED) {
     clearAuthCookies(res)

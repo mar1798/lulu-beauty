@@ -71,7 +71,9 @@ async def update_me(
 async def list_users_admin(
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=100, alias="pageSize"),
-    search: str | None = Query(default=None, alias="q"),
+    # Bounded like the catalogue's `q`: the string goes into an unindexed ILIKE over
+    # two columns, so an unbounded one is a free way to make the database work.
+    search: str | None = Query(default=None, alias="q", max_length=255),
     session: AsyncSession = Depends(get_session),
     _admin: CurrentUser = Depends(require_admin),
 ) -> PageResponse[AdminUserResponse]:

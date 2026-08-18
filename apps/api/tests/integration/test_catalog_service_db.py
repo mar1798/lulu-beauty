@@ -163,7 +163,7 @@ async def test_add_image_replaces_every_previous_one(db_session: AsyncSession) -
     await make_product_image(db_session, product, url="older.jpg", sort_order=1)
     service = ProductService(db_session)
 
-    added = await service.add_image(product.id, "new.jpg", "Новое фото")
+    added, replaced = await service.add_image(product.id, "new.jpg", "Новое фото")
 
     images = (
         (

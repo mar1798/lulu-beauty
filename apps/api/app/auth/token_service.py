@@ -42,7 +42,14 @@ def create_access_token(user_id: uuid.UUID, role: Role) -> str:
 
 def decode_access_token(token: str) -> AccessTokenPayload:
     payload = _decode(token, settings.jwt_access_secret, TokenType.ACCESS)
-    return AccessTokenPayload(sub=payload["sub"], role=Role(payload["role"]))
+    # A correctly signed token whose claims are not what this app writes — a stale token
+    # from before a claim was renamed, a role that no longer exists, a hand-made one — is
+    # still an invalid token, not a bug. Left to escape, KeyError/ValueError came out of
+    # the dependency as a 500 on what the caller should have been told was a 401.
+    try:
+        return AccessTokenPayload(sub=str(payload["sub"]), role=Role(payload["role"]))
+    except (KeyError, ValueError) as error:
+        raise InvalidTokenError("unexpected access-token claims") from error
 
 
 def create_refresh_token(user_id: uuid.UUID) -> tuple[str, datetime]:
@@ -67,7 +74,10 @@ def create_refresh_token(user_id: uuid.UUID) -> tuple[str, datetime]:
 
 def decode_refresh_token(token: str) -> RefreshTokenPayload:
     payload = _decode(token, settings.jwt_refresh_secret, TokenType.REFRESH)
-    return RefreshTokenPayload(sub=payload["sub"])
+    try:
+        return RefreshTokenPayload(sub=str(payload["sub"]))
+    except KeyError as error:
+        raise InvalidTokenError("unexpected refresh-token claims") from error
 
 
 def _decode(token: str, secret: str, expected_type: TokenType) -> dict[str, Any]:

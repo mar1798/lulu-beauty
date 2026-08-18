@@ -37,7 +37,7 @@ from app.catalog.service import (
 from app.common.schemas import PageResponse
 from app.db import get_session
 from app.orders.service import OrdersService
-from app.storage.service import storage_service
+from app.storage.service import discard_files, storage_service
 from app.telegram.notify import notify_orders_item_dropped, notify_orders_repriced
 
 router = APIRouter(tags=["catalog"])
@@ -307,6 +307,7 @@ async def restore_product(
 )
 async def upload_product_image(
     product_id: uuid.UUID,
+    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     alt: str | None = Form(default=None),
     session: AsyncSession = Depends(get_session),
@@ -321,11 +322,17 @@ async def upload_product_image(
         service = ProductService(session)
         await service.get_by_id(product_id)  # 404 up front, before touching storage
         key = await storage_service.save(f"image{IMAGE_EXTENSIONS[file.content_type]}", content)
-        image = await service.add_image(product_id, storage_service.url_for(key), alt)
+        image, replaced_urls = await service.add_image(
+            product_id, storage_service.url_for(key), alt
+        )
     except ProductNotFoundError as error:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "product_not_found") from error
 
     await session.commit()
+    # After the commit: a photo is a replacement, and until now the bytes it replaced
+    # stayed on disk forever — the `uploads` volume grew by up to 5 MB per re-upload with
+    # nothing able to tell an orphan from a live file afterwards.
+    background_tasks.add_task(discard_files, replaced_urls)
     return ProductImageResponse(
         id=image.id,
         url=image.url,
@@ -341,15 +348,17 @@ async def upload_product_image(
 async def delete_product_image(
     product_id: uuid.UUID,
     image_id: uuid.UUID,
+    background_tasks: BackgroundTasks,
     session: AsyncSession = Depends(get_session),
     _admin: CurrentUser = Depends(require_admin),
 ) -> None:
     try:
-        await ProductService(session).delete_image(product_id, image_id)
+        url = await ProductService(session).delete_image(product_id, image_id)
     except ProductImageNotFoundError as error:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "product_image_not_found") from error
 
     await session.commit()
+    background_tasks.add_task(discard_files, [url])
 
 
 @router.post("/admin/catalog/import", response_model=ImportSummaryResponse)

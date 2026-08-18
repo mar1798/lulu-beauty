@@ -32,6 +32,23 @@ export default [
         },
         rules: {
             "import/no-absolute-path": "error",
+            /*
+             * Пакет `framer-motion` переименован в `motion` и остаётся в дереве
+             * только как транзитивная зависимость нового. Импорт из старого имени
+             * дал бы вторую копию библиотеки в бандле, поэтому он запрещён явно.
+             */
+            "no-restricted-imports": [
+                "error",
+                {
+                    paths: [
+                        {
+                            name: "framer-motion",
+                            message:
+                                "Пакет переименован: импортируйте из `motion/react`.",
+                        },
+                    ],
+                },
+            ],
             "react/function-component-definition": [
                 "error",
                 {

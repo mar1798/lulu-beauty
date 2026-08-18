@@ -1,6 +1,6 @@
 import clsx from 'clsx'
-import { useRef, useState, type FC } from 'react'
-import { motion, useMotionValueEvent, useScroll } from 'motion/react'
+import { useRef, useState, type FC, type ReactNode, type RefObject } from 'react'
+import { motion, useMotionValueEvent, useReducedMotion, useScroll } from 'motion/react'
 import type { IBasicStyling, IHomeHeroProps } from '../../types'
 import { IconChevronDown } from '../../svg/icons'
 import { Container } from '../../atoms/container'
@@ -38,6 +38,53 @@ import * as styles from './HomeHero.css'
  */
 const HINT_HIDE_PROGRESS = 0.04
 
+/**
+ * Едущий слой героя — вынесен из тела компонента, а не объявлен внутри него.
+ *
+ * Компонент, объявленный внутри рендера, — это новый тип на каждый рендер, а
+ * значит размонтирование и монтирование всего поддерева заново. Здесь это
+ * стоило бы дорого: у заголовка CSS-анимация выхода, она заиграла бы второй
+ * раз — и ровно в тот момент, когда `isScrolled` переключается на первой
+ * прокрутке.
+ */
+const HeroRiseMotion: FC<{
+  sectionRef: RefObject<HTMLElement | null>
+  strength: number
+  className?: string
+  children: ReactNode
+}> = ({ sectionRef, strength, className, children }) => {
+  const y = useParallaxOffset(sectionRef, strength)
+
+  return (
+    <motion.div className={className} style={{ y }}>
+      {children}
+    </motion.div>
+  )
+}
+
+/**
+ * Развилка слоя ухода. Отдельный компонент — по той же причине, что `SpotDrift`
+ * в `DecorField`: условно позвать `useParallaxOffset` нельзя, а при
+ * сокращённом движении его подписка на прокрутку работала бы вхолостую —
+ * считала бы смещение, которое никуда не применяется. Ветвление по компоненту
+ * делает выбор настоящим: в неподвижной ветке нет ни подписки, ни
+ * motion-элемента.
+ */
+const HeroRise: FC<{
+  isReduced: boolean
+  sectionRef: RefObject<HTMLElement | null>
+  strength: number
+  className?: string
+  children: ReactNode
+}> = ({ isReduced, sectionRef, strength, className, children }) =>
+  isReduced ? (
+    <div className={className}>{children}</div>
+  ) : (
+    <HeroRiseMotion sectionRef={sectionRef} strength={strength} className={className}>
+      {children}
+    </HeroRiseMotion>
+  )
+
 export const HomeHero: FC<IHomeHeroProps & IBasicStyling> = ({
   title,
   description,
@@ -50,9 +97,13 @@ export const HomeHero: FC<IHomeHeroProps & IBasicStyling> = ({
   const sectionRef = useRef<HTMLElement | null>(null)
   const [isScrolled, setScrolled] = useState(false)
 
-  const titleY = useParallaxOffset(sectionRef, HERO_RISE_TITLE)
-  const bottomY = useParallaxOffset(sectionRef, HERO_RISE_BOTTOM)
+  const isReduced = useReducedMotion() ?? false
 
+  /*
+    Эта подписка остаётся и при сокращённом движении: она не двигает ничего,
+    а всего лишь один раз прячет подсказку «листайте ниже», когда листать уже
+    начали. Уход героя — другое дело, он ниже разведён по веткам.
+  */
   const { scrollYProgress } = useScroll({
     target: sectionRef,
     offset: ['start start', 'end start'],
@@ -85,18 +136,17 @@ export const HomeHero: FC<IHomeHeroProps & IBasicStyling> = ({
 
       <Container className={styles.inner}>
         <div className={styles.content}>
-          <motion.div
+          <HeroRise
+            isReduced={isReduced}
+            sectionRef={sectionRef}
+            strength={HERO_RISE_TITLE}
             className={styles.top}
-            style={titleY === undefined ? undefined : { y: titleY }}
           >
             {/* h1 страницы: другого смыслового заголовка верхнего уровня на главной нет. */}
             <h1 className={styles.heading}>
               {lines.map((line, index) => (
                 <span key={line} className={styles.lineMask}>
-                  <span
-                    className={styles.line}
-                    style={{ animationDelay: heroDelay(1 + index) }}
-                  >
+                  <span className={styles.line} style={{ animationDelay: heroDelay(1 + index) }}>
                     {line}
                   </span>
                 </span>
@@ -111,9 +161,9 @@ export const HomeHero: FC<IHomeHeroProps & IBasicStyling> = ({
                 {description}
               </p>
             )}
-          </motion.div>
+          </HeroRise>
 
-          <motion.div style={bottomY === undefined ? undefined : { y: bottomY }}>
+          <HeroRise isReduced={isReduced} sectionRef={sectionRef} strength={HERO_RISE_BOTTOM}>
             {/*
               CSS-анимация выхода — на внутренней обёртке: снаружи transform
               занят слоем ухода, и `fill-mode: both` конца keyframes намертво
@@ -124,7 +174,7 @@ export const HomeHero: FC<IHomeHeroProps & IBasicStyling> = ({
 
               {aside !== undefined && <div className={styles.aside}>{aside}</div>}
             </div>
-          </motion.div>
+          </HeroRise>
         </div>
 
         {scrollHint !== undefined && (
