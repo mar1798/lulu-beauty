@@ -228,11 +228,11 @@ const AdminOrdersPage: React.FC = () => {
   return (
     <AdminShell
       title="Заявки"
-      summary="Состав и цены — снимок на момент оформления, они не меняются вслед за каталогом."
+      summary="Состав и цены — снимок на момент подтверждения: у подтверждённой заявки они не меняются вслед за каталогом."
       actions={
         <div className={styles.row}>
           <Switch
-            label="Цены в файле"
+            label="Цены"
             checked={includePrices}
             disabled={isExporting}
             onChange={setIncludePrices}
@@ -299,7 +299,12 @@ const AdminOrdersPage: React.FC = () => {
       />
 
       {data !== undefined && data.total > PAGE_SIZE && (
-        <Pagination page={data.page} pageSize={data.pageSize} total={data.total} onChange={setPage} />
+        <Pagination
+          page={data.page}
+          pageSize={data.pageSize}
+          total={data.total}
+          onChange={setPage}
+        />
       )}
     </AdminShell>
   )

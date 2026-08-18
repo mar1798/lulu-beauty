@@ -1,8 +1,8 @@
 import type { StoryFn, Meta } from '@storybook/react'
 import { HomeHero } from '.'
 import { Button } from '../../atoms/button'
-import { Text } from '../../atoms/text'
 import { DeadlineCountdown } from '../../molecules/deadline-countdown'
+import { StatusPanel } from '../../molecules/status-panel'
 import { feedHomeHero } from '../../stories/feed'
 import { StoryWrapper } from '../../stories/wrapper'
 
@@ -38,7 +38,11 @@ CycleOpen.parameters = LAYOUT
 CycleOpen.args = {
   ...feedHomeHero(),
   actions,
-  aside: <DeadlineCountdown deadlineAt={deadlineAt} />,
+  aside: (
+    <StatusPanel label="До закрытия сбора" isLive={true}>
+      <DeadlineCountdown deadlineAt={deadlineAt} variant="blocks" isLabelHidden={true} />
+    </StatusPanel>
+  ),
 }
 
 /** Штатное состояние витрины, а не сбой: сбора может не быть неделями. */
@@ -46,11 +50,11 @@ export const NoCycle = Template.bind({})
 NoCycle.parameters = LAYOUT
 NoCycle.args = {
   ...feedHomeHero(),
-  eyebrow: 'Сбор закрыт',
   actions,
   aside: (
-    <Text size="sm" tone="secondary">
-      Сейчас открытого сбора нет. Соберите корзину — она дождётся следующего.
-    </Text>
+    <StatusPanel label="Сбор закрыт" tone="muted">
+      Открытого сбора сейчас нет. Сохраняйте понравившееся в избранное — оттуда всё
+      вернётся в корзину, когда откроется следующий.
+    </StatusPanel>
   ),
 }

@@ -1,9 +1,9 @@
 import { style } from '@vanilla-extract/css'
 import { flexColumn } from '../../styling/mixin'
-import { vars } from '../../styling/themes/contract.css'
 
-/** 64px между секциями главной — на шаг больше, чем внутри каталога (48px). */
-export const container = style({
-  ...flexColumn(64),
-  paddingBlock: vars.space.xxl,
-})
+/**
+ * Вертикальный поток full-bleed секций. Без `gap` и без верхнего паддинга:
+ * герой обязан начинаться от края экрана, а ритм `huge`/`giant` между
+ * секциями складывается из их собственных отступов (`HomeSection`).
+ */
+export const container = style(flexColumn())

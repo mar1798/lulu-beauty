@@ -13,6 +13,27 @@ export const container = style({
   borderBottom: border(1, color.border('subtle')),
 })
 
+/**
+ * Режим «поверх героя»: `fixed`, а не `sticky`, — шапка не должна занимать
+ * место в потоке, герой начинается от самого края экрана. Фон и граница
+ * сняты: чернильный текст лежит прямо на светлом холсте, контраст не падает.
+ */
+export const floating = style({
+  position: 'fixed',
+  insetInline: 0,
+  backgroundColor: 'transparent',
+  backdropFilter: 'none',
+  borderBottomColor: 'transparent',
+  transition: transition('background-color', 'border-color'),
+})
+
+/** После прокрутки на высоту шапки возвращается обычный вид. */
+export const floatingScrolled = style({
+  backgroundColor: color.surface('base', 0.92),
+  backdropFilter: 'blur(12px)',
+  borderBottomColor: color.border('subtle'),
+})
+
 export const inner = style({
   ...flexRow(16),
   alignItems: 'center',

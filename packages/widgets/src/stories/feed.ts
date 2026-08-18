@@ -41,6 +41,16 @@ import {
   IFileInputProps,
   IFooterProps,
   IHeadingProps,
+  IBrandMarqueeProps,
+  ICategoryTilesProps,
+  IDecorFieldProps,
+  IFaqAccordionProps,
+  IHomeCtaProps,
+  IHomeSectionProps,
+  IParallaxProps,
+  IRevealProps,
+  IStatusPanelProps,
+  IStepSceneProps,
   IHomeHeroProps,
   IHomeTemplateProps,
   IHeaderProps,
@@ -345,32 +355,130 @@ export const feedStepList = (): IStepListProps => ({
     {
       title: 'Соберите корзину',
       description: 'Каталог открыт всегда, а оформить заявку можно, пока идёт сбор.',
+      visual: 'cart',
     },
     {
       title: 'Оформите заявку',
       description: 'Это не оплата: заявка уходит владельцу, цены фиксируются на момент отправки.',
+      visual: 'request',
     },
     {
       title: 'Дождитесь подтверждения',
       description: 'После закрытия сбора владелец подтвердит заявку — уведомление придёт в Telegram.',
+      visual: 'confirm',
     },
     {
       title: 'Получите товар',
       description: 'Когда заказ приедет, владелец обсудит с вами доставку или самовывоз.',
+      visual: 'handover',
     },
   ],
 })
 
+export const feedStepScene = (): IStepSceneProps => ({
+  kind: 'cart',
+})
+
+export const feedStatusPanel = (): IStatusPanelProps => ({
+  label: 'До закрытия сбора',
+  isLive: true,
+  children: '2 дн 14 час',
+})
+
+export const feedParallax = (): IParallaxProps => ({
+  children: 'Еду медленнее скролла',
+})
+
 export const feedHomeHero = (): IHomeHeroProps => ({
-  eyebrow: 'Сбор открыт',
-  title: 'Косметика и уход — заказом на всех',
-  description:
-    'Мы собираем общий заказ к дедлайну: чем больше набирается, тем выгоднее выходит доставка.',
+  // Готовая разбивка на строки: маска выхода работает построчно.
+  title: ['С заботой о вас', 'и о вашем бюджете'],
+  description: 'Косметика и уход по самым низким ценам: берём напрямую и общим заказом.',
+  scrollHint: 'Ниже — что можно взять сейчас',
 })
 
 export const feedHomeTemplate = (): IHomeTemplateProps => ({
   hero: 'Сюда встаёт первый экран',
   children: 'Сюда встают секции',
+})
+
+export const feedReveal = (): IRevealProps => ({
+  children: 'Появляюсь по входу в вьюпорт',
+})
+
+export const feedHomeSection = (): IHomeSectionProps => ({
+  children: 'Содержимое секции',
+})
+
+/**
+ * `containerRef` в реальной странице указывает на секцию с прокруткой;
+ * в стори и тесте хватает любого живого элемента — параллакс просто стоит.
+ */
+export const feedDecorField = (): IDecorFieldProps => ({
+  spots: [
+    {
+      image: feedImage(320, 480),
+      side: 'left',
+      /* В стори хватает фиксированного отступа; страница задаёт `clamp()`. */
+      offsetX: '48px',
+      top: '38%',
+      size: 'md',
+      depth: 0.8,
+    },
+    {
+      image: feedImage(320, 480),
+      side: 'right',
+      offsetX: '64px',
+      top: '60%',
+      size: 'sm',
+      depth: 0.35,
+      floatPhase: 0.6,
+      isFlipped: true,
+      isStrong: true,
+      halo: 'accent',
+    },
+  ],
+  containerRef: { current: typeof document === 'undefined' ? null : document.body },
+})
+
+export const feedCategoryTiles = (): ICategoryTilesProps => ({
+  categories: [
+    feedCategory('Уход за кожей'),
+    feedCategory('Тонеры'),
+    feedCategory('Сыворотки'),
+    feedCategory('Солнцезащита'),
+  ],
+  buildHref: category => `/catalog?category=${category.slug}`,
+})
+
+export const feedBrandMarquee = (): IBrandMarqueeProps => ({
+  brands: ['Anua', 'Celimax', 'Manyo', 'Medicube', 'Round Lab', 'Dr. Althea'],
+  buildHref: brand => `/catalog?brand=${encodeURIComponent(brand)}`,
+})
+
+export const feedFaqAccordion = (): IFaqAccordionProps => ({
+  items: [
+    {
+      question: 'Чем заявка отличается от заказа?',
+      answer:
+        'Заявка — это список того, что вы хотите взять в текущем сборе. Она уходит владельцу, а не в оплату.',
+    },
+    {
+      question: 'Почему нельзя оплатить на сайте?',
+      answer:
+        'Онлайн-оплаты нет вовсе: владелец подтверждает заявки после закрытия сбора, а оплата обсуждается лично.',
+    },
+    {
+      question: 'Сбора сейчас нет — что делать?',
+      answer: 'Каталог открыт всегда, но корзина работает только при открытом сборе — понравившееся сохраняйте в избранное.',
+    },
+  ],
+})
+
+export const feedHomeCta = (): IHomeCtaProps => ({
+  title: 'Вход и подтверждение — в Telegram',
+  description: 'Бот заводит аккаунт, подтверждает вход и присылает решение по заявке.',
+  actions: 'Сюда встают кнопки',
+  note: 'Оплата и доставка обсуждаются лично',
 })
 
 /* --- Витрина --- */

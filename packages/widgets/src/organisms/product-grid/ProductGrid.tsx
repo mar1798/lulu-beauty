@@ -2,8 +2,10 @@ import clsx from 'clsx'
 import { type FC } from 'react'
 import type { IBasicStyling, IProductGridProps } from '../../types'
 import { Appear } from '../../atoms/appear'
+import { Reveal } from '../../atoms/reveal'
 import { Skeleton } from '../../atoms/skeleton'
 import { ProductCard } from '../../molecules/product-card'
+import { staggerDelay } from '../../utils/motion'
 import * as styles from './ProductGrid.css'
 
 /**
@@ -12,6 +14,11 @@ import * as styles from './ProductGrid.css'
  * Скелетоны повторяют пропорции карточки, поэтому при подмене на реальные
  * данные сетка не прыгает. Сама сетка — `auto-fill` без медиа-запросов:
  * число колонок определяет ширина контейнера, а не брейкпоинт.
+ *
+ * `isStaggered` добавляет лесенку появления по индексу карточки — она нужна
+ * подборке на главной, где сетка приезжает в кадр на скролле. В каталоге
+ * выключена: там состав меняется от фильтров, и лесенка на каждой подмене
+ * читалась бы как перерисовка.
  */
 
 const DEFAULT_SKELETON_COUNT = 8
@@ -25,6 +32,7 @@ export const ProductGrid: FC<IProductGridProps & IBasicStyling> = ({
   emptyState,
   renderAction,
   renderMediaAction,
+  isStaggered = false,
   className,
 }) => {
   if (isLoading) {
@@ -63,18 +71,29 @@ export const ProductGrid: FC<IProductGridProps & IBasicStyling> = ({
   return (
     <Appear>
       <div className={clsx(styles.container, className)}>
-        {products.map(product => (
-          <ProductCard
-            key={product.id}
-            product={product}
-            href={buildHref(product)}
-            categoryName={
-              product.categoryId === null ? null : categoryNames?.[product.categoryId]
-            }
-            action={renderAction?.(product)}
-            mediaAction={renderMediaAction?.(product)}
-          />
-        ))}
+        {products.map((product, index) => {
+          const card = (
+            <ProductCard
+              key={product.id}
+              product={product}
+              href={buildHref(product)}
+              categoryName={
+                product.categoryId === null ? null : categoryNames?.[product.categoryId]
+              }
+              action={renderAction?.(product)}
+              mediaAction={renderMediaAction?.(product)}
+            />
+          )
+
+          /* Обёртка появляется только под лесенкой: лишний узел сетке не нужен. */
+          return isStaggered ? (
+            <Reveal key={product.id} delay={staggerDelay(index)}>
+              {card}
+            </Reveal>
+          ) : (
+            card
+          )
+        })}
       </div>
     </Appear>
   )

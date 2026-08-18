@@ -11,17 +11,21 @@ describe('HomeHero', () => {
     expect(container.firstElementChild).not.toBeNull()
   })
 
-  /*
-    Заголовок первого экрана — единственный `h1` главной. Надзаголовок при
-    этом остаётся обычным текстом: ступени в структуре документа он не даёт.
-  */
-  it('держит заголовок первым уровнем, а надзаголовок — текстом', () => {
+  /* Заголовок первого экрана — единственный `h1` главной. */
+  it('держит заголовок первым уровнем', () => {
     const feed = feedHomeHero()
+    // Заголовок приходит готовой разбивкой на строки — маска выхода построчная.
+    const lines = Array.isArray(feed.title) ? feed.title : [feed.title]
 
     renderWidget(<HomeHero {...feed} />)
 
-    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(feed.title)
-    expect(screen.queryByRole('heading', { name: feed.eyebrow })).toBeNull()
+    const heading = screen.getByRole('heading', { level: 1 })
+
+    for (const line of lines) {
+      expect(heading).toHaveTextContent(line)
+    }
+
+    expect(screen.getAllByRole('heading')).toHaveLength(1)
   })
 
   it('не рисует врезку сбора, когда её не передали', () => {

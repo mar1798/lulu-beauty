@@ -117,6 +117,12 @@ export const SiteLayout: React.FC<{ children: React.ReactNode }> = ({ children }
             loginLink={{ href: '/login' }}
             currentHref={currentHref}
             onMenuClick={menu.open}
+            /*
+              Режим «поверх героя» — только на главной: там первый экран
+              полноэкранный и начинается от края, остальным страницам шапка
+              нужна обычной, sticky с фоном.
+            */
+            isFloating={router.pathname === '/'}
           />
 
           {/*

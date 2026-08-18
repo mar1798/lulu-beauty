@@ -167,7 +167,10 @@ export const head = style({
   }),
 })
 
-export const headText = style(flexColumn(4))
+export const headText = style({
+  ...flexColumn(4),
+  maxWidth: rem(400),
+})
 
 export const actions = style({
   ...flexRow(8),

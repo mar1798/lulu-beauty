@@ -615,6 +615,12 @@ export interface IHeaderProps {
   notice?: ReactNode
   /** Кнопка мобильного меню появляется только когда обработчик задан. */
   onMenuClick?: () => void
+  /**
+   * Режим «поверх героя» (главная): шапка лежит fixed поверх контента и
+   * стартует без фона и границы, а после прокрутки на высоту шапки
+   * возвращает обычный вид. Остальные страницы режим не включают.
+   */
+  isFloating?: boolean
 }
 
 export interface IMobileMenuProps {
@@ -666,6 +672,11 @@ export interface ISectionHeadingProps {
 export interface IStep {
   title: string
   description: string
+  /**
+   * Какую мини-сцену (`StepScene`) рисовать над текстом. Не задано —
+   * карточка остаётся текстовой, как раньше.
+   */
+  visual?: IStepSceneKind
 }
 
 export interface IStepListProps {
@@ -673,17 +684,176 @@ export interface IStepListProps {
 }
 
 export interface IHomeHeroProps {
-  /** Надзаголовок: имя ближайшего сбора или «Сбор закрыт». */
-  eyebrow?: string
-  title: string
+  /**
+   * Заголовок. Массив — готовая разбивка на строки: маска выхода работает
+   * построчно, и автоматический перенос строк для неё непригоден.
+   */
+  title: string | string[]
   description?: string
-  /** Кнопки: «в каталог», «войти». */
+  /** Кнопки: «в каталог», «мои заявки». Слот — адреса знает страница. */
   actions?: ReactNode
   /**
-   * Врезка сбоку: таймер до дедлайна или сообщение, что открытого сбора нет.
+   * Таймер до дедлайна или сообщение, что открытого сбора нет.
    * Отдельным слотом, потому что сбор — данные сайта, а не шаблона.
    */
   aside?: ReactNode
+  /**
+   * Слот под `DecorField`: встаёт первым ребёнком в `position: absolute;
+   * inset: 0`, за содержимым.
+   */
+  background?: ReactNode
+  /** Подпись индикатора прокрутки. Не задана — индикатора нет. */
+  scrollHint?: string
+}
+
+/**
+ * Ступень шкалы `decor.size*`. Свободных ширин у пятна нет: процент ширины
+ * секции — ровно то, из-за чего товар резался на десктопе.
+ */
+export type IDecorSize = 'sm' | 'md' | 'lg'
+
+/** Одно фоновое декоративное пятно `DecorField`. */
+export interface IDecorSpot {
+  image: IImage
+  /** К какому краю секции прижато пятно. Центра нет: там контент. */
+  side: 'left' | 'right'
+  /**
+   * Отступ от своего края секции. CSS-длина, обычно `clamp()`. На `md` и
+   * выше значение обязано быть ≥ 0 — иначе товар обрежется; за край
+   * разрешено уходить только ореолу.
+   */
+  offsetX: string
+  /** Положение ЦЕНТРА пятна в процентах высоты секции. Допустимо 32–68 %. */
+  top: string
+  size: IDecorSize
+  /** 0 — стоит на месте, 1 — уезжает на всю амплитуду скролл-параллакса. */
+  depth: number
+  /** Фаза левитации 0…1: соседние пятна не должны качаться синхронно. */
+  floatPhase?: number
+  /** Отзеркалить по горизонтали: одна и та же баночка не должна повторяться дважды. */
+  isFlipped?: boolean
+  /** Ярче обычного — там, где над пятном нет текста. */
+  isStrong?: boolean
+  /** Пастельный ореол под баночкой. По умолчанию `'brand'`. */
+  halo?: 'brand' | 'accent' | 'none'
+}
+
+export interface IDecorFieldProps {
+  spots: IDecorSpot[]
+  /** Ссылка на прокручиваемую секцию — вход в `useScroll({ target })`. */
+  containerRef: React.RefObject<HTMLElement | null>
+}
+
+export interface IHomeSectionProps {
+  children: ReactNode
+  /** Слот под `DecorField`. Рендерится за содержимым. */
+  background?: ReactNode
+  /** Фон секции: холст, мягкая марочная заливка, чернильная. */
+  tone?: 'plain' | 'soft' | 'ink'
+  /**
+   * Вертикальный ритм. `default` — `space.huge`/`giant`, `compact` —
+   * `space.xxl`/`xxxl`. Компактной идёт секция-оглавление ассортимента.
+   */
+  density?: 'default' | 'compact'
+  /** Своя ссылка на секцию — её же отдают в `DecorField.containerRef`. */
+  sectionRef?: React.RefObject<HTMLElement | null>
+  id?: string
+}
+
+export interface ICategoryTilesProps {
+  categories: ICategory[]
+  /** Адрес плитки. Страница строит `/catalog?category=<slug>`. */
+  buildHref: (category: ICategory) => string
+}
+
+export interface IBrandMarqueeProps {
+  brands: string[]
+  /** Страница строит `/catalog?brand=<name>` — каталог такой параметр читает. */
+  buildHref: (brand: string) => string
+  /** Полный оборот ленты. По умолчанию рассчитывается от числа брендов. */
+  durationSeconds?: number
+}
+
+export interface IFaqItem {
+  question: string
+  answer: string
+}
+
+export interface IFaqAccordionProps {
+  items: IFaqItem[]
+  /** Разрешить несколько открытых сразу. По умолчанию `false`. */
+  isMultiple?: boolean
+  /** Индекс раскрытого при первой отрисовке. По умолчанию ни одного. */
+  defaultOpenIndex?: number
+}
+
+/**
+ * Финальный блок-якорь главной. Имя намеренно не `TelegramCta`: виджет ничего
+ * не знает ни про Telegram, ни про адрес бота — кнопки приходят слотом,
+ * иначе презентационная библиотека знала бы про конкретный внешний сервис.
+ */
+export interface IHomeCtaProps {
+  eyebrow?: string
+  title: string
+  description?: string
+  /** Кнопки. Адрес бота знает страница. */
+  actions: ReactNode
+  /** Мелкая приписка под кнопками. */
+  note?: string
+  /** Слот под `DecorField`. */
+  background?: ReactNode
+}
+
+export interface IParallaxProps {
+  children: ReactNode
+  /** Амплитуда в px: элемент едет от `+strength` к `−strength` за проход секции. */
+  strength?: number
+  axis?: 'x' | 'y'
+  /** Секция-цель. Не задана — прогресс считается по собственной обёртке. */
+  containerRef?: React.RefObject<HTMLElement | null>
+  as?: 'div' | 'span'
+}
+
+/**
+ * Вид мини-сцены шага: товар в корзину, корзина в заявку, решение в чате,
+ * товар получен. Сцена — рисунок из токенов, а не превью настоящих данных.
+ */
+export type IStepSceneKind = 'cart' | 'request' | 'confirm' | 'handover'
+
+export interface IStepSceneProps {
+  kind: IStepSceneKind
+  /**
+   * Базовая задержка лесенки, с — та же ступень, что у `Reveal` своего шага:
+   * части сцены не должны входить раньше собственной карточки.
+   */
+  delay?: number
+}
+
+/**
+ * Карточка состояния сбора в герое. Панель не знает ни про сбор, ни про
+ * таймер — метка, живая точка и место под содержимое, поэтому ею же
+ * рисуется состояние «сбора нет».
+ */
+export interface IStatusPanelProps {
+  /** Метка над содержимым: «До закрытия сбора» / «Сбор закрыт». */
+  label: string
+  /** Пульсирующая точка у метки: что-то происходит прямо сейчас. */
+  isLive?: boolean
+  tone?: 'brand' | 'muted' | 'urgent'
+  children: ReactNode
+}
+
+export interface IRevealProps {
+  children: ReactNode
+  /** Тег обёртки: секции нужен div, элементу списка — li. */
+  as?: 'div' | 'li' | 'span'
+  /**
+   * Задержка в секундах. Лесенка внутри списка собирается ею же —
+   * `delay={staggerDelay(index)}` на каждом элементе.
+   */
+  delay?: number
+  /** Доля видимости, при которой запускается (`viewport.amount`). */
+  amount?: number
 }
 
 export interface IHomeTemplateProps {
@@ -769,6 +939,12 @@ export interface IProductGridProps {
   renderAction?: (product: IProduct) => ReactNode
   /** Слот в углу фотографии («в избранное») — см. `IProductCardProps['mediaAction']`. */
   renderMediaAction?: (product: IProduct) => ReactNode
+  /**
+   * Карточки выходят лесенкой по входу сетки в вьюпорт (главная). В каталоге
+   * не включается: там сетка меняется от фильтров и пагинации, и лесенка на
+   * каждой подмене читалась бы как перерисовка, а не как появление.
+   */
+  isStaggered?: boolean
 }
 
 export interface IProductDetailsProps {
@@ -856,6 +1032,14 @@ export interface IDeadlineCountdownProps {
   deadlineAt: string | null
   label?: string
   expiredLabel?: string
+  /**
+   * `inline` — строка, как в корзине, чекауте и админке (по умолчанию —
+   * эти места меняться не должны). `blocks` — крупные блоки «дн/час/мин»
+   * для панели героя.
+   */
+  variant?: 'inline' | 'blocks'
+  /** Метку рисует внешняя панель (`StatusPanel`) — не дублировать. */
+  isLabelHidden?: boolean
 }
 
 export interface IQuantityStepperProps {
