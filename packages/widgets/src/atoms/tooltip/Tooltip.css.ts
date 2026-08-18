@@ -21,6 +21,17 @@ export const block = style({
 const OFFSET = 4
 
 /**
+ * Горизонтальная поправка: на сколько пузырь отодвинут от центра триггера,
+ * чтобы не упереться в край экрана. Считает и выставляет её инлайном
+ * `Tooltip.tsx` — CSS не умеет узнать, где именно на экране стоит триггер.
+ * По умолчанию нулевая: пузырь остаётся центрованным.
+ */
+export const shiftVar = '--tooltip-shift'
+
+/** Центрирование вместе с поправкой — один `translateX` на все состояния. */
+const centered = `translateX(calc(-50% + var(${shiftVar}, 0px)))`
+
+/**
  * Проявление пузыря.
  *
  * Раньше это был `transition` по `opacity`/`visibility`, но из `display: none`
@@ -29,13 +40,13 @@ const OFFSET = 4
  * обязана вести его целиком, иначе она затрёт горизонтальное центрирование.
  */
 const revealTop = keyframes({
-  from: { opacity: 0, transform: `translateX(-50%) translateY(${OFFSET}px)` },
-  to: { opacity: 1, transform: 'translateX(-50%) translateY(0)' },
+  from: { opacity: 0, transform: `${centered} translateY(${OFFSET}px)` },
+  to: { opacity: 1, transform: `${centered} translateY(0)` },
 })
 
 const revealBottom = keyframes({
-  from: { opacity: 0, transform: `translateX(-50%) translateY(-${OFFSET}px)` },
-  to: { opacity: 1, transform: 'translateX(-50%) translateY(0)' },
+  from: { opacity: 0, transform: `${centered} translateY(-${OFFSET}px)` },
+  to: { opacity: 1, transform: `${centered} translateY(0)` },
 })
 
 /**
@@ -105,14 +116,14 @@ export const placement = styleVariants({
     bottom: '100%',
     left: '50%',
     marginBottom: rem(8),
-    transform: 'translateX(-50%)',
+    transform: centered,
     animationName: revealTop,
   },
   bottom: {
     top: '100%',
     left: '50%',
     marginTop: rem(8),
-    transform: 'translateX(-50%)',
+    transform: centered,
     animationName: revealBottom,
   },
 })

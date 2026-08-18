@@ -49,9 +49,13 @@ const hintFloat = keyframes({
 const reducedOff = media({ preferReducedMotion: { animation: 'none' } })
 
 /**
- * `100dvh`, не `100vh`: на iOS `100vh` считается без адресной строки, и низ
- * героя — а там кнопки и таймер — уезжает под неё. `100vh` остаётся
- * запасным значением для браузеров без `dvh`.
+ * `100svh`, не `100vh` и не `100dvh`. На iOS `100vh` считается без адресной
+ * строки, и низ героя — а там кнопки и таймер — уезжает под неё. `100dvh`
+ * низ не режет, но пересчитывается на каждый показ/скрытие панелей Safari:
+ * при скролле высота героя меняется, и весь блок скачет. `100svh` — высота
+ * при *развёрнутых* панелях: она постоянна, поэтому ничего не дёргается, а
+ * контент виден целиком в самом тесном состоянии вьюпорта. `100vh` остаётся
+ * запасным значением для браузеров без вьюпортных единиц нового поколения.
  */
 export const container = style({
   position: 'relative',
@@ -62,7 +66,7 @@ export const container = style({
   paddingTop: `calc(env(safe-area-inset-top) + ${rem(96)})`,
   paddingBottom: `calc(env(safe-area-inset-bottom) + ${vars.space.lg})`,
   '@supports': {
-    '(min-height: 100dvh)': { minHeight: '100dvh' },
+    '(min-height: 100svh)': { minHeight: '100svh' },
   },
 })
 
