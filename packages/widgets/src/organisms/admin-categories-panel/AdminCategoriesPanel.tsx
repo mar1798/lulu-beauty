@@ -280,7 +280,7 @@ export const AdminCategoriesPanel: FC<IAdminCategoriesPanelProps & IBasicStyling
           Кнопка живая и при негодных полях: заблокированная не объясняла, чем
           именно недовольна, — теперь нажатие показывает это под самим полем.
         */}
-        <Button type="submit" isLoading={isBusy}>
+        <Button isFullWidth="mobile" type="submit" isLoading={isBusy}>
           Добавить
         </Button>
       </form>

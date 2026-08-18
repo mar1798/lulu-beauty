@@ -108,6 +108,7 @@ export const AdminUsersTable: FC<IAdminUsersTableProps & IBasicStyling> = ({
                         скринридер прочитал бы у всех одинаково.
                       */}
                       <Button
+                        isFullWidth="mobile"
                         size="sm"
                         variant={admin ? 'secondary' : 'primary'}
                         disabled={busyId === user.id}

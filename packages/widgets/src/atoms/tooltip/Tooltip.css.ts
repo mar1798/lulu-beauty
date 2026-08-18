@@ -1,5 +1,5 @@
-import { style, styleVariants } from '@vanilla-extract/css'
-import { color, font, media, rem, transition } from '../../styling/lib'
+import { keyframes, style, styleVariants } from '@vanilla-extract/css'
+import { color, font, media, rem } from '../../styling/lib'
 import { vars } from '../../styling/themes/contract.css'
 
 /**
@@ -18,18 +18,48 @@ export const block = style({
   width: '100%',
 })
 
+const OFFSET = 4
+
 /**
- * Пузырь. Скрыт `visibility`, а не `display`: так работает переход, а сам
- * пузырь при этом не ловит курсор в скрытом состоянии.
+ * Проявление пузыря.
+ *
+ * Раньше это был `transition` по `opacity`/`visibility`, но из `display: none`
+ * (см. `bubble`) переход не играет — проявление живёт в keyframes. Их два, по
+ * одному на направление выезда: `transform` у направлений разный, а анимация
+ * обязана вести его целиком, иначе она затрёт горизонтальное центрирование.
+ */
+const revealTop = keyframes({
+  from: { opacity: 0, transform: `translateX(-50%) translateY(${OFFSET}px)` },
+  to: { opacity: 1, transform: 'translateX(-50%) translateY(0)' },
+})
+
+const revealBottom = keyframes({
+  from: { opacity: 0, transform: `translateX(-50%) translateY(-${OFFSET}px)` },
+  to: { opacity: 1, transform: 'translateX(-50%) translateY(0)' },
+})
+
+/**
+ * Пузырь. Скрыт `display: none`, а не `visibility: hidden`, намеренно.
+ *
+ * Скрытый по `visibility` бокс остаётся в раскладке и попадает в область
+ * прокрутки документа. В сетке каталога подсказка висит над круглой кнопкой
+ * карточки, ширина у неё до 240px — и в правой колонке её половина уезжала за
+ * правый край телефона, растягивая документ по горизонтали. Каталог и
+ * избранное начинали ездить вбок при том, что видимого содержимого за краем
+ * нет (на главной то же самое пряталось за обрезкой секции — оттого и не
+ * замечалось). `display: none` убирает пузырь из раскладки совсем.
+ *
+ * Шире экрана он не бывает и в раскрытом виде — `100vw` минус поля.
  *
  * `pointer-events: none` — курсор проходит насквозь: подсказка всплывает
  * впритык к кнопке, и без этого она перехватывала бы клик по ней самой.
  */
 export const bubble = style({
+  display: 'none',
   position: 'absolute',
   zIndex: vars.zIndex.tooltip,
   width: 'max-content',
-  maxWidth: rem(240),
+  maxWidth: `min(${rem(240)}, calc(100vw - ${rem(32)}))`,
   padding: `${rem(6)} ${rem(10)}`,
   font: font('12/16', 500),
   color: color.text('inverse'),
@@ -38,9 +68,14 @@ export const bubble = style({
   boxShadow: vars.shadow.lg,
   textAlign: 'center',
   pointerEvents: 'none',
-  visibility: 'hidden',
-  opacity: 0,
-  transition: transition('opacity', 'visibility', 'transform'),
+  /*
+    Анимация объявлена на скрытом состоянии и запускается сама, когда пузырь
+    появляется: у `display: none` анимации не играют вовсе. Поэтому в селекторе
+    ниже остаётся только показ — направление выезда приходит от `placement`.
+  */
+  animationDuration: '160ms',
+  animationTimingFunction: 'ease-out',
+  animationFillMode: 'both',
   selectors: {
     /*
       Наведение — на обёртке, фокус — на чём угодно внутри неё. Второе важнее
@@ -48,13 +83,16 @@ export const bubble = style({
       клавиатуре подсказка — единственный способ узнать причину.
     */
     [`${container}:hover &, ${container}:focus-within &`]: {
-      visibility: 'visible',
-      opacity: 1,
-      transform: 'translateX(-50%) translateY(0)',
+      display: 'block',
     },
   },
+  /*
+    При `prefers-reduced-motion` гасим длительность, а не `animation-name`:
+    имя задаёт `placement` таким же одноклассовым правилом, и перебить его
+    отсюда можно было бы только порядком в файле.
+  */
   ...media({
-    preferReducedMotion: { transition: 'none' },
+    preferReducedMotion: { animationDuration: '1ms' },
   }),
 })
 
@@ -67,12 +105,14 @@ export const placement = styleVariants({
     bottom: '100%',
     left: '50%',
     marginBottom: rem(8),
-    transform: 'translateX(-50%) translateY(4px)',
+    transform: 'translateX(-50%)',
+    animationName: revealTop,
   },
   bottom: {
     top: '100%',
     left: '50%',
     marginTop: rem(8),
-    transform: 'translateX(-50%) translateY(-4px)',
+    transform: 'translateX(-50%)',
+    animationName: revealBottom,
   },
 })

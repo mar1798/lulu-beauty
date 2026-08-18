@@ -177,7 +177,7 @@ const AdminProductsPage: React.FC = () => {
       title="Товары"
       summary="Каталог целиком: и то, что видят покупатели, и удалённое."
       actions={
-        <Button link={{ href: '/admin/products/add' }} iconStart={<IconPlus />}>
+        <Button isFullWidth="mobile" link={{ href: '/admin/products/add' }} iconStart={<IconPlus />}>
           Добавить товар
         </Button>
       }
@@ -239,7 +239,11 @@ const AdminProductsPage: React.FC = () => {
           <EmptyState
             title="Товаров не нашлось"
             description="Измените фильтры или добавьте первый товар — вручную либо импортом из xlsx."
-            action={<Button link={{ href: '/admin/products/add' }}>Добавить товар</Button>}
+            action={
+              <Button isFullWidth="mobile" link={{ href: '/admin/products/add' }}>
+                Добавить товар
+              </Button>
+            }
           />
         }
       />

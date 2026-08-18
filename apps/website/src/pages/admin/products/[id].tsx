@@ -207,7 +207,11 @@ const AdminProductPage: React.FC = () => {
         <EmptyState
           title="Товар не найден"
           description="Возможно, его удалили насовсем или ссылка устарела."
-          action={<Button link={{ href: '/admin/products' }}>К списку товаров</Button>}
+          action={
+            <Button isFullWidth="mobile" link={{ href: '/admin/products' }}>
+              К списку товаров
+            </Button>
+          }
         />
       )
     }
@@ -252,6 +256,7 @@ const AdminProductPage: React.FC = () => {
           footer={
             product.deletedAt === null ? (
               <Button
+                isFullWidth="mobile"
                 variant="danger"
                 onClick={() => {
                   void handleDelete()
@@ -261,6 +266,7 @@ const AdminProductPage: React.FC = () => {
               </Button>
             ) : (
               <Button
+                isFullWidth="mobile"
                 variant="secondary"
                 onClick={() => {
                   void handleRestore()
@@ -280,7 +286,7 @@ const AdminProductPage: React.FC = () => {
       title={product?.name ?? 'Товар'}
       summary={product === undefined ? undefined : `/catalog/${product.slug}`}
       actions={
-        <Button variant="secondary" link={{ href: '/admin/products' }}>
+        <Button isFullWidth="mobile" variant="secondary" link={{ href: '/admin/products' }}>
           К списку
         </Button>
       }

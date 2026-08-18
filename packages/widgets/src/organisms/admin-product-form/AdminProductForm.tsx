@@ -373,7 +373,7 @@ export const AdminProductForm: FC<IAdminProductFormProps & IBasicStyling> = ({
         <Switch label="В наличии" checked={inStock} onChange={setInStock} />
 
         <div className={styles.formActions}>
-          <Button type="submit" isLoading={isSubmitting}>
+          <Button isFullWidth="mobile" type="submit" isLoading={isSubmitting}>
             {product === undefined ? 'Создать товар' : 'Сохранить'}
           </Button>
           {footer}

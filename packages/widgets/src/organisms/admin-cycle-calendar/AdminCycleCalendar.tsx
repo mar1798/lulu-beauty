@@ -322,6 +322,7 @@ export const AdminCycleCalendar: FC<IAdminCycleCalendarProps & IBasicStyling> = 
 
             <div className={styles.editorActions}>
               <Button
+                isFullWidth="mobile"
                 isLoading={isBusy}
                 disabled={draft.time === ''}
                 /*
@@ -349,6 +350,7 @@ export const AdminCycleCalendar: FC<IAdminCycleCalendarProps & IBasicStyling> = 
               */}
               {isActive && onClose !== undefined && (
                 <Button
+                  isFullWidth="mobile"
                   variant="secondary"
                   disabled={isBusy}
                   onClick={() => {
@@ -361,6 +363,7 @@ export const AdminCycleCalendar: FC<IAdminCycleCalendarProps & IBasicStyling> = 
 
               {selectedCycle !== null && (
                 <Button
+                  isFullWidth="mobile"
                   variant="danger"
                   disabled={isBusy}
                   onClick={() => {

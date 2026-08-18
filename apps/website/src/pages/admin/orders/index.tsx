@@ -239,6 +239,7 @@ const AdminOrdersPage: React.FC = () => {
           />
 
           <Button
+            isFullWidth="mobile"
             variant="secondary"
             iconStart={<IconDownload />}
             isLoading={isExporting}

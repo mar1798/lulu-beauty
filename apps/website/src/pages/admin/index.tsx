@@ -85,7 +85,9 @@ const AdminOverviewPage: React.FC = () => {
             <Text tone="secondary" size="sm">
               Открытого сбора нет: покупатели видят каталог, но оформить заявку не могут.
             </Text>
-            <Button link={{ href: '/admin/cycles' }}>Назначить дедлайн</Button>
+            <Button isFullWidth="mobile" link={{ href: '/admin/cycles' }}>
+              Назначить дедлайн
+            </Button>
           </>
         ) : (
           <>
@@ -97,7 +99,7 @@ const AdminOverviewPage: React.FC = () => {
             </div>
 
             <DeadlineCountdown deadlineAt={cycle.deadlineAt} />
-            <Button variant="secondary" link={{ href: '/admin/cycles' }}>
+            <Button isFullWidth="mobile" variant="secondary" link={{ href: '/admin/cycles' }}>
               Открыть календарь
             </Button>
           </>
@@ -127,7 +129,7 @@ const AdminOverviewPage: React.FC = () => {
           </div>
         )}
 
-        <Button variant="secondary" link={{ href: '/admin/orders' }}>
+        <Button isFullWidth="mobile" variant="secondary" link={{ href: '/admin/orders' }}>
           Все заявки
         </Button>
       </section>

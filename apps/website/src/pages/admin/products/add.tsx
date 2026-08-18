@@ -93,7 +93,7 @@ const AdminProductCreatePage: React.FC = () => {
       title="Новый товар"
       summary="После сохранения форма очищается — можно сразу добавить следующий товар."
       actions={
-        <Button variant="secondary" link={{ href: '/admin/products' }}>
+        <Button isFullWidth="mobile" variant="secondary" link={{ href: '/admin/products' }}>
           К списку
         </Button>
       }
