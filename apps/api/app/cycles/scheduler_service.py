@@ -2,7 +2,7 @@ import uuid
 from collections import defaultdict
 from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 
 from sqlalchemy import delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,34 +12,10 @@ from app.cart.models import Cart, CartItem
 from app.catalog.models import Product
 from app.common.limits import MAX_WISHLIST_ITEMS
 from app.cycles.models import CycleStatus, OrderCycle
+from app.cycles.reminders import REMINDER_STAGES, WIDEST_REMINDER_WINDOW
 from app.cycles.service import CycleAlreadyClosedError, CycleNotFoundError
 from app.orders.models import CANCELLED_STATUSES, Order
 from app.wishlist.models import WishlistItem
-
-
-@dataclass(frozen=True)
-class ReminderStage:
-    """One nudge before a deadline: how early it goes out, and where "already sent" lives.
-
-    Two stages, not one, because a reminder a day ahead and a reminder three hours ahead
-    are answering different questions — "when should I get round to this?" versus "am I
-    about to miss it?" — and the second one has to say so, or it reads as a repeat.
-    """
-
-    window: timedelta
-    sent_at_field: str
-    last_chance: bool
-
-
-# Most urgent first: a cycle can become due for both stages at once (created, or its
-# deadline moved, inside the narrow window), and sweep_reminders sends only the first.
-REMINDER_STAGES = (
-    ReminderStage(
-        window=timedelta(hours=3), sent_at_field="final_reminder_sent_at", last_chance=True
-    ),
-    ReminderStage(window=timedelta(hours=24), sent_at_field="reminder_sent_at", last_chance=False),
-)
-WIDEST_REMINDER_WINDOW = max(stage.window for stage in REMINDER_STAGES)
 
 
 @dataclass(frozen=True)

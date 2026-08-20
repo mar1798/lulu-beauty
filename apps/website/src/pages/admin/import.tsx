@@ -6,7 +6,7 @@ import { useToast } from 'widgets/contexts'
 import { AdminShell } from '@/layouts/AdminShell'
 import { messageForError } from '@/services/apiErrors'
 import { importCatalog } from '@/services/endpoints/admin'
-import { categoriesKey, isAdminProductsKey } from '@/services/swrKeys'
+import { categoriesKey, isAdminBrandsKey, isAdminProductsKey } from '@/services/swrKeys'
 
 /**
  * Импорт каталога из xlsx/csv.
@@ -37,6 +37,9 @@ const AdminImportPage: React.FC = () => {
       // Импорт может завести категории и поменять любой товар разом — точечно не угадать.
       void globalMutate(categoriesKey)
       void globalMutate(isAdminProductsKey)
+      // Импорт создаёт и бренды: файл с колонкой `brand` приносит спелления,
+      // которых в фильтре и подсказках ещё нет.
+      void globalMutate(isAdminBrandsKey)
 
       /*
         Ошибка с номером строки `0` — это отказ по всему файлу (не UTF-8,

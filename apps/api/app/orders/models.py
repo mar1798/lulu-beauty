@@ -31,6 +31,24 @@ CANCELLED_STATUSES = frozenset({OrderStatus.CANCELLED_BY_CUSTOMER, OrderStatus.C
 # "Мои заявки"), never on the site — there the full history is the point.
 OPEN_STATUSES = frozenset({OrderStatus.PENDING, OrderStatus.CONFIRMED, OrderStatus.READY})
 
+# Where an order may go from where it is. The owner's panel used to accept any target at
+# all, so a promise about an order — "подтверждена", "готова к выдаче" — could be made
+# about one the customer had already withdrawn, and a finished order could be walked back
+# into the purchase list.
+#
+# Cancelling stays available from every live status: it is the answer to "не смогла
+# достать", which can happen at any point up to handover. The terminal ones lead nowhere
+# — an order that ended goes back only through the customer's own restore, which returns
+# it to PENDING, or through deletion.
+ALLOWED_TRANSITIONS: dict[OrderStatus, frozenset[OrderStatus]] = {
+    OrderStatus.PENDING: frozenset({OrderStatus.CONFIRMED, OrderStatus.CANCELLED_BY_OWNER}),
+    OrderStatus.CONFIRMED: frozenset({OrderStatus.READY, OrderStatus.CANCELLED_BY_OWNER}),
+    OrderStatus.READY: frozenset({OrderStatus.COMPLETED, OrderStatus.CANCELLED_BY_OWNER}),
+    OrderStatus.COMPLETED: frozenset(),
+    OrderStatus.CANCELLED_BY_CUSTOMER: frozenset(),
+    OrderStatus.CANCELLED_BY_OWNER: frozenset(),
+}
+
 
 class Order(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "orders"

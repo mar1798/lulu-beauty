@@ -15,7 +15,22 @@ import { isApiError, messageForError } from '@/services/apiErrors'
  * шаг ровно там, где мы их убирали.
  */
 
+/**
+ * Первые полминуты — часто: подтверждение почти всегда приходит именно там, и
+ * лишняя секунда ожидания на пустой вкладке заметна.
+ */
 const POLL_INTERVAL_MS = 2000
+
+/**
+ * Дальше — реже. Не косметика: `/auth/telegram/claim` попадает под общий бюджет
+ * лимитера, и опрос раз в две секунды все шесть минут выжигал его сам себе —
+ * человек, который две минуты искал бота, получал 429 вместо входа. Пять секунд
+ * держат расход втрое ниже пополнения.
+ */
+const SLOW_POLL_INTERVAL_MS = 5000
+
+/** Как долго опрашиваем часто, прежде чем перейти на редкий шаг. */
+const FAST_POLL_WINDOW_MS = 30_000
 
 /** Пока сессия жива на бэке (`AUTH_SESSION_TTL_SECONDS` = 5 мин) — с запасом на дорогу. */
 const MAX_POLL_MS = 6 * 60 * 1000
@@ -114,7 +129,10 @@ export const useTelegramLogin = (isEnabled: boolean): ITelegramLoginState => {
         return
       }
 
-      const deadline = Date.now() + MAX_POLL_MS
+      const startedAt = Date.now()
+      const deadline = startedAt + MAX_POLL_MS
+      const nextDelay = (): number =>
+        Date.now() - startedAt < FAST_POLL_WINDOW_MS ? POLL_INTERVAL_MS : SLOW_POLL_INTERVAL_MS
 
       const poll = async (): Promise<void> => {
         if (isCancelled.current) {
@@ -138,7 +156,7 @@ export const useTelegramLogin = (isEnabled: boolean): ITelegramLoginState => {
           /*
             Сессия кончилась (410) или её не стало (404) — ждать больше нечего,
             нужна новая ссылка. Любая другая осечка — скорее всего сеть моргнула:
-            следующий опрос через две секунды разберётся сам.
+            следующий опрос разберётся сам.
           */
           if (isApiError(cause) && (cause.status === GONE || cause.status === NOT_FOUND)) {
             stop('expired')
@@ -147,10 +165,10 @@ export const useTelegramLogin = (isEnabled: boolean): ITelegramLoginState => {
           }
         }
 
-        timer = setTimeout(() => void poll(), POLL_INTERVAL_MS)
+        timer = setTimeout(() => void poll(), nextDelay())
       }
 
-      timer = setTimeout(() => void poll(), POLL_INTERVAL_MS)
+      timer = setTimeout(() => void poll(), nextDelay())
     }
 
     if (!isRepeat) {

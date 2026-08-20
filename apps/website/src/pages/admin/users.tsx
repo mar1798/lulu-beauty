@@ -1,5 +1,5 @@
 import React, { useCallback, useState } from 'react'
-import useSWR from 'swr'
+import useSWR, { mutate as globalMutate } from 'swr'
 import type { IAdminUser, Role } from 'widgets/types'
 import { Alert } from 'widgets/atoms'
 import { EmptyState, Pagination, SearchField } from 'widgets/molecules'
@@ -10,7 +10,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import { pageParam, textParam, useQueryParams, useQueryTextInput } from '@/hooks/useQueryParams'
 import { messageForError } from '@/services/apiErrors'
 import { listAdminUsers, updateUserRole } from '@/services/endpoints/admin'
-import { adminUsersKey } from '@/services/swrKeys'
+import { adminUsersKey, isAdminUsersKey } from '@/services/swrKeys'
 import * as styles from '@/styles/admin.css'
 
 /**
@@ -49,11 +49,7 @@ const AdminUsersPage: React.FC = () => {
   const [busyId, setBusyId] = useState<string | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
 
-  const {
-    data,
-    error: fetchError,
-    mutate,
-  } = useSWR(
+  const { data, error: fetchError } = useSWR(
     adminUsersKey(query, page),
     () => listAdminUsers({ q: query === '' ? undefined : query, page, pageSize: PAGE_SIZE }),
     // Смена страницы или запроса не должна ронять таблицу в скелетон.
@@ -82,7 +78,10 @@ const AdminUsersPage: React.FC = () => {
     try {
       await updateUserRole(target.id, role)
       notify({ tone: 'success', title: isGranting ? 'Доступ выдан' : 'Доступ снят' })
-      await mutate()
+      // Все страницы списка, а не только текущая: бэкенд сортирует владельцев
+      // первыми, так что изменённая строка уезжает на другую страницу — ровно то,
+      // ради чего в swrKeys.ts заведён `isAdminUsersKey`.
+      await globalMutate(isAdminUsersKey)
     } catch (cause: unknown) {
       const message = messageForError(cause, 'admin.users')
 

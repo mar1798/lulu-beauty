@@ -6,6 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.cycles.models import CycleStatus, OrderCycle
+from app.cycles.reminders import REMINDER_STAGES
 from app.orders.models import Order
 
 
@@ -110,6 +111,7 @@ class CyclesService:
         # and the deadline together, so refusing a past date there would make renaming a
         # finished cycle impossible.
         now = datetime.now(UTC)
+        previous_deadline_at = cycle.deadline_at
         deadline_at = updates.get("deadline_at")
         if deadline_at is not None and deadline_at <= now and cycle.deadline_at > now:
             raise PastDeadlineError
@@ -129,8 +131,23 @@ class CyclesService:
         if will_be_open and not was_open and await self._other_open_cycle(cycle.id, now):
             raise ActiveCycleExistsError
 
+        # Closed *early* — by `close_now`, which deliberately leaves the deadline alone —
+        # is exactly the shape the reopen rule below looks for: CLOSED with a deadline
+        # still ahead. Without remembering that from before the edit, renaming such a
+        # cycle (and the calendar always sends the deadline together with the label)
+        # silently put it back to collecting orders the owner had already bought for.
+        was_closed_early = cycle.status is CycleStatus.CLOSED and cycle.deadline_at > now
+
         for field, value in updates.items():
             setattr(cycle, field, value)
+
+        # A deadline stage the cycle has moved out of has to be announced again — the
+        # sweep selects on these stamps alone, so extending a deadline after the day-out
+        # reminder went out meant no reminder on the new date at all. Cleared only for
+        # the stages the new deadline has not entered yet; a stamp inside its own window
+        # was earned.
+        if deadline_at is not None and deadline_at != previous_deadline_at:
+            self._clear_passed_reminders(cycle, now)
 
         # Moving a closed cycle's deadline back into the future reopens it — and until the
         # rest of the row followed, that reopening was only half real: `get_active_cycle()`
@@ -139,7 +156,7 @@ class CyclesService:
         # second time. It also kept `closed_at` and both reminder stamps, so the new
         # deadline would pass unannounced. UPCOMING rather than ACTIVE for the same reason
         # `create()` leaves it there: the sweep promotes whichever cycle is next.
-        if cycle.status is CycleStatus.CLOSED and cycle.deadline_at > now:
+        if not was_closed_early and cycle.status is CycleStatus.CLOSED and cycle.deadline_at > now:
             cycle.status = CycleStatus.UPCOMING
             cycle.closed_at = None
             cycle.reminder_sent_at = None
@@ -147,6 +164,22 @@ class CyclesService:
 
         await self._session.flush()
         return cycle
+
+    @staticmethod
+    def _clear_passed_reminders(cycle: OrderCycle, now: datetime) -> None:
+        """Reopens the reminder stages the new deadline is no longer inside.
+
+        `plan_reminders` picks cycles by "stamp is NULL and the deadline is within the
+        window", so a stamp left over from the old date is indistinguishable from a
+        reminder already delivered for the new one — and a deadline pushed a week out
+        after the day-ahead nudge went out would arrive with no warning at all.
+
+        Only the stages the new deadline has left behind are cleared. A stamp for a stage
+        whose window the cycle is still inside describes a message that is still true.
+        """
+        for stage in REMINDER_STAGES:
+            if cycle.deadline_at > now + stage.window:
+                setattr(cycle, stage.sent_at_field, None)
 
     async def delete(self, cycle_id: uuid.UUID) -> None:
         cycle = await self._session.get(OrderCycle, cycle_id)

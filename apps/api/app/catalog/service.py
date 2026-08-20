@@ -10,10 +10,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.catalog.models import Category, Product, ProductImage
+from app.orders.models import OrderItem
 
 
 class SlugAlreadyExistsError(Exception):
     pass
+
+
+# Postgres' SQLSTATE for a unique-constraint violation.
+UNIQUE_VIOLATION = "23505"
 
 
 @asynccontextmanager
@@ -32,6 +37,13 @@ async def _slug_conflict_as_error(session: AsyncSession) -> AsyncIterator[None]:
         async with session.begin_nested():
             yield
     except IntegrityError as error:
+        # Only a unique violation is a slug conflict. Every IntegrityError used to be
+        # reported as one, so a product saved against a category deleted in another tab —
+        # a foreign-key violation — came back as «Товар с таким адресом (slug) уже есть.
+        # Измените slug», advice that cannot fix it. 23505 is the SQLSTATE for
+        # unique_violation; asyncpg carries it on the wrapped exception.
+        if getattr(error.orig, "sqlstate", None) != UNIQUE_VIOLATION:
+            raise
         raise SlugAlreadyExistsError from error
 
 
@@ -268,6 +280,7 @@ class ProductService:
     ) -> Product:
         if await self._slug_taken(slug):
             raise SlugAlreadyExistsError
+        await self._require_category(category_id)
         product = Product(
             name=name,
             slug=slug,
@@ -293,12 +306,27 @@ class ProductService:
         if "brand" in updates:
             updates["brand"] = await self.canonical_brand(updates["brand"])
 
+        if "category_id" in updates:
+            await self._require_category(updates["category_id"])
+
         for field, value in updates.items():
             setattr(product, field, value)
 
         async with _slug_conflict_as_error(self._session):
             await self._session.flush()
         return product
+
+    async def _require_category(self, category_id: uuid.UUID | None) -> None:
+        """Checked here rather than left to the foreign key.
+
+        A dropdown loaded before the owner deleted a category in another tab still offers
+        it, and the database's answer to that is an IntegrityError indistinguishable at
+        the flush from a slug conflict. This one names what actually went wrong.
+        """
+        if category_id is None:
+            return
+        if await self._session.get(Category, category_id) is None:
+            raise CategoryNotFoundError
 
     async def soft_delete(self, product_id: uuid.UUID) -> None:
         product = await self.get_by_id(product_id)
@@ -327,10 +355,10 @@ class ProductService:
         first) keeps the product from being briefly photo-less between the two
         requests, and cleans up rows left by earlier multi-image data.
 
-        Returns the new image and the urls of the ones it replaced. The files behind
-        those are the caller's to remove, and only once this transaction has committed:
-        deleting them here would strand a live row on a missing file the moment anything
-        further down the request rolled back.
+        Returns the new image and the urls of the ones it replaced — minus any that an
+        order still points at. The files behind the rest are the caller's to remove, and
+        only once this transaction has committed: deleting them here would strand a live
+        row on a missing file the moment anything further down the request rolled back.
         """
         await self.get_by_id(product_id)  # 404s if missing/soft-deleted
 
@@ -342,6 +370,7 @@ class ProductService:
             replaced_urls.append(image.url)
             await self._session.delete(image)
         await self._session.flush()
+        replaced_urls = await self._unreferenced(replaced_urls)
 
         image = ProductImage(
             product_id=product_id,
@@ -354,9 +383,9 @@ class ProductService:
         await self._session.flush()
         return image, replaced_urls
 
-    async def delete_image(self, product_id: uuid.UUID, image_id: uuid.UUID) -> str:
-        """Drops the row and hands back the url, so the caller can remove the file after
-        the commit — same reasoning as `add_image`."""
+    async def delete_image(self, product_id: uuid.UUID, image_id: uuid.UUID) -> str | None:
+        """Drops the row and hands back the url to delete after the commit — or None when
+        the file has to stay, because an order still shows it (see `_unreferenced`)."""
         result = await self._session.execute(
             select(ProductImage).where(
                 ProductImage.id == image_id, ProductImage.product_id == product_id
@@ -368,7 +397,25 @@ class ProductService:
 
         url = image.url
         await self._session.delete(image)
-        return url
+        # An empty list means the file is still an order's picture — see `_unreferenced`.
+        return url if await self._unreferenced([url]) else None
+
+    async def _unreferenced(self, urls: list[str]) -> list[str]:
+        """Of these urls, the ones no order line still shows.
+
+        `order_items` denormalises the picture along with the name and the price, so the
+        product's image row is not the file's only reference — replacing a photo used to
+        unlink a file that a customer's order and the owner's history both still pointed
+        at. (The comment that used to sit here said an orphan could not be told from a
+        live file; it can, and this is the query that does it.)
+        """
+        if not urls:
+            return []
+        result = await self._session.execute(
+            select(OrderItem.product_image_url).where(OrderItem.product_image_url.in_(urls))
+        )
+        still_used = set(result.scalars().all())
+        return [url for url in urls if url not in still_used]
 
     async def _slug_taken(self, slug: str) -> bool:
         result = await self._session.execute(select(Product.id).where(Product.slug == slug))

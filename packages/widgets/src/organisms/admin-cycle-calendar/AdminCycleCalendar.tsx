@@ -1,5 +1,5 @@
 import clsx from 'clsx'
-import { type FC, useState } from 'react'
+import { type FC, useMemo, useState } from 'react'
 import type {
   IAdminCycleCalendarProps,
   IBasicStyling,
@@ -34,6 +34,13 @@ import * as styles from './AdminCycleCalendar.css'
 const WEEKDAYS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс']
 const DAYS_IN_WEEK = 7
 const DEFAULT_TIME = '20:00'
+
+/*
+  Смещение магазина считается один раз на модуль: `storeOffsetLabel()` внутри
+  рендера пересчитывалось на каждое нажатие клавиши в полях редактора, а зона
+  магазина за время открытой вкладки не меняется.
+*/
+const TIME_HINT = `Время по магазину, UTC${storeOffsetLabel()}.`
 
 /**
  * Почему второй сбор не назначить. Одной строкой и в двух местах сразу: скрытой
@@ -111,19 +118,31 @@ export const AdminCycleCalendar: FC<IAdminCycleCalendarProps & IBasicStyling> = 
   const [selectedDate, setSelectedDate] = useState<string | null>(null)
   const [draft, setDraft] = useState<ICycleDraft>({ date: '', time: DEFAULT_TIME, label: '' })
 
-  const { days, title } = buildMonth(month)
+  /*
+    Оба вычисления мемоизированы, потому что рядом живёт `draft`: он меняется на
+    каждый введённый символ в полях редактора, а сетка месяца и карта сборов от
+    него не зависят — без `useMemo` каждое нажатие пересобирало сетку и гоняло
+    `toStoreParts` (то есть `Intl.DateTimeFormat.formatToParts`) по всем сборам.
+    React Compiler в проекте не подключён, а список сборов не пагинирован ни на
+    фронте, ни на бэке.
+  */
+  const { days, title } = useMemo(() => buildMonth(month), [month])
 
-  const byDate = new Map<string, IOrderCycle[]>()
+  const byDate = useMemo(() => {
+    const map = new Map<string, IOrderCycle[]>()
 
-  for (const cycle of cycles) {
-    const parts = toStoreParts(cycle.deadlineAt)
+    for (const cycle of cycles) {
+      const parts = toStoreParts(cycle.deadlineAt)
 
-    if (parts === null) {
-      continue
+      if (parts === null) {
+        continue
+      }
+
+      map.set(parts.date, [...(map.get(parts.date) ?? []), cycle])
     }
 
-    byDate.set(parts.date, [...(byDate.get(parts.date) ?? []), cycle])
-  }
+    return map
+  }, [cycles])
 
   const selectedCycle = selectedDate === null ? null : (byDate.get(selectedDate)?.[0] ?? null)
   const isActive = selectedCycle !== null && selectedCycle.id === activeCycleId
@@ -304,7 +323,7 @@ export const AdminCycleCalendar: FC<IAdminCycleCalendarProps & IBasicStyling> = 
               label="Время закрытия"
               type="time"
               value={draft.time}
-              hint={`Время по магазину, UTC${storeOffsetLabel()}.`}
+              hint={TIME_HINT}
               onChange={next => {
                 setDraft(current => ({ ...current, time: next }))
               }}

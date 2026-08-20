@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useMemo, useState } from 'react'
 import useSWR, { mutate as globalMutate } from 'swr'
 import type { IAdminOrder, IOrderCycle, ISelectOption, OrderStatus } from 'widgets/types'
 import { Alert, Button, Select, Switch } from 'widgets/atoms'
@@ -135,8 +135,11 @@ const AdminOrdersPage: React.FC = () => {
     Скелетон — только пока показывать нечего. `isLoading` из SWR считается по
     текущему ключу и на смене фильтра становится `true` даже с
     `keepPreviousData`, из-за чего таблица мигала скелетоном на каждый клик.
+
+    Ошибка тоже снимает скелетон: данных не будет вовсе, и без этой половины
+    условия под сообщением «Не получилось» крутилась вечная загрузка.
   */
-  const isFirstLoad = data === undefined
+  const isFirstLoad = data === undefined && fetchError === undefined
 
   const error = fetchError === undefined ? null : messageForError(fetchError, 'admin.orders')
 
@@ -220,10 +223,20 @@ const AdminOrdersPage: React.FC = () => {
     }
   }
 
-  const cycleOptions: ISelectOption[] = [
-    { value: ALL, label: 'Все сборы' },
-    ...(cycles ?? []).map(cycle => ({ value: cycle.id, label: cycleLabel(cycle) })),
-  ]
+  /*
+    Мемоизирован не ради самих вычислений, хотя `cycleLabel` и зовёт форматирование
+    даты на каждый сбор: новый массив на каждый рендер — это новая идентичность
+    пропа, от которой `Select` пересобирает свой внутренний список опций. А
+    рендеров тут много: занятая строка, страница, статус, выгрузка, любая
+    ревалидация SWR.
+  */
+  const cycleOptions = useMemo<ISelectOption[]>(
+    () => [
+      { value: ALL, label: 'Все сборы' },
+      ...(cycles ?? []).map(cycle => ({ value: cycle.id, label: cycleLabel(cycle) })),
+    ],
+    [cycles]
+  )
 
   return (
     <AdminShell

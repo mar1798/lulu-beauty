@@ -21,6 +21,13 @@ import * as styles from './Header.css'
  * обычный вид. Порог отслеживается `useScroll` + `useMotionValueEvent` —
  * никакого голого `addEventListener('scroll')`, и `setState` дёргается
  * только при пересечении порога, а не на каждый кадр.
+ *
+ * Сама подписка вынесена в `ScrollThreshold` и монтируется только в этом
+ * режиме — тем же расщеплением, что `Parallax`/`ParallaxMotion`. Проверка
+ * `isFloating` внутри колбэка не помогала: подписка создавалась безусловно, а
+ * в motion двухаргументный колбэк — это настоящий JS-слушатель с measure и
+ * notify на каждый кадр прокрутки, то есть на всех страницах сайта, включая
+ * админку, ради значения, нужного одной главной.
  */
 
 /**
@@ -33,6 +40,28 @@ import * as styles from './Header.css'
  * `scrollY === 0` — то есть в самом верху страницы, а не где-то около.
  */
 const SCROLL_THRESHOLD = 0
+
+/**
+ * Подписка на прокрутку, живущая ровно столько, сколько нужна.
+ *
+ * Ничего не рисует: сообщает наверх пересечение порога и только его — `setState`
+ * зовётся на смене значения, а не на каждый кадр.
+ */
+const ScrollThreshold: FC<{ onChange: (isPast: boolean) => void }> = ({ onChange }) => {
+  const isPastRef = useRef(false)
+  const { scrollY } = useScroll()
+
+  useMotionValueEvent(scrollY, 'change', latest => {
+    const next = latest > SCROLL_THRESHOLD
+
+    if (next !== isPastRef.current) {
+      isPastRef.current = next
+      onChange(next)
+    }
+  })
+
+  return null
+}
 
 export const Header: FC<IHeaderProps & IBasicStyling> = ({
   logo,
@@ -48,21 +77,6 @@ export const Header: FC<IHeaderProps & IBasicStyling> = ({
   className,
 }) => {
   const [isScrolled, setScrolled] = useState(false)
-  const scrolledRef = useRef(false)
-  const { scrollY } = useScroll()
-
-  useMotionValueEvent(scrollY, 'change', latest => {
-    if (!isFloating) {
-      return
-    }
-
-    const next = latest > SCROLL_THRESHOLD
-
-    if (next !== scrolledRef.current) {
-      scrolledRef.current = next
-      setScrolled(next)
-    }
-  })
 
   return (
     <header
@@ -73,6 +87,8 @@ export const Header: FC<IHeaderProps & IBasicStyling> = ({
         className,
       )}
     >
+      {isFloating && <ScrollThreshold onChange={setScrolled} />}
+
     <Container as="div">
       <div className={styles.inner}>
         <AppLink {...logo.link} className={styles.logo}>

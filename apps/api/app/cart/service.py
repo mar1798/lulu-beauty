@@ -42,7 +42,11 @@ class CartService:
         cycle = await self._require_active_cycle()
 
         product = await self._session.get(Product, product_id)
-        if product is None or product.deleted_at is not None:
+        if product is None or product.deleted_at is not None or not product.in_stock:
+            # Out of stock is refused here rather than only hidden in the UI: the site
+            # already treats such a product as unorderable, and until this check existed
+            # the API happily took it — through a stale tab, or a card opened before the
+            # owner unticked the box — and carried it into the order and the purchase sheet.
             raise ProductNotFoundError
 
         cart = await self._find_or_create_cart(user_id, cycle.id)
@@ -169,11 +173,12 @@ class CartService:
                 total_cents=0,
             )
 
-        # Discontinued products drop out of the cart. The rows themselves are left alone
-        # (a re-import by slug revives the product, and the line comes back with it), but
-        # they must not be shown or counted: adding a soft-deleted product is refused
-        # everywhere else, and checkout reads this same join — so a line the customer can
-        # see is exactly a line they can order.
+        # Discontinued products — and ones the owner has taken out of stock — drop out of
+        # the cart. The rows themselves are left alone (a re-import by slug revives the
+        # product, and stock comes back the same way, so the line returns with it), but
+        # they must not be shown or counted: adding such a product is refused everywhere
+        # else, and checkout reads this same join — so a line the customer can see is
+        # exactly a line they can order.
         # Category comes along in the same query (outer join — a product may have none):
         # its name is one of the labels under the line, and reading it per row would be a
         # round trip per position.
@@ -181,7 +186,11 @@ class CartService:
             select(CartItem, Product, Category.name)
             .join(Product, Product.id == CartItem.product_id)
             .outerjoin(Category, Category.id == Product.category_id)
-            .where(CartItem.cart_id == cart.id, Product.deleted_at.is_(None))
+            .where(
+                CartItem.cart_id == cart.id,
+                Product.deleted_at.is_(None),
+                Product.in_stock.is_(True),
+            )
             .order_by(Product.name)
             .options(selectinload(Product.images))
         )

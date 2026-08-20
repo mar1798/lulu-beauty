@@ -10,9 +10,10 @@ import { Badge } from '../../atoms/badge'
  *
  * Отмен две, и различаются они не оттенком, а тем, кто её сделал: покупатель
  * передумал или владелец не смог достать товар — для обеих сторон это разные
- * новости, и одна «Отменена» их путала. Ставить «Отменена покупателем» владелец
- * не может (бэкенд отвечает `order_status_not_assignable`), поэтому список для
- * выбора — `ASSIGNABLE_ORDER_STATUSES`, а не `ORDER_STATUSES`.
+ * новости, и одна «Отменена» их путала. Что владелец вправе поставить и из какого
+ * статуса, говорит `ORDER_STATUS_TRANSITIONS`; «Отменена покупателем» не встречается
+ * там ни разу — это утверждение о чужом действии, и бэкенд его тоже не принимает
+ * (`order_status_not_assignable`).
  */
 
 interface IStatusView {
@@ -39,10 +40,27 @@ export const ORDER_STATUSES: OrderStatus[] = [
   'CANCELLED_BY_OWNER',
 ]
 
-/** Те же, кроме отмены покупателем: это утверждение о его действии, а не о своём. */
-export const ASSIGNABLE_ORDER_STATUSES: OrderStatus[] = ORDER_STATUSES.filter(
-  status => status !== 'CANCELLED_BY_CUSTOMER'
-)
+/**
+ * Куда заявка может уйти из каждого статуса — зеркало `ALLOWED_TRANSITIONS`
+ * в `apps/api/app/orders/models.py`.
+ *
+ * Правило теперь есть на бэкенде (он отвечает `order_status_transition_invalid`),
+ * поэтому список выбора обязан его повторять: раньше в поле стояли все статусы
+ * подряд, и промах мышью на строку «Подтверждена» у отменённой заявки отправлял
+ * покупателю уведомление о заявке, которую тот отозвал.
+ *
+ * Отмена доступна из любого живого статуса — «не смогла достать» случается
+ * вплоть до выдачи. Из терминальных не ведёт ничего: вернуть заявку может
+ * только сам покупатель, и она возвращается в «Ожидает».
+ */
+export const ORDER_STATUS_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
+  PENDING: ['CONFIRMED', 'CANCELLED_BY_OWNER'],
+  CONFIRMED: ['READY', 'CANCELLED_BY_OWNER'],
+  READY: ['COMPLETED', 'CANCELLED_BY_OWNER'],
+  COMPLETED: [],
+  CANCELLED_BY_CUSTOMER: [],
+  CANCELLED_BY_OWNER: [],
+}
 
 export const orderStatusLabel = (status: OrderStatus): string => VIEWS[status].label
 

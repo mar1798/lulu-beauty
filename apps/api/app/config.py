@@ -25,6 +25,12 @@ class Settings(BaseSettings):
     # my phone" without leaving a working key lying around in a chat.
     auth_session_ttl_seconds: int = 300
 
+    # One uvicorn worker serves the shop, the bot and the scheduler off the same pool,
+    # so the ceiling here is what the whole process can have open at once, not per-request
+    # concurrency. Kept well under Postgres' default 100 connections.
+    db_pool_size: int = 10
+    db_max_overflow: int = 10
+
     telegram_bot_token: str
     telegram_bot_username: str
 

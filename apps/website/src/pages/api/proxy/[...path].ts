@@ -2,7 +2,14 @@ import type { NextApiRequest, NextApiResponse } from 'next'
 import { Readable } from 'node:stream'
 import type { ReadableStream } from 'node:stream/web'
 import { pipeline } from 'node:stream/promises'
-import { UnauthenticatedError, fetchWithAuth, unauthenticated } from '@/server/apiFetch'
+import {
+  NO_STORE,
+  UnauthenticatedError,
+  UpstreamUnavailableError,
+  fetchWithAuth,
+  unauthenticated,
+} from '@/server/apiFetch'
+import { readAuthTokens } from '@/server/cookies'
 
 /**
  * Прозрачный прокси к бэкенду для браузера. Единственное, что он добавляет, —
@@ -106,10 +113,24 @@ const handler = async (req: NextApiRequest, res: NextApiResponse): Promise<void>
       return
     }
 
+    // Апстрим недоступен — сессия цела, поэтому это 503, а не 401: пометить
+    // посетителя гостем из-за 502 значит выкинуть его из аккаунта.
+    if (error instanceof UpstreamUnavailableError) {
+      res.status(503).json({ detail: 'upstream_unavailable' })
+      return
+    }
+
     throw error
   }
 
   res.status(response.status)
+  // Через прокси ходят и публичный каталог, и профиль с историей заявок — на
+  // ответ с bearer-токеном кэш ставить нельзя, а различить их можно только здесь:
+  // выше по стеку директив кэширования не выставляет никто, зато Next дописывает
+  // ETag, и персональный ответ оставался в дисковом кэше после выхода.
+  if (readAuthTokens(req).accessToken !== undefined) {
+    res.setHeader('Cache-Control', NO_STORE)
+  }
 
   for (const name of FORWARDED_RESPONSE_HEADERS) {
     const value = response.headers.get(name)

@@ -4,10 +4,17 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.cart.service import CartService
 from app.catalog.import_service import CatalogImportService
 from app.catalog.models import Category, Product, ProductImage
 from app.catalog.service import ProductNotFoundError, ProductService
-from tests.integration.factories import make_product, make_product_image
+from app.orders.service import OrdersService
+from tests.integration.factories import (
+    make_cycle,
+    make_product,
+    make_product_image,
+    make_user,
+)
 
 
 async def test_list_public_hides_soft_deleted_but_admin_can_include_them(
@@ -211,7 +218,7 @@ async def test_import_upserts_by_slug_against_the_existing_catalogue(
         "Совсем новый,krem-3,10.00,COSRX\n"
     ).encode()
 
-    summary = await CatalogImportService(db_session).import_file("catalog.csv", content)
+    summary, _ = await CatalogImportService(db_session).import_file("catalog.csv", content)
 
     assert (summary.created, summary.updated, summary.errors) == (1, 2, [])
     await db_session.refresh(existing)
@@ -233,7 +240,7 @@ async def test_import_folds_a_slug_repeated_inside_one_file(db_session: AsyncSes
         "Последний вариант,povtor,200.00,Round Lab\n"
     ).encode()
 
-    summary = await CatalogImportService(db_session).import_file("catalog.csv", content)
+    summary, _ = await CatalogImportService(db_session).import_file("catalog.csv", content)
     await db_session.flush()
 
     assert (summary.created, summary.updated, summary.errors) == (1, 1, [])
@@ -263,7 +270,7 @@ async def test_import_folds_brand_case_variants(db_session: AsyncSession) -> Non
         "Маска,maska,300.00,cosrx\n"
     ).encode()
 
-    summary = await CatalogImportService(db_session).import_file("catalog.csv", content)
+    summary, _ = await CatalogImportService(db_session).import_file("catalog.csv", content)
     await db_session.flush()
 
     assert summary.errors == []
@@ -290,7 +297,7 @@ async def test_import_accepts_a_row_without_a_brand(db_session: AsyncSession) ->
         "Безымянный,bezymyannyj,200.00,   \n"
     ).encode()
 
-    summary = await CatalogImportService(db_session).import_file("catalog.csv", content)
+    summary, _ = await CatalogImportService(db_session).import_file("catalog.csv", content)
     await db_session.flush()
 
     assert (summary.created, summary.updated, summary.errors) == (2, 0, [])
@@ -320,7 +327,7 @@ async def test_import_creates_categories_the_catalogue_does_not_have_yet(
         "Без категории,bez-kategorii,500.00,COSRX,\n"
     ).encode()
 
-    summary = await CatalogImportService(db_session).import_file("catalog.csv", content)
+    summary, _ = await CatalogImportService(db_session).import_file("catalog.csv", content)
     await db_session.flush()
 
     assert (summary.created, summary.updated, summary.errors) == (5, 0, [])
@@ -354,7 +361,7 @@ async def test_import_takes_a_category_written_as_a_name(db_session: AsyncSessio
         "Патчи,patchi,200.00,COSRX,Уход за глазами\n"
     ).encode()
 
-    summary = await CatalogImportService(db_session).import_file("catalog.csv", content)
+    summary, _ = await CatalogImportService(db_session).import_file("catalog.csv", content)
     await db_session.flush()
 
     assert (summary.created, summary.updated, summary.errors) == (2, 0, [])
@@ -381,7 +388,7 @@ async def test_import_leaves_columns_the_file_does_not_have_alone(
     await db_session.flush()
 
     content = "name,slug,price\nСыворотка,serum,150.00\n".encode()
-    summary = await CatalogImportService(db_session).import_file("prices.csv", content)
+    summary, _ = await CatalogImportService(db_session).import_file("prices.csv", content)
     await db_session.flush()
 
     assert (summary.created, summary.updated, summary.errors) == (0, 1, [])
@@ -397,7 +404,7 @@ async def test_import_reads_the_camel_case_in_stock_column(db_session: AsyncSess
     """"inStock" is the spelling the admin panel documents, and it used to be ignored."""
     content = "name,slug,price,inStock\nСыворотка,serum,150.00,нет\n".encode()
 
-    summary = await CatalogImportService(db_session).import_file("catalog.csv", content)
+    summary, _ = await CatalogImportService(db_session).import_file("catalog.csv", content)
     await db_session.flush()
 
     assert (summary.created, summary.errors) == (1, [])
@@ -416,8 +423,59 @@ async def test_import_reports_an_overlong_name_as_one_bad_row(db_session: AsyncS
         "Нормальная строка,fine,100.00\n"
     ).encode()
 
-    summary = await CatalogImportService(db_session).import_file("catalog.csv", content)
+    summary, _ = await CatalogImportService(db_session).import_file("catalog.csv", content)
     await db_session.flush()
 
     assert summary.created == 1
     assert [error.row for error in summary.errors] == [2]
+
+
+async def test_import_pulls_its_price_changes_through_pending_orders(
+    db_session: AsyncSession,
+) -> None:
+    """A price list is not only a catalog edit.
+
+    The hand-edit path (`PATCH /admin/products/{id}`) has always repriced open orders;
+    the mass path silently left them on the old price, so the owner paid one number and
+    the order showed another. Only prices that actually moved count — the file re-states
+    every product, including the ones it does not change.
+    """
+    user = await make_user(db_session)
+    await make_cycle(db_session)
+    moved = await make_product(db_session, slug="krem-1", name="Крем", price_cents=1000)
+    same = await make_product(db_session, slug="krem-2", name="Тоник", price_cents=500)
+
+    cart = CartService(db_session)
+    await cart.add_item(user.id, moved.id, 2)
+    await cart.add_item(user.id, same.id, 1)
+    order = await OrdersService(db_session).checkout(user.id, note=None)
+
+    content = ("name,slug,price\nКрем,krem-1,15.00\nТоник,krem-2,5.00\n").encode()
+
+    summary, changes = await CatalogImportService(db_session).import_file("prices.csv", content)
+    await db_session.flush()
+
+    assert (summary.updated, summary.errors) == (2, [])
+    assert order.total_cents == 3500
+    assert [(change.product_name, change.new_price_cents) for change in changes] == [
+        ("Крем", 1500)
+    ]
+    assert changes[0].order_id == order.id
+    assert changes[0].total_cents == 3500
+
+
+async def test_import_reports_no_price_changes_when_nothing_moved(
+    db_session: AsyncSession,
+) -> None:
+    """Re-uploading yesterday's file must not tell anyone their order changed."""
+    user = await make_user(db_session)
+    await make_cycle(db_session)
+    product = await make_product(db_session, slug="krem-1", name="Крем", price_cents=1000)
+    await CartService(db_session).add_item(user.id, product.id, 1)
+    await OrdersService(db_session).checkout(user.id, note=None)
+
+    content = "name,slug,price\nКрем,krem-1,10.00\n".encode()
+
+    _, changes = await CatalogImportService(db_session).import_file("prices.csv", content)
+
+    assert changes == []

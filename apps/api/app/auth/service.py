@@ -1,7 +1,8 @@
+import uuid
 from datetime import UTC, datetime
 from typing import Any, cast
 
-from sqlalchemy import CursorResult, delete, or_, select
+from sqlalchemy import CursorResult, delete, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import token_service
@@ -85,6 +86,23 @@ class AuthService:
             )
         )
         # rowcount lives on the DBAPI cursor result, which Result only exposes for DML.
+        return int(cast("CursorResult[Any]", result).rowcount)
+
+    async def revoke_all_for_user(self, user_id: uuid.UUID) -> int:
+        """Ends every live session of one account at once.
+
+        The one control the bot can offer over a sign-in it has already vouched for:
+        "это не я" arrives after the tab was let in, so refusing the auth session is not
+        enough — whatever tokens it already claimed have to stop working too. Access
+        tokens are stateless and outlive this by up to `JWT_ACCESS_TTL_SECONDS`; the
+        refresh tokens are what turn a stolen tab into a permanent one, and those are here.
+        """
+        now = datetime.now(UTC)
+        result = await self._session.execute(
+            update(RefreshToken)
+            .where(RefreshToken.user_id == user_id, RefreshToken.revoked_at.is_(None))
+            .values(revoked_at=now)
+        )
         return int(cast("CursorResult[Any]", result).rowcount)
 
     async def logout(self, refresh_token: str) -> None:

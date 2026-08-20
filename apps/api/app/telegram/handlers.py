@@ -15,6 +15,7 @@ command drifting apart into two implementations.
 """
 
 import logging
+from datetime import UTC, datetime
 
 from aiogram import F, Router
 from aiogram.filters import Command, CommandObject, CommandStart, or_f
@@ -23,6 +24,7 @@ from aiogram.types import User as TelegramUser
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.models import Role, User
+from app.auth.service import AuthService
 from app.auth.telegram_login import TelegramLoginService
 from app.cart.schemas import CartResponse
 from app.cart.service import CartService
@@ -30,9 +32,9 @@ from app.common.phone import normalize_phone
 from app.cycles.service import CyclesService
 from app.db import async_session
 from app.orders.models import OPEN_STATUSES
-from app.orders.service import OrderNotFoundError, OrdersService
+from app.orders.service import OrderNotFoundError, OrdersService, StatusTransitionError
 from app.telegram import keyboards, messages, recipients
-from app.telegram.keyboards import MenuAction, OrderAction
+from app.telegram.keyboards import LoginAction, MenuAction, OrderAction
 from app.telegram.notify import notify_order_status
 from app.telegram.throttling import ThrottlingMiddleware
 from app.wishlist.service import WishlistService
@@ -89,7 +91,17 @@ async def handle_start(message: Message, command: CommandObject) -> None:
         if user is not None and auth_session is not None:
             await auth.authorize(auth_session, user)
             await session.commit()
+            authorized_at = auth_session.authorized_at or datetime.now(UTC)
+            session_id = auth_session.id
             await message.answer(messages.LOGIN_CONFIRMED, reply_markup=keyboards.main_menu())
+            # A second message, because the first one carries the reply keyboard and a
+            # message has room for only one markup. It is also the only warning there is:
+            # the tab that gets let in is whichever one produced the link, not necessarily
+            # the one in front of the person tapping it.
+            await message.answer(
+                messages.login_alert(authorized_at),
+                reply_markup=keyboards.login_reject(session_id),
+            )
             return
 
         await session.commit()
@@ -352,6 +364,33 @@ async def handle_menu_action(query: CallbackQuery, callback_data: MenuAction) ->
         await origin.answer(messages.UNLINK_NEXT, reply_markup=ReplyKeyboardRemove())
 
 
+@router.callback_query(LoginAction.filter())
+async def handle_login_action(query: CallbackQuery, callback_data: LoginAction) -> None:
+    """«Это не я» under the login confirmation: close the sign-in and every session with it.
+
+    Both halves matter. Spending the auth session stops a tab that is still polling from
+    ever being let in; revoking the refresh tokens ends the ones that already were. What
+    cannot be taken back is an access token already issued — those are stateless and run
+    out on their own within `JWT_ACCESS_TTL_SECONDS`.
+    """
+    async with async_session() as session:
+        auth = TelegramLoginService(session)
+        # from_user rather than chat, like the other callbacks: the binding and the login
+        # both belong to whoever pressed, and in a private chat the two ids are the same.
+        user_id = await auth.reject(callback_data.session_id, query.from_user.id)
+        if user_id is None:
+            await query.answer(messages.CALLBACK_LOGIN_GONE, show_alert=True)
+            return
+
+        await AuthService(session).revoke_all_for_user(user_id)
+        await session.commit()
+
+    await query.answer()
+    if isinstance(query.message, Message):
+        # Rewriting drops the button: an offer that has been taken must stop standing.
+        await query.message.edit_text(messages.LOGIN_REJECTED)
+
+
 @router.callback_query(OrderAction.filter())
 async def handle_order_action(query: CallbackQuery, callback_data: OrderAction) -> None:
     """The owner confirming or cancelling an order straight from the notification.
@@ -378,6 +417,11 @@ async def handle_order_action(query: CallbackQuery, callback_data: OrderAction) 
         except OrderNotFoundError:
             # The owner deleted it from the admin panel and the notification outlived it.
             await query.answer(messages.CALLBACK_ORDER_GONE, show_alert=True)
+            return
+        except StatusTransitionError:
+            # The order moved on (or was withdrawn) since the notification was sent —
+            # the button is a week-old snapshot of a decision that is no longer open.
+            await query.answer(messages.CALLBACK_ORDER_MOVED_ON, show_alert=True)
             return
 
         await session.commit()

@@ -2,6 +2,7 @@ import type { NextApiRequest, NextApiResponse } from 'next'
 import { apiUrl, methodNotAllowed } from '@/server/apiFetch'
 import { clientHeaders } from '@/server/clientAddress'
 import { clearAuthCookies, readAuthTokens } from '@/server/cookies'
+import { rejectCrossOrigin } from '@/server/sameOrigin'
 
 /**
  * Выход. Cookie снимаются в любом случае — даже если бэкенд недоступен или
@@ -10,6 +11,11 @@ import { clearAuthCookies, readAuthTokens } from '@/server/cookies'
 const handler = async (req: NextApiRequest, res: NextApiResponse): Promise<void> => {
   if (req.method !== 'POST') {
     methodNotAllowed(res, ['POST'])
+    return
+  }
+
+  // Ручка меняет cookie сессии — значит, она мишень для CSRF (см. sameOrigin.ts).
+  if (rejectCrossOrigin(req, res)) {
     return
   }
 

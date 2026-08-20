@@ -760,6 +760,49 @@ async def test_reprice_product_reports_nothing_when_price_is_unchanged(
     assert await OrdersService(db_session).reprice_product(product_id, 1000) == []
 
 
+async def test_reprice_products_moves_several_prices_in_one_pass(
+    db_session: AsyncSession,
+) -> None:
+    """What a price list does: many products at once, several of them in one order.
+
+    The mass path used to ask per product — one query each, on the event loop this
+    process shares with the bot and the scheduler — and it recomputed the order total
+    after every single line, so each notice about a two-line order quoted a different
+    total. Both are the point here: one order, two repriced lines, one final total.
+    """
+    user = await make_user(db_session)
+    await make_cycle(db_session)
+    rose = await make_product(db_session, name="Rose Serum", slug="rose", price_cents=1000)
+    clay = await make_product(db_session, name="Clay Mask", slug="clay", price_cents=500)
+    untouched = await make_product(db_session, name="Toner", slug="toner", price_cents=300)
+
+    cart = CartService(db_session)
+    await cart.add_item(user.id, rose.id, 2)
+    await cart.add_item(user.id, clay.id, 1)
+    await cart.add_item(user.id, untouched.id, 1)
+    order = await OrdersService(db_session).checkout(user.id, note=None)
+
+    changes = await OrdersService(db_session).reprice_products(
+        {rose.id: 1500, clay.id: 400, untouched.id: 300}
+    )
+
+    prices = {item.product_name: item.product_price_cents for item in order.items}
+    assert prices == {"Rose Serum": 1500, "Clay Mask": 400, "Toner": 300}
+    # 2 x 1500 + 400 + 300 — and every notice quotes that same number.
+    assert order.total_cents == 3700
+    assert {change.product_name for change in changes} == {"Rose Serum", "Clay Mask"}
+    assert {change.total_cents for change in changes} == {3700}
+
+
+async def test_reprice_products_reports_nothing_for_an_empty_map(
+    db_session: AsyncSession,
+) -> None:
+    """An import that changed no price must not cost a query."""
+    await _order_with(db_session, price_cents=1000)
+
+    assert await OrdersService(db_session).reprice_products({}) == []
+
+
 async def test_reprice_product_leaves_confirmed_orders_alone(db_session: AsyncSession) -> None:
     """Past PENDING the owner has already bought against the list: the snapshot stands."""
     order, product_id = await _order_with(db_session, price_cents=1000, quantity=2)

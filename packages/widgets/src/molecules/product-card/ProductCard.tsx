@@ -24,7 +24,13 @@ import * as styles from './ProductCard.css'
 export const primaryImage = (images: IProductImage[]): IProductImage | null =>
   images.find(image => image.isPrimary) ?? images[0] ?? null
 
-const DEFAULT_SIZES = { fb: '50vw', sm: '50vw', lg: '25vw' } as const
+/**
+ * Держать синхронным с `ProductGrid.css.ts`: сетка переходит на четыре колонки уже
+ * на `md`, а `sizes` обещал браузеру половину вьюпорта вплоть до `lg`. На 900px
+ * карточка занимает ~197px при заявленных 450 — при DPR 2 браузер брал кандидата
+ * 1080 вместо 640, то есть втрое больше пикселей, чем нужно.
+ */
+const DEFAULT_SIZES = { fb: '50vw', sm: '50vw', md: '25vw', lg: '25vw' } as const
 
 export const ProductCard: FC<IProductCardProps & IBasicStyling> = ({
   product,

@@ -49,8 +49,15 @@ export const slugify = (value: string): string => {
     .map(char => LETTERS[char] ?? char)
     .join('')
 
-  return transliterated
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 255)
+  return (
+    transliterated
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 255)
+      // Ещё раз после обрезки: `slice` режет по символу и может оставить дефис
+      // последним — а такой slug не проходит валидацию ни на форме, ни на бэкенде,
+      // хотя поле выглядит заполненным правильно (на длинных русских названиях это
+      // примерно каждый восьмой).
+      .replace(/-+$/, '')
+  )
 }

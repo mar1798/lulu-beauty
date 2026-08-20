@@ -127,6 +127,36 @@ def order_actions(order_id: uuid.UUID) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
+class LoginAction(CallbackData, prefix="login"):
+    """Disowning a sign-in the bot has just vouched for.
+
+    Packs to "login:" plus a dash-less UUID — 38 bytes, inside Telegram's 64 — so the
+    session id travels whole and the handler needs no table of short tokens. One action
+    only: the affirmative answer is the tap that already happened.
+    """
+
+    session_id: uuid.UUID
+
+
+def login_reject(session_id: uuid.UUID) -> InlineKeyboardMarkup:
+    """The single button under the post-login warning.
+
+    Alone in its markup, and without a matching «это я»: an honest sign-in needs no
+    second press, and offering one would turn every login into a two-step flow to guard
+    against a case that is rare and reversible.
+    """
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text=messages.LOGIN_REJECT_BUTTON,
+                    callback_data=LoginAction(session_id=session_id).pack(),
+                )
+            ]
+        ]
+    )
+
+
 MenuActionName = Literal["unlink", "unlink_confirm", "unlink_cancel"]
 
 

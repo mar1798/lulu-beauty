@@ -57,6 +57,16 @@ export interface IAnchor {
   style: CSSProperties
 }
 
+/** Совпадают ли два положения списка с точностью до пикселя. */
+const isSameAnchor = (current: IAnchor | null, next: IAnchor): boolean =>
+  current !== null &&
+  current.placement === next.placement &&
+  current.style.left === next.style.left &&
+  current.style.width === next.style.width &&
+  current.style.maxHeight === next.style.maxHeight &&
+  current.style.top === next.style.top &&
+  current.style.bottom === next.style.bottom
+
 /** Координаты списка по прямоугольнику поля. Экспортируется ради тестов. */
 export const anchorTo = (trigger: HTMLElement): IAnchor => {
   const rect = trigger.getBoundingClientRect()
@@ -123,6 +133,8 @@ export const Select: FC<ISelectProps & IBasicStyling> = ({
   const optionId = (index: number): string => `${fieldId}-option-${index}`
 
   const triggerRef = useRef<HTMLButtonElement>(null)
+  /** Идентификатор запланированного пересчёта: не больше одного на кадр. */
+  const reanchorFrame = useRef<number | null>(null)
   const popoverRef = useRef<HTMLDivElement>(null)
   const activeRef = useRef<HTMLLIElement>(null)
   const typeahead = useRef({ query: '', at: 0 })
@@ -155,11 +167,51 @@ export const Select: FC<ISelectProps & IBasicStyling> = ({
     [hasError ? errorId : null, hint !== undefined ? hintId : null].filter(Boolean).join(' ') ||
     undefined
 
-  const reanchor = useCallback(() => {
+  /*
+    Пересчёт положения списка. Два предохранителя, и оба нужны при прокрутке:
+    события скролла приходят пачками по несколько на кадр, а `setAnchor` с новым
+    объектом заставлял React заново прогнать `items.map(...)` — то есть перерисовать
+    весь список опций, а он бывает длинным (все бренды каталога, вся история сборов).
+
+    Поэтому: не чаще кадра, и только если положение действительно изменилось.
+  */
+  /**
+   * Немедленный замер — для раскрытия: список рисуется только после того, как
+   * положение посчитано, так что отложить его на кадр значит не показать список
+   * по клику вовсе.
+   */
+  const measure = useCallback(() => {
     if (triggerRef.current !== null) {
       setAnchor(anchorTo(triggerRef.current))
     }
   }, [])
+
+  const reanchor = useCallback(() => {
+    if (reanchorFrame.current !== null) {
+      return
+    }
+
+    reanchorFrame.current = requestAnimationFrame(() => {
+      reanchorFrame.current = null
+
+      if (triggerRef.current === null) {
+        return
+      }
+
+      const next = anchorTo(triggerRef.current)
+
+      setAnchor(current => (isSameAnchor(current, next) ? current : next))
+    })
+  }, [])
+
+  useEffect(
+    () => () => {
+      if (reanchorFrame.current !== null) {
+        cancelAnimationFrame(reanchorFrame.current)
+      }
+    },
+    []
+  )
 
   const open = useCallback(
     (index: number) => {
@@ -167,11 +219,11 @@ export const Select: FC<ISelectProps & IBasicStyling> = ({
         return
       }
 
-      reanchor()
+      measure()
       setActiveIndex(index)
       setIsOpen(true)
     },
-    [disabled, reanchor]
+    [disabled, measure]
   )
 
   const close = useCallback(() => {

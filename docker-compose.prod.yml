@@ -7,10 +7,20 @@
 # API доступен браузеру исключительно через прокси Next (`/api/proxy/*`),
 # ровно как задумано в apps/website/src/pages/api/proxy/[...path].ts.
 
+# Ротация логов, общая для всех сервисов. Без неё json-file растёт до размера
+# диска: каждый отказ вебхука и каждый 429 — это строка, а диск здесь общий
+# с Postgres.
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: '10m'
+    max-file: '5'
+
 services:
   db:
     image: postgres:16-alpine
     restart: unless-stopped
+    logging: *default-logging
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-lulu}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?задайте POSTGRES_PASSWORD в .env.prod}
@@ -27,6 +37,7 @@ services:
     build:
       context: apps/api
     restart: unless-stopped
+    logging: *default-logging
     env_file:
       - .env.prod
     environment:
@@ -64,6 +75,7 @@ services:
         NEXT_PUBLIC_TELEGRAM_BOT_USERNAME: ${TELEGRAM_BOT_USERNAME}
         NEXT_PUBLIC_TELEGRAM_LOGIN_WIDGET: ${NEXT_PUBLIC_TELEGRAM_LOGIN_WIDGET:-true}
     restart: unless-stopped
+    logging: *default-logging
     environment:
       # Server-to-server: getStaticProps, ISR и Next API routes ходят в API
       # напрямую по внутренней сети, минуя Caddy.
@@ -84,6 +96,7 @@ services:
   caddy:
     image: caddy:2-alpine
     restart: unless-stopped
+    logging: *default-logging
     ports:
       - '80:80'
       - '443:443'

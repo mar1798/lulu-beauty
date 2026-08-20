@@ -284,20 +284,29 @@ async def notify_cycle_closed_for_customers(session: AsyncSession, cycle: OrderC
 
 async def notify_cycle_reminders(
     session: AsyncSession, reminders: Sequence[CycleReminder]
-) -> None:
+) -> list[CycleReminder]:
     """Sends the deadline nudges the sweep worked out, after its commit.
 
     A throttled fan-out like the other broadcasts: a reminder goes to everyone holding an
     abandoned cart, which is the same shape of audience as a shop-wide announcement, and
     firing it flat-out would simply earn a rate-limit from Telegram partway through.
+
+    Returns the reminders that were actually dealt with, and that is the whole point of a
+    return value here: the caller stamps what this reports, and a stamp is what stops a
+    reminder from ever being sent again. One `try` around the whole loop meant a failure
+    on the third cycle left the fourth unsent — and then stamped as though it had gone
+    out. The failure is caught per reminder instead, and an unfinished one is simply left
+    for the next tick.
     """
     if not reminders:
-        return
+        return []
 
-    try:
-        for reminder in reminders:
+    delivered: list[CycleReminder] = []
+    for reminder in reminders:
+        try:
             if not reminder.user_ids:
                 # Planned only so its stages get stamped — nobody left a cart in it.
+                delivered.append(reminder)
                 continue
 
             users = await recipients.get_users(session, reminder.user_ids)
@@ -324,8 +333,11 @@ async def notify_cycle_reminders(
                 len(reminder.user_ids),
                 cleared,
             )
-    except Exception:  # noqa: BLE001 - the cycles are already stamped; see module docstring
-        logger.exception("Failed to send cycle reminders")
+            delivered.append(reminder)
+        except Exception:  # noqa: BLE001 - one cycle's failure must not cost the others
+            logger.exception("Failed to send the reminder for cycle %s", reminder.cycle.id)
+
+    return delivered
 
 
 async def notify_cycle_closed(

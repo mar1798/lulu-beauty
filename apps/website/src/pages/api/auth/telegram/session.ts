@@ -2,6 +2,7 @@ import type { NextApiRequest, NextApiResponse } from 'next'
 import { apiUrl, methodNotAllowed } from '@/server/apiFetch'
 import { clientHeaders } from '@/server/clientAddress'
 import { setLoginSession } from '@/server/cookies'
+import { rejectCrossOrigin } from '@/server/sameOrigin'
 
 /**
  * Начало входа: сервер заводит сессию и отдаёт браузеру **только** ссылку на бота.
@@ -21,6 +22,11 @@ interface IStartedSession {
 const handler = async (req: NextApiRequest, res: NextApiResponse): Promise<void> => {
   if (req.method !== 'POST') {
     methodNotAllowed(res, ['POST'])
+    return
+  }
+
+  // Ручка меняет cookie сессии — значит, она мишень для CSRF (см. sameOrigin.ts).
+  if (rejectCrossOrigin(req, res)) {
     return
   }
 

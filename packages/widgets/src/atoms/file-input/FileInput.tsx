@@ -48,6 +48,11 @@ export const FileInput: FC<IFileInputProps & IBasicStyling> = ({
         <input
           ref={inputRef}
           className={styles.input}
+          // Прячется `visuallyHidden()` — рецептом с clip, который оставляет
+          // элемент фокусируемым: без этого следующий после видимой кнопки Tab
+          // уходил на невидимый контрол 1×1 без фокус-кольца. Открывает диалог
+          // кнопка, так что своя точка входа инпуту не нужна.
+          tabIndex={-1}
           type="file"
           accept={accept}
           multiple={multiple}

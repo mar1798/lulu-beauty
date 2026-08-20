@@ -12,8 +12,8 @@ import { AddToCartButton } from '@/components/AddToCartButton'
 import { ClosedCycleNotice } from '@/components/ClosedCycleNotice'
 import { WishlistButton } from '@/components/WishlistButton'
 import { isApiError } from '@/services/apiErrors'
-import { getProduct, listCategories, listProducts } from '@/services/endpoints/catalog'
-import { getActiveCycleOrNull } from '@/services/endpoints/cycles'
+import { getProduct, listProducts } from '@/services/endpoints/catalog'
+import { sharedActiveCycle, sharedCategories } from '@/services/staticData'
 import { activeCycleFallback, type ISwrFallback } from '@/services/swrFallback'
 
 /**
@@ -98,8 +98,10 @@ export const getStaticProps: GetStaticProps<IProductPageProps, { slug: string }>
     */
     const [product, categories, cycle] = await Promise.all([
       getProduct(slug),
-      listCategories().catch(() => []),
-      getActiveCycleOrNull().catch(() => null),
+      // Общие на всю сборку: одинаковы для всех двух тысяч карточек — см.
+      // `services/staticData.ts`.
+      sharedCategories().catch(() => []),
+      sharedActiveCycle().catch(() => null),
     ])
 
     const category = categories.find(item => item.id === product.categoryId)

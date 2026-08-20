@@ -102,6 +102,9 @@ const AdminProductPage: React.FC = () => {
       await mutate()
       // Вписанный бренд обязан оказаться в подсказках и в фильтре списка.
       void globalMutate(isAdminBrandsKey)
+      // И сам список — как после создания и удаления: без этого «К списку»
+      // показывал старое имя и старую цену до фоновой ревалидации.
+      void globalMutate(isAdminProductsKey)
       setSaveVersion(current => current + 1)
     } catch (cause: unknown) {
       setFormError(messageForError(cause, 'admin.product.update'))
@@ -195,6 +198,9 @@ const AdminProductPage: React.FC = () => {
       await restoreProduct(product.id)
       notify({ tone: 'success', title: 'Товар восстановлен' })
       await mutate()
+      // Восстановленный товар возвращается в список — как и при удалении, сбросить
+      // надо все варианты фильтров, а не только текущую карточку.
+      void globalMutate(isAdminProductsKey)
       setSaveVersion(current => current + 1)
     } catch (cause: unknown) {
       setFormError(messageForError(cause, 'admin.product.restore'))

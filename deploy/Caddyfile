@@ -6,6 +6,16 @@
 {$SITE_DOMAIN} {
 	encode zstd gzip
 
+	# Потолок тела запроса — первый из трёх: Caddy обрывает соединение, не доводя
+	# байты до Next, тот стримит их в API (bodyParser: false), а API добирает
+	# собственным BodySizeLimitMiddleware. Нужен именно здесь, потому что
+	# загрузка multipart разбирается FastAPI раньше, чем отрабатывает
+	# require_admin, — без внешнего лимита анонимный POST пишет на диск.
+	# Значение чуть выше MAX_IMPORT_BYTES (10 MiB): запас на границы multipart.
+	request_body {
+		max_size 12MB
+	}
+
 	# Единственный путь, ведущий в API напрямую: Telegram обязан достучаться
 	# до вебхука сам, через прокси Next он не пойдёт.
 	#

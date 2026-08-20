@@ -1,6 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from 'next'
 import {
   UnauthenticatedError,
+  UpstreamUnavailableError,
   fetchWithAuth,
   methodNotAllowed,
   relayJson,
@@ -27,6 +28,13 @@ const handler = async (req: NextApiRequest, res: NextApiResponse): Promise<void>
   } catch (error) {
     if (error instanceof UnauthenticatedError) {
       unauthenticated(res)
+      return
+    }
+
+    // Апстрим недоступен — сессия цела, поэтому это 503, а не 401: пометить
+    // посетителя гостем из-за 502 значит выкинуть его из аккаунта.
+    if (error instanceof UpstreamUnavailableError) {
+      res.status(503).json({ detail: 'upstream_unavailable' })
       return
     }
 

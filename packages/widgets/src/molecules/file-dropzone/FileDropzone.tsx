@@ -121,8 +121,14 @@ export const FileDropzone: FC<IFileDropzoneProps & IBasicStyling> = ({
             setIsOver(true)
           }
         }}
-        onDragLeave={() => {
-          setIsOver(false)
+        onDragLeave={event => {
+          // Уходя на собственного потомка (иконка, текст, кнопка, инпут — ни у
+          // одного нет `pointer-events: none`), браузер всё равно шлёт dragleave.
+          // Без этой проверки подсветка гасла на каждом пересечении их границ и
+          // возвращалась только следующим всплывшим dragover — то есть мигала.
+          if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+            setIsOver(false)
+          }
         }}
         onDrop={onDrop}
       >
@@ -144,6 +150,11 @@ export const FileDropzone: FC<IFileDropzoneProps & IBasicStyling> = ({
         <input
           ref={inputRef}
           className={styles.input}
+          // Прячется `visuallyHidden()` — рецептом с clip, который оставляет
+          // элемент фокусируемым: без этого следующий после видимой кнопки Tab
+          // уходил на невидимый контрол 1×1 без фокус-кольца. Открывает диалог
+          // кнопка, так что своя точка входа инпуту не нужна.
+          tabIndex={-1}
           type="file"
           accept={accept}
           disabled={disabled}

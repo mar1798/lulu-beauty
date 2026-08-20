@@ -48,6 +48,10 @@ const AccountPage: React.FC = () => {
     try {
       await logout()
       await router.push('/catalog')
+    } catch (cause: unknown) {
+      // Без этого падение запроса уходило в unhandled rejection: редиректа нет,
+      // ошибки не видно, и единственным следом остаётся консоль.
+      setError(messageForError(cause, 'account.logout'))
     } finally {
       setIsLoggingOut(false)
     }

@@ -1,17 +1,21 @@
 import csv
 import io
 import re
+import uuid
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from pathlib import Path
 
 import anyio.to_thread
 import openpyxl
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.catalog.models import Category, Product
 from app.catalog.schemas import SLUG_PATTERN, ImportRowErrorResponse, ImportSummaryResponse
+from app.catalog.service import UNIQUE_VIOLATION
 from app.common.limits import MAX_PRICE_CENTS, MAX_VOLUME_ML
+from app.orders.service import OrderPriceChange, OrdersService
 
 REQUIRED_HEADERS = {"name", "slug", "price"}
 # `normalize_header` only lowercases and turns spaces/dashes into underscores, so the
@@ -28,6 +32,18 @@ HEADER_ALIASES = {
 # The columns are String(255) in the database; past that the row failed at flush, which is
 # a 500 for the whole upload rather than one reported line.
 MAX_TEXT_LENGTH = 255
+# Ceiling on a cell's decimal exponent, checked before the value is turned into an int.
+# Well above any real price or volume (both are bounded far lower a few lines later) and
+# far below the point where `int()` on a Decimal becomes a denial of service.
+_MAX_DECIMAL_EXPONENT = 18
+# A file may be well under MAX_IMPORT_BYTES and still be enormous: xlsx is deflate, and a
+# 4 MB upload of 300 000 rows expands to ~150 MB of parsed rows alone, before the ORM
+# objects. Rows are refused as a file error, like an unreadable file — there is no useful
+# per-row report to give for "this file is too big".
+MAX_IMPORT_ROWS = 50_000
+# How many bad rows the report carries back. A file that is wrong in every line would
+# otherwise put a message per line into one JSON response.
+MAX_REPORTED_ERRORS = 200
 # How many slugs are looked up per round-trip when resolving a file against the catalogue.
 _SLUG_CHUNK = 5000
 TRUTHY_VALUES = {"true", "1", "yes", "y", "да"}
@@ -89,6 +105,13 @@ def parse_price_cents(raw: str | None) -> int:
         raise ImportRowError(f"цена не распознана: {raw!r}")
     if value < 0:
         raise ImportRowError("цена не может быть отрицательной")
+    # Checked on the exponent, *before* any arithmetic: `Decimal("1E+1000000")` is finite
+    # and non-negative, so it passes both guards above — and then `int()` on it spends
+    # forty seconds materialising a million digits on the event loop before raising
+    # `decimal.Overflow`, which is not an ImportRowError and takes the whole upload down
+    # as a 500. `adjusted()` is the decimal exponent and costs nothing to read.
+    if value.adjusted() > _MAX_DECIMAL_EXPONENT:
+        raise ImportRowError(f"слишком большая цена: {raw!r}")
 
     cents = int((value * 100).to_integral_value(rounding=ROUND_HALF_UP))
     # price_cents is a 32-bit column; past that the row fails at flush, i.e. again as a
@@ -114,6 +137,9 @@ def parse_volume_ml(raw: str | None) -> int | None:
         raise ImportRowError(f"объём не распознан: {raw!r}") from error
     if not value.is_finite():
         raise ImportRowError(f"объём не распознан: {raw!r}")
+    # Same trap as in `parse_price_cents`, same reason — see the note there.
+    if value.adjusted() > _MAX_DECIMAL_EXPONENT:
+        raise ImportRowError(f"слишком большой объём: {raw!r}")
 
     millilitres = int(value.to_integral_value(rounding=ROUND_HALF_UP))
     if millilitres <= 0:
@@ -141,20 +167,38 @@ def parse_csv_rows(content: bytes) -> list[tuple[int, dict[str, str]]]:
         raise ImportFileError("файл не в кодировке UTF-8") from error
 
     reader = csv.DictReader(io.StringIO(text))
-    if reader.fieldnames is None:
-        return []
-
     rows: list[tuple[int, dict[str, str]]] = []
-    for row_number, row in enumerate(reader, start=2):
-        rows.append((row_number, {normalize_header(k): (v or "") for k, v in row.items()}))
+    # `csv.Error` is raised lazily, from the iteration rather than the constructor, and the
+    # likeliest cause is mundane: one unclosed quote in a price list makes the reader
+    # swallow the rest of the file as a single field and trip the 128k field limit. That
+    # is a bad file, not a 500.
+    try:
+        if reader.fieldnames is None:
+            return []
+        for row_number, row in enumerate(reader, start=2):
+            if len(rows) >= MAX_IMPORT_ROWS:
+                raise _too_many_rows()
+            rows.append((row_number, {normalize_header(k): (v or "") for k, v in row.items()}))
+    except csv.Error as error:
+        raise ImportFileError(f"не удалось прочитать csv-файл: {error}") from error
     return rows
 
 
 def parse_xlsx_rows(content: bytes) -> list[tuple[int, dict[str, str]]]:
+    # The whole body is inside the guard, not just `load_workbook`: `read_only=True` means
+    # the sheet's XML is parsed lazily, during `iter_rows`, so a corrupt sheet in an
+    # otherwise valid archive opened fine and then raised `ParseError` from the loop —
+    # past the point where it could still become the reported "не удалось прочитать".
     try:
-        workbook = openpyxl.load_workbook(io.BytesIO(content), read_only=True, data_only=True)
+        return _read_xlsx_rows(content)
+    except ImportFileError:
+        raise
     except Exception as error:  # noqa: BLE001 - openpyxl raises various errors for a corrupt file
         raise ImportFileError(f"не удалось прочитать xlsx-файл: {error}") from error
+
+
+def _read_xlsx_rows(content: bytes) -> list[tuple[int, dict[str, str]]]:
+    workbook = openpyxl.load_workbook(io.BytesIO(content), read_only=True, data_only=True)
 
     sheet = workbook.active
     if sheet is None:
@@ -182,8 +226,16 @@ def parse_xlsx_rows(content: bytes) -> list[tuple[int, dict[str, str]]]:
             }
         )
         if any(value for value in row.values()):
+            if len(rows) >= MAX_IMPORT_ROWS:
+                raise _too_many_rows()
             rows.append((row_number, row))
     return rows
+
+
+def _too_many_rows() -> ImportFileError:
+    return ImportFileError(
+        f"в файле больше {MAX_IMPORT_ROWS} строк — разделите его на несколько файлов"
+    )
 
 
 def parse_rows(filename: str, content: bytes) -> list[tuple[int, dict[str, str]]]:
@@ -236,6 +288,13 @@ class CategoryIndex:
         if not slug:
             raise ImportRowError(f"категория не распознана: {text!r}")
 
+        # `slugify` truncates, the pass-through branch does not — and `categories.slug` is
+        # String(255), so a 300-character cell that happens to *look* like a slug reached
+        # the flush and came back as StringDataRightTruncationError: a 500 with no machine
+        # code, the whole file rolled back, and no line number to point at.
+        if len(slug) > MAX_TEXT_LENGTH:
+            raise ImportRowError(f"категория длиннее {MAX_TEXT_LENGTH} символов")
+
         name = text if slug != text else category_name_from_slug(slug)
         category = Category(name=name[:255], slug=slug, sort_order=self._next_sort_order)
         self._next_sort_order += 1
@@ -249,7 +308,15 @@ class CatalogImportService:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
-    async def import_file(self, filename: str, content: bytes) -> ImportSummaryResponse:
+    async def import_file(
+        self, filename: str, content: bytes
+    ) -> tuple[ImportSummaryResponse, list[OrderPriceChange]]:
+        """Applies a price list, and reports the orders its prices moved.
+
+        The price changes come back rather than being announced here: the customers are
+        told over Telegram, which must not happen until the transaction the caller owns
+        has actually committed.
+        """
         try:
             # Off the event loop: openpyxl parsing a multi-megabyte upload is seconds of
             # blocking CPU, and the API is single-threaded — see export/service.py.
@@ -257,13 +324,13 @@ class CatalogImportService:
         except ImportFileError as error:
             return ImportSummaryResponse(
                 created=0, updated=0, errors=[ImportRowErrorResponse(row=0, message=str(error))]
-            )
+            ), []
 
         header_error = validate_headers(rows)
         if header_error is not None:
             return ImportSummaryResponse(
                 created=0, updated=0, errors=[ImportRowErrorResponse(row=0, message=header_error)]
-            )
+            ), []
 
         categories = CategoryIndex(self._session, await self._load_categories())
         brands_by_key = await self._load_brands()
@@ -275,14 +342,13 @@ class CatalogImportService:
 
         created = 0
         updated = 0
-        errors: list[ImportRowErrorResponse] = []
 
-        validated: list[dict[str, object]] = []
-        for row_number, row in rows:
-            try:
-                validated.append(self._validate_row(row, columns, categories, brands_by_key))
-            except ImportRowError as error:
-                errors.append(ImportRowErrorResponse(row=row_number, message=str(error)))
+        # Off the event loop, like the parsing above. The loop is pure CPU over every row
+        # of the file, and this process serves the shop, the bot and the scheduler from
+        # one thread — a big price list held all three for as long as validation took.
+        validated, errors = await anyio.to_thread.run_sync(
+            self._validate_rows, rows, columns, categories, brands_by_key
+        )
 
         # Every product the file could touch, in one query rather than one per row. The
         # per-row SELECT also forced an autoflush each time, so a 2 000-row upload cost
@@ -291,14 +357,93 @@ class CatalogImportService:
             [str(fields["slug"]) for fields in validated]
         )
 
+        # Taken before `_upsert` overwrites them: after the loop the ORM objects carry the
+        # file's prices, and "did this row change anything" is no longer answerable.
+        previous_prices = {slug: product.price_cents for slug, product in existing.items()}
+
         for fields in validated:
             if self._upsert(existing, fields):
                 created += 1
             else:
                 updated += 1
 
-        await self._session.flush()
-        return ImportSummaryResponse(created=created, updated=updated, errors=errors)
+        try:
+            await self._session.flush()
+        except IntegrityError as error:
+            # A slug this file creates can be created by hand in another tab a moment
+            # earlier — `_slug_conflict_as_error` describes exactly this race for the
+            # single-product path. Reported as a line in the summary rather than as a 500.
+            if getattr(error.orig, "sqlstate", None) != UNIQUE_VIOLATION:
+                raise
+            # The whole file goes: the flush is one statement batch, and everything it
+            # queued is still pending in the session — the router's commit would simply
+            # replay the same conflict. A savepoint would not help for the same reason.
+            await self._session.rollback()
+            return ImportSummaryResponse(
+                created=0,
+                updated=0,
+                errors=[
+                    ImportRowErrorResponse(
+                        row=0,
+                        message=(
+                            "во время импорта кто-то создал товар или категорию с таким же "
+                            "slug — повторите импорт"
+                        ),
+                    )
+                ],
+            ), []
+
+        # A price list is not only a catalog edit. Orders still awaiting confirmation
+        # quote these products, and until this ran, the mass path silently left them on
+        # the old price while the hand-edit path (`PATCH /admin/products/{id}`) pulled it
+        # through — the owner paid one number and saw another. Only prices that actually
+        # moved, and only for products that existed before this file.
+        moved: dict[uuid.UUID, int] = {}
+        for slug in dict.fromkeys(str(fields["slug"]) for fields in validated):
+            product = existing.get(slug)
+            was = previous_prices.get(slug)
+            if product is None or was is None or was == product.price_cents:
+                continue
+            moved[product.id] = product.price_cents
+
+        # One call for the whole file, not one per product: a price list moves thousands
+        # of prices, and a round trip each would hold this process — which also runs the
+        # bot and the scheduler — for the length of the import.
+        changes = await OrdersService(self._session).reprice_products(moved)
+
+        return ImportSummaryResponse(created=created, updated=updated, errors=errors), changes
+
+    def _validate_rows(
+        self,
+        rows: list[tuple[int, dict[str, str]]],
+        columns: set[str],
+        categories: CategoryIndex,
+        brands_by_key: dict[str, str],
+    ) -> tuple[list[dict[str, object]], list[ImportRowErrorResponse]]:
+        """Every row's fields, and the report for the ones that have none.
+
+        The error list is capped: a file whose every line is wrong (a mis-mapped column,
+        a price list in another currency) would otherwise put one message per line into a
+        single JSON response. The tail is summarised rather than dropped silently.
+        """
+        validated: list[dict[str, object]] = []
+        errors: list[ImportRowErrorResponse] = []
+        suppressed = 0
+
+        for row_number, row in rows:
+            try:
+                validated.append(self._validate_row(row, columns, categories, brands_by_key))
+            except ImportRowError as error:
+                if len(errors) < MAX_REPORTED_ERRORS:
+                    errors.append(ImportRowErrorResponse(row=row_number, message=str(error)))
+                else:
+                    suppressed += 1
+
+        if suppressed:
+            errors.append(
+                ImportRowErrorResponse(row=0, message=f"…и ещё {suppressed} строк с ошибками")
+            )
+        return validated, errors
 
     def _validate_row(
         self,

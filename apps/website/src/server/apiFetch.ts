@@ -41,7 +41,25 @@ export class UnauthenticatedError extends Error {
   }
 }
 
+/**
+ * API ответил, но не «не пущу»: 429 из лимитера, 500 из самого API, 502/503 от
+ * Caddy. Отдельный тип, потому что реакция противоположная — cookie не трогаем.
+ * Раньше `rotateTokens` схлопывал все статусы в `UnauthenticatedError`, и любой
+ * такой ответ на `/auth/refresh` стирал живую сессию: достаточно было соседа за
+ * тем же NAT, выжегшего строгий бюджет `/auth/` своим входом.
+ */
+export class UpstreamUnavailableError extends Error {
+  readonly status: number
+
+  constructor(status: number) {
+    super(`upstream_unavailable_${status}`)
+    this.name = 'UpstreamUnavailableError'
+    this.status = status
+  }
+}
+
 const UNAUTHORIZED = 401
+const FORBIDDEN = 403
 const EXPIRY_SKEW_SECONDS = 30
 const MILLISECONDS = 1000
 
@@ -138,7 +156,14 @@ const rotateTokens = async (
   })
 
   if (!response.ok) {
-    throw new UnauthenticatedError()
+    // Разлогин — только когда бэкенд сказал именно это. Всё остальное значит,
+    // что мы не знаем, жив ли refresh-токен, а пара cookie — единственное, где
+    // он хранится: стереть их по 502 нельзя, восстановить будет нечем.
+    if (response.status === UNAUTHORIZED || response.status === FORBIDDEN) {
+      throw new UnauthenticatedError()
+    }
+
+    throw new UpstreamUnavailableError(response.status)
   }
 
   return (await response.json()) as IAuthTokens
@@ -262,8 +287,19 @@ export const fetchWithAuth = async (
   return retried
 }
 
+/**
+ * Ответы, которые нельзя оставлять в кэше браузера: они персональные.
+ *
+ * Ни `next.config.js`, ни Caddy, ни FastAPI директив кэширования не ставят, а Next
+ * дописывает ETag — так что имя, телефон и история заявок оседали в дисковом кэше
+ * и переживали выход из аккаунта.
+ */
+export const NO_STORE = 'no-store, private'
+
 /** Пересылает ответ бэкенда как есть — статус и распарсенный JSON (или пустое тело). */
 export const relayJson = async (res: NextApiResponse, response: Response): Promise<void> => {
+  res.setHeader('Cache-Control', NO_STORE)
+
   if (response.status === 204 || response.headers.get('content-length') === '0') {
     res.status(response.status).end()
     return

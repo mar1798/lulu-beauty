@@ -2,21 +2,22 @@ import clsx from 'clsx'
 import { type FC } from 'react'
 import type { IBasicStyling, IStatusSelectProps, ISelectOption, OrderStatus } from '../../types'
 import { Select } from '../../atoms/select'
-import { ASSIGNABLE_ORDER_STATUSES, orderStatusLabel } from '../order-status-badge'
+import { ORDER_STATUS_TRANSITIONS, orderStatusLabel } from '../order-status-badge'
 import * as styles from './StatusSelect.css'
 
 /**
  * Смена статуса заявки владельцем.
  *
- * Переходы почти не ограничены: state-machine на бэкенде нет (пробел №8 плана),
- * из «Выдана» можно вернуться в «Ожидает». Придумывать правила на фронте нельзя —
- * бэкенд их не проверяет, и запрет оказался бы только видимостью.
+ * В списке — только те статусы, куда из текущего действительно можно перейти
+ * (`ORDER_STATUS_TRANSITIONS`, зеркало таблицы на бэкенде). Раньше здесь стояли
+ * все статусы разом, потому что бэкенд ничего не проверял и запрет на фронте был
+ * бы только видимостью; теперь он проверяет, и показывать недостижимое значит
+ * предлагать ошибку — тем более что нажатие «Подтверждена» на отменённой заявке
+ * отправляло покупателю уведомление о заявке, которую тот отозвал.
  *
- * Единственное исключение — «Отменена покупателем»: её бэкенд владельцу ставить
- * не даёт (`order_status_not_assignable`), потому что это утверждение о чужом
- * действии. В списке её поэтому нет — но у заявки, которую покупатель уже
- * отменил, она остаётся текущим значением, и без своего пункта поле показало бы
- * пустоту вместо статуса.
+ * Текущее значение всегда первое в списке — иначе поле показало бы пустоту
+ * вместо статуса, а у терминальной заявки (выдана, отменена) оно единственное:
+ * менять там нечего, и поле остаётся подписью.
  *
  * Подписи берутся из `orderStatusLabel`, то есть ровно те же, что в бейдже
  * заявки у покупателя.
@@ -27,10 +28,8 @@ const option = (status: OrderStatus): ISelectOption => ({
   label: orderStatusLabel(status),
 })
 
-const ASSIGNABLE: ISelectOption[] = ASSIGNABLE_ORDER_STATUSES.map(option)
-
 const optionsFor = (value: OrderStatus): ISelectOption[] =>
-  ASSIGNABLE_ORDER_STATUSES.includes(value) ? ASSIGNABLE : [option(value), ...ASSIGNABLE]
+  [value, ...ORDER_STATUS_TRANSITIONS[value]].map(option)
 
 export const StatusSelect: FC<IStatusSelectProps & IBasicStyling> = ({
   value,

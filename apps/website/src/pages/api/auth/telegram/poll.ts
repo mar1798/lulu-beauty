@@ -2,6 +2,7 @@ import type { NextApiRequest, NextApiResponse } from 'next'
 import { apiUrl, methodNotAllowed } from '@/server/apiFetch'
 import { clientHeaders } from '@/server/clientAddress'
 import { clearLoginSession, readLoginSession, setAuthCookies } from '@/server/cookies'
+import { rejectCrossOrigin } from '@/server/sameOrigin'
 
 /**
  * Опрос из вкладки: подтвердил ли человек вход в боте.
@@ -11,6 +12,9 @@ import { clearLoginSession, readLoginSession, setAuthCookies } from '@/server/co
  * профиль, как раньше доставался после ввода кода.
  */
 
+const NOT_FOUND = 404
+const GONE = 410
+
 interface IClaimResponse {
   status: 'PENDING' | 'AUTHORIZED'
   tokens: { accessToken: string; refreshToken: string } | null
@@ -19,6 +23,11 @@ interface IClaimResponse {
 const handler = async (req: NextApiRequest, res: NextApiResponse): Promise<void> => {
   if (req.method !== 'POST') {
     methodNotAllowed(res, ['POST'])
+    return
+  }
+
+  // Ручка меняет cookie сессии — значит, она мишень для CSRF (см. sameOrigin.ts).
+  if (rejectCrossOrigin(req, res)) {
     return
   }
 
@@ -37,9 +46,15 @@ const handler = async (req: NextApiRequest, res: NextApiResponse): Promise<void>
   })
 
   if (!response.ok) {
-    // Истёкшая или неизвестная сессия — тупик: снимаем cookie, чтобы следующая
-    // попытка началась с чистой.
-    clearLoginSession(res)
+    // Тупик — только когда бэкенд сказал, что сессии нет или она истекла. `lb_ls`
+    // хранит единственную копию poll-секрета, браузеру она не видна: снеся cookie
+    // по 429 или 502, мы теряем вход, который живёт на бэке ещё три минуты и вот-вот
+    // будет подтверждён ботом. Транзиентный ответ просто пересылаем — вкладка
+    // опросит снова.
+    if (response.status === NOT_FOUND || response.status === GONE) {
+      clearLoginSession(res)
+    }
+
     const detail = (await response.json().catch(() => null)) as { detail?: string } | null
     res.status(response.status).json({ detail: detail?.detail ?? 'auth_session_not_found' })
     return

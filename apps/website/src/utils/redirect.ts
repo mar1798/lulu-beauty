@@ -9,20 +9,40 @@
 
 export const DEFAULT_REDIRECT = '/catalog'
 
-/**
- * Второй символ пути. `//` браузер трактует как внешний адрес с текущей
- * схемой, а `\` по спецификации URL для http(s) равен `/` — то есть
- * `/\evil.example` разбирается ровно в `https://evil.example/` и одной
- * проверки на `//` мало.
- */
-const AUTHORITY_START = /^[/\\][/\\]/
+/** Origin, относительно которого разбирается путь. Никогда не покидает этот модуль. */
+const LOCAL_BASE = 'http://local'
 
+/**
+ * Разбираем адрес тем же парсером, что и браузер, вместо проверки первых двух
+ * символов.
+ *
+ * Посимвольная проверка на `//` и `/\` ловила не всё: WHATWG-парсер выкидывает
+ * TAB, LF и CR **до** разбора, поэтому `"/\t/evil.example"` внешне выглядел
+ * относительным путём, а `resolveHref` в Next разворачивал его в
+ * `http://evil.example/` — и роутер уходил на чужой домен через
+ * `window.location`. Здесь такой адрес просто меняет origin и отсекается.
+ */
 export const safeRedirectPath = (value: unknown, fallback = DEFAULT_REDIRECT): string => {
   const path = Array.isArray(value) ? value[0] : value
 
-  if (typeof path !== 'string' || !path.startsWith('/') || AUTHORITY_START.test(path)) {
+  if (typeof path !== 'string' || !path.startsWith('/')) {
     return fallback
   }
 
-  return path
+  let parsed: URL
+
+  try {
+    parsed = new URL(path, LOCAL_BASE)
+  } catch {
+    return fallback
+  }
+
+  if (parsed.origin !== LOCAL_BASE) {
+    return fallback
+  }
+
+  // Собираем обратно из разобранных частей, а не возвращаем исходную строку:
+  // именно так адрес увидит роутер, и никаких «съеденных» парсером символов в
+  // нём уже не останется.
+  return `${parsed.pathname}${parsed.search}${parsed.hash}`
 }

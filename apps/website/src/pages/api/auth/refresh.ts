@@ -1,10 +1,12 @@
 import type { NextApiRequest, NextApiResponse } from 'next'
 import {
   UnauthenticatedError,
+  UpstreamUnavailableError,
   methodNotAllowed,
   refreshTokens,
   unauthenticated,
 } from '@/server/apiFetch'
+import { rejectCrossOrigin } from '@/server/sameOrigin'
 
 /**
  * Явное обновление пары токенов. В обычной жизни не нужно — прокси обновляет
@@ -19,11 +21,24 @@ const handler = async (req: NextApiRequest, res: NextApiResponse): Promise<void>
     return
   }
 
+  // Ручка меняет cookie сессии — значит, она мишень для CSRF (см. sameOrigin.ts).
+  if (rejectCrossOrigin(req, res)) {
+    return
+  }
+
   try {
     await refreshTokens(req, res)
   } catch (error) {
     if (error instanceof UnauthenticatedError) {
       unauthenticated(res)
+      return
+    }
+
+    // API недоступен или занят — сессия при этом цела (cookie не тронуты),
+    // поэтому отвечаем «попробуйте позже», а не 401: 401 клиент трактует как
+    // «вы гость» и уводит на страницу входа.
+    if (error instanceof UpstreamUnavailableError) {
+      res.status(503).json({ detail: 'upstream_unavailable' })
       return
     }
 

@@ -228,6 +228,8 @@ async def create_product(
         )
     except SlugAlreadyExistsError as error:
         raise HTTPException(status.HTTP_409_CONFLICT, "slug_already_exists") from error
+    except CategoryNotFoundError as error:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "category_not_found") from error
 
     await session.commit()
     return product_response(product)
@@ -248,6 +250,8 @@ async def update_product(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "product_not_found") from error
     except SlugAlreadyExistsError as error:
         raise HTTPException(status.HTTP_409_CONFLICT, "slug_already_exists") from error
+    except CategoryNotFoundError as error:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "category_not_found") from error
 
     # A price edit is not only a catalog edit: orders still awaiting confirmation quote
     # this product, and leaving them on the old price means the owner charges one number
@@ -358,17 +362,22 @@ async def delete_product_image(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "product_image_not_found") from error
 
     await session.commit()
-    background_tasks.add_task(discard_files, [url])
+    # None when an order still shows this file: the row goes, the file stays.
+    background_tasks.add_task(discard_files, [url] if url is not None else [])
 
 
 @router.post("/admin/catalog/import", response_model=ImportSummaryResponse)
 async def import_catalog(
+    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     session: AsyncSession = Depends(get_session),
     _admin: CurrentUser = Depends(require_admin),
 ) -> ImportSummaryResponse:
     content = await _read_within(file, MAX_IMPORT_BYTES, "import_file_too_large")
 
-    summary = await CatalogImportService(session).import_file(file.filename or "", content)
+    summary, changes = await CatalogImportService(session).import_file(file.filename or "", content)
     await session.commit()
+    # After the commit, exactly as the hand-edit path does it: a message telling somebody
+    # their order now costs more must not go out ahead of the transaction that made it so.
+    background_tasks.add_task(notify_orders_repriced, changes)
     return summary

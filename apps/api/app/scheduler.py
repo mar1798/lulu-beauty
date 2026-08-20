@@ -31,14 +31,17 @@ async def _run_reminder_sweep() -> None:
     async with async_session() as session:
         service = CycleSchedulerService(session)
         reminders = await service.plan_reminders()
-        await notify_cycle_reminders(session, reminders)
-        await service.mark_reminders_sent(reminders)
+        # Only what actually went out is stamped: a stamp is permanent and a reminder is
+        # sent once, so stamping the whole plan after a partial fan-out lost the rest.
+        sent = await notify_cycle_reminders(session, reminders)
+        await service.mark_reminders_sent(sent)
         await session.commit()
-    if reminders:
+    if sent:
         logger.info(
-            "Reminder sweep notified %d cycle(s), %d recipient(s)",
+            "Reminder sweep notified %d of %d cycle(s), %d recipient(s)",
+            len(sent),
             len(reminders),
-            sum(len(reminder.user_ids) for reminder in reminders),
+            sum(len(reminder.user_ids) for reminder in sent),
         )
 
 

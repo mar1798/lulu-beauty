@@ -32,6 +32,7 @@ from app.orders.service import (
     ProductNotFoundError,
     ProductTags,
     StatusNotAssignableError,
+    StatusTransitionError,
 )
 from app.telegram.notify import notify_new_order, notify_order_deleted, notify_order_status
 
@@ -352,6 +353,8 @@ async def update_order_status(
     except StatusNotAssignableError as error:
         # "Отменена покупателем" is the customer's own act; the owner cancels as themselves.
         raise HTTPException(status.HTTP_409_CONFLICT, "order_status_not_assignable") from error
+    except StatusTransitionError as error:
+        raise HTTPException(status.HTTP_409_CONFLICT, "order_status_transition_invalid") from error
 
     customers = await service.load_customers([order])
     tags = await service.load_item_tags([order])

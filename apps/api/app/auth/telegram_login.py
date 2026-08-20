@@ -1,4 +1,5 @@
 import secrets
+import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any, cast
@@ -153,6 +154,27 @@ class TelegramLoginService:
         auth_session.consumed_at = datetime.now(UTC)
         await self._session.flush()
         return user
+
+    async def reject(self, session_id: uuid.UUID, chat_id: int) -> uuid.UUID | None:
+        """«Это не я»: the person who tapped the link disowns the sign-in it produced.
+
+        A `/start` payload is plain text in a chat, so it can be sent to someone else —
+        and until this existed, their tap authorized *the sender's* tab. The tap still
+        authorizes (making it a two-step confirmation would cost every honest sign-in an
+        extra press), but it is now reversible from the same message: this spends the
+        session so a tab still polling gets nothing, and the caller ends the account's
+        live sessions in case the tab already claimed one.
+
+        Returns the account to end sessions for, or None when the button no longer
+        applies — a session belonging to another chat, or one already cleaned up.
+        """
+        auth_session = await self._session.get(TelegramAuthSession, session_id)
+        if auth_session is None or auth_session.chat_id != chat_id:
+            return None
+
+        auth_session.consumed_at = datetime.now(UTC)
+        await self._session.flush()
+        return auth_session.user_id
 
     async def find_by_telegram_id(self, telegram_id: int) -> User:
         """The account behind a signature-proved Telegram identity.

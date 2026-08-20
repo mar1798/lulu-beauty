@@ -22,6 +22,119 @@ const EDGE = 8
  * доступное имя самого триггера — так это делают `Button`/`IconButton`
  * (`unavailableReason` уходит в скрытую подпись внутри кнопки).
  */
+
+/* ------------------------------------------------------------------ *
+ * Общий реестр смонтированных подсказок.
+ *
+ * Раньше каждый экземпляр считал поправку сам и вешал свой `resize`-слушатель.
+ * На странице каталога подсказок до двух десятков (закрытый сбор оборачивает в
+ * неё кнопку каждой карточки), и каждая чередовала записи в `style` с чтениями
+ * геометрии — то есть заставляла браузер пересчитывать раскладку заново. Здесь
+ * фазы разнесены: сперва все записи, потом все чтения, потом снова записи, —
+ * и на всю страницу приходится два пересчёта вместо двух десятков. Слушатель
+ * тоже один, с троттлингом по кадру.
+ * ------------------------------------------------------------------ */
+
+const mounted = new Set<HTMLSpanElement>()
+
+let scheduled = false
+
+const register = (bubble: HTMLSpanElement): (() => void) => {
+  mounted.add(bubble)
+
+  if (mounted.size === 1) {
+    window.addEventListener('resize', onResize)
+  }
+
+  // Микрозадачей, а не сразу: соседние подсказки монтируются в одном коммите,
+  // и общий проход по ним успевает пройти до кадра.
+  schedule()
+
+  return () => {
+    mounted.delete(bubble)
+
+    if (mounted.size === 0) {
+      window.removeEventListener('resize', onResize)
+    }
+  }
+}
+
+const onResize = (): void => {
+  if (scheduled) {
+    return
+  }
+
+  scheduled = true
+  requestAnimationFrame(() => {
+    scheduled = false
+    alignAll()
+  })
+}
+
+const schedule = (): void => {
+  if (scheduled) {
+    return
+  }
+
+  scheduled = true
+  queueMicrotask(() => {
+    scheduled = false
+    alignAll()
+  })
+}
+
+/**
+ * Прижимает пузыри к экрану — все разом, в три фазы.
+ *
+ * Пузырь центрован по триггеру и бывает шире карточки: у правой колонки
+ * каталога его половина уезжает за правый край телефона.
+ *
+ * Замер обязан идти по раскрытому пузырю: пока он `display: none`, у него нет
+ * ни размеров, ни позиции. Показываем его ровно на время замера — кадр между
+ * фазами не рисуется, увидеть эту вспышку нельзя.
+ *
+ * Горизонтальным переполнением страницы поправка не заведует — его закрывает
+ * `overflow-x: clip` у корня (`global.css.ts`). Задача ровно одна: чтобы текст
+ * подсказки не оказался обрезан этим клипом.
+ */
+const alignAll = (): void => {
+  const bubbles = [...mounted]
+  const revealed: HTMLSpanElement[] = []
+
+  for (const bubble of bubbles) {
+    bubble.style.removeProperty(styles.shiftVar)
+
+    if (bubble.getClientRects().length === 0) {
+      bubble.style.display = 'block'
+      revealed.push(bubble)
+    }
+  }
+
+  // `clientWidth`, а не `innerWidth`: у последнего в ширину входит полоса прокрутки.
+  const limit = document.documentElement.clientWidth - EDGE
+  const rects = bubbles.map(bubble => bubble.getBoundingClientRect())
+
+  for (const bubble of revealed) {
+    bubble.style.removeProperty('display')
+  }
+
+  bubbles.forEach((bubble, index) => {
+    const rect = rects[index]
+
+    if (rect === undefined) {
+      return
+    }
+
+    const overflowRight = rect.right - limit
+    const overflowLeft = EDGE - rect.left
+    const shift = overflowRight > 0 ? -overflowRight : Math.max(overflowLeft, 0)
+
+    if (shift !== 0) {
+      bubble.style.setProperty(styles.shiftVar, `${Math.round(shift)}px`)
+    }
+  })
+}
+
 export const Tooltip: FC<ITooltipProps & IBasicStyling> = ({
   content,
   children,
@@ -32,7 +145,7 @@ export const Tooltip: FC<ITooltipProps & IBasicStyling> = ({
   const bubbleRef = useRef<HTMLSpanElement>(null)
 
   /*
-    `useLayoutEffect`, а не `useEffect`: поправка обязана лечь до первого
+    `useLayoutEffect`, а не `useEffect`: регистрация обязана случиться до первого
     кадра — иначе первый же показ подсказки успевает мигнуть непоправленным.
   */
   useLayoutEffect(() => {
@@ -42,64 +155,7 @@ export const Tooltip: FC<ITooltipProps & IBasicStyling> = ({
       return
     }
 
-    /**
-     * Прижимает пузырь к экрану.
-     *
-     * Пузырь центрован по триггеру и бывает шире карточки: у правой колонки
-     * каталога его половина уезжает за правый край телефона.
-     *
-     * Считается это **до** первого показа — в раскладочном эффекте и дальше
-     * только на `resize`. На наведении было бы поздно: поправка успевала
-     * примениться лишь следующим кадром, и подсказка на глазах перескакивала
-     * с неверного места на верное.
-     *
-     * Горизонтальным переполнением страницы поправка при этом не заведует —
-     * его закрывает `overflow-x: clip` у корня (`global.css.ts`). Здесь задача
-     * ровно одна: чтобы текст подсказки не оказался обрезан этим клипом.
-     */
-    const align = (): void => {
-      bubble.style.removeProperty(styles.shiftVar)
-
-      /*
-        Замер обязан идти по раскрытому пузырю: пока он `display: none`, у него
-        нет ни размеров, ни позиции. Показываем его ровно на время замера —
-        кадр между двумя присваиваниями не рисуется, увидеть эту вспышку
-        нельзя.
-      */
-      const isHidden = bubble.getClientRects().length === 0
-
-      if (isHidden) {
-        bubble.style.display = 'block'
-      }
-
-      const rect = bubble.getBoundingClientRect()
-
-      if (isHidden) {
-        bubble.style.removeProperty('display')
-      }
-
-      // `clientWidth`, а не `innerWidth`: у последнего в ширину входит полоса прокрутки.
-      const overflowRight = rect.right - (document.documentElement.clientWidth - EDGE)
-      const overflowLeft = EDGE - rect.left
-      const shift = overflowRight > 0 ? -overflowRight : Math.max(overflowLeft, 0)
-
-      if (shift !== 0) {
-        bubble.style.setProperty(styles.shiftVar, `${Math.round(shift)}px`)
-      }
-    }
-
-    align()
-
-    /*
-      Ширина окна — единственное, от чего поправка зависит и что меняется без
-      перемонтирования: поворот телефона, изменение окна на десктопе. Прокрутка
-      сюда не входит — по горизонтали страница не ездит.
-    */
-    window.addEventListener('resize', align)
-
-    return () => {
-      window.removeEventListener('resize', align)
-    }
+    return register(bubble)
   }, [content, placement])
 
   return (

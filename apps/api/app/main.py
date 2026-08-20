@@ -10,6 +10,7 @@ from app import scheduler
 from app.auth.router import router as auth_router
 from app.cart.router import router as cart_router
 from app.catalog.router import router as catalog_router
+from app.common.body_limit import BodySizeLimitMiddleware
 from app.common.rate_limit import RateLimitMiddleware
 from app.config import settings
 from app.cycles.router import router as cycles_router
@@ -45,6 +46,10 @@ def create_app() -> FastAPI:
     # has to be inside CORS — a 429 that arrives without the CORS headers reads in the
     # browser as a network failure rather than as the refusal it is.
     app.add_middleware(RateLimitMiddleware)
+    # Outside the limiter, so an oversized body is refused before it is even metered —
+    # and, more to the point, before FastAPI spools a multipart upload to disk on its way
+    # to a `require_admin` that would have rejected it (see body_limit.py).
+    app.add_middleware(BodySizeLimitMiddleware)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=[settings.cors_origin],

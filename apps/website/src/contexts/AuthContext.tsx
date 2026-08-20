@@ -139,11 +139,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   )
 
   const logout = useCallback(async (): Promise<void> => {
-    try {
-      await logoutRequest()
-    } finally {
-      await mutate(null, { revalidate: false })
-    }
+    // Кэш сессии сбрасывается только после успешного выхода. В `finally` он
+    // сбрасывался всегда — и на упавшем запросе интерфейс показывал гостя, тогда
+    // как cookie оставались на месте: перезагрузка возвращала сессию, а человек
+    // считал, что вышел.
+    await logoutRequest()
+    await mutate(null, { revalidate: false })
   }, [mutate])
 
   const value = useMemo<IAuthContextValue>(

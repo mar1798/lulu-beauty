@@ -1,5 +1,5 @@
 import uuid
-from collections.abc import Collection
+from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
@@ -13,8 +13,19 @@ from app.catalog.images import primary_image_url
 from app.catalog.models import Category, Product
 from app.cycles.models import CycleStatus, OrderCycle
 from app.cycles.service import CyclesService
-from app.orders.models import CANCELLED_STATUSES, Order, OrderItem, OrderStatus
+from app.orders.models import (
+    ALLOWED_TRANSITIONS,
+    CANCELLED_STATUSES,
+    Order,
+    OrderItem,
+    OrderStatus,
+)
 from app.orders.schemas import MAX_ITEM_QUANTITY
+
+# How many product ids go into one `IN (...)` when a price list reprices in bulk.
+# Same reasoning as `_SLUG_CHUNK` in the import service: whole file in one round trip is
+# the point, but not in one statement.
+_PRODUCT_CHUNK = 1000
 
 
 class NoActiveCycleError(Exception):
@@ -61,6 +72,17 @@ class StatusNotAssignableError(Exception):
 
     CANCELLED_BY_CUSTOMER is a statement about what the customer did; the owner putting
     it on an order would be putting words in their mouth. Theirs is CANCELLED_BY_OWNER.
+    """
+
+
+class StatusTransitionError(Exception):
+    """That status is real, but not reachable from the one the order is in.
+
+    Only the target used to be checked, so every pair was legal: a cancelled order could
+    be walked back into CONFIRMED, at which point the bot told the customer their
+    withdrawn request was accepted, `customer_flags` locked them out of editing *and*
+    restoring it, and the line reappeared in the tally and the purchase sheet — with no
+    way back, since CANCELLED_BY_CUSTOMER is not the owner's to assign.
     """
 
 
@@ -158,13 +180,18 @@ class OrdersService:
         if cart is None:
             raise EmptyCartError
 
-        # Same filter as the cart response: a product discontinued between the last look
-        # at the cart and this click is not in the cart the customer is looking at, and
-        # add_item refuses to put one into an order — checkout must not be the one way in.
+        # Same filter as the cart response: a product discontinued — or taken out of
+        # stock — between the last look at the cart and this click is not in the cart the
+        # customer is looking at, and add_item refuses to put one into an order, so
+        # checkout must not be the one way in.
         result = await self._session.execute(
             select(CartItem, Product)
             .join(Product, Product.id == CartItem.product_id)
-            .where(CartItem.cart_id == cart.id, Product.deleted_at.is_(None))
+            .where(
+                CartItem.cart_id == cart.id,
+                Product.deleted_at.is_(None),
+                Product.in_stock.is_(True),
+            )
             .options(selectinload(Product.images))
         )
         rows = result.all()
@@ -342,7 +369,11 @@ class OrdersService:
 
         result = await self._session.execute(
             select(Product)
-            .where(Product.id == product_id, Product.deleted_at.is_(None))
+            .where(
+                Product.id == product_id,
+                Product.deleted_at.is_(None),
+                Product.in_stock.is_(True),
+            )
             .options(selectinload(Product.images))
         )
         product = result.scalar_one_or_none()
@@ -449,60 +480,107 @@ class OrdersService:
         return deleted
 
     async def _pending_orders_with(self, product_id: uuid.UUID) -> list[Order]:
-        """Orders still awaiting confirmation that contain the product.
+        """Orders still awaiting confirmation that contain the product."""
+        return await self._pending_orders_with_any([product_id])
+
+    async def _pending_orders_with_any(self, product_ids: Sequence[uuid.UUID]) -> list[Order]:
+        """Orders still awaiting confirmation that contain any of these products.
 
         PENDING only, whatever cycle they belong to: past that status the owner has
         already bought against the list, and a catalog edit made afterwards must not
         rewrite what was agreed. A subquery rather than a join so `selectinload` still
         gets whole orders — the totals are recomputed from *all* of their lines.
+
+        Takes a set rather than one id because a price list reprices in bulk: asking per
+        product turned one import into a query per changed row, on the event loop this
+        process shares with the bot and the scheduler. Chunked, since the same file may
+        carry thousands of them and one enormous `IN` is its own kind of problem.
         """
-        result = await self._session.execute(
-            select(Order)
-            .options(selectinload(Order.items))
-            .where(
-                Order.status == OrderStatus.PENDING,
-                Order.id.in_(select(OrderItem.order_id).where(OrderItem.product_id == product_id)),
+        found: dict[uuid.UUID, Order] = {}
+
+        for start in range(0, len(product_ids), _PRODUCT_CHUNK):
+            chunk = product_ids[start : start + _PRODUCT_CHUNK]
+            result = await self._session.execute(
+                select(Order)
+                .options(selectinload(Order.items))
+                .where(
+                    Order.status == OrderStatus.PENDING,
+                    Order.id.in_(
+                        select(OrderItem.order_id).where(OrderItem.product_id.in_(chunk))
+                    ),
+                )
             )
-            # Newest first, like every other listing: the notification that follows lists
-            # the affected orders, and it should read in the order the customer's own
-            # order list shows them.
-            .order_by(Order.created_at.desc())
-        )
-        return list(result.scalars().all())
+            for order in result.scalars().all():
+                found.setdefault(order.id, order)
+
+        # Newest first, like every other listing: the notification that follows lists the
+        # affected orders, and it should read in the order the customer's own order list
+        # shows them. Sorted here rather than in SQL — an order may come back from any
+        # chunk, so per-query ordering would not survive the merge.
+        return sorted(found.values(), key=lambda order: order.created_at, reverse=True)
 
     async def reprice_product(
         self, product_id: uuid.UUID, price_cents: int
     ) -> list[OrderPriceChange]:
-        """Pulls a catalog price change through every order still awaiting confirmation.
+        """Pulls one catalog price change through every order still awaiting confirmation."""
+        return await self.reprice_products({product_id: price_cents})
+
+    async def reprice_products(
+        self, prices: Mapping[uuid.UUID, int]
+    ) -> list[OrderPriceChange]:
+        """Pulls catalog price changes through every order still awaiting confirmation.
 
         Lines are snapshots on purpose (`OrderItem` denormalises name and price at
         checkout), and that stays true for everything the owner has already confirmed.
         But while an order is PENDING nothing has been bought yet, and the owner charging one
         price while the customer's order shows another is the worse inconsistency.
 
+        Whole map at once rather than a call per product: the hand-edit path moves one
+        price, but a price list moves thousands, and one round trip each is not a shape
+        this process can carry.
+
         Returns what each affected customer has to be told; the caller commits first and
         notifies after (see `app/telegram/notify.py`).
         """
+        if not prices:
+            return []
+
         changes: list[OrderPriceChange] = []
 
-        for order in await self._pending_orders_with(product_id):
+        for order in await self._pending_orders_with_any(list(prices)):
+            # Applied first, totalled after: one order may hold several repriced lines,
+            # and every notice about it has to quote the same final total — the one the
+            # customer will see on the site.
+            repriced: list[tuple[OrderItem, int]] = []
+
             for item in order.items:
-                if item.product_id != product_id or item.product_price_cents == price_cents:
+                # A line whose product row is gone keeps the price it was bought at —
+                # there is no catalog entry left to pull a new one from.
+                if item.product_id is None:
                     continue
 
-                old_price_cents = item.product_price_cents
+                price_cents = prices.get(item.product_id)
+                if price_cents is None or item.product_price_cents == price_cents:
+                    continue
+
+                repriced.append((item, item.product_price_cents))
                 item.product_price_cents = price_cents
-                self._recalculate_total(order)
-                changes.append(
-                    OrderPriceChange(
-                        order_id=order.id,
-                        user_id=order.user_id,
-                        product_name=item.product_name,
-                        old_price_cents=old_price_cents,
-                        new_price_cents=price_cents,
-                        total_cents=order.total_cents,
-                    )
+
+            if not repriced:
+                continue
+
+            self._recalculate_total(order)
+            changes.extend(
+                OrderPriceChange(
+                    order_id=order.id,
+                    user_id=order.user_id,
+                    product_name=item.product_name,
+                    old_price_cents=old_price_cents,
+                    new_price_cents=item.product_price_cents,
+                    total_cents=order.total_cents,
                 )
+                for item, old_price_cents in repriced
+            )
 
         if changes:
             await self._session.flush()
@@ -622,6 +700,12 @@ class OrdersService:
 
         if new_status is OrderStatus.CANCELLED_BY_CUSTOMER:
             raise StatusNotAssignableError
+
+        # Re-pressing the current status is not a transition and stays allowed: the UI
+        # shows it next to the assignable ones, and refusing it would turn a harmless
+        # tap into an error message.
+        if new_status is not order.status and new_status not in ALLOWED_TRANSITIONS[order.status]:
+            raise StatusTransitionError
 
         changed = order.status != new_status
         order.status = new_status
