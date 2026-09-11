@@ -4,6 +4,7 @@ import type { IBasicStyling, ITelegramLoginPanelProps } from '../../types'
 import { Alert } from '../../atoms/alert'
 import { Button } from '../../atoms/button'
 import { Text } from '../../atoms/text'
+import { IconTelegram } from '../../svg/icons'
 import * as styles from './TelegramLoginPanel.css'
 
 /**
@@ -68,6 +69,7 @@ export const TelegramLoginPanel: FC<ITelegramLoginPanelProps & IBasicStyling> = 
             isFullWidth={true}
             // `isLoading`, а не `disabled`: ссылки ещё нет, но кнопка не «сломана».
             isLoading={botUrl === null}
+            iconStart={<IconTelegram />}
             link={botUrl === null ? undefined : { href: botUrl, target: '_blank' }}
           >
             Войти через Telegram
