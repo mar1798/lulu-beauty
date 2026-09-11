@@ -1,11 +1,6 @@
 import clsx from 'clsx'
 import { type FC, useMemo, useState } from 'react'
-import type {
-  IAdminCycleCalendarProps,
-  IBasicStyling,
-  ICycleDraft,
-  IOrderCycle,
-} from '../../types'
+import type { IAdminCycleCalendarProps, IBasicStyling, ICycleDraft, IOrderCycle } from '../../types'
 import { IconChevronLeft, IconChevronRight } from '../../svg/icons'
 import { Alert } from '../../atoms/alert'
 import { Badge } from '../../atoms/badge'
@@ -15,7 +10,13 @@ import { IconButton } from '../../atoms/icon-button'
 import { Input } from '../../atoms/input'
 import { Skeleton } from '../../atoms/skeleton'
 import { Text } from '../../atoms/text'
-import { formatDate, formatMonth, shiftMonth, storeOffsetLabel, toStoreParts } from '../../utils/datetime'
+import {
+  formatDate,
+  formatMonth,
+  shiftMonth,
+  storeOffsetLabel,
+  toStoreParts,
+} from '../../utils/datetime'
 import * as styles from './AdminCycleCalendar.css'
 
 /**
@@ -149,14 +150,28 @@ export const AdminCycleCalendar: FC<IAdminCycleCalendarProps & IBasicStyling> = 
   /* Новый сбор на день, где сбора нет, — но открытый уже идёт где-то ещё. */
   const isSecondCycle = selectedCycle === null && activeCycleId !== null
   /*
-    Только для нового сбора: у прошедшего можно править подпись, и бэкенд
-    держит дату в будущем лишь у ещё открытых (`CycleService.update`).
+    Только для нового сбора: прошедший сбор редактор вообще не предлагает
+    менять (см. `isPastCycle`), а бэкенд держит дату в будущем лишь у ещё
+    открытых (`CycleService.update`).
   */
   const isPastDay =
-    selectedCycle === null &&
-    today !== undefined &&
-    selectedDate !== null &&
-    selectedDate < today
+    selectedCycle === null && today !== undefined && selectedDate !== null && selectedDate < today
+  /*
+    Прошедший сбор — только для чтения: ни времени, ни подписи, ни удаления.
+    Менять ему дедлайн задним числом бессмысленно (заявки в нём уже посчитаны
+    и разосланы), а удалять — значит терять историю сборов; кнопки, которые в
+    девяти случаях из десяти кончались бы отказом бэкенда, здесь только
+    приглашают ошибиться.
+
+    Прошедшим считается и закрытый (`CLOSED` ставит планировщик или досрочное
+    закрытие), и любой сбор на дне раньше сегодняшнего: между дедлайном и
+    ближайшим проходом планировщика сбор ещё числится открытым, хотя для
+    покупателей уже нет (`get_active_cycle` смотрит и на `deadline_at`).
+  */
+  const isPastCycle =
+    selectedCycle !== null &&
+    (selectedCycle.status === 'CLOSED' ||
+      (today !== undefined && selectedDate !== null && selectedDate < today))
 
   const selectDay = (date: string): void => {
     const existing = byDate.get(date)?.[0] ?? null
@@ -319,80 +334,109 @@ export const AdminCycleCalendar: FC<IAdminCycleCalendarProps & IBasicStyling> = 
               </div>
             )}
 
-            <Input
-              label="Время закрытия"
-              type="time"
-              value={draft.time}
-              hint={TIME_HINT}
-              onChange={next => {
-                setDraft(current => ({ ...current, time: next }))
-              }}
-            />
+            {isPastCycle ? (
+              /*
+                Прошедший сбор — карточка, а не форма: те же две величины, но
+                читаемые, без полей, которые нечего отправлять, и без кнопок,
+                которым нечего делать.
+              */
+              <dl className={styles.facts}>
+                <div className={styles.fact}>
+                  <dt className={styles.factLabel}>Время закрытия</dt>
+                  <dd className={styles.factValue}>
+                    {toStoreParts(selectedCycle.deadlineAt)?.time ?? '—'} ({TIME_HINT})
+                  </dd>
+                </div>
 
-            <Input
-              label="Подпись"
-              value={draft.label}
-              maxLength={255}
-              hint="Например: «Сбор на август». Видна в уведомлениях."
-              onChange={next => {
-                setDraft(current => ({ ...current, label: next }))
-              }}
-            />
+                <div className={styles.fact}>
+                  <dt className={styles.factLabel}>Подпись</dt>
+                  <dd className={styles.factValue}>
+                    {selectedCycle.label === null || selectedCycle.label === ''
+                      ? 'без подписи'
+                      : selectedCycle.label}
+                  </dd>
+                </div>
+              </dl>
+            ) : (
+              <>
+                <Input
+                  label="Время закрытия"
+                  type="time"
+                  value={draft.time}
+                  hint={TIME_HINT}
+                  onChange={next => {
+                    setDraft(current => ({ ...current, time: next }))
+                  }}
+                />
 
-            <div className={styles.editorActions}>
-              <Button
-                isFullWidth="mobile"
-                isLoading={isBusy}
-                disabled={draft.time === ''}
-                /*
-                  Второй открытый сбор бэкенд не заведёт (`active_cycle_exists`), и
-                  кнопка говорит об этом до нажатия. `unavailableReason`, а не
-                  `disabled`: причина должна доставаться и с клавиатуры.
-                */
-                unavailableReason={
-                  isPastDay ? PAST_DAY_REASON : isSecondCycle ? SECOND_CYCLE_REASON : null
-                }
-                onClick={() => {
-                  if (selectedCycle === null) {
-                    onCreate(draft)
-                  } else {
-                    onUpdate(selectedCycle, draft)
+                <Input
+                  label="Подпись"
+                  value={draft.label}
+                  maxLength={255}
+                  hint="Например: «Сбор на август». Видна в уведомлениях."
+                  onChange={next => {
+                    setDraft(current => ({ ...current, label: next }))
+                  }}
+                />
+              </>
+            )}
+
+            {!isPastCycle && (
+              <div className={styles.editorActions}>
+                <Button
+                  isFullWidth="mobile"
+                  isLoading={isBusy}
+                  disabled={draft.time === ''}
+                  /*
+                    Второй открытый сбор бэкенд не заведёт (`active_cycle_exists`), и
+                    кнопка говорит об этом до нажатия. `unavailableReason`, а не
+                    `disabled`: причина должна доставаться и с клавиатуры.
+                  */
+                  unavailableReason={
+                    isPastDay ? PAST_DAY_REASON : isSecondCycle ? SECOND_CYCLE_REASON : null
                   }
-                }}
-              >
-                {selectedCycle === null ? 'Назначить сбор' : 'Сохранить'}
-              </Button>
-
-              {/*
-                Закрыть можно только тот сбор, который сейчас идёт: закрытие — это
-                конец приёма заявок, а у запланированного и у прошедшего его нет.
-              */}
-              {isActive && onClose !== undefined && (
-                <Button
-                  isFullWidth="mobile"
-                  variant="secondary"
-                  disabled={isBusy}
                   onClick={() => {
-                    onClose(selectedCycle)
+                    if (selectedCycle === null) {
+                      onCreate(draft)
+                    } else {
+                      onUpdate(selectedCycle, draft)
+                    }
                   }}
                 >
-                  Закрыть сейчас
+                  {selectedCycle === null ? 'Назначить сбор' : 'Сохранить'}
                 </Button>
-              )}
 
-              {selectedCycle !== null && (
-                <Button
-                  isFullWidth="mobile"
-                  variant="danger"
-                  disabled={isBusy}
-                  onClick={() => {
-                    onDelete(selectedCycle)
-                  }}
-                >
-                  Удалить
-                </Button>
-              )}
-            </div>
+                {/*
+                  Закрыть можно только тот сбор, который сейчас идёт: закрытие — это
+                  конец приёма заявок, а у запланированного его ещё нет.
+                */}
+                {isActive && onClose !== undefined && (
+                  <Button
+                    isFullWidth="mobile"
+                    variant="secondary"
+                    disabled={isBusy}
+                    onClick={() => {
+                      onClose(selectedCycle)
+                    }}
+                  >
+                    Закрыть сейчас
+                  </Button>
+                )}
+
+                {selectedCycle !== null && (
+                  <Button
+                    isFullWidth="mobile"
+                    variant="danger"
+                    disabled={isBusy}
+                    onClick={() => {
+                      onDelete(selectedCycle)
+                    }}
+                  >
+                    Удалить
+                  </Button>
+                )}
+              </div>
+            )}
 
             {/* Тот же порядок, что и у `unavailableReason`: прошедший день важнее. */}
             {(isPastDay || isSecondCycle) && (
@@ -408,7 +452,14 @@ export const AdminCycleCalendar: FC<IAdminCycleCalendarProps & IBasicStyling> = 
               </Text>
             )}
 
-            {selectedCycle !== null && (
+            {isPastCycle && (
+              <Text tone="muted" size="xs">
+                Сбор уже прошёл: заявки в нём посчитаны, а корзины разъехались по избранному. Менять
+                и удалять здесь нечего — запись остаётся в истории сборов.
+              </Text>
+            )}
+
+            {selectedCycle !== null && !isPastCycle && (
               <Text tone="muted" size="xs">
                 Сбор с оформленными заявками удалить нельзя — бэкенд ответит отказом.
               </Text>

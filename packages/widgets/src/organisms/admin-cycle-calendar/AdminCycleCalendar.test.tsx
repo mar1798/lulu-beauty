@@ -49,6 +49,49 @@ describe('AdminCycleCalendar', () => {
   })
 
   /*
+    Прошедший сбор менять нечему: заявки в нём посчитаны и разосланы, а удаление
+    стёрло бы историю. Кнопки, которые почти всегда кончались бы отказом бэкенда,
+    только приглашают ошибиться — поэтому их нет вовсе.
+  */
+  it('оставляет прошедший сбор только для чтения', async () => {
+    const props = feedAdminCycleCalendar()
+
+    renderWidget(
+      <AdminCycleCalendar
+        {...props}
+        month="2026-03"
+        today="2026-04-01"
+        activeCycleId={null}
+        cycles={[
+          {
+            id: 'closed',
+            /* 20:00 по магазину (`Asia/Bishkek`, UTC+6) 10 марта. */
+            deadlineAt: '2026-03-10T14:00:00.000Z',
+            label: 'Сбор на март',
+            status: 'CLOSED',
+            reminderSentAt: null,
+            finalReminderSentAt: null,
+            closedAt: '2026-03-10T14:00:00.000Z',
+          },
+        ]}
+      />
+    )
+    await clickDay(10)
+
+    for (const name of ['Сохранить', 'Назначить сбор', 'Удалить', 'Закрыть сейчас']) {
+      expect(screen.queryByRole('button', { name })).not.toBeInTheDocument()
+    }
+
+    expect(screen.queryByLabelText('Время закрытия')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Подпись')).not.toBeInTheDocument()
+    /* Величины сбора при этом видны — строка читается, просто не правится. */
+    const [time, label] = screen.getAllByRole('definition')
+
+    expect(time).toHaveTextContent('20:00')
+    expect(label).toHaveTextContent('Сбор на март')
+  })
+
+  /*
     Второй открытый сбор бэкенд не заведёт (`active_cycle_exists`), а на экране это
     выглядело бы как «нажал и ничего»: причина должна стоять рядом с кнопкой.
   */

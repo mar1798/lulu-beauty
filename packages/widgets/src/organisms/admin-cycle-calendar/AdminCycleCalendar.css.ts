@@ -187,6 +187,31 @@ export const statusRow = style({
 })
 
 /**
+ * Прошедший сбор в редакторе: пары «подпись — значение» вместо полей ввода.
+ * Тот же вертикальный ритм, что у `Input`, чтобы карточка не подпрыгивала при
+ * переходе с идущего сбора на прошедший.
+ */
+export const facts = style({
+  ...flexColumn(12),
+  margin: 0,
+})
+
+export const fact = style({
+  ...flexColumn(2),
+})
+
+export const factLabel = style({
+  font: font('13/18', 600),
+  color: color.text('secondary'),
+})
+
+export const factValue = style({
+  margin: 0,
+  font: font('15/22'),
+  color: color.text('primary'),
+})
+
+/**
  * Действия — столбиком во всю ширину карточки, а не строкой с переносом:
  * подписи у них разной длины («Сохранить», «Закрыть сейчас», «Удалить»), и в
  * узкой правой колонке они переносились вразнобой — то две в строке, то одна.
