@@ -8,7 +8,7 @@ web
 
 ## Users
 
-Repeat local customers who order from Lulu Beauty regularly, not first-time/discovery shoppers. They are comfortable with the offline-fulfillment model (no online payment — the owner fulfills requests offline). Customers authenticate with phone + password, verified via a one-time Telegram OTP.
+Repeat local customers who order from Lulu Beauty regularly, not first-time/discovery shoppers. They are comfortable with the offline-fulfillment model (no online payment — the owner fulfills requests offline). Customers authenticate through Telegram only: there is no password and no code to type — the bot confirms a waiting tab, and sharing a contact with the bot is what creates the account.
 
 ## Product Purpose
 
@@ -16,7 +16,7 @@ An online catalog/ordering platform for a small beauty business. Customers brows
 
 ## Positioning
 
-The deadline/batch ordering model is the product's defining mechanism, not product curation. The owner runs a calendar of deadline dates; each date is an order cycle. Carts are scoped to the currently active cycle — uncommitted carts are cleared when its deadline passes, and customers get a Telegram reminder roughly 24 hours before if they still have items pending. This submit-by-date → owner-batch-fulfills rhythm is what a generic always-on storefront couldn't replicate.
+The deadline/batch ordering model is the product's defining mechanism, not product curation. The owner runs a calendar of deadline dates; each date is an order cycle. Carts are scoped to the currently active cycle — when its deadline passes an uncommitted cart is emptied into the customer's wishlist rather than lost, and customers get Telegram reminders roughly 24 hours and 3 hours before if they still have items pending. This submit-by-date → owner-batch-fulfills rhythm is what a generic always-on storefront couldn't replicate.
 
 ## Operating Context
 
@@ -27,9 +27,10 @@ Owner flow (admin): manage the product catalog (manual CRUD, plus bulk import fr
 ## Capabilities and Constraints
 
 - No online payment/checkout anywhere in the product — "orders" are unpaid requests.
-- Auth is phone + password; OTP verification is delivered via a Telegram bot (customer links their account by messaging the bot once).
+- Auth is Telegram-only: no password, no OTP code. The customer links their account once by sharing their contact with the bot, and every sign-in afterwards is confirmed in that chat (or by a Telegram Login Widget / Mini App signature).
 - One cart per user per active order cycle.
-- Currency and cycle timezone currently default to KZT / Asia/Almaty at the API layer — treat as an operational default, not a confirmed binding constraint on UI copy/formatting until explicitly confirmed.
+- Currency and cycle timezone default to KGS / Asia/Bishkek at the API layer (`CURRENCY`, `CYCLE_TIMEZONE`) — an operational default, not a binding constraint on UI copy/formatting.
+- A wishlist exists alongside the cart and is cycle-independent: it is the only place to park items while no cycle is open.
 
 ## Product Principles
 

@@ -2,6 +2,25 @@
 
 Lulu Beauty is an online catalog/ordering platform — customers browse a product catalog, add items to a cart, and submit a request before an owner-defined deadline (there is no online payment; the owner fulfills requests offline and exports them to Excel). This is a Turborepo monorepo containing the frontend, the UI component library it's built from, and the backend API.
 
+## Documentation
+
+Detailed reference lives in [`docs/`](docs/README.md):
+[architecture](docs/architecture.md) ·
+[domain rules](docs/domain.md) ·
+[backend](docs/backend.md) ·
+[frontend](docs/frontend.md) ·
+[widgets](docs/widgets.md) ·
+[Telegram](docs/telegram.md) ·
+[conventions](docs/conventions.md) ·
+[development](docs/development.md) ·
+[environment](docs/environment.md) ·
+[testing](docs/testing.md) ·
+[recipes](docs/recipes.md) ·
+[gotchas](docs/gotchas.md) ·
+[deployment](docs/deployment.md).
+
+`CLAUDE.md` is the short operating manual the AI assistant reads; it links into the same set.
+
 ## Apps and packages
 
 - `apps/website`: Next.js 16 app (Pages Router) that renders the site — public catalog, cart/checkout, customer account, and the owner-only `/admin/*` section. Built from `widgets`.

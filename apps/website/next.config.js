@@ -105,6 +105,45 @@ const PERMISSIONS_POLICY = [
   'interest-cohort=()',
 ].join(', ')
 
+/**
+ * Хосты, которым dev-сервер отдаёт свои внутренние ресурсы (`/_next/*`,
+ * включая websocket `/_next/webpack-hmr`).
+ *
+ * Next 16 блокирует их для любого origin, кроме `localhost`, — и отказ виден
+ * не сообщением об ошибке, а **самопроизвольной перезагрузкой страницы**:
+ * клиент HMR не может открыть сокет, переподключается (5 раз по секунде,
+ * дальше по пять) и после 25 неудач делает `window.location.reload()`.
+ * Получается полный reload примерно каждые полторы минуты, по кругу. Ровно
+ * это ловится при заходе с телефона по адресу вида `192.168.x.x:3000` или
+ * при открытии сайта как Mini App внутри Telegram.
+ *
+ * Поэтому здесь перечислены частные диапазоны — те, из которых приходит
+ * своё же устройство в домашней сети. Публичных адресов в списке нет:
+ * настройка живёт только в разработке (в проде dev-ресурсов не существует),
+ * но расширять её до `*` всё равно незачем.
+ *
+ * Туннель наружу (ngrok и подобные) даёт чужое имя хоста — его нужно
+ * добавить через `NEXT_DEV_ORIGINS` (список через запятую) в `.env`, а не
+ * вписывать сюда.
+ */
+const LOCAL_NETWORK_DEV_ORIGINS = [
+  '192.168.*.*',
+  '10.*.*.*',
+  // 172.16.0.0/12 — второй сегмент перечисляется поштучно: `*` в шаблоне
+  // Next заменяет сегмент целиком, частичного `172.2*` он не понимает.
+  ...Array.from({ length: 16 }, (_, index) => `172.${16 + index}.*.*`),
+  '127.0.0.1',
+  '*.local',
+]
+
+const ALLOWED_DEV_ORIGINS = [
+  ...LOCAL_NETWORK_DEV_ORIGINS,
+  ...(process.env.NEXT_DEV_ORIGINS ?? '')
+    .split(',')
+    .map(origin => origin.trim())
+    .filter(Boolean),
+]
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   output: 'standalone',
@@ -160,6 +199,7 @@ const nextConfig = {
 
     return [{ source: '/files/:path*', destination: `${apiBaseUrl}/files/:path*` }]
   },
+  allowedDevOrigins: ALLOWED_DEV_ORIGINS,
   reactStrictMode: true,
   transpilePackages: ['widgets'],
   /**
