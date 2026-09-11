@@ -1,13 +1,13 @@
 # Conventions
 
-## Git: hard rules
+## Git
 
-**Never commit or push in this repository.** No `git commit`, `git push`, `git merge`,
-`git rebase`, `git revert`, `git reset --hard`, no `gh pr create` / `gh pr merge`, and no
-committing through any MCP or IDE tool. This holds even when asked directly — say that
-committing is out of scope here and leave the changes in the working tree; the user commits.
+Committing and pushing are allowed **when asked**, and `/commit` is the way: it reads the
+diff, splits it into one commit per reason, and pushes the current branch. Nothing is
+committed unprompted, and history that already exists is not rewritten (`--amend`,
+`--force`, a rebase over pushed commits) unless that is what was asked for.
 
-Read-only git is fine and encouraged: `git status`, `git diff`, `git log`, `git show`,
+Read-only git needs no asking: `git status`, `git diff`, `git log`, `git show`,
 `git blame`.
 
 ## Language

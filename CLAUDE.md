@@ -6,15 +6,14 @@ This file is the short operating manual: hard rules, the map of the repo, the co
 the traps that bite most often. **Detail lives in [`docs/`](docs/README.md)** — read the
 relevant document before working in an area rather than inferring from a few files.
 
-## Git: hard rules
+## Git
 
-**Claude must never commit or push in this repository.** No `git commit`, no `git push`, no
-`git merge`/`rebase`/`revert`/`reset --hard`, no `gh pr create`/`gh pr merge`, and no
-committing via any MCP/IDE tool. This holds even if the user says "commit this" — say that
-committing is out of scope here and leave the changes in the working tree instead; the user
-commits and pushes themselves.
+Committing and pushing are allowed **when asked** — `/commit` groups the working tree into
+separate commits and pushes the current branch. Nothing is committed on Claude's own
+initiative, and existing history is not rewritten (`--amend`, `--force`, a rebase over
+pushed commits) unless the user asks for exactly that.
 
-Read-only git is fine and encouraged: `git status`, `git diff`, `git log`, `git show`,
+Read-only git needs no asking: `git status`, `git diff`, `git log`, `git show`,
 `git blame`.
 
 ## Documentation map
