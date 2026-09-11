@@ -33,9 +33,14 @@ COPY . .
 # API: `src/components/Image.tsx` отрезает ровно этот префикс, чтобы превратить
 # сохранённый в БД абсолютный адрес фотографии в относительный `/files/*`.
 ARG NEXT_PUBLIC_API_BASE_URL
+# Адрес сайта для превью ссылки (`og:image`, `og:url`) — относительных путей
+# скрапер не понимает. В проде совпадает с NEXT_PUBLIC_API_BASE_URL, но живёт
+# отдельно: это разные вещи, которые однажды разъедутся.
+ARG NEXT_PUBLIC_SITE_URL
 ARG NEXT_PUBLIC_TELEGRAM_BOT_USERNAME
 ARG NEXT_PUBLIC_TELEGRAM_LOGIN_WIDGET=false
 ENV NEXT_PUBLIC_API_BASE_URL=$NEXT_PUBLIC_API_BASE_URL \
+    NEXT_PUBLIC_SITE_URL=$NEXT_PUBLIC_SITE_URL \
     NEXT_PUBLIC_TELEGRAM_BOT_USERNAME=$NEXT_PUBLIC_TELEGRAM_BOT_USERNAME \
     NEXT_PUBLIC_TELEGRAM_LOGIN_WIDGET=$NEXT_PUBLIC_TELEGRAM_LOGIN_WIDGET \
     NEXT_TELEMETRY_DISABLED=1 \

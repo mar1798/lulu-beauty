@@ -130,6 +130,34 @@ Client-side fetching is [SWR](https://swr.vercel.app/), configured globally in `
   `useTelegramLogin`, `useTelegramMiniApp`, `useQrCode`, `useQueryParams`,
   `usePrefetchRoutes`, `useRedirectIfAuthenticated`.
 
+## Link previews and icons
+
+`src/components/PageMeta.tsx` holds both halves of a link preview:
+
+- **`SiteMeta`** — the constant part (`og:site_name`, `og:type`, `og:locale`, the site's own
+  title/description/image, `twitter:card`). Rendered once in `_app`, so every page has a
+  preview, private ones included.
+- **`PageMeta`** — the page's own `<title>`, `<meta name="description">`, `og:title`,
+  `og:description`, `og:url` and optionally `og:image`. Used by the three public pages;
+  `catalog/[slug]` passes the product's primary photo, whose URL the API already stores
+  absolute (`PUBLIC_FILES_BASE_URL`).
+
+The override works **only because every tag carries a `key`**: `next/head` deduplicates by
+`name`/`http-equiv`/`charSet` or an explicit key, and `property` — which is what every `og:*`
+tag uses — is not in that list. Drop the key and both tags ship, with scrapers picking
+whichever they see first. The page's `<Head>` renders after `_app`'s, and the later one wins.
+
+Absolute URLs come from `publicConfig('siteUrl')` (`NEXT_PUBLIC_SITE_URL`), not from
+`apiBaseUrl`: the two carry the same string in production but not in development.
+
+Static files in `public/` that go with this: `favicon.ico` (16/32/48 in one container, for the
+request browsers make on their own), `favicon.svg`, `apple-touch-icon.png` (no rounding — iOS
+adds its own), `og-image.png` (1200×630) and `robots.txt`. All of them carry the same mark —
+the wordmark's `L` in Inter SemiBold, converted to outlines, since neither an icon file nor a
+rasterised preview can reference a webfont. The preview repeats the home page's own scene
+(canvas, two decor bottles with their pastel halos) so the link and the landing match. There
+is no `sitemap.xml` yet, which is why `robots.txt` declares no `Sitemap:` line.
+
 ## Configuration
 
 `src/сonfig.ts` (Cyrillic `с`!) exposes `publicConfig(key)` and `serverConfig(key)`. Server

@@ -1,5 +1,4 @@
 import React, { useCallback, useMemo } from 'react'
-import Head from 'next/head'
 import useSWR from 'swr'
 import type { GetStaticProps } from 'next'
 import type { ICategory, IPage, IProduct, ISelectOption } from 'widgets/types'
@@ -10,6 +9,7 @@ import { CatalogTemplate } from 'widgets/templates'
 import { SiteLayout } from '@/layouts/SiteLayout'
 import { AddToCartButton } from '@/components/AddToCartButton'
 import { ClosedCycleNotice } from '@/components/ClosedCycleNotice'
+import { PageMeta } from '@/components/PageMeta'
 import { WishlistButton } from '@/components/WishlistButton'
 import {
   optionalTextParam,
@@ -177,13 +177,11 @@ const CatalogPage: React.FC<ICatalogPageProps> = ({ categories, brands, initial 
 
   return (
     <SiteLayout>
-      <Head>
-        <title>Каталог — Lulu Beauty</title>
-        <meta
-          name="description"
-          content="Косметика и уход: соберите заявку до закрытия ближайшего сбора."
-        />
-      </Head>
+      <PageMeta
+        title="Каталог — Lulu Beauty"
+        description="Косметика и уход: соберите заявку до закрытия ближайшего сбора."
+        path="/catalog"
+      />
 
       <CatalogTemplate
         title="Каталог"
@@ -234,9 +232,7 @@ const CatalogPage: React.FC<ICatalogPageProps> = ({ categories, brands, initial 
             buildHref={product => `/catalog/${product.slug}`}
             categoryNames={categoryNames}
             renderAction={product =>
-              product.inStock ? (
-                <AddToCartButton productId={product.id} isCompact={true} />
-              ) : null
+              product.inStock ? <AddToCartButton productId={product.id} isCompact={true} /> : null
             }
             /*
               Сердце — у каждого товара, включая снятые с продажи: «нет в

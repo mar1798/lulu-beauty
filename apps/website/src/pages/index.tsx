@@ -1,5 +1,4 @@
 import React, { useRef } from 'react'
-import Head from 'next/head'
 import type { GetStaticProps } from 'next'
 import type { ICategory, IDecorSpot, IOrderCycle, IProduct, IStep } from 'widgets/types'
 import { Button, Parallax, Reveal } from 'widgets/atoms'
@@ -20,6 +19,7 @@ import { HomeTemplate } from 'widgets/templates'
 import { staggerDelay } from 'widgets/utils'
 import { SiteLayout } from '@/layouts/SiteLayout'
 import { AddToCartButton } from '@/components/AddToCartButton'
+import { PageMeta, SITE_DESCRIPTION, SITE_TITLE } from '@/components/PageMeta'
 import { WishlistButton } from '@/components/WishlistButton'
 import { getActiveCycleOrNull } from '@/services/endpoints/cycles'
 import { listBrands, listCategories, listProducts } from '@/services/endpoints/catalog'
@@ -53,20 +53,17 @@ const SECTION_CONTENT_DELAY = staggerDelay(2)
 const STEPS: IStep[] = [
   {
     title: 'Соберите корзину',
-    description:
-      'Каталог открыт всегда. Товары появляются перед каждым сбором, цены — за них же.',
+    description: 'Каталог открыт всегда. Товары появляются перед каждым сбором, цены — за них же.',
     visual: 'cart',
   },
   {
     title: 'Оформите заявку',
-    description:
-      'Это не оплата: заявка уходит владельцу и ждёт его решения — списаний не будет.',
+    description: 'Это не оплата: заявка уходит владельцу и ждёт его решения — списаний не будет.',
     visual: 'request',
   },
   {
     title: 'Дождитесь подтверждения',
-    description:
-      'После закрытия сбора владелец подтвердит заявку — уведомление придёт в Telegram.',
+    description: 'После закрытия сбора владелец подтвердит заявку — уведомление придёт в Telegram.',
     visual: 'confirm',
   },
   {
@@ -137,10 +134,7 @@ const FAQ_ITEMS = [
  * ошибка вёрстки. Флаг придуман против повтора одной картинки дважды, а на
  * странице все семь PNG разные, так что повторять нечего.
  */
-const spot = (
-  src: string,
-  placement: Omit<IDecorSpot, 'image'>,
-): IDecorSpot => ({
+const spot = (src: string, placement: Omit<IDecorSpot, 'image'>): IDecorSpot => ({
   image: { src, alt: '', width: 1024, height: 1536 },
   ...placement,
 })
@@ -303,8 +297,8 @@ const HeroStatus: React.FC<{ cycle: IOrderCycle | null }> = ({ cycle }) => {
   if (cycle === null || (isReady && isExpired)) {
     return (
       <StatusPanel label="Сбор закрыт" tone="muted">
-        Открытого сбора сейчас нет. Сохраняйте понравившееся в избранное — список
-        дождётся следующего сбора.
+        Открытого сбора сейчас нет. Сохраняйте понравившееся в избранное — список дождётся
+        следующего сбора.
       </StatusPanel>
     )
   }
@@ -312,16 +306,8 @@ const HeroStatus: React.FC<{ cycle: IOrderCycle | null }> = ({ cycle }) => {
   const isUrgent = isReady && !isExpired && days === 0 && hours < DEADLINE_URGENT_HOURS
 
   return (
-    <StatusPanel
-      label="До закрытия сбора"
-      isLive={true}
-      tone={isUrgent ? 'urgent' : 'brand'}
-    >
-      <DeadlineCountdown
-        deadlineAt={cycle.deadlineAt}
-        variant="blocks"
-        isLabelHidden={true}
-      />
+    <StatusPanel label="До закрытия сбора" isLive={true} tone={isUrgent ? 'urgent' : 'brand'}>
+      <DeadlineCountdown deadlineAt={cycle.deadlineAt} variant="blocks" isLabelHidden={true} />
     </StatusPanel>
   )
 }
@@ -341,13 +327,7 @@ const HomePage: React.FC<IHomePageProps> = ({ cycle, featured, categories, brand
 
   return (
     <SiteLayout>
-      <Head>
-        <title>Lulu Beauty — самые низкие цены на косметику и уход</title>
-        <meta
-          name="description"
-          content="Косметика и уход по самым низким ценам: берём напрямую и общим заказом. Соберите заявку до закрытия сбора — владелец подтвердит её в Telegram."
-        />
-      </Head>
+      <PageMeta title={SITE_TITLE} description={SITE_DESCRIPTION} path="/" />
 
       <HomeTemplate
         hero={
@@ -414,9 +394,7 @@ const HomePage: React.FC<IHomePageProps> = ({ cycle, featured, categories, brand
               isStaggered={true}
               buildHref={product => `/catalog/${product.slug}`}
               renderAction={product =>
-                product.inStock ? (
-                  <AddToCartButton productId={product.id} isCompact={true} />
-                ) : null
+                product.inStock ? <AddToCartButton productId={product.id} isCompact={true} /> : null
               }
               renderMediaAction={product => <WishlistButton productId={product.id} />}
             />

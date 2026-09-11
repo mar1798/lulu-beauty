@@ -11,6 +11,7 @@ import { CartProvider } from '@/contexts/CartContext'
 import { WishlistProvider } from '@/contexts/WishlistContext'
 import { Link } from '@/components/Link'
 import { Image } from '@/components/Image'
+import { SiteMeta } from '@/components/PageMeta'
 import { TelegramMiniAppSession } from '@/components/TelegramMiniAppSession'
 import { shell } from '@/styles/shell.css'
 
@@ -62,6 +63,12 @@ const App: React.FC<AppProps> = ({ Component, pageProps }) => {
 
   return (
     <SWRConfig value={value}>
+      {/*
+          Превью ссылки по умолчанию — на всех страницах, включая приватные:
+          публичные перекрывают заголовок и описание своим `PageMeta`.
+        */}
+      <SiteMeta />
+
       <ServicesContext.Provider initialState={services}>
         {/*
             Тосты и подтверждения — над данными: подтверждение удаления нужно и

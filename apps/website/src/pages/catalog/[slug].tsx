@@ -1,5 +1,4 @@
 import React from 'react'
-import Head from 'next/head'
 import { useRouter } from 'next/router'
 import type { GetStaticPaths, GetStaticProps } from 'next'
 import type { IProduct } from 'widgets/types'
@@ -10,6 +9,7 @@ import { ProductTemplate } from 'widgets/templates'
 import { SiteLayout } from '@/layouts/SiteLayout'
 import { AddToCartButton } from '@/components/AddToCartButton'
 import { ClosedCycleNotice } from '@/components/ClosedCycleNotice'
+import { PageMeta } from '@/components/PageMeta'
 import { WishlistButton } from '@/components/WishlistButton'
 import { isApiError } from '@/services/apiErrors'
 import { getProduct, listProducts } from '@/services/endpoints/catalog'
@@ -127,6 +127,22 @@ export const getStaticProps: GetStaticProps<IProductPageProps, { slug: string }>
 /** Длина `<meta name="description">`, дальше поисковик всё равно обрезает. */
 const DESCRIPTION_LIMIT = 160
 
+/**
+ * Картинка превью — главная фотография товара, как её выбирает и карточка
+ * каталога: помеченная `isPrimary`, иначе первая по порядку. Адрес берётся из
+ * API как есть: там он уже абсолютный (`PUBLIC_FILES_BASE_URL`), а `og:image`
+ * другого и не принимает.
+ */
+function previewImage(product: IProduct | undefined): { url: string; alt: string } | undefined {
+  if (product === undefined) {
+    return undefined
+  }
+
+  const image = product.images.find(candidate => candidate.isPrimary) ?? product.images[0]
+
+  return image === undefined ? undefined : { url: image.url, alt: image.alt ?? product.name }
+}
+
 /*
   Пропсы неполные не по недосмотру: при `fallback: true` первый рендер
   приходит вообще без них — товар доезжает следующим кадром.
@@ -138,14 +154,21 @@ const ProductPage: React.FC<Partial<IProductPageProps>> = ({ product, categoryNa
   // при переходе с прогретого маршрута каркаса не будет вовсе.
   const isPending = router.isFallback || product === undefined
 
+  // Адрес страницы для `og:url` знает роутер: пропсов в каркасе ещё нет.
+  const { slug } = router.query
+
   return (
     <SiteLayout>
-      <Head>
-        <title>{isPending ? 'Товар — Lulu Beauty' : `${product.name} — Lulu Beauty`}</title>
-        {product?.description != null && product.description !== '' && (
-          <meta name="description" content={product.description.slice(0, DESCRIPTION_LIMIT)} />
-        )}
-      </Head>
+      <PageMeta
+        title={isPending ? 'Товар — Lulu Beauty' : `${product.name} — Lulu Beauty`}
+        description={
+          product?.description == null || product.description === ''
+            ? undefined
+            : product.description.slice(0, DESCRIPTION_LIMIT)
+        }
+        path={typeof slug === 'string' ? `/catalog/${slug}` : '/catalog'}
+        image={previewImage(product)}
+      />
 
       <ProductTemplate
         breadcrumbs={

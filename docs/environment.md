@@ -58,6 +58,7 @@ to be inlined into the client bundle; `serverConfig` values throw when read in t
 | --- | --- | --- |
 | `NEXT_PUBLIC_API_BASE_URL` | `http://localhost:3001` | The API as the **browser** sees it. Used for `/files/*` images; private requests go through `/api/proxy/*`. |
 | `API_BASE_URL` | `http://localhost:3001` | The API as the **Next server** sees it (`getStaticProps`, `/api/*`). Inside compose: `http://api:3001`. |
+| `NEXT_PUBLIC_SITE_URL` | `http://localhost:3000` | The site's own public address, for the absolute URLs a link preview needs (`og:image`, `og:url`). Same string as `NEXT_PUBLIC_API_BASE_URL` in production, different in development. |
 | `NEXT_PUBLIC_TELEGRAM_BOT_USERNAME` | `""` | Without the `@`. The bot link must be clean (`https://t.me/<username>`, no `?start=`) or the bot's exact `/start` match sends it to the fallback handler. |
 | `NEXT_PUBLIC_TELEGRAM_LOGIN_WIDGET` | `false` | Show the Login Widget on `/login`. Only works on the domain registered with `/setdomain` in BotFather — elsewhere the button renders and then refuses, which is worse than absent. |
 | `AUTH_COOKIE_SECURE` | `true` | Set `false` for local http, or `lb_at`/`lb_rt` are dropped. |
@@ -82,8 +83,8 @@ presence as evidence of a live integration.
 Values the prod compose file sets itself, so they do **not** belong in `.env.prod`:
 `DATABASE_URL` (always the `db` service), `API_BASE_URL: http://api:3001`,
 `AUTH_COOKIE_SECURE: true`, `TRUST_PROXY_HEADERS: true`, and the website's build args
-`NEXT_PUBLIC_API_BASE_URL: https://${SITE_DOMAIN}`, `NEXT_PUBLIC_TELEGRAM_BOT_USERNAME`,
-`NEXT_PUBLIC_TELEGRAM_LOGIN_WIDGET`.
+`NEXT_PUBLIC_API_BASE_URL: https://${SITE_DOMAIN}`, `NEXT_PUBLIC_SITE_URL: https://${SITE_DOMAIN}`,
+`NEXT_PUBLIC_TELEGRAM_BOT_USERNAME`, `NEXT_PUBLIC_TELEGRAM_LOGIN_WIDGET`.
 
 Note that `NEXT_PUBLIC_*` values are baked in **at build time** — changing one requires
 rebuilding the website image, not just restarting it. Full procedure:

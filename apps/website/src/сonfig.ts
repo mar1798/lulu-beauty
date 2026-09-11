@@ -14,6 +14,15 @@ export const publicConfig = makeConfig({
    */
   apiBaseUrl: process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:3001',
   /**
+   * Адрес сайта, каким его видит внешний мир. Нужен там, где относительный
+   * путь не подходит: `og:image` и `og:url` скрапер читает, не имея базы.
+   *
+   * Отдельно от `apiBaseUrl`, хотя в проде это одна и та же строка: в
+   * разработке API живёт на 3001, а сайт — на 3000, и превью, собранное из
+   * адреса API, указало бы в никуда.
+   */
+  siteUrl: process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000',
+  /**
    * Имя бота без `@`. Ссылка на привязку Telegram обязана быть **чистой**
    * (`https://t.me/<username>`, без `?start=`): бот сравнивает текст
    * сообщения с `/start` точно, и deep-link с payload уедет в fallback.
@@ -58,4 +67,3 @@ export const serverConfig = <K extends keyof typeof serverValues>(
 
   return serverValues[key]
 }
-

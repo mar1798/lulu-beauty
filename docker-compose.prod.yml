@@ -72,6 +72,8 @@ services:
         # Подставляются в клиентский бандл на этапе сборки — после правки
         # нужен `up -d --build website`, перезапуска мало.
         NEXT_PUBLIC_API_BASE_URL: https://${SITE_DOMAIN}
+        # Тот же адрес, но для превью ссылки (`og:image`, `og:url`).
+        NEXT_PUBLIC_SITE_URL: https://${SITE_DOMAIN}
         NEXT_PUBLIC_TELEGRAM_BOT_USERNAME: ${TELEGRAM_BOT_USERNAME}
         NEXT_PUBLIC_TELEGRAM_LOGIN_WIDGET: ${NEXT_PUBLIC_TELEGRAM_LOGIN_WIDGET:-true}
     restart: unless-stopped
