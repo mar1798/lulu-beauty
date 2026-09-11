@@ -40,7 +40,7 @@ export const trigger = style([
 ])
 
 export const question = style({
-  font: font('18/24', 600, 'eloqua'),
+  font: font('18/24', 600, 'display'),
   letterSpacing: vars.tracking.display,
 })
 

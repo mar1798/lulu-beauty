@@ -59,5 +59,5 @@ export const tokenSmoke = style({
   boxShadow: vars.shadow.md,
   zIndex: vars.zIndex.modal,
   padding: vars.space.lg,
-  font: `400 1rem ${vars.font.eloqua}`,
+  font: `400 1rem ${vars.font.display}`,
 })

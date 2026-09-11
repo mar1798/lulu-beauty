@@ -11,7 +11,7 @@ export const container = style({
 /**
  * Размер отвязан от уровня заголовка: порядок `h1…h6` диктует структура
  * страницы, а внешний вид — макет, и совпадают они далеко не всегда.
- * Заголовки набираются акцидентным Eloqua.
+ * Заголовки набираются дисплейной ролью темы (`vars.font.display`).
  *
  * Иерархию держит не жир (везде 600, выше не поднимаемся), а трекинг: чем
  * крупнее кегль, тем сильнее стягивается строка — подпись референса.
@@ -22,22 +22,22 @@ export const container = style({
  * (768px) кегль возвращается к прежнему, десктопному значению.
  */
 export const size = styleVariants({
-  xs: { font: font('16/22', 600, 'eloqua'), letterSpacing: vars.tracking.display },
-  sm: { font: font('20/26', 600, 'eloqua'), letterSpacing: vars.tracking.display },
+  xs: { font: font('16/22', 600, 'display'), letterSpacing: vars.tracking.display },
+  sm: { font: font('20/26', 600, 'display'), letterSpacing: vars.tracking.display },
   md: {
-    font: font('22/28', 600, 'eloqua'),
+    font: font('22/28', 600, 'display'),
     letterSpacing: vars.tracking.tight,
-    ...media({ md: { font: font('26/32', 600, 'eloqua') } }),
+    ...media({ md: { font: font('26/32', 600, 'display') } }),
   },
   lg: {
-    font: font('26/32', 600, 'eloqua'),
+    font: font('26/32', 600, 'display'),
     letterSpacing: vars.tracking.tight,
-    ...media({ md: { font: font('34/40', 600, 'eloqua') } }),
+    ...media({ md: { font: font('34/40', 600, 'display') } }),
   },
   xl: {
-    font: font('30/36', 600, 'eloqua'),
+    font: font('30/36', 600, 'display'),
     letterSpacing: vars.tracking.tight,
-    ...media({ md: { font: font('44/52', 600, 'eloqua') } }),
+    ...media({ md: { font: font('44/52', 600, 'display') } }),
   },
 })
 

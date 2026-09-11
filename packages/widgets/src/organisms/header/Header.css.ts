@@ -42,7 +42,7 @@ export const inner = style({
 
 export const logo = style([
   {
-    font: font('22/28', 600, 'eloqua'),
+    font: font('22/28', 600, 'display'),
     letterSpacing: vars.tracking.tight,
     color: color.text('primary'),
     textDecoration: 'none',

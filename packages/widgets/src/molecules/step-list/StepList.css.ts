@@ -37,7 +37,7 @@ export const number = style({
   flexShrink: 0,
   width: rem(32),
   height: rem(32),
-  font: font('15/20', 600, 'eloqua'),
+  font: font('15/20', 600, 'display'),
   color: color.text('inverse'),
   backgroundColor: color.brand('700'),
   borderRadius: vars.radius.circle,

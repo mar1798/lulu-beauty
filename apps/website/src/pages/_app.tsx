@@ -2,7 +2,6 @@ import 'widgets/styling/preflight.css'
 import 'widgets/styling/global.css'
 import { AppProps } from 'next/app'
 import { Inter } from 'next/font/google'
-import localFont from 'next/font/local'
 import clsx from 'clsx'
 import React, { useMemo } from 'react'
 import { SWRConfig } from 'swr'
@@ -15,41 +14,15 @@ import { Image } from '@/components/Image'
 import { TelegramMiniAppSession } from '@/components/TelegramMiniAppSession'
 import { shell } from '@/styles/shell.css'
 
+/**
+ * Единственный шрифт сайта: им набрано всё, включая заголовки — дисплейная
+ * роль темы (`vars.font.display`) смотрит на эту же переменную. Кириллица в
+ * сабсетах обязательна: русским тут набран весь интерфейс.
+ */
 const inter = Inter({
   subsets: ['latin', 'cyrillic'],
   variable: '--font-inter',
   display: 'swap',
-})
-
-/**
- * Дисплейный шрифт — **одно начертание, SemiBold**.
- *
- * Раньше объявлялись все три (400/500/600), и это стоило трёх
- * `<link rel="preload">` вместо одного — ~48 КБ в первом кадре против ~20 КБ.
- * Снять предзагрузку с лишних поштучно нельзя: `preload` у `next/font/local`
- * верхнеуровневый, внутри элементов `src` он молча игнорируется
- * (см. `validate-local-font-function-call.js` — файл там разбирается только
- * на `path`/`weight`/`style`/`ext`). Поэтому лишние начертания не
- * «отключены», а убраны.
- *
- * Убирать было что: дисплейным весом по всем стилям обоих пакетов идёт 600 и
- * только он. 500 не использовал никто, 400 держал единственный экран —
- * крупная цифра на странице ошибки, и та теперь набрана тем же 600, что и
- * остальная крупная типографика темы (см. `ErrorTemplate.css.ts`).
- *
- * Понадобится другой вес — начертание возвращается сюда строкой в `src`;
- * помнить надо лишь о том, что каждая такая строка добавляет предзагрузку.
- */
-const eloqua = localFont({
-  variable: '--font-eloqua',
-  display: 'swap',
-  src: [
-    {
-      path: '../../public/fonts/EloquiaDisplay-SemiBold.woff2',
-      weight: '600',
-      style: 'normal',
-    },
-  ],
 })
 
 /**
@@ -105,7 +78,7 @@ const App: React.FC<AppProps> = ({ Component, pageProps }) => {
               <TelegramMiniAppSession />
               <CartProvider>
                 <WishlistProvider>
-                  <div className={clsx(shell, inter.variable, eloqua.variable, inter.className)}>
+                  <div className={clsx(shell, inter.variable, inter.className)}>
                     <Component {...pageProps} />
                   </div>
                 </WishlistProvider>

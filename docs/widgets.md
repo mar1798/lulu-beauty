@@ -107,6 +107,14 @@ Two rules that look odd and are not negotiable:
 
 1. **Colors are stored as `'R, G, B'` channel strings**, because the `color()` getter in
    `styling/lib/color.ts` composes `rgb()` / `rgba()` from them.
+
+**Fonts come from the host app**, not from the library: both `font.inter` and `font.display`
+resolve to `var(--font-inter, …)`, which `apps/website/src/pages/_app.tsx` defines through
+`next/font`. `display` is the heading role and deliberately names the same family as body text
+right now — the accent face it used to point at (Eloquia Display) shipped **no Cyrillic at
+all**, so every Russian heading, which is every heading here, quietly fell back to a different
+system font on each machine. The role kept its own token so that swapping in a face with
+Cyrillic is one line in `tokens.ts` rather than two dozen style files.
 2. **`tokens.ts` imports from `../lib/rem` and `../lib/shadow` directly, never via the `lib`
    barrel.** The barrel pulls in `lib/color.ts`, which imports `contract.css.ts` — closing the
    cycle tokens → lib → color → contract → tokens, and `color` would initialize before `vars`

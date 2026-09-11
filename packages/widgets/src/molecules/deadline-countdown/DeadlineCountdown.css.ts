@@ -68,7 +68,7 @@ export const blockDivided = style({
  * минуту.
  */
 export const digit = style({
-  fontFamily: vars.font.eloqua,
+  fontFamily: vars.font.display,
   fontWeight: 600,
   fontSize: vars.fontSize.counter,
   lineHeight: vars.lineHeight.displaySm,

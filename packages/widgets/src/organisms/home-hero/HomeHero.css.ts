@@ -107,7 +107,7 @@ export const top = style({
  * хелпер `font()` (тот принимает только целые пиксели).
  */
 export const heading = style({
-  fontFamily: vars.font.eloqua,
+  fontFamily: vars.font.display,
   fontWeight: 600,
   fontSize: vars.fontSize.display,
   lineHeight: vars.lineHeight.display,

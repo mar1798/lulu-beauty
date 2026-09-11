@@ -51,7 +51,7 @@ export const eyebrow = style({
  * набирается отдельными свойствами, а не хелпером `font()`.
  */
 export const title = style({
-  fontFamily: vars.font.eloqua,
+  fontFamily: vars.font.display,
   fontWeight: 600,
   fontSize: vars.fontSize.displaySm,
   lineHeight: vars.lineHeight.displaySm,

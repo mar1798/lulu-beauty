@@ -70,7 +70,7 @@ export const row = style({
 
 export const link = style([
   {
-    font: font('22/28', 600, 'eloqua'),
+    font: font('22/28', 600, 'display'),
     letterSpacing: vars.tracking.display,
     color: color.text('secondary'),
     textDecoration: 'none',

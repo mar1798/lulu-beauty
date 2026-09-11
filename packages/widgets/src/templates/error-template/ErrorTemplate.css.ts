@@ -35,7 +35,7 @@ export const card = style({
  * цветом и стянут трекингом, как остальная крупная типографика темы.
  */
 export const code = style({
-  fontFamily: vars.font.eloqua,
+  fontFamily: vars.font.display,
   /*
     Вес задан явно. Без него цифра наследовала 400 от `body` — единственное
     место во всём интерфейсе, где дисплейный шрифт шёл не 600-м, и ровно из-за
