@@ -112,7 +112,7 @@ export const AdminImportPanel: FC<IAdminImportPanelProps & IBasicStyling> = ({
 
           {isEmptyResult && (
             <Text tone="secondary" size="sm">
-              В файле не нашлось ни одной строки с данными.
+              В файле не нашлось ни одной строки с данными
             </Text>
           )}
 

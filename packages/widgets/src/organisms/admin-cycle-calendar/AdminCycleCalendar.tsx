@@ -41,7 +41,7 @@ const DEFAULT_TIME = '20:00'
   рендера пересчитывалось на каждое нажатие клавиши в полях редактора, а зона
   магазина за время открытой вкладки не меняется.
 */
-const TIME_HINT = `Время по магазину, UTC${storeOffsetLabel()}.`
+const TIME_HINT = `Время по магазину, UTC${storeOffsetLabel()}`
 
 /**
  * Почему второй сбор не назначить. Одной строкой и в двух местах сразу: скрытой
@@ -50,7 +50,7 @@ const TIME_HINT = `Время по магазину, UTC${storeOffsetLabel()}.`
  */
 const SECOND_CYCLE_REASON =
   'Открытый сбор уже есть. Измените его дату и время вместо того, чтобы назначать второй, — ' +
-  'иначе корзины покупателей останутся в первом.'
+  'иначе корзины покупателей останутся в первом'
 
 /**
  * Почему на прошедший день сбор не назначить.
@@ -313,7 +313,7 @@ export const AdminCycleCalendar: FC<IAdminCycleCalendarProps & IBasicStyling> = 
       <div className={styles.editor}>
         {selectedDate === null ? (
           <Text tone="secondary" size="sm">
-            Выберите день в календаре, чтобы назначить дедлайн сбора или изменить назначенный.
+            Выберите день в календаре, чтобы назначить дедлайн сбора или изменить назначенный
           </Text>
         ) : (
           <>
@@ -328,7 +328,7 @@ export const AdminCycleCalendar: FC<IAdminCycleCalendarProps & IBasicStyling> = 
                 </Badge>
                 {selectedCycle.id === activeCycleId && (
                   <Text tone="secondary" size="sm">
-                    Именно этот сбор сейчас открыт для покупателей.
+                    Именно этот сбор сейчас открыт для покупателей
                   </Text>
                 )}
               </div>
@@ -448,7 +448,7 @@ export const AdminCycleCalendar: FC<IAdminCycleCalendarProps & IBasicStyling> = 
             {isActive && onClose !== undefined && (
               <Text tone="muted" size="xs">
                 «Закрыть сейчас» делает то же, что дедлайн: заявки больше не принимаются,
-                неоформленные корзины переезжают в избранное, вам придёт итог сбора.
+                неоформленные корзины переезжают в избранное, вам придёт итог сбора
               </Text>
             )}
 
@@ -461,7 +461,7 @@ export const AdminCycleCalendar: FC<IAdminCycleCalendarProps & IBasicStyling> = 
 
             {selectedCycle !== null && !isPastCycle && (
               <Text tone="muted" size="xs">
-                Сбор с оформленными заявками удалить нельзя — бэкенд ответит отказом.
+                Сбор с оформленными заявками удалить нельзя — бэкенд ответит отказом
               </Text>
             )}
           </>

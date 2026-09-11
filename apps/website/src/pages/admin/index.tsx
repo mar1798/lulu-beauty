@@ -68,7 +68,7 @@ const AdminOverviewPage: React.FC = () => {
   const error = failure === undefined ? null : messageForError(failure, 'admin.orders')
 
   return (
-    <AdminShell title="Обзор" summary={user === null ? undefined : `Вы вошли как ${user.name}.`}>
+    <AdminShell title="Обзор" summary={user === null ? undefined : `Вы вошли как ${user.name}`}>
       {error !== null && (
         <Alert tone="danger" title="Не получилось">
           {error}
@@ -83,7 +83,7 @@ const AdminOverviewPage: React.FC = () => {
         ) : cycle == null ? (
           <>
             <Text tone="secondary" size="sm">
-              Открытого сбора нет: покупатели видят каталог, но оформить заявку не могут.
+              Открытого сбора нет: покупатели видят каталог, но оформить заявку не могут
             </Text>
             <Button isFullWidth="mobile" link={{ href: '/admin/cycles' }}>
               Назначить дедлайн
@@ -112,7 +112,11 @@ const AdminOverviewPage: React.FC = () => {
           заголовок соврал бы на каждой загрузке.
         */}
         <Text weight="semibold">
-          {isCycleLoading ? 'Заявки' : cycle == null ? 'Заявки за всё время' : 'Заявки текущего сбора'}
+          {isCycleLoading
+            ? 'Заявки'
+            : cycle == null
+              ? 'Заявки за всё время'
+              : 'Заявки текущего сбора'}
         </Text>
 
         {isLoading ? (

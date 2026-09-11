@@ -185,53 +185,51 @@ export const AdminProductForm: FC<IAdminProductFormProps & IBasicStyling> = ({
    */
   const validateSlug = (): string | null => {
     if (slug.trim() === '') {
-      return 'Укажите адрес: например, rose-serum.'
+      return 'Укажите адрес: например, rose-serum'
     }
 
     if (!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(slug)) {
-      return 'Только латиница, цифры и дефис: например, rose-serum.'
+      return 'Только латиница, цифры и дефис: например, rose-serum'
     }
 
-    return slug.length > SLUG_MAX_LENGTH
-      ? `Адрес длиннее ${SLUG_MAX_LENGTH} символов.`
-      : null
+    return slug.length > SLUG_MAX_LENGTH ? `Адрес длиннее ${SLUG_MAX_LENGTH} символов` : null
   }
 
   const validatePrice = (): string | null => {
     if (price.trim() === '') {
-      return 'Укажите цену.'
+      return 'Укажите цену'
     }
 
     if (priceCents === null) {
-      return 'Цена в сомах, например 1250 или 1250.50.'
+      return 'Цена в сомах, например 1250 или 1250.50'
     }
 
-    return priceCents > MAX_PRICE * CENTS ? 'Цена не больше 20 000 000 сом.' : null
+    return priceCents > MAX_PRICE * CENTS ? 'Цена не больше 20 000 000 сом' : null
   }
 
   const validateVolume = (): string | null => {
     if (volumeMl === undefined) {
-      return 'Объём в миллилитрах, целым числом: например, 50.'
+      return 'Объём в миллилитрах, целым числом: например, 50'
     }
 
-    return volumeMl !== null && volumeMl > MAX_VOLUME_ML ? 'Объём не больше 10 000 мл.' : null
+    return volumeMl !== null && volumeMl > MAX_VOLUME_ML ? 'Объём не больше 10 000 мл' : null
   }
 
   const errors = {
     name:
       name.trim() === ''
-        ? 'Укажите название.'
+        ? 'Укажите название'
         : name.trim().length > NAME_MAX_LENGTH
-          ? `Название длиннее ${NAME_MAX_LENGTH} символов.`
+          ? `Название длиннее ${NAME_MAX_LENGTH} символов`
           : null,
     slug: validateSlug(),
     price: validatePrice(),
     volume: validateVolume(),
     brand:
       brand.trim() === ''
-        ? 'Укажите производителя.'
+        ? 'Укажите производителя'
         : brand.trim().length > BRAND_MAX_LENGTH
-          ? `Название производителя длиннее ${BRAND_MAX_LENGTH} символов.`
+          ? `Название производителя длиннее ${BRAND_MAX_LENGTH} символов`
           : null,
   }
 
@@ -332,9 +330,9 @@ export const AdminProductForm: FC<IAdminProductFormProps & IBasicStyling> = ({
             maxLength={BRAND_MAX_LENGTH}
             required={true}
             placeholder="Начните вводить название"
-            hint="Показывается тэгом в каталоге и на странице товара, например Round Lab."
+            hint="Показывается тэгом в каталоге и на странице товара, например Round Lab"
             error={isSubmitted ? errors.brand : null}
-            emptyLabel="Такого производителя ещё нет — он заведётся сам."
+            emptyLabel="Такого производителя ещё нет — он заведётся сам"
             onChange={setBrand}
           />
 
@@ -424,7 +422,7 @@ export const AdminProductForm: FC<IAdminProductFormProps & IBasicStyling> = ({
               <Input
                 label="Описание фотографии (alt)"
                 value={pendingImageAlt}
-                hint="Что на снимке — необязательно."
+                hint="Что на снимке — необязательно"
                 onChange={setPendingImageAlt}
               />
             </>
@@ -440,7 +438,7 @@ export const AdminProductForm: FC<IAdminProductFormProps & IBasicStyling> = ({
 
           {images.length === 0 ? (
             <Text tone="secondary" size="sm">
-              Пока без фотографии — в каталоге у товара будет заглушка.
+              Пока без фотографии — в каталоге у товара будет заглушка
             </Text>
           ) : (
             <ul className={styles.gallery}>
@@ -472,7 +470,7 @@ export const AdminProductForm: FC<IAdminProductFormProps & IBasicStyling> = ({
           <Input
             label="Описание фотографии (alt)"
             value={imageAlt}
-            hint="Что на снимке — текст читают поисковики и скринридеры."
+            hint="Что на снимке — текст читают поисковики и скринридеры"
             onChange={setImageAlt}
           />
 
@@ -481,12 +479,12 @@ export const AdminProductForm: FC<IAdminProductFormProps & IBasicStyling> = ({
             accept={IMAGE_TYPES.join(',')}
             allowedTypes={IMAGE_TYPES}
             maxBytes={IMAGE_MAX_BYTES}
-            hint={`JPEG, PNG или WebP, до 5 МБ.${
+            hint={`JPEG, PNG или WebP, до 5 МБ${
               images.length === 0
                 ? ''
                 : images.length === 1
-                  ? ' Новый файл заменит текущую фотографию.'
-                  : ' Новый файл заменит все текущие фотографии.'
+                  ? '. Новый файл заменит текущую фотографию.'
+                  : '. Новый файл заменит все текущие фотографии.'
             }`}
             error={imageError}
             disabled={isImageBusy}

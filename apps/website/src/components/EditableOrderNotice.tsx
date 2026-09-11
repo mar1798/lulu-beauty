@@ -71,7 +71,7 @@ export const EditableOrderNotice: React.FC = () => {
           notify({
             tone: 'danger',
             title: 'Перенесено не всё',
-            description: result.error ?? 'Товар добавлен в заявку, но остался в корзине.',
+            description: result.error ?? 'Товар добавлен в заявку, но остался в корзине',
           })
 
           return
@@ -81,7 +81,7 @@ export const EditableOrderNotice: React.FC = () => {
       notify({
         tone: 'success',
         title: `Товары перенесены в заявку ${number}`,
-        description: 'Владелец получит одну заявку вместо двух.',
+        description: 'Владелец получит одну заявку вместо двух',
       })
       await router.push(`/orders/${order.id}`)
     } catch (cause: unknown) {
@@ -118,8 +118,8 @@ export const EditableOrderNotice: React.FC = () => {
         </Button>
       }
     >
-      Пока сбор открыт, товары можно добавить прямо в неё — тогда владелец получит одну
-      заявку вместо двух. Эта корзина уйдёт отдельной заявкой, если оформить её.
+      Пока сбор открыт, товары можно добавить прямо в неё — тогда владелец получит одну заявку
+      вместо двух. Эта корзина уйдёт отдельной заявкой, если оформить её.
     </Alert>
   )
 }

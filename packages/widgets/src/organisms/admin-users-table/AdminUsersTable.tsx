@@ -113,7 +113,7 @@ export const AdminUsersTable: FC<IAdminUsersTableProps & IBasicStyling> = ({
                         variant={admin ? 'secondary' : 'primary'}
                         disabled={busyId === user.id}
                         unavailableReason={
-                          isSelf ? 'Свою роль изменить нельзя — попросите другого владельца.' : null
+                          isSelf ? 'Свою роль изменить нельзя — попросите другого владельца' : null
                         }
                         onClick={() => {
                           onRoleChange(user, admin ? 'CUSTOMER' : 'ADMIN')

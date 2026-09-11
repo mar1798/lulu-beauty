@@ -54,7 +54,7 @@ describe('AdminCategoriesPanel', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Добавить' }))
 
     expect(onCreate).not.toHaveBeenCalled()
-    expect(screen.getByText('Только латиница, цифры и дефис: например, tonery.')).toBeTruthy()
+    expect(screen.getByText('Только латиница, цифры и дефис: например, tonery')).toBeTruthy()
   })
 
   /* Название транслитерируется в слаг само — русское имя не повод для ошибки. */

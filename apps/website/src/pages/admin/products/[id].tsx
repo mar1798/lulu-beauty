@@ -151,15 +151,12 @@ const AdminProductPage: React.FC = () => {
 
     const confirmed = await confirm({
       title: 'Удалить фотографию?',
-      description: 'Файл пропадёт из каталога сразу.',
+      description: 'Файл пропадёт из каталога сразу',
       confirmLabel: 'Удалить',
     })
 
     if (confirmed) {
-      await runImageAction(
-        () => deleteProductImage(productId, image.id),
-        'Фотография удалена'
-      )
+      await runImageAction(() => deleteProductImage(productId, image.id), 'Фотография удалена')
     }
   }
 
@@ -212,7 +209,7 @@ const AdminProductPage: React.FC = () => {
       return (
         <EmptyState
           title="Товар не найден"
-          description="Возможно, его удалили насовсем или ссылка устарела."
+          description="Возможно, его удалили насовсем или ссылка устарела"
           action={
             <Button isFullWidth="mobile" link={{ href: '/admin/products' }}>
               К списку товаров

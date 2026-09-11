@@ -134,9 +134,9 @@ export const OrderDetails: FC<IOrderDetailsProps & IBasicStyling> = ({
     if (isEditable) {
       return (
         <Text size="sm" tone="secondary">
-          Состав можно поменять, пока сбор открыт и заявка не подтверждена. Цены пока
-          не зафиксированы: они идут вслед за каталогом — окончательными они станут
-          в момент подтверждения.
+          Состав можно поменять, пока сбор открыт и заявка не подтверждена. Цены пока не
+          зафиксированы: они идут вслед за каталогом — окончательными они станут в момент
+          подтверждения.
         </Text>
       )
     }
@@ -144,9 +144,9 @@ export const OrderDetails: FC<IOrderDetailsProps & IBasicStyling> = ({
     if (isRestorable) {
       return (
         <Text size="sm" tone="secondary">
-          Заявка отменена, но сбор ещё открыт — её можно вернуть тем же составом.
-          Оформлять заново не нужно: она снова встанет в очередь на подтверждение,
-          а цены до него идут вслед за каталогом.
+          Заявка отменена, но сбор ещё открыт — её можно вернуть тем же составом. Оформлять заново
+          не нужно: она снова встанет в очередь на подтверждение, а цены до него идут вслед за
+          каталогом.
         </Text>
       )
     }
@@ -192,7 +192,7 @@ export const OrderDetails: FC<IOrderDetailsProps & IBasicStyling> = ({
             value={note}
             onChange={setNote}
             label="Комментарий к заявке"
-            hint="Пожелания по составу, срокам или способу связи."
+            hint="Пожелания по составу, срокам или способу связи"
             maxLength={NOTE_MAX_LENGTH}
             rows={3}
             disabled={isBusy}
@@ -289,8 +289,8 @@ export const OrderDetails: FC<IOrderDetailsProps & IBasicStyling> = ({
       {isEditable && onCancel !== undefined && (
         <div className={styles.footer}>
           <Text size="sm" tone="muted">
-            Отменённая заявка остаётся видна владельцу — он поймёт, что вы передумали.
-            Передумать обратно можно, пока сбор открыт.
+            Отменённая заявка остаётся видна владельцу — он поймёт, что вы передумали. Передумать
+            обратно можно, пока сбор открыт.
           </Text>
           <Button variant="danger" disabled={isBusy} onClick={onCancel}>
             Отменить заявку
@@ -306,7 +306,7 @@ export const OrderDetails: FC<IOrderDetailsProps & IBasicStyling> = ({
       {isRestorable && (
         <div className={styles.footer}>
           <Text size="sm" tone="muted">
-            Ничего не потеряно: состав и цены сохранены такими, какими были при оформлении.
+            Ничего не потеряно: состав и цены сохранены такими, какими были при оформлении
           </Text>
           <Button disabled={isBusy} onClick={onRestore}>
             Вернуть заявку

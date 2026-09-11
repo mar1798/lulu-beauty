@@ -79,7 +79,7 @@ export const WishlistButton: React.FC<{
         notify({
           tone: 'danger',
           title: isSaved ? 'Товар не убран' : 'Товар не сохранён',
-          description: result.error ?? 'Попробуйте ещё раз или обновите страницу.',
+          description: result.error ?? 'Попробуйте ещё раз или обновите страницу',
         })
       }
     } finally {

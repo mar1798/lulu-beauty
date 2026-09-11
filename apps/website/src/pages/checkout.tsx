@@ -80,8 +80,8 @@ const CheckoutPage: React.FC = () => {
       return (
         <>
           <Alert tone="success" title="Заявка принята">
-            Мы передали её владельцу. После закрытия сбора он подтвердит заявку —
-            уведомление придёт в Telegram, а о выдаче договоритесь лично.
+            Мы передали её владельцу. После закрытия сбора он подтвердит заявку — уведомление придёт
+            в Telegram, а о выдаче договоритесь лично.
           </Alert>
 
           {/* `items.length` — число позиций, а не штук: складывать количества здесь незачем. */}
@@ -108,7 +108,7 @@ const CheckoutPage: React.FC = () => {
       return (
         <EmptyState
           title="Нужен вход"
-          description="Заявка оформляется на аккаунт — в привязанный к нему чат придёт подтверждение."
+          description="Заявка оформляется на аккаунт — в привязанный к нему чат придёт подтверждение"
           action={
             <Button link={{ href: '/login' }} isFullWidth="mobile">
               Войти
@@ -122,7 +122,7 @@ const CheckoutPage: React.FC = () => {
       return (
         <EmptyState
           title="Оформлять нечего"
-          description="Соберите корзину — и возвращайтесь сюда."
+          description="Соберите корзину — и возвращайтесь сюда"
           action={
             <Button link={{ href: '/catalog' }} isFullWidth="mobile">
               В каталог
@@ -170,7 +170,7 @@ const CheckoutPage: React.FC = () => {
               }}
               isBusy={isAdding || isSubmitting}
               label="Проверьте — возможно, вы что-то забыли"
-              hint="Найденный товар попадёт в корзину и уйдёт в эту же заявку."
+              hint="Найденный товар попадёт в корзину и уйдёт в эту же заявку"
             />
           }
           form={
@@ -201,9 +201,7 @@ const CheckoutPage: React.FC = () => {
       <CartTemplate
         title={order === null ? 'Оформление заявки' : 'Заявка отправлена'}
         summary={
-          order === null
-            ? 'Проверьте состав и добавьте комментарий, если он нужен.'
-            : undefined
+          order === null ? 'Проверьте состав и добавьте комментарий, если он нужен' : undefined
         }
       >
         {content()}

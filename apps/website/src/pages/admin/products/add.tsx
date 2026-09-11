@@ -70,7 +70,13 @@ const AdminProductCreatePage: React.FC = () => {
           notify({
             tone: 'info',
             title: 'Товар создан, но фото не загрузилось',
-            description: `${messageForError(cause, 'admin.product.images')} Фото можно добавить на карточке товара.`,
+            /*
+              Точка на стыке ставится здесь, а не в `apiErrors`: одни тексты
+              оттуда — одна фраза и кончаются без точки, другие — абзац из
+              двух предложений и точку несут свою. Склейка как есть дала бы
+              то «фотографии Фото», то «товара.. Фото».
+            */
+            description: `${messageForError(cause, 'admin.product.images').replace(/\.$/, '')}. Фото можно добавить на карточке товара.`,
           })
         }
       }
@@ -91,7 +97,7 @@ const AdminProductCreatePage: React.FC = () => {
   return (
     <AdminShell
       title="Новый товар"
-      summary="После сохранения форма очищается — можно сразу добавить следующий товар."
+      summary="После сохранения форма очищается — можно сразу добавить следующий товар"
       actions={
         <Button isFullWidth="mobile" variant="secondary" link={{ href: '/admin/products' }}>
           К списку
@@ -104,7 +110,7 @@ const AdminProductCreatePage: React.FC = () => {
         <>
           {categories === undefined && (
             <Alert tone="warning" title="Категории не загрузились">
-              Товар можно создать и без категории — добавите её позже.
+              Товар можно создать и без категории — добавите её позже
             </Alert>
           )}
 

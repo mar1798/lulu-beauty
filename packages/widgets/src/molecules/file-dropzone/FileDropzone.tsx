@@ -23,8 +23,7 @@ const extensionOf = (name: string): string => {
   return dot === -1 ? '' : name.slice(dot).toLowerCase()
 }
 
-const formatLimit = (bytes: number): string =>
-  `${Number((bytes / BYTES_IN_MB).toFixed(1))} МБ`
+const formatLimit = (bytes: number): string => `${Number((bytes / BYTES_IN_MB).toFixed(1))} МБ`
 
 export const FileDropzone: FC<IFileDropzoneProps & IBasicStyling> = ({
   onSelect,
@@ -55,7 +54,7 @@ export const FileDropzone: FC<IFileDropzoneProps & IBasicStyling> = ({
       allowedTypes.length > 0 &&
       !allowedTypes.includes(file.type)
     ) {
-      return 'Неподдерживаемый формат файла.'
+      return 'Неподдерживаемый формат файла'
     }
 
     if (
@@ -63,11 +62,11 @@ export const FileDropzone: FC<IFileDropzoneProps & IBasicStyling> = ({
       allowedExtensions.length > 0 &&
       !allowedExtensions.includes(extensionOf(file.name))
     ) {
-      return `Подойдёт файл ${allowedExtensions.join(' или ')}.`
+      return `Подойдёт файл ${allowedExtensions.join(' или ')}`
     }
 
     if (maxBytes !== undefined && file.size > maxBytes) {
-      return `Файл больше ${formatLimit(maxBytes)}.`
+      return `Файл больше ${formatLimit(maxBytes)}`
     }
 
     return null
@@ -134,9 +133,7 @@ export const FileDropzone: FC<IFileDropzoneProps & IBasicStyling> = ({
       >
         <IconUpload className={styles.icon} />
 
-        <span className={styles.prompt}>
-          Перетащите файл сюда или выберите на устройстве
-        </span>
+        <span className={styles.prompt}>Перетащите файл сюда или выберите на устройстве</span>
 
         <Button
           variant="secondary"

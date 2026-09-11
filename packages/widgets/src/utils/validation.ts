@@ -14,7 +14,7 @@ export const NAME_MAX_LENGTH = 255
 
 export const validatePhone = (phone: string): string | null => {
   if (phone === '') {
-    return 'Укажите номер телефона.'
+    return 'Укажите номер телефона'
   }
 
   /*
@@ -23,7 +23,7 @@ export const validatePhone = (phone: string): string | null => {
     проходит, а человеку сообщалось, что цифр не столько, сколько надо.
   */
   if (!PHONE_PATTERN.test(phone)) {
-    return 'Проверьте номер: он должен быть в виде +996555123456.'
+    return 'Проверьте номер: он должен быть в виде +996555123456'
   }
 
   return null
@@ -37,7 +37,7 @@ export const validateName = (name: string): string | null => {
   // По обрезанному: наружу (и в `UserUpdateRequest`) уходит тоже обрезанное,
   // и предел должен считаться от той же строки, которую проверит бэкенд.
   if (name.trim().length > NAME_MAX_LENGTH) {
-    return `Имя длиннее ${NAME_MAX_LENGTH} символов.`
+    return `Имя длиннее ${NAME_MAX_LENGTH} символов`
   }
 
   return null

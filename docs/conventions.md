@@ -26,6 +26,25 @@ This is the rule most easily broken, because no single file states it:
 Match the surrounding file. Essentially every file in `website`/`widgets` is commented in
 Russian; a lone English comment there reads as an outsider's patch.
 
+### Terminal punctuation
+
+**A user-facing string that is a single phrase carries no trailing period** — labels, hints,
+button captions, validation messages, error texts from `apiErrors.ts`, one-line bot replies.
+Text of two or more sentences keeps its punctuation in full, final period included; the rule
+is about the period that would dangle after a lone phrase, not about stripping periods from
+prose.
+
+Two seams to watch, because both produce a sentence out of parts that individually look like
+phrases:
+
+- a string built by concatenation (`'…, — ' + 'иначе …'`) is one text, judged as a whole;
+- a text that interpolates another (`` `${messageForError(…)} …` ``) cannot assume how the
+  interpolated half ends — normalise the seam where you join them, as
+  `pages/admin/products/add.tsx` does.
+
+Bot messages are judged per **message**, not per literal: `messages.py` assembles most of them
+from a list of lines, and a line inside such a message is not a lone phrase.
+
 ## TypeScript
 
 - Interfaces are prefixed **`I`**: `IProduct`, `IApiClient`, `IOrderCycle`.

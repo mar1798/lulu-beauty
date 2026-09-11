@@ -43,7 +43,7 @@ const LoginPage: React.FC = () => {
 
       <AuthTemplate
         title="Вход"
-        subtitle="Через Telegram — регистрация не нужна, аккаунт заведётся сам."
+        subtitle="Через Telegram — регистрация не нужна, аккаунт заведётся сам"
       >
         {isRedirecting ? (
           <Spinner label="Проверяем сессию" />

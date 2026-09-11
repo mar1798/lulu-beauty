@@ -95,7 +95,7 @@ export const AddToCartButton: React.FC<{
         notify({
           tone: 'danger',
           title: 'Товар не добавлен',
-          description: result.error ?? 'Попробуйте ещё раз или обновите страницу.',
+          description: result.error ?? 'Попробуйте ещё раз или обновите страницу',
         })
       }
     } finally {

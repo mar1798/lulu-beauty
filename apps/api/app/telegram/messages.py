@@ -103,7 +103,7 @@ def cart_reminder(title: str, deadline_at: datetime) -> str:
     подписи, и тогда он называется по дедлайну; кавычки ставит `cycle_title`)."""
     return (
         f"Напоминание: товары в вашей корзине Lulu Beauty по сбору {title} "
-        f"будут удалены {format_deadline(deadline_at)}, если вы не оформите заявку."
+        f"будут удалены {format_deadline(deadline_at)}, если вы не оформите заявку"
     )
 
 
@@ -163,7 +163,7 @@ def new_order_for_owner(order: Order, customer: User | None, cycle: OrderCycle |
 
 
 _ORDER_STATUS_NEWS = {
-    OrderStatus.CONFIRMED: "подтверждена — владелец начал закупку.",
+    OrderStatus.CONFIRMED: "подтверждена — владелец начал закупку",
     OrderStatus.READY: "готова к выдаче. О получении договоритесь лично.",
     OrderStatus.COMPLETED: "выдана. Спасибо за заказ!",
     OrderStatus.CANCELLED_BY_OWNER: "отменена владельцем. Если это ошибка — напишите ему.",
@@ -365,7 +365,7 @@ def order_resolution(status: OrderStatus) -> str:
     saying nothing about what was decided — and a notification the owner scrolls past
     later has to answer "did I already handle this?" on its own.
     """
-    return f"Статус: {ORDER_STATUS_LABEL[status]} (отсюда, из Telegram)."
+    return f"Статус: {ORDER_STATUS_LABEL[status]} (отсюда, из Telegram)"
 
 
 def cycle_closed_for_owner(cycle: OrderCycle, orders_count: int, total_cents: int) -> str:
@@ -435,17 +435,17 @@ UNLINK_CONFIRM = (
     "Отвязать этот чат от вашего аккаунта? Заявки и избранное останутся на сайте, но "
     "уведомления и вход через Telegram сюда больше не придут."
 )
-UNLINK_KEPT = "Ничего не меняю — чат остался привязан."
+UNLINK_KEPT = "Ничего не меняю — чат остался привязан"
 
 # Toasts, not messages: Telegram shows these on the button itself and cuts them at 200
 # characters, so each says one thing and stops.
-CALLBACK_NOT_FOR_YOU = "Эта кнопка работает только у владельца магазина."
-CALLBACK_ORDER_GONE = "Заявка не найдена — возможно, она уже удалена."
+CALLBACK_NOT_FOR_YOU = "Эта кнопка работает только у владельца магазина"
+CALLBACK_ORDER_GONE = "Заявка не найдена — возможно, она уже удалена"
 CALLBACK_ORDER_MOVED_ON = (
     "С этой заявкой уже что-то произошло: её отменили или она ушла дальше по статусам. "
     "Откройте админку, чтобы посмотреть."
 )
-CALLBACK_NOT_LINKED = "Этот чат и так не привязан к аккаунту."
+CALLBACK_NOT_LINKED = "Этот чат и так не привязан к аккаунту"
 
 # Ответ на слишком частые нажатия (`throttling.py`). Про «секунду» — чтобы человек
 # понял, что ждать нужно мгновение, а не что бот сломался: молчание в ответ на нажатие
@@ -485,7 +485,7 @@ LOGIN_REJECTED = (
     "ссылку из чужого сообщения открывать не нужно."
 )
 
-CALLBACK_LOGIN_GONE = "Этот вход уже закрыт — отменять нечего."
+CALLBACK_LOGIN_GONE = "Этот вход уже закрыт — отменять нечего"
 
 ALREADY_LINKED = (
     "Этот чат уже привязан к вашему номеру. Чтобы войти на сайте, нажмите там "
@@ -537,7 +537,7 @@ UNLINKED = "Чат отвязан. Подтверждения заявок и н
 
 # Отдельным сообщением, а не хвостом UNLINKED: клавиатура принадлежит чату, а не
 # сообщению, и снять её редактированием старого сообщения нельзя — нужно новое.
-UNLINK_NEXT = "Захотите вернуть — нажмите «Поделиться номером телефона» после /start."
+UNLINK_NEXT = "Захотите вернуть — нажмите «Поделиться номером телефона» после /start"
 
 
 def my_orders(orders: list[Order], total: int | None = None) -> str:
@@ -552,7 +552,7 @@ def my_orders(orders: list[Order], total: int | None = None) -> str:
     orders are all handed over, and a bare «Ваши заявки» would read as the full history.
     """
     if not orders:
-        return "Активных заявок нет — всё, что было раньше, осталось на сайте."
+        return "Активных заявок нет — всё, что было раньше, осталось на сайте"
 
     shown = orders[:MAX_LISTED_ORDERS]
     lines = ["Ваши активные заявки:"]
@@ -572,8 +572,8 @@ def my_cart(cart: CartResponse) -> str:
         # Two different empties, and the difference matters: with no cycle open there is
         # nothing to put a cart under, and "оформите заявку" would be a dead end.
         if cart.cycle_deadline_at is None:
-            return "Сейчас сбор заказов закрыт — как только откроется новый, я напишу."
-        return "Корзина пуста."
+            return "Сейчас сбор заказов закрыт — как только откроется новый, я напишу"
+        return "Корзина пуста"
 
     lines = ["В корзине:"]
     shown = cart.items[:MAX_LISTED_CART_ITEMS]
@@ -615,4 +615,4 @@ def current_deadline(cycle: OrderCycle | None) -> str:
     if cycle is None:
         # Not a failure — an ordinary state of the shop between cycles.
         return "Сейчас сбор заказов закрыт. Как только откроется новый, я напишу."
-    return f"Сбор {cycle_title(cycle)} — заявки до {format_deadline(cycle.deadline_at)}."
+    return f"Сбор {cycle_title(cycle)} — заявки до {format_deadline(cycle.deadline_at)}"

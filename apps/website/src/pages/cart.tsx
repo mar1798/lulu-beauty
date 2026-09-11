@@ -30,7 +30,7 @@ const CartPage: React.FC = () => {
       return (
         <EmptyState
           title="Корзина у каждого своя"
-          description="Войдите, чтобы собрать заявку — она сохранится до закрытия сбора."
+          description="Войдите, чтобы собрать заявку — она сохранится до закрытия сбора"
           action={
             <Button link={{ href: '/login' }} isFullWidth="mobile">
               Войти
@@ -97,7 +97,7 @@ const CartPage: React.FC = () => {
 
       <CartTemplate
         title="Корзина"
-        summary="Оплата не проводится: это заявка, которую владелец подтвердит после закрытия сбора."
+        summary="Оплата не проводится: это заявка, которую владелец подтвердит после закрытия сбора"
       >
         {content()}
       </CartTemplate>

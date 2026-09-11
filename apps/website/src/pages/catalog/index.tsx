@@ -179,7 +179,7 @@ const CatalogPage: React.FC<ICatalogPageProps> = ({ categories, brands, initial 
     <SiteLayout>
       <PageMeta
         title="Каталог — Lulu Beauty"
-        description="Косметика и уход: соберите заявку до закрытия ближайшего сбора."
+        description="Косметика и уход: соберите заявку до закрытия ближайшего сбора"
         path="/catalog"
       />
 
@@ -243,7 +243,7 @@ const CatalogPage: React.FC<ICatalogPageProps> = ({ categories, brands, initial 
             emptyState={
               <EmptyState
                 title="Ничего не нашлось"
-                description="Попробуйте изменить запрос или выбрать другую категорию или бренд."
+                description="Попробуйте изменить запрос или выбрать другую категорию или бренд"
               />
             }
           />

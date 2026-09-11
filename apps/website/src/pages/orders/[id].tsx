@@ -137,7 +137,7 @@ const OrderPage: React.FC = () => {
       title: 'Отменить заявку?',
       description:
         'Владелец увидит, что вы передумали. Пока сбор открыт, отмену можно отозвать — ' +
-        'заявка вернётся тем же составом.',
+        'заявка вернётся тем же составом',
       confirmLabel: 'Отменить заявку',
       cancelLabel: 'Оставить',
       tone: 'danger',
@@ -155,14 +155,14 @@ const OrderPage: React.FC = () => {
   */
   const summary = (): string => {
     if (order?.isEditable === true) {
-      return 'Пока сбор открыт и заявка не подтверждена, состав можно поменять — в том числе добавить товар.'
+      return 'Пока сбор открыт и заявка не подтверждена, состав можно поменять — в том числе добавить товар'
     }
 
     if (order?.isRestorable === true) {
-      return 'Заявка отменена, но сбор ещё открыт — её можно вернуть в работу.'
+      return 'Заявка отменена, но сбор ещё открыт — её можно вернуть в работу'
     }
 
-    return 'Состав и цены — снимок на момент подтверждения: у подтверждённой заявки они не меняются вслед за каталогом.'
+    return 'Состав и цены — снимок на момент подтверждения: у подтверждённой заявки они не меняются вслед за каталогом'
   }
 
   const content = (): React.ReactNode => {
@@ -170,7 +170,7 @@ const OrderPage: React.FC = () => {
       return (
         <EmptyState
           title="Заявка видна после входа"
-          description="Войдите тем же номером, с которого её оформляли."
+          description="Войдите тем же номером, с которого её оформляли"
           action={
             <Button link={{ href: '/login' }} isFullWidth="mobile">
               Войти
@@ -189,7 +189,7 @@ const OrderPage: React.FC = () => {
       return (
         <EmptyState
           title="Заявка не найдена"
-          description="Возможно, ссылка устарела или заявка оформлена на другой аккаунт."
+          description="Возможно, ссылка устарела или заявка оформлена на другой аккаунт"
           action={
             <Button link={{ href: '/orders' }} isFullWidth="mobile">
               К моим заявкам
@@ -221,7 +221,7 @@ const OrderPage: React.FC = () => {
             </Button>
           }
         >
-          {error ?? 'Не удалось загрузить заявку.'}
+          {error ?? 'Не удалось загрузить заявку'}
         </Alert>
       )
     }
@@ -262,13 +262,21 @@ const OrderPage: React.FC = () => {
               .map(item => item.productId)
               .filter((productId): productId is string => productId !== null)}
             onAdd={productId => {
-              void runAction(() => addMyOrderItem(order.id, productId), 'Товар добавлен', 'order.item.add')
+              void runAction(
+                () => addMyOrderItem(order.id, productId),
+                'Товар добавлен',
+                'order.item.add'
+              )
             }}
             isBusy={isBusy}
           />
         }
         onNoteSave={note => {
-          void runAction(() => updateMyOrderNote(order.id, note), 'Комментарий сохранён', 'order.note')
+          void runAction(
+            () => updateMyOrderNote(order.id, note),
+            'Комментарий сохранён',
+            'order.note'
+          )
         }}
         onCancel={() => {
           void handleCancel()

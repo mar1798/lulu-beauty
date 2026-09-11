@@ -63,7 +63,7 @@ describe('AdminProductForm', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Сохранить' }))
 
     expect(onSubmit).not.toHaveBeenCalled()
-    expect(screen.getByRole('alert')).toHaveTextContent('Объём не больше 10 000 мл.')
+    expect(screen.getByRole('alert')).toHaveTextContent('Объём не больше 10 000 мл')
   })
 
   it('не даёт набрать в объём больше пяти знаков', async () => {
@@ -90,7 +90,7 @@ describe('AdminProductForm', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Сохранить' }))
 
     expect(onSubmit).not.toHaveBeenCalled()
-    expect(screen.getByRole('alert')).toHaveTextContent('Цена не больше 20 000 000 сом.')
+    expect(screen.getByRole('alert')).toHaveTextContent('Цена не больше 20 000 000 сом')
   })
 
   it('не сохраняет товар без производителя', async () => {
@@ -104,6 +104,6 @@ describe('AdminProductForm', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Сохранить' }))
 
     expect(onSubmit).not.toHaveBeenCalled()
-    expect(screen.getByRole('alert')).toHaveTextContent('Укажите производителя.')
+    expect(screen.getByRole('alert')).toHaveTextContent('Укажите производителя')
   })
 })

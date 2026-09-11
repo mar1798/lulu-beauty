@@ -79,7 +79,7 @@ const AccountPage: React.FC = () => {
       return (
         <EmptyState
           title="Профиль виден после входа"
-          description="Войдите — и здесь можно будет поправить имя и привязать Telegram."
+          description="Войдите — и здесь можно будет поправить имя и привязать Telegram"
           action={
             <Button link={{ href: '/login' }} isFullWidth="mobile">
               Войти
@@ -141,7 +141,7 @@ const AccountPage: React.FC = () => {
 
       <AccountTemplate
         title="Профиль"
-        summary="Имя видит владелец, когда собирает заказ по вашей заявке."
+        summary="Имя видит владелец, когда собирает заказ по вашей заявке"
         navigation={ACCOUNT_NAVIGATION}
         currentHref="/account"
       >

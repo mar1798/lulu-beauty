@@ -58,18 +58,18 @@ const STEPS: IStep[] = [
   },
   {
     title: 'Оформите заявку',
-    description: 'Это не оплата: заявка уходит владельцу и ждёт его решения — списаний не будет.',
+    description: 'Это не оплата: заявка уходит владельцу и ждёт его решения — списаний не будет',
     visual: 'request',
   },
   {
     title: 'Дождитесь подтверждения',
-    description: 'После закрытия сбора владелец подтвердит заявку — уведомление придёт в Telegram.',
+    description: 'После закрытия сбора владелец подтвердит заявку — уведомление придёт в Telegram',
     visual: 'confirm',
   },
   {
     title: 'Получите товар',
     description:
-      'Когда заказ приедет, владелец свяжется с вами и обсудит варианты доставки или самовывоза.',
+      'Когда заказ приедет, владелец свяжется с вами и обсудит варианты доставки или самовывоза',
     visual: 'handover',
   },
 ]
@@ -334,7 +334,7 @@ const HomePage: React.FC<IHomePageProps> = ({ cycle, featured, categories, brand
           <div ref={heroRef}>
             <HomeHero
               title={['С заботой о вас', 'и о вашем бюджете']}
-              description="Косметика и уход по самым низким ценам: берём напрямую и общим заказом."
+              description="Косметика и уход по самым низким ценам: берём напрямую и общим заказом"
               background={<DecorField spots={HERO_SPOTS} containerRef={heroRef} />}
               scrollHint="Ниже — как это работает"
               actions={
@@ -361,7 +361,7 @@ const HomePage: React.FC<IHomePageProps> = ({ cycle, featured, categories, brand
             <SectionHeading
               eyebrow="Как это работает"
               title="Заявка вместо оплаты"
-              description="Онлайн-оплаты нет: всё, что нужно, — успеть до закрытия сбора."
+              description="Онлайн-оплаты нет: всё, что нужно, — успеть до закрытия сбора"
             />
           </Reveal>
 
@@ -379,7 +379,7 @@ const HomePage: React.FC<IHomePageProps> = ({ cycle, featured, categories, brand
               <SectionHeading
                 eyebrow="Свежая подборка"
                 title="Что можно взять прямо сейчас"
-                description="Товары в наличии — состав каталога меняется перед каждым сбором."
+                description="Товары в наличии — состав каталога меняется перед каждым сбором"
                 action={
                   <Button link={{ href: '/catalog' }} variant="secondary" size="sm">
                     Весь каталог
@@ -413,7 +413,7 @@ const HomePage: React.FC<IHomePageProps> = ({ cycle, featured, categories, brand
               <SectionHeading
                 eyebrow="Ассортимент"
                 title="С чего начать"
-                description="Разделы каталога и бренды, которые в нём уже есть."
+                description="Разделы каталога и бренды, которые в нём уже есть"
               />
             </Reveal>
 

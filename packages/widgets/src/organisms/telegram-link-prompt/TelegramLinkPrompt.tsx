@@ -28,7 +28,7 @@ export const TelegramLinkPrompt: FC<ITelegramLinkPromptProps & IBasicStyling> = 
   if (isLinked) {
     return (
       <Alert className={className} tone="success" title="Telegram привязан">
-        Коды подтверждения приходят в чат с ботом.
+        Коды подтверждения приходят в чат с ботом
       </Alert>
     )
   }
@@ -40,9 +40,12 @@ export const TelegramLinkPrompt: FC<ITelegramLinkPromptProps & IBasicStyling> = 
       </Heading>
 
       <ol className={styles.steps}>
-        <li>Откройте бота по кнопке ниже.</li>
-        <li>Нажмите «Start». Если чат с ботом уже открывали, кнопки не будет — отправьте /start сообщением.</li>
-        <li>Поделитесь номером: бот попросит об этом сам, кнопкой под полем ввода.</li>
+        <li>Откройте бота по кнопке ниже</li>
+        <li>
+          Нажмите «Start». Если чат с ботом уже открывали, кнопки не будет — отправьте /start
+          сообщением.
+        </li>
+        <li>Поделитесь номером: бот попросит об этом сам, кнопкой под полем ввода</li>
       </ol>
 
       {botUsername !== '' && (

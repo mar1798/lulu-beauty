@@ -50,7 +50,7 @@ const WishlistPage: React.FC = () => {
       return (
         <EmptyState
           title="Избранное у каждого своё"
-          description="Войдите, чтобы сохранять товары — список дождётся следующего сбора."
+          description="Войдите, чтобы сохранять товары — список дождётся следующего сбора"
           action={
             <Button link={{ href: '/login' }} isFullWidth="mobile">
               Войти
@@ -81,7 +81,7 @@ const WishlistPage: React.FC = () => {
           emptyState={
             <EmptyState
               title="Пока пусто"
-              description="Нажмите на сердце у товара в каталоге — он сохранится здесь до следующего сбора."
+              description="Нажмите на сердце у товара в каталоге — он сохранится здесь до следующего сбора"
               action={
                 <Button link={{ href: '/catalog' }} isFullWidth="mobile">
                   В каталог
@@ -103,9 +103,7 @@ const WishlistPage: React.FC = () => {
 
       <CatalogTemplate
         title="Избранное"
-        summary={
-          products.length === 0 ? undefined : `Сохранено товаров: ${products.length}`
-        }
+        summary={products.length === 0 ? undefined : `Сохранено товаров: ${products.length}`}
       >
         {content()}
       </CatalogTemplate>

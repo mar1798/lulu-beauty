@@ -64,17 +64,17 @@ const matches = (category: ICategory, query: string): boolean => {
 const validate = (values: IAdminCategoryValues): Record<'name' | 'slug', string | null> => ({
   name:
     values.name.trim() === ''
-      ? 'Укажите название.'
+      ? 'Укажите название'
       : values.name.trim().length > NAME_MAX_LENGTH
-        ? `Название длиннее ${NAME_MAX_LENGTH} символов.`
+        ? `Название длиннее ${NAME_MAX_LENGTH} символов`
         : null,
   slug:
     values.slug.trim() === ''
-      ? 'Укажите адрес: например, tonery.'
+      ? 'Укажите адрес: например, tonery'
       : !/^[a-z0-9]+(-[a-z0-9]+)*$/.test(values.slug)
-        ? 'Только латиница, цифры и дефис: например, tonery.'
+        ? 'Только латиница, цифры и дефис: например, tonery'
         : values.slug.length > SLUG_MAX_LENGTH
-          ? `Адрес длиннее ${SLUG_MAX_LENGTH} символов.`
+          ? `Адрес длиннее ${SLUG_MAX_LENGTH} символов`
           : null,
 })
 
@@ -135,11 +135,7 @@ export const AdminCategoriesPanel: FC<IAdminCategoriesPanelProps & IBasicStyling
         только предлагает набрать в пустоту.
       */}
       {!isLoading && categories.length > 0 && (
-        <SearchField
-          value={query}
-          onChange={setQuery}
-          placeholder="Поиск по названию или слагу"
-        />
+        <SearchField value={query} onChange={setQuery} placeholder="Поиск по названию или слагу" />
       )}
 
       <div className={styles.list}>
@@ -155,7 +151,7 @@ export const AdminCategoriesPanel: FC<IAdminCategoriesPanelProps & IBasicStyling
         ) : found.length === 0 ? (
           /* Отдельный текст: «категорий нет» и «по запросу ничего» — разные новости. */
           <Text tone="secondary" size="sm">
-            {`По запросу «${query.trim()}» ничего не нашлось.`}
+            {`По запросу «${query.trim()}» ничего не нашлось`}
           </Text>
         ) : (
           found.map(category =>

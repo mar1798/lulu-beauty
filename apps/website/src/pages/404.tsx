@@ -24,7 +24,7 @@ const NotFoundPage: React.FC = () => (
     <ErrorTemplate
       code="404"
       title="Такой страницы нет"
-      description="Возможно, ссылка устарела или товар убрали из каталога — состав меняется перед каждым сбором."
+      description="Возможно, ссылка устарела или товар убрали из каталога — состав меняется перед каждым сбором"
       actions={
         <>
           <Button link={{ href: '/catalog' }} isFullWidth="mobile">

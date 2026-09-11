@@ -60,7 +60,7 @@ export const ProductPicker: FC<IProductPickerProps & IBasicStyling> = ({
   isBusy = false,
   error = null,
   label = 'Добавить товар',
-  hint = 'Товар добавится в эту заявку по текущей цене каталога.',
+  hint = 'Товар добавится в эту заявку по текущей цене каталога',
   className,
 }) => {
   const hasQuery = query.trim() !== ''

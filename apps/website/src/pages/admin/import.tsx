@@ -53,12 +53,12 @@ const AdminImportPage: React.FC = () => {
           ? {
               tone: 'danger',
               title: 'Файл не разобран',
-              description: 'Ни одна строка не применена — подробности ниже.',
+              description: 'Ни одна строка не применена — подробности ниже',
             }
           : {
               tone: result.errors.length === 0 ? 'success' : 'info',
               title: 'Импорт завершён',
-              description: `Создано ${result.created}, обновлено ${result.updated}.`,
+              description: `Создано ${result.created}, обновлено ${result.updated}`,
             }
       )
     } catch (cause: unknown) {
@@ -74,7 +74,7 @@ const AdminImportPage: React.FC = () => {
   return (
     <AdminShell
       title="Импорт каталога"
-      summary="Товары сопоставляются по slug: знакомый обновляется, новый создаётся."
+      summary="Товары сопоставляются по slug: знакомый обновляется, новый создаётся"
     >
       <AdminImportPanel
         isImporting={isImporting}

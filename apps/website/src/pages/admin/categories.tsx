@@ -53,7 +53,7 @@ const AdminCategoriesPage: React.FC = () => {
   const handleDelete = async (category: ICategory): Promise<void> => {
     const confirmed = await confirm({
       title: 'Удалить категорию?',
-      description: `Товары категории «${category.name}» останутся в каталоге, но потеряют её — фильтр по ней исчезнет.`,
+      description: `Товары категории «${category.name}» останутся в каталоге, но потеряют её — фильтр по ней исчезнет`,
       confirmLabel: 'Удалить',
     })
 
@@ -65,7 +65,7 @@ const AdminCategoriesPage: React.FC = () => {
   return (
     <AdminShell
       title="Категории"
-      summary="По ним покупатель фильтрует каталог, а импорт xlsx находит категорию по слагу."
+      summary="По ним покупатель фильтрует каталог, а импорт xlsx находит категорию по слагу"
     >
       <AdminCategoriesPanel
         categories={data ?? []}

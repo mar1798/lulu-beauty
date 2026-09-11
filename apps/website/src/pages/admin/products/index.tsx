@@ -171,14 +171,19 @@ const AdminProductsPage: React.FC = () => {
     })
 
     if (confirmed) {
-      await runAction(product, () => deleteProduct(product.id), 'Товар удалён', 'admin.product.delete')
+      await runAction(
+        product,
+        () => deleteProduct(product.id),
+        'Товар удалён',
+        'admin.product.delete'
+      )
     }
   }
 
   return (
     <AdminShell
       title="Товары"
-      summary="Каталог целиком: и то, что видят покупатели, и удалённое."
+      summary="Каталог целиком: и то, что видят покупатели, и удалённое"
       actions={
         <Button
           isFullWidth="mobile"
@@ -245,7 +250,7 @@ const AdminProductsPage: React.FC = () => {
         emptyState={
           <EmptyState
             title="Товаров не нашлось"
-            description="Измените фильтры или добавьте первый товар — вручную либо импортом из xlsx."
+            description="Измените фильтры или добавьте первый товар — вручную либо импортом из xlsx"
             action={
               <Button isFullWidth="mobile" link={{ href: '/admin/products/add' }}>
                 Добавить товар
