@@ -116,11 +116,3 @@ stop it with `npm run dev:api:stop`.
 
 **`NEXT_PUBLIC_*` is baked in at build time.** Changing one in production needs an image
 rebuild, not a restart.
-
-## Stale references in the code
-
-The repo used to carry `PLAN.md`, `FRONTEND_PLAN.md`, `TELEGRAM_PLAN.md` and `BUGS.md` with
-running design logs; they are gone. A few code comments still point at them
-(`app/cycles/scheduler_service.py`, `app/telegram/webhook.py`, `tests/conftest.py`,
-`src/services/apiErrors.ts`, `src/pages/index.tsx`). **The code is the source of truth** — read
-the module rather than looking for the document.

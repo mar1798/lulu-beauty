@@ -21,7 +21,7 @@ from app.db import Base, async_session, engine  # noqa: E402 - must follow the e
 
 @pytest.fixture
 async def db_session() -> AsyncIterator[AsyncSession]:
-    """Most of this suite is DB-free by design (see PLAN.md); the DB-integration tests
+    """Most of this suite is DB-free by design; the DB-integration tests
 
     under tests/integration/ additionally need a real Postgres reachable at DATABASE_URL
     (provided by the `postgres` service in .github/workflows/api.yml). Locally, without

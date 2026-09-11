@@ -167,8 +167,6 @@ Full list: [docs/gotchas.md](docs/gotchas.md).
   API. The admin chunks are publicly fetchable — never put a secret in that UI.
 - Adding any third-party script, iframe or API host means editing the CSP in
   `next.config.js`, or it silently breaks in the browser.
-- A few code comments still point at deleted `PLAN.md`/`BUGS.md` design docs. The code is the
-  source of truth — read the module.
 
 ## Building new UI
 

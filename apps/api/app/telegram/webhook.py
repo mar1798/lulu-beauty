@@ -2,7 +2,7 @@
 
 Why at all, since polling works: polling is a background task that owns a long-lived
 `getUpdates` connection, and two of them on one token fight over the same updates. That
-is what makes `uvicorn --reload` unusable while developing the bot (PLAN.md), and it is
+is what makes `uvicorn --reload` unusable while developing the bot, and it is
 also what makes running two API replicas impossible. A webhook has neither problem — the
 process only answers requests it is handed.
 

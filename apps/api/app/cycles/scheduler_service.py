@@ -69,7 +69,7 @@ class CycleSchedulerService:
     """DB sweeps for cycle lifecycle: reminders, deadline close + cart cleanup.
 
     Deliberately re-reads state from the DB on every sweep rather than scheduling
-    per-cycle timers, so a restart never loses a pending reminder/close (see PLAN.md).
+    per-cycle timers, so a restart never loses a pending reminder/close.
     """
 
     def __init__(self, session: AsyncSession) -> None:
