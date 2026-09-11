@@ -160,7 +160,7 @@ const ProductPage: React.FC<Partial<IProductPageProps>> = ({ product, categoryNa
   return (
     <SiteLayout>
       <PageMeta
-        title={isPending ? 'Товар — Lulu Beauty' : `${product.name} — Lulu Beauty`}
+        title={isPending ? 'Товар — Sulu by Lulu' : `${product.name} — Sulu by Lulu`}
         description={
           product?.description == null || product.description === ''
             ? undefined

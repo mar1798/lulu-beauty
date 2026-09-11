@@ -109,7 +109,7 @@ export const SiteLayout: React.FC<{ children: React.ReactNode }> = ({ children }
       header={
         <>
           <Header
-            logo={{ label: 'Lulu Beauty', link: { href: '/' } }}
+            logo={{ label: 'Sulu by Lulu', link: { href: '/' } }}
             navigation={navigation}
             cartLink={{ href: '/cart' }}
             cartCount={itemCount}
@@ -144,7 +144,7 @@ export const SiteLayout: React.FC<{ children: React.ReactNode }> = ({ children }
       footer={
         <Footer
           columns={footerColumns}
-          copyright={`© ${START_YEAR} Lulu Beauty`}
+          copyright={`© ${START_YEAR} Sulu by Lulu`}
           note="Оплата и доставка обсуждаются лично"
         />
       }

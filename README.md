@@ -1,6 +1,6 @@
 # Lulu beauty repository
 
-Lulu Beauty is an online catalog/ordering platform — customers browse a product catalog, add items to a cart, and submit a request before an owner-defined deadline (there is no online payment; the owner fulfills requests offline and exports them to Excel). This is a Turborepo monorepo containing the frontend, the UI component library it's built from, and the backend API.
+Sulu by Lulu is an online catalog/ordering platform — customers browse a product catalog, add items to a cart, and submit a request before an owner-defined deadline (there is no online payment; the owner fulfills requests offline and exports them to Excel). This is a Turborepo monorepo containing the frontend, the UI component library it's built from, and the backend API.
 
 ## Documentation
 

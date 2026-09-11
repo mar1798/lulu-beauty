@@ -178,7 +178,7 @@ const CatalogPage: React.FC<ICatalogPageProps> = ({ categories, brands, initial 
   return (
     <SiteLayout>
       <PageMeta
-        title="Каталог — Lulu Beauty"
+        title="Каталог — Sulu by Lulu"
         description="Косметика и уход: соберите заявку до закрытия ближайшего сбора"
         path="/catalog"
       />

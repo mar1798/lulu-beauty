@@ -76,7 +76,7 @@ export const AdminShell: React.FC<IAdminShellProps> = ({
     return (
       <SiteLayout>
         <Head>
-          <title>Админка Lulu Beauty</title>
+          <title>Админка Sulu by Lulu</title>
           <meta name="robots" content="noindex" />
         </Head>
 
@@ -91,7 +91,7 @@ export const AdminShell: React.FC<IAdminShellProps> = ({
   return (
     <SiteLayout>
       <Head>
-        <title>{`${title} — админка Lulu Beauty`}</title>
+        <title>{`${title} — админка Sulu by Lulu`}</title>
         <meta name="robots" content="noindex" />
       </Head>
 

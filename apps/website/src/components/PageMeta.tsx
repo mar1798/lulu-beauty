@@ -16,9 +16,9 @@ import { publicConfig } from '@/сonfig'
  * работает, только по `name`/`http-equiv`/`charSet` и явному ключу.
  */
 
-export const SITE_NAME = 'Lulu Beauty'
+export const SITE_NAME = 'Sulu by Lulu'
 
-export const SITE_TITLE = 'Lulu Beauty — самые низкие цены на косметику и уход'
+export const SITE_TITLE = 'Sulu by Lulu — самые низкие цены на косметику и уход'
 
 export const SITE_DESCRIPTION =
   'Косметика и уход по самым низким ценам: берём напрямую и общим заказом. Соберите заявку до закрытия сбора — владелец подтвердит её в Telegram.'
@@ -31,7 +31,7 @@ export const SITE_DESCRIPTION =
  */
 const SITE_IMAGE = {
   path: '/og-image.png',
-  alt: 'Lulu Beauty — косметика и уход по самым низким ценам',
+  alt: 'Sulu by Lulu — косметика и уход по самым низким ценам',
 } as const
 
 /** Адрес сайта, каким его увидит скрапер: `og:*` относительных путей не понимает. */

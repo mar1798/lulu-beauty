@@ -1,6 +1,6 @@
 # Architecture
 
-Lulu Beauty is an online catalog and ordering platform for a single shop. Customers browse a
+Sulu by Lulu is an online catalog and ordering platform for a single shop. Customers browse a
 catalog, fill a cart and submit a **request** (заявка) before an owner-set deadline. There is
 **no online payment**: the owner confirms requests, buys the goods, and hands them over
 offline. Everything the customer and the owner hear from the system arrives over Telegram.

@@ -1,6 +1,6 @@
 # Documentation map
 
-Reference documentation for the Lulu Beauty monorepo. `CLAUDE.md` at the repo root is the
+Reference documentation for the Sulu by Lulu monorepo. `CLAUDE.md` at the repo root is the
 short operating manual (hard rules, commands, traps) and links here for detail; `README.md`
 is the human-facing introduction. Everything below is the long form.
 

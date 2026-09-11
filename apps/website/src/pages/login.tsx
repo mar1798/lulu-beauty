@@ -37,7 +37,7 @@ const LoginPage: React.FC = () => {
   return (
     <SiteLayout>
       <Head>
-        <title>Вход — Lulu Beauty</title>
+        <title>Вход — Sulu by Lulu</title>
         <meta name="robots" content="noindex" />
       </Head>
 

@@ -280,7 +280,7 @@ export const feedPortal = (): IPortalProps => ({
 })
 
 export const feedHeader = (): IHeaderProps => ({
-  logo: { label: 'Lulu Beauty', link: { href: '/' } },
+  logo: { label: 'Sulu by Lulu', link: { href: '/' } },
   navigation: [
     { label: 'Каталог', link: { href: '/catalog' } },
     { label: 'Как заказать', link: { href: '/how-to-order' } },
@@ -326,7 +326,7 @@ export const feedFooter = (): IFooterProps => ({
       ],
     },
   ],
-  copyright: '© 2026 Lulu Beauty',
+  copyright: '© 2026 Sulu by Lulu',
   note: 'Оплата и доставка обсуждаются лично',
 })
 

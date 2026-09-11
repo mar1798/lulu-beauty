@@ -114,7 +114,7 @@ const OrdersPage: React.FC = () => {
   return (
     <SiteLayout>
       <Head>
-        <title>Мои заявки — Lulu Beauty</title>
+        <title>Мои заявки — Sulu by Lulu</title>
         <meta name="robots" content="noindex" />
       </Head>
 

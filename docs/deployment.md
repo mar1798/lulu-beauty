@@ -1,4 +1,4 @@
-# Деплой Lulu Beauty
+# Деплой Sulu by Lulu
 
 Разворачивание всего стека на одном сервере: Caddy (TLS) → `website` (Next) →
 `api` (FastAPI) → `db` (Postgres 16). Всё поднимается одной командой
