@@ -235,27 +235,38 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const updateItem = useCallback(
     (productId: string, quantity: number) =>
-      runMutation(productId, () => updateCartItem(productId, quantity), 'cart.update', current =>
-        withQuantity(current, productId, quantity)
+      runMutation(
+        productId,
+        () => updateCartItem(productId, quantity),
+        'cart.update',
+        current => withQuantity(current, productId, quantity)
       ),
     [runMutation]
   )
 
   const removeItem = useCallback(
     (productId: string) =>
-      runMutation(productId, () => removeCartItem(productId), 'cart.remove', current =>
-        without(current, productId)
+      runMutation(
+        productId,
+        () => removeCartItem(productId),
+        'cart.remove',
+        current => without(current, productId)
       ),
     [runMutation]
   )
 
   const empty = useCallback(
     () =>
-      runMutation(WHOLE_CART, () => emptyCart(), 'cart.empty', current => ({
-        ...current,
-        items: [],
-        totalCents: 0,
-      })),
+      runMutation(
+        WHOLE_CART,
+        () => emptyCart(),
+        'cart.empty',
+        current => ({
+          ...current,
+          items: [],
+          totalCents: 0,
+        })
+      ),
     [runMutation]
   )
 

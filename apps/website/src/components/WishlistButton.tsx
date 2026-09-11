@@ -35,13 +35,7 @@ export const WishlistButton: React.FC<{
    */
   withLabel?: boolean
   isFullWidth?: boolean
-}> = ({
-  productId,
-  variant = 'solid',
-  size = 'md',
-  withLabel = false,
-  isFullWidth = false,
-}) => {
+}> = ({ productId, variant = 'solid', size = 'md', withLabel = false, isFullWidth = false }) => {
   const router = useRouter()
   const { user, isLoading: isAuthLoading, reload: reloadSession } = useAuth()
   const { has, toggle, isItemBusy } = useWishlist()
@@ -91,17 +85,7 @@ export const WishlistButton: React.FC<{
     } finally {
       isRunning.current = false
     }
-  }, [
-    user,
-    isAuthLoading,
-    reloadSession,
-    router,
-    toggle,
-    isItemBusy,
-    productId,
-    isSaved,
-    notify,
-  ])
+  }, [user, isAuthLoading, reloadSession, router, toggle, isItemBusy, productId, isSaved, notify])
 
   const onClick = (): void => {
     void run()

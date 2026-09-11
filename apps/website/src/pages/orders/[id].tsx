@@ -76,9 +76,8 @@ const OrderPage: React.FC = () => {
     isLoading,
     error: fetchError,
     mutate,
-  } = useSWR<IOrder>(
-    userId === null || orderId === null ? null : orderKey(userId, orderId),
-    () => getMyOrder(orderId as string)
+  } = useSWR<IOrder>(userId === null || orderId === null ? null : orderKey(userId, orderId), () =>
+    getMyOrder(orderId as string)
   )
 
   const error = fetchError === undefined ? null : messageForError(fetchError, 'order.load')

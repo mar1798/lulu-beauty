@@ -53,16 +53,14 @@ const AdminProductsPage: React.FC = () => {
   const { notify } = useToast()
   const { confirm } = useConfirm()
 
-  const [
-    { q: query, category: categorySlug, brand, deleted: includeDeleted, page },
-    setParams,
-  ] = useQueryParams({
-    q: textParam,
-    category: optionalTextParam,
-    brand: optionalTextParam,
-    deleted: flagParam,
-    page: pageParam,
-  })
+  const [{ q: query, category: categorySlug, brand, deleted: includeDeleted, page }, setParams] =
+    useQueryParams({
+      q: textParam,
+      category: optionalTextParam,
+      brand: optionalTextParam,
+      deleted: flagParam,
+      page: pageParam,
+    })
 
   /*
     Поиск заменяет запись в истории, а не добавляет новую: набранное оказывается
@@ -138,7 +136,9 @@ const AdminProductsPage: React.FC = () => {
 
   const error = fetchError === undefined ? null : messageForError(fetchError, 'admin.products.load')
 
-  const categoryNames = Object.fromEntries((categories ?? []).map(category => [category.id, category.name]))
+  const categoryNames = Object.fromEntries(
+    (categories ?? []).map(category => [category.id, category.name])
+  )
 
   const runAction = async (
     product: IProduct,
@@ -180,7 +180,11 @@ const AdminProductsPage: React.FC = () => {
       title="Товары"
       summary="Каталог целиком: и то, что видят покупатели, и удалённое."
       actions={
-        <Button isFullWidth="mobile" link={{ href: '/admin/products/add' }} iconStart={<IconPlus />}>
+        <Button
+          isFullWidth="mobile"
+          link={{ href: '/admin/products/add' }}
+          iconStart={<IconPlus />}
+        >
           Добавить товар
         </Button>
       }

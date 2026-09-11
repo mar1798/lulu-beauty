@@ -43,11 +43,7 @@ const ProductThumb: FC<{ product: IProduct }> = ({ product }) => {
           <IconBox />
         </span>
       ) : (
-        <AppImage
-          image={{ src: image.url, alt: '' }}
-          sizes={IMAGE_SIZES}
-          fill={true}
-        />
+        <AppImage image={{ src: image.url, alt: '' }} sizes={IMAGE_SIZES} fill={true} />
       )}
     </span>
   )

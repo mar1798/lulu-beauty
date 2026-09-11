@@ -12,11 +12,7 @@ import useSWR from 'swr'
 import type { IWishlist } from 'widgets/types'
 import { messageForError, type ErrorScope } from '@/services/apiErrors'
 import { wishlistKey } from '@/services/swrKeys'
-import {
-  addWishlistItem,
-  getWishlist,
-  removeWishlistItem,
-} from '@/services/endpoints/wishlist'
+import { addWishlistItem, getWishlist, removeWishlistItem } from '@/services/endpoints/wishlist'
 import { useAuth } from './AuthContext'
 
 /**
@@ -159,10 +155,15 @@ export const WishlistProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         отфильтровать. Без этого товар на странице избранного оставался бы
         висеть до ответа — то есть выглядел бы неудалённым.
       */
-      runMutation(productId, () => removeWishlistItem(productId), 'wishlist.remove', current => ({
-        ...current,
-        items: current.items.filter(item => item.product.id !== productId),
-      })),
+      runMutation(
+        productId,
+        () => removeWishlistItem(productId),
+        'wishlist.remove',
+        current => ({
+          ...current,
+          items: current.items.filter(item => item.product.id !== productId),
+        })
+      ),
     [runMutation]
   )
 
