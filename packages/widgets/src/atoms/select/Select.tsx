@@ -138,6 +138,12 @@ export const Select: FC<ISelectProps & IBasicStyling> = ({
   const popoverRef = useRef<HTMLDivElement>(null)
   const activeRef = useRef<HTMLLIElement>(null)
   const typeahead = useRef({ query: '', at: 0 })
+  /**
+   * Разрешение прокрутить список к активной строке. Взводится только там, где
+   * позицию переставил сам человек с клавиатуры, и снимается сразу после
+   * прокрутки — см. эффект ниже.
+   */
+  const shouldScrollToActive = useRef(false)
 
   const [isOpen, setIsOpen] = useState(false)
   const [activeIndex, setActiveIndex] = useState(-1)
@@ -254,12 +260,18 @@ export const Select: FC<ISelectProps & IBasicStyling> = ({
       ? selectedIndex
       : firstEnabled(items)
 
+  /** Перевод активной строки клавишей: единственный случай, когда список едет. */
+  const moveActive = (index: number): void => {
+    shouldScrollToActive.current = true
+    setActiveIndex(index)
+  }
+
   const move = (step: number): void => {
     const from = activeIndex === -1 ? (step > 0 ? 0 : items.length - 1) : activeIndex + step
     const next = seek(items, Math.max(0, Math.min(items.length - 1, from)), step)
 
     if (next !== -1) {
-      setActiveIndex(next)
+      moveActive(next)
     }
   }
 
@@ -282,7 +294,7 @@ export const Select: FC<ISelectProps & IBasicStyling> = ({
     }
 
     if (isOpen) {
-      setActiveIndex(found)
+      moveActive(found)
     } else {
       commit(found)
     }
@@ -310,7 +322,7 @@ export const Select: FC<ISelectProps & IBasicStyling> = ({
         const edge = event.key === 'Home' ? firstEnabled(items) : lastEnabled(items)
 
         if (isOpen) {
-          setActiveIndex(edge)
+          moveActive(edge)
         } else {
           open(edge)
         }
@@ -419,15 +431,39 @@ export const Select: FC<ISelectProps & IBasicStyling> = ({
   }, [isOpen, close])
 
   /**
-   * Активная строка всегда в видимой части списка — иначе стрелки уводят
-   * «в никуда». Проверка на метод нужна для jsdom: там `scrollIntoView`
-   * не реализован, а ронять из-за прокрутки тесты не за что.
+   * Прокрутка к активной строке — **только** после хода с клавиатуры.
+   *
+   * Раньше этим занимался эффект по `[activeIndex, isOpen]` и `scrollIntoView`,
+   * а активную строку переставляет ещё и `onMouseMove`: список уезжал под
+   * курсором от одного движения мыши по нему, и сам собой прокручивался к
+   * выбранному значению в момент раскрытия. Прокрутка должна быть тем, что
+   * человек сделал сам, — колесом или стрелками, — а не тем, что случилось,
+   * пока он вёл мышь к нужной строке.
+   *
+   * Флаг снимается сразу после прокрутки, поэтому следующее движение мыши
+   * подсветит строку, ничего не сдвинув.
+   *
+   * Прокручивается сам контейнер, а не `scrollIntoView`: тот при
+   * `block: 'nearest'` вправе подвинуть и предков — то есть страницу под
+   * порталом.
    */
   useEffect(() => {
     const active = activeRef.current
+    const popover = popoverRef.current
 
-    if (typeof active?.scrollIntoView === 'function') {
-      active.scrollIntoView({ block: 'nearest' })
+    if (!shouldScrollToActive.current || active === null || popover === null) {
+      return
+    }
+
+    shouldScrollToActive.current = false
+
+    const top = active.offsetTop
+    const bottom = top + active.offsetHeight
+
+    if (top < popover.scrollTop) {
+      popover.scrollTop = top
+    } else if (bottom > popover.scrollTop + popover.clientHeight) {
+      popover.scrollTop = bottom - popover.clientHeight
     }
   }, [activeIndex, isOpen])
 
