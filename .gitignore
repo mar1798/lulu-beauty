@@ -11,6 +11,7 @@ coverage/
 
 =======
 # Local
+.claude/commands/commit.md
 .env
 .env.prod
 dist
