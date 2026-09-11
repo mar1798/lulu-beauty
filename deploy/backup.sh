@@ -19,6 +19,10 @@
 #   BACKUP_REMOTE  rclone-remote для выгрузки       (пусто — только локально)
 #                  например: r2:lulu-backups  или  s3:my-bucket/lulu
 #   ENV_FILE       путь к .env.prod                 (<корень репозитория>/.env.prod)
+#   BACKUP_PING_URL  адрес пинга мониторингу        (пусто — не пинговать)
+#                  healthchecks.io и совместимые: на <url> уходит успех,
+#                  на <url>/fail — падение, вместе с последними строками лога.
+#                  Без него об упавшем ночном бэкапе узнаёшь только из backup.log.
 #
 # ⚠️ Бэкап, лежащий на том же сервере, от потери сервера не спасает.
 # Пока BACKUP_REMOTE не задан, скрипт об этом предупреждает при каждом запуске.
@@ -38,21 +42,66 @@ BACKUP_DIR="${BACKUP_DIR:-$HOME/lulu-backups}"
 KEEP_DAYS="${KEEP_DAYS:-14}"
 BACKUP_REMOTE="${BACKUP_REMOTE:-}"
 ENV_FILE="${ENV_FILE:-$REPO_ROOT/.env.prod}"
+BACKUP_PING_URL="${BACKUP_PING_URL:-}"
 
 COMPOSE=(docker compose --env-file "$ENV_FILE" -f "$REPO_ROOT/docker-compose.prod.yml")
 
-log() { printf '%s  %s\n' "$(date '+%F %T')" "$*"; }
+# Весь вывод дублируется в память, чтобы отправить хвост лога мониторингу:
+# в письме healthchecks.io о падении видно причину, а не только сам факт.
+LOG_TAIL=""
+log() {
+  local line
+  line="$(printf '%s  %s' "$(date '+%F %T')" "$*")"
+  printf '%s\n' "$line"
+  LOG_TAIL="$LOG_TAIL$line"$'\n'
+}
 die() { log "ОШИБКА: $*"; exit 1; }
+
+# Пинг мониторингу. Протокол healthchecks.io: успех — GET/POST на сам адрес,
+# падение — на <адрес>/fail; тело запроса становится текстом события.
+# Молчание здесь намеренно: недоступный мониторинг не должен превращать
+# успешный бэкап в неуспешный, поэтому ошибка curl только отмечается в логе.
+ping_monitor() {
+  [[ -n "$BACKUP_PING_URL" ]] || return 0
+
+  if ! command -v curl >/dev/null; then
+    log "предупреждение: BACKUP_PING_URL задан, но curl не установлен"
+    return 0
+  fi
+
+  curl -fsS -m 10 --retry 3 -o /dev/null \
+    --data-raw "$(printf '%s' "$LOG_TAIL" | tail -n 20)" \
+    "$BACKUP_PING_URL$1" ||
+    log "предупреждение: не удалось отправить пинг мониторингу"
+}
+
+# Пингуем только те запуски, которые действительно делали бэкап: выход по
+# занятому локу (cron наложился на ручной запуск) — не событие.
+NOTIFY=0
 
 # Любой обрыв на середине оставляет недописанные архивы — убираем их, чтобы
 # битый файл не выглядел как валидный бэкап.
-cleanup_failed() {
+finish() {
   local code=$?
-  [[ $code -eq 0 ]] && return 0
-  rm -f "${DB_TMP:-}" "${UPLOADS_TMP:-}"
-  log "прервано с кодом $code, незавершённые файлы удалены"
+
+  if [[ $code -ne 0 ]]; then
+    # Файлов может уже и не быть: обрыв на выгрузке наружу случается после
+    # того, как оба архива переименованы в окончательные.
+    if [[ -f "${DB_TMP:-}" || -f "${UPLOADS_TMP:-}" ]]; then
+      rm -f "${DB_TMP:-}" "${UPLOADS_TMP:-}"
+      log "прервано с кодом $code, незавершённые файлы удалены"
+    else
+      log "прервано с кодом $code"
+    fi
+
+    [[ $NOTIFY -eq 1 ]] && ping_monitor /fail
+    return 0
+  fi
+
+  [[ $NOTIFY -eq 1 ]] && ping_monitor ''
+  return 0
 }
-trap cleanup_failed EXIT
+trap finish EXIT
 
 [[ -f "$ENV_FILE" ]] || die "не найден $ENV_FILE"
 command -v docker >/dev/null || die "docker не установлен"
@@ -63,6 +112,8 @@ mkdir -p "$BACKUP_DIR"
 # просто выходит, а не борется за место и IO.
 exec 9>"$BACKUP_DIR/.lock"
 flock -n 9 || { log "другой бэкап уже идёт — выхожу"; exit 0; }
+
+NOTIFY=1
 
 STAMP="$(date +%F-%H%M)"
 DB_FILE="$BACKUP_DIR/db-$STAMP.sql.gz"
@@ -98,8 +149,6 @@ log "архив uploads…"
 gzip -t "$UPLOADS_TMP" || die "архив фотографий повреждён"
 mv "$UPLOADS_TMP" "$UPLOADS_FILE"
 log "фотографии: $(du -h "$UPLOADS_FILE" | cut -f1)"
-
-trap - EXIT
 
 # --- Выгрузка наружу ---------------------------------------------------------
 if [[ -n "$BACKUP_REMOTE" ]]; then
