@@ -69,6 +69,15 @@ prerenders up to two thousand product slugs, and without that cache each one re-
   unbuffered), forwards a fixed allowlist: request `content-type`, `content-length`, `accept`,
   `accept-language`; response `content-type`, `content-disposition`, `cache-control`. It
   **404s `/auth/*`** so token pairs can't leak through it.
+- `pages/api/csp-report.ts` — where the browser posts CSP violations (`report-uri` for
+  everyone, `report-to` + the `Reporting-Endpoints` header where the site URL is known to be
+  https, i.e. production). It normalizes both report formats — legacy
+  `{"csp-report": {...}}` and the Reporting API's array — and writes one line per **distinct**
+  violation to stdout, prefixed `csp-violation`. Public and unauthenticated by necessity (the
+  browser sends no cookies), hence the guards: a 64 KB body cap, reports from browser
+  extensions dropped, and each `directive + blocked URI + source` logged once per process so a
+  loop can't fill the disk. The dedupe set resets on every deploy, which is what you want
+  after editing the policy.
 - `src/server/clientAddress.ts` — `clientHeaders(req)` **sets** the `X-Forwarded-For` the API's
   limiter keys anonymous callers on. Without it every visitor arrives as the proxy's single
   address and one impatient guest throttles the whole shop. An *incoming* `x-forwarded-for` is
@@ -179,7 +188,9 @@ of a live WordPress integration.
   inline script. Read the reports before promoting it. `X-Frame-Options` is deliberately
   absent: it cannot express "allow Telegram only", which `frame-ancestors` does — the site
   runs as a Mini App inside `web.telegram.org`. **Adding any third-party script, iframe or API
-  host means editing that policy**, or it silently breaks in the browser.
+  host means editing that policy**, or it silently breaks in the browser. Both policies report
+  violations to `pages/api/csp-report.ts` (described above), so "read the reports" means
+  `docker compose logs website | grep csp-violation` on the server, not a browser console.
 - **`rewrites()`** proxies `/files/:path*` to `${API_BASE_URL}/files/:path*` so product images
   are same-origin; Next 16's image optimizer refuses hosts resolving to a private IP.
   `src/components/Image.tsx` rewrites the API's absolute URLs to those relative ones.

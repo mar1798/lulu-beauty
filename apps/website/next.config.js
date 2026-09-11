@@ -45,18 +45,52 @@ const TELEGRAM_WIDGET_FRAME = 'https://oauth.telegram.org'
 const TELEGRAM_HOSTS = "https://web.telegram.org https://*.web.telegram.org https://telegram.org"
 
 /**
+ * Куда браузер отправляет нарушения — своя же ручка
+ * `src/pages/api/csp-report.ts`, пишущая их в stdout (то есть в
+ * `docker compose logs website`). Своя, а не внешний сервис: отдельный приёмник
+ * ради нескольких отчётов в сутки не нужен, а чужой хост пришлось бы вписывать
+ * в саму политику.
+ *
+ * Директив две, потому что форматов два: `report-uri` понимают все браузеры и
+ * он объявлен устаревшим, `report-to` — замена, и она работает лишь вместе с
+ * заголовком `Reporting-Endpoints` ниже. Браузер, знающий обе, шлёт отчёт один
+ * раз — по `report-to`.
+ *
+ * Разница между ними не только в возрасте: `report-uri` принимает
+ * относительный путь (браузер достраивает его от адреса страницы), а
+ * `Reporting-Endpoints` — только абсолютный и только https. Поэтому вторая
+ * половина включается, лишь когда домен известен: в разработке (`http://
+ * localhost:3000`) её не будет, и отчёты придут по `report-uri`, чего для
+ * проверки руками достаточно.
+ */
+const CSP_REPORT_PATH = '/api/csp-report'
+const CSP_REPORTING_GROUP = 'csp'
+const CSP_REPORT_URL = (process.env.NEXT_PUBLIC_SITE_URL ?? '').startsWith('https://')
+  ? `${process.env.NEXT_PUBLIC_SITE_URL}${CSP_REPORT_PATH}`
+  : undefined
+const CSP_REPORTING = [
+  `report-uri ${CSP_REPORT_PATH}`,
+  ...(CSP_REPORT_URL === undefined ? [] : [`report-to ${CSP_REPORTING_GROUP}`]),
+]
+
+/**
  * Часть политики, которую можно включать принудительно уже сейчас.
  *
  * Здесь только директивы, про которые точно известно, что сайт их не нарушает:
  * форм наружу нет, `<base>` нет, плагинных объектов нет. Ошибиться нечем, а
  * закрывают они самое неприятное — угон отправки формы и подмену базового
  * адреса, если разметка когда-нибудь протечёт.
+ *
+ * Отчёты она тоже шлёт: нарушение здесь означает, что что-то уже сломано в
+ * браузере посетителя, и узнать об этом нужно тем более. В логе такие видны по
+ * `enforce` против `report` у остальных.
  */
 const ENFORCED_CSP = [
   "base-uri 'self'",
   "form-action 'self'",
   "object-src 'none'",
   `frame-ancestors 'self' ${TELEGRAM_HOSTS}`,
+  ...CSP_REPORTING,
 ].join('; ')
 
 /**
@@ -74,6 +108,9 @@ const ENFORCED_CSP = [
  * `style-src 'unsafe-inline'` — inline-стили Next и позиционирование
  * выпадающих списков; vanilla-extract здесь ни при чём, он отдаёт настоящие
  * файлы.
+ *
+ * Нарушения собираются в лог — см. `CSP_REPORTING` выше и
+ * «Шаг 10» в docs/deployment.md.
  */
 const REPORT_ONLY_CSP = [
   "default-src 'self'",
@@ -90,6 +127,7 @@ const REPORT_ONLY_CSP = [
   "form-action 'self'",
   "object-src 'none'",
   `frame-ancestors 'self' ${TELEGRAM_HOSTS}`,
+  ...CSP_REPORTING,
 ].join('; ')
 
 /**
@@ -171,6 +209,15 @@ const nextConfig = {
       { key: 'Permissions-Policy', value: PERMISSIONS_POLICY },
       { key: 'X-DNS-Prefetch-Control', value: 'on' },
     ]
+
+    // Адресат `report-to` обеих политик. Без этого заголовка группа `csp`
+    // браузеру неизвестна, и отчёт по ней просто никуда не уходит.
+    if (CSP_REPORT_URL !== undefined) {
+      headers.push({
+        key: 'Reporting-Endpoints',
+        value: `${CSP_REPORTING_GROUP}="${CSP_REPORT_URL}"`,
+      })
+    }
 
     if (process.env.NODE_ENV === 'production') {
       headers.push({

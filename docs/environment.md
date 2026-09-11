@@ -58,7 +58,7 @@ to be inlined into the client bundle; `serverConfig` values throw when read in t
 | --- | --- | --- |
 | `NEXT_PUBLIC_API_BASE_URL` | `http://localhost:3001` | The API as the **browser** sees it. Used for `/files/*` images; private requests go through `/api/proxy/*`. |
 | `API_BASE_URL` | `http://localhost:3001` | The API as the **Next server** sees it (`getStaticProps`, `/api/*`). Inside compose: `http://api:3001`. |
-| `NEXT_PUBLIC_SITE_URL` | `http://localhost:3000` | The site's own public address, for the absolute URLs a link preview needs (`og:image`, `og:url`). Same string as `NEXT_PUBLIC_API_BASE_URL` in production, different in development. |
+| `NEXT_PUBLIC_SITE_URL` | `http://localhost:3000` | The site's own public address, for the absolute URLs a link preview needs (`og:image`, `og:url`). Same string as `NEXT_PUBLIC_API_BASE_URL` in production, different in development. Also gates the `Reporting-Endpoints` header: that one accepts only an absolute https URL, so CSP's `report-to` is emitted only when this is `https://…` (dev still reports through `report-uri`). |
 | `NEXT_PUBLIC_TELEGRAM_BOT_USERNAME` | `""` | Without the `@`. The bot link must be clean (`https://t.me/<username>`, no `?start=`) or the bot's exact `/start` match sends it to the fallback handler. |
 | `NEXT_PUBLIC_TELEGRAM_LOGIN_WIDGET` | `false` | Show the Login Widget on `/login`. Only works on the domain registered with `/setdomain` in BotFather — elsewhere the button renders and then refuses, which is worse than absent. |
 | `AUTH_COOKIE_SECURE` | `true` | Set `false` for local http, or `lb_at`/`lb_rt` are dropped. |
