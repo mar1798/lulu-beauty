@@ -162,7 +162,7 @@ Absolute URLs come from `publicConfig('siteUrl')` (`NEXT_PUBLIC_SITE_URL`), not 
 Static files in `public/` that go with this: `favicon.ico` (16/32/48 in one container, for the
 request browsers make on their own), `favicon.svg`, `apple-touch-icon.png` (no rounding — iOS
 adds its own), `og-image.png` (1200×630) and `robots.txt`. All of them carry the same mark —
-the wordmark's `L` in Inter SemiBold, converted to outlines, since neither an icon file nor a
+the `SL` monogram in Inter SemiBold, converted to outlines, since neither an icon file nor a
 rasterised preview can reference a webfont. The preview repeats the home page's own scene
 (canvas, two decor bottles with their pastel halos) so the link and the landing match. There
 is no `sitemap.xml` yet, which is why `robots.txt` declares no `Sitemap:` line.
