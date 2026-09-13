@@ -4,7 +4,6 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
 
 from app import scheduler
 from app.auth.router import router as auth_router
@@ -12,6 +11,7 @@ from app.cart.router import router as cart_router
 from app.catalog.router import router as catalog_router
 from app.common.body_limit import BodySizeLimitMiddleware
 from app.common.rate_limit import RateLimitMiddleware
+from app.common.static import ImmutableStaticFiles
 from app.config import settings
 from app.cycles.router import router as cycles_router
 from app.export.router import router as export_router
@@ -69,7 +69,13 @@ def create_app() -> FastAPI:
     # Mounted whether or not the webhook mode is on — it answers 404 while it is off, so
     # the app has one shape in both configurations (see app/telegram/webhook.py).
     app.include_router(telegram_webhook_router)
-    app.mount("/files", StaticFiles(directory=settings.upload_dir, check_dir=False), name="files")
+    # ImmutableStaticFiles, not StaticFiles: the names are uuids and the bytes behind one
+    # never change, so the year-long `Cache-Control` it adds is honest — see static.py.
+    app.mount(
+        "/files",
+        ImmutableStaticFiles(directory=settings.upload_dir, check_dir=False),
+        name="files",
+    )
     return app
 
 

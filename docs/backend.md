@@ -29,12 +29,17 @@ uv run python -m app.scripts.seed              # upsert the first ADMIN owner
 
 `app/main.py::create_app()` builds the app. Middleware order matters:
 
-1. `RateLimitMiddleware` — added **first** so it runs *inside* CORS. A 429 without CORS
+1. `RateLimitMiddleware` — added **first** so it runs _inside_ CORS. A 429 without CORS
    headers reads as a network failure in the browser.
 2. `BodySizeLimitMiddleware` — outer bound `MAX_BODY_BYTES = 12 MB`, before route parsing.
 3. `CORSMiddleware` — `CORS_ORIGIN`.
 
-Then every router, plus `/files` mounted as static (product images from local disk).
+Then every router, plus `/files` mounted as static (product images from local disk) — via
+`ImmutableStaticFiles` (`app/common/static.py`), not plain `StaticFiles`, so a hit carries
+`Cache-Control: public, max-age=31536000, immutable`. The names are uuid4 and a file is never
+rewritten (replacing a photo stores a new one), so the promise holds. Plain `StaticFiles` sends
+only `ETag`, which costs a round trip per photo per page view and caps Next's image optimiser at
+`minimumCacheTTL`.
 
 `lifespan` starts and stops the Telegram bot (long polling, or webhook registration when
 configured) and the APScheduler jobs.
@@ -50,20 +55,20 @@ placeholders. Full list: [environment.md](environment.md).
 Each domain module under `app/` is roughly `router.py` / `service.py` / `schemas.py` /
 `models.py`:
 
-| Module | Contents |
-| --- | --- |
-| `auth/` | Telegram sign-in (session/claim/widget/mini-app), refresh, logout, JWT issuing, `telegram_identity.py` HMAC verification, role dependencies. |
-| `users/` | `/users/me`, admin user list and role changes. |
-| `catalog/` | Categories, products, images, xlsx/csv import, serializers. |
-| `cart/` | Cart and lines. Every mutation needs an open cycle. |
-| `orders/` | Checkout, customer edit/cancel/restore, admin status changes, repricing. |
-| `cycles/` | Cycle CRUD, `reminders.py` (stage definitions), `scheduler_service.py` (sweeps). |
-| `wishlist/` | Saved products, cycle-independent. |
-| `export/` | xlsx purchase list. |
-| `telegram/` | Bot, handlers, keyboards, Russian messages, notifications, throttling, webhook. |
-| `storage/` | Local disk file storage for images. |
-| `common/` | `CamelModel`, `PageResponse`, phone normalization, model mixins, limits, rate limit, body limit. |
-| `health/` | `GET /health` with a real `SELECT 1`; `503` when the DB is unreachable. |
+| Module      | Contents                                                                                                                                     |
+| ----------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `auth/`     | Telegram sign-in (session/claim/widget/mini-app), refresh, logout, JWT issuing, `telegram_identity.py` HMAC verification, role dependencies. |
+| `users/`    | `/users/me`, admin user list and role changes.                                                                                               |
+| `catalog/`  | Categories, products, images, xlsx/csv import, serializers.                                                                                  |
+| `cart/`     | Cart and lines. Every mutation needs an open cycle.                                                                                          |
+| `orders/`   | Checkout, customer edit/cancel/restore, admin status changes, repricing.                                                                     |
+| `cycles/`   | Cycle CRUD, `reminders.py` (stage definitions), `scheduler_service.py` (sweeps).                                                             |
+| `wishlist/` | Saved products, cycle-independent.                                                                                                           |
+| `export/`   | xlsx purchase list.                                                                                                                          |
+| `telegram/` | Bot, handlers, keyboards, Russian messages, notifications, throttling, webhook.                                                              |
+| `storage/`  | Local disk file storage for images.                                                                                                          |
+| `common/`   | `CamelModel`, `PageResponse`, phone normalization, model mixins, limits, rate limit, body limit.                                             |
+| `health/`   | `GET /health` with a real `SELECT 1`; `503` when the DB is unreachable.                                                                      |
 
 Two files that are easy to forget:
 
@@ -76,35 +81,35 @@ Two files that are easy to forget:
 
 Public and customer-facing:
 
-| Method | Path | Notes |
-| --- | --- | --- |
-| `GET` | `/health` | Real DB check; `503` if unreachable. Rate-limit exempt. |
-| `POST` | `/auth/telegram/session` | Opens a sign-in session, returns the bot link + poll secret. |
-| `POST` | `/auth/telegram/claim` | Claims a session the bot confirmed. |
-| `POST` | `/auth/telegram/widget` | Trades a Telegram Login Widget signature for tokens. |
-| `POST` | `/auth/telegram/mini-app` | Same, for Mini App `initData`. |
-| `POST` | `/auth/refresh`, `/auth/logout` | |
-| `GET` | `/categories`, `/brands` | |
-| `GET` | `/products` | Paged. Query params **snake_case**: `in_stock`, `page_size`. |
-| `GET` | `/products/{slug}` | |
-| `GET` | `/cycles/active` | |
-| `GET`/`PATCH` | `/users/me` | |
-| `GET`/`POST`/`PATCH`/`DELETE` | `/cart`, `/cart/items[/{product_id}]` | 409 `no_active_cycle` without an open cycle. |
-| `GET`/`POST`/`DELETE` | `/wishlist`, `/wishlist/items[/{product_id}]` | Cycle-independent. |
-| `POST` | `/orders/checkout` | |
-| `GET` | `/orders`, `/orders/{id}` | |
-| `PATCH` | `/orders/{id}` | Note only. |
-| `POST`/`PATCH`/`DELETE` | `/orders/{id}/items[/{item_id}]` | Add / change quantity / remove. |
-| `POST` | `/orders/{id}/cancel`, `/orders/{id}/restore` | |
+| Method                        | Path                                          | Notes                                                        |
+| ----------------------------- | --------------------------------------------- | ------------------------------------------------------------ |
+| `GET`                         | `/health`                                     | Real DB check; `503` if unreachable. Rate-limit exempt.      |
+| `POST`                        | `/auth/telegram/session`                      | Opens a sign-in session, returns the bot link + poll secret. |
+| `POST`                        | `/auth/telegram/claim`                        | Claims a session the bot confirmed.                          |
+| `POST`                        | `/auth/telegram/widget`                       | Trades a Telegram Login Widget signature for tokens.         |
+| `POST`                        | `/auth/telegram/mini-app`                     | Same, for Mini App `initData`.                               |
+| `POST`                        | `/auth/refresh`, `/auth/logout`               |                                                              |
+| `GET`                         | `/categories`, `/brands`                      |                                                              |
+| `GET`                         | `/products`                                   | Paged. Query params **snake_case**: `in_stock`, `page_size`. |
+| `GET`                         | `/products/{slug}`                            |                                                              |
+| `GET`                         | `/cycles/active`                              |                                                              |
+| `GET`/`PATCH`                 | `/users/me`                                   |                                                              |
+| `GET`/`POST`/`PATCH`/`DELETE` | `/cart`, `/cart/items[/{product_id}]`         | 409 `no_active_cycle` without an open cycle.                 |
+| `GET`/`POST`/`DELETE`         | `/wishlist`, `/wishlist/items[/{product_id}]` | Cycle-independent.                                           |
+| `POST`                        | `/orders/checkout`                            |                                                              |
+| `GET`                         | `/orders`, `/orders/{id}`                     |                                                              |
+| `PATCH`                       | `/orders/{id}`                                | Note only.                                                   |
+| `POST`/`PATCH`/`DELETE`       | `/orders/{id}/items[/{item_id}]`              | Add / change quantity / remove.                              |
+| `POST`                        | `/orders/{id}/cancel`, `/orders/{id}/restore` |                                                              |
 
 Owner-only (`ADMIN`, checked on the API — the frontend gate is UX only):
 
-| Method | Path |
-| --- | --- |
-| `GET` | `/admin/users`, `/admin/brands`, `/admin/products`, `/admin/products/{id}`, `/admin/orders`, `/admin/cycles`, `/admin/export/orders` |
-| `PATCH` | `/admin/users/{id}/role`, `/admin/categories/{id}`, `/admin/products/{id}`, `/admin/cycles/{id}`, `/admin/orders/{id}/status` |
-| `POST` | `/admin/categories`, `/admin/products`, `/admin/products/{id}/restore`, `/admin/products/{id}/images`, `/admin/catalog/import`, `/admin/cycles`, `/admin/cycles/{id}/close` |
-| `DELETE` | `/admin/categories/{id}`, `/admin/products/{id}` (soft), `/admin/products/{id}/images/{image_id}`, `/admin/cycles/{id}`, `/admin/orders/{id}` |
+| Method   | Path                                                                                                                                                                        |
+| -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET`    | `/admin/users`, `/admin/brands`, `/admin/products`, `/admin/products/{id}`, `/admin/orders`, `/admin/cycles`, `/admin/export/orders`                                        |
+| `PATCH`  | `/admin/users/{id}/role`, `/admin/categories/{id}`, `/admin/products/{id}`, `/admin/cycles/{id}`, `/admin/orders/{id}/status`                                               |
+| `POST`   | `/admin/categories`, `/admin/products`, `/admin/products/{id}/restore`, `/admin/products/{id}/images`, `/admin/catalog/import`, `/admin/cycles`, `/admin/cycles/{id}/close` |
+| `DELETE` | `/admin/categories/{id}`, `/admin/products/{id}` (soft), `/admin/products/{id}/images/{image_id}`, `/admin/cycles/{id}`, `/admin/orders/{id}`                               |
 
 `POST /telegram/webhook` is mounted always but 404s unless `TELEGRAM_USE_WEBHOOK` + url +
 secret are all set. Rate-limit exempt.
@@ -116,7 +121,7 @@ Upload ceilings: images 5 MB (`jpeg`/`png`/`webp`), import file 10 MB, outer bod
 **Services are classes constructed with an `AsyncSession`** (`OrdersService(session)`,
 `CycleSchedulerService(session)`). They mutate but **do not commit** — the caller (a router
 dependency or a scheduler job) owns the transaction boundary. Side effects that must not
-survive a rollback (any `notify_*`) fire *after* the commit.
+survive a rollback (any `notify_*`) fire _after_ the commit.
 
 **Wire format.** Request/response schemas subclass `common.schemas.CamelModel`, so JSON is
 camelCase while Python stays snake_case. `PageResponse[T]` is the paging envelope.
