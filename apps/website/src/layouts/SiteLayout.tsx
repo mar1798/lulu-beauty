@@ -83,10 +83,25 @@ const sectionOf = (path: string): string => {
   return `/${section}`
 }
 
-export const SiteLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+export interface ISiteLayoutProps {
+  children: React.ReactNode
+  /**
+   * Показывать ли счётчик корзины в шапке.
+   *
+   * Выключается только каркасом админки: шапка витрины там та же, но считать
+   * в ней нечего — владелец пришёл разбирать заявки, а не собирать свою. А
+   * заодно это единственное, что заставляло админку загружать корзину: без
+   * счётчика её на этих страницах не показывает никто (см. `useDemand`).
+   *
+   * Сама ссылка на корзину остаётся: уйти из админки на витрину надо чем-то.
+   */
+  isCartCountShown?: boolean
+}
+
+export const SiteLayout: React.FC<ISiteLayoutProps> = ({ children, isCartCountShown = true }) => {
   const router = useRouter()
   const { user, isAdmin } = useAuth()
-  const { itemCount } = useCart()
+  const { itemCount } = useCart(isCartCountShown)
   const menu = useDisclosure()
 
   usePrefetchRoutes(user === null ? GUEST_PREFETCH : isAdmin ? ADMIN_PREFETCH : USER_PREFETCH)
@@ -112,7 +127,7 @@ export const SiteLayout: React.FC<{ children: React.ReactNode }> = ({ children }
             logo={{ label: 'Sulu by Lulu', link: { href: '/' } }}
             navigation={navigation}
             cartLink={{ href: '/cart' }}
-            cartCount={itemCount}
+            cartCount={isCartCountShown ? itemCount : 0}
             user={headerUser}
             loginLink={{ href: '/login' }}
             currentHref={currentHref}
@@ -136,7 +151,7 @@ export const SiteLayout: React.FC<{ children: React.ReactNode }> = ({ children }
             user={headerUser}
             loginLink={{ href: '/login' }}
             cartLink={{ href: '/cart' }}
-            cartCount={itemCount}
+            cartCount={isCartCountShown ? itemCount : 0}
             currentHref={currentHref}
           />
         </>

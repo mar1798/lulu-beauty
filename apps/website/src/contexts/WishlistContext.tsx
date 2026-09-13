@@ -14,6 +14,7 @@ import { messageForError, type ErrorScope } from '@/services/apiErrors'
 import { wishlistKey } from '@/services/swrKeys'
 import { addWishlistItem, getWishlist, removeWishlistItem } from '@/services/endpoints/wishlist'
 import { useAuth } from './AuthContext'
+import { useDemand } from './useDemand'
 
 /**
  * Избранное покупателя.
@@ -56,6 +57,12 @@ export interface IWishlistContextValue {
   toggle: (productId: string) => Promise<IWishlistResult>
   reload: () => Promise<IWishlistResult>
   clearError: () => void
+  /**
+   * Подписка потребителя на данные. Не для вызова из компонентов: её дёргает
+   * сам `useWishlist`, и только затем, чтобы провайдер знал, нужны ли данные на этой
+   * странице вообще (см. `useDemand`).
+   */
+  subscribe: () => () => void
 }
 
 const WishlistContext = createContext<IWishlistContextValue | null>(null)
@@ -65,6 +72,13 @@ export const WishlistProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const router = useRouter()
   const userId = user?.id ?? null
 
+  /*
+    Запрос уходит только тогда, когда данные кому-то нужны: провайдер живёт в
+    `_app.tsx`, то есть на всех страницах, а показывают их далеко не все
+    (см. `useDemand`).
+  */
+  const { isWanted, subscribe } = useDemand()
+
   const [busy, setBusy] = useState<readonly string[]>([])
   const [error, setError] = useState<string | null>(null)
 
@@ -73,7 +87,7 @@ export const WishlistProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     isLoading,
     error: fetchError,
     mutate: swrMutate,
-  } = useSWR<IWishlist>(userId === null ? null : wishlistKey(userId), getWishlist)
+  } = useSWR<IWishlist>(userId === null || !isWanted ? null : wishlistKey(userId), getWishlist)
 
   /**
    * Очередь запросов: каждая ручка отвечает списком целиком, поэтому ответ,
@@ -221,6 +235,7 @@ export const WishlistProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       toggle,
       reload,
       clearError,
+      subscribe,
     }),
     [
       wishlist,
@@ -234,18 +249,37 @@ export const WishlistProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       toggle,
       reload,
       clearError,
+      subscribe,
     ]
   )
 
   return <WishlistContext.Provider value={value}>{children}</WishlistContext.Provider>
 }
 
-export const useWishlist = (): IWishlistContextValue => {
+/**
+ * `isSubscribed` — нужны ли вызывающему сами данные, а не только действия.
+ * По умолчанию да: обычный потребитель на то и вызывает хук, чтобы показать
+ * избранное. `false` говорит провайдеру не ходить за ним вовсе — так делает
+ * каркас админки, где шапка витрины есть, а счётчика в ней нет.
+ */
+export const useWishlist = (isSubscribed = true): IWishlistContextValue => {
   const value = useContext(WishlistContext)
 
   if (value === null) {
     throw new Error('useWishlist вызван вне <WishlistProvider>')
   }
+
+  /*
+    Сам факт вызова и есть подписка: провайдер не ходит за данными, пока их
+    никто не показывает (см. `useDemand`). `subscribe` возвращает отписку,
+    поэтому эффекту достаточно её вернуть.
+
+    Условный хук после `throw` — не нарушение правил: отсутствие провайдера
+    роняет рендер целиком, и до второго вызова с тем же деревом дело не дойдёт.
+  */
+  const { subscribe } = value
+
+  useEffect(() => (isSubscribed ? subscribe() : undefined), [isSubscribed, subscribe])
 
   return value
 }

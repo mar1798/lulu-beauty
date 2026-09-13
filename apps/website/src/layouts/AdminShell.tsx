@@ -27,6 +27,10 @@ import * as styles from '@/styles/admin.css'
  * спиннер — каркас чужого раздела покупателю видеть незачем.
  *
  * `noindex` на всех страницах раздела: смотреть поисковику тут не на что.
+ *
+ * Счётчик корзины в шапке здесь выключен (`isCartCountShown`): в разделе он
+ * ничего не значит, а его отсутствие снимает с каждой страницы админки запрос
+ * корзины — вместе с избранным это была вторая волна после `/api/auth/me`.
  */
 
 const NAVIGATION: IAdminNavItem[] = [
@@ -74,7 +78,7 @@ export const AdminShell: React.FC<IAdminShellProps> = ({
 
   if (access !== 'granted') {
     return (
-      <SiteLayout>
+      <SiteLayout isCartCountShown={false}>
         <Head>
           <title>Админка Sulu by Lulu</title>
           <meta name="robots" content="noindex" />
@@ -89,7 +93,7 @@ export const AdminShell: React.FC<IAdminShellProps> = ({
   }
 
   return (
-    <SiteLayout>
+    <SiteLayout isCartCountShown={false}>
       <Head>
         <title>{`${title} — админка Sulu by Lulu`}</title>
         <meta name="robots" content="noindex" />

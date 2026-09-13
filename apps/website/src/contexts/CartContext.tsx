@@ -20,6 +20,7 @@ import {
   updateCartItem,
 } from '@/services/endpoints/cart'
 import { useAuth } from './AuthContext'
+import { useDemand } from './useDemand'
 
 /**
  * Корзина покупателя.
@@ -114,6 +115,12 @@ export interface ICartContextValue {
   empty: () => Promise<ICartResult>
   reload: () => Promise<ICartResult>
   clearError: () => void
+  /**
+   * Подписка потребителя на данные. Не для вызова из компонентов: её дёргает
+   * сам `useCart`, и только затем, чтобы провайдер знал, нужны ли данные на этой
+   * странице вообще (см. `useDemand`).
+   */
+  subscribe: () => () => void
 }
 
 const CartContext = createContext<ICartContextValue | null>(null)
@@ -122,6 +129,13 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const { user } = useAuth()
   const router = useRouter()
   const userId = user?.id ?? null
+
+  /*
+    Запрос уходит только тогда, когда данные кому-то нужны: провайдер живёт в
+    `_app.tsx`, то есть на всех страницах, а показывают их далеко не все
+    (см. `useDemand`).
+  */
+  const { isWanted, subscribe } = useDemand()
 
   /*
    * Занятые области: идентификаторы товаров плюс `WHOLE_CART`. Массив, а не
@@ -136,7 +150,7 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
     isLoading,
     error: fetchError,
     mutate: swrMutate,
-  } = useSWR<ICart>(userId === null ? null : cartKey(userId), getCart)
+  } = useSWR<ICart>(userId === null || !isWanted ? null : cartKey(userId), getCart)
 
   /**
    * Очередь запросов к корзине.
@@ -319,6 +333,7 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
       empty,
       reload,
       clearError,
+      subscribe,
     }),
     [
       cart,
@@ -333,18 +348,37 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
       empty,
       reload,
       clearError,
+      subscribe,
     ]
   )
 
   return <CartContext.Provider value={value}>{children}</CartContext.Provider>
 }
 
-export const useCart = (): ICartContextValue => {
+/**
+ * `isSubscribed` — нужны ли вызывающему сами данные, а не только действия.
+ * По умолчанию да: обычный потребитель на то и вызывает хук, чтобы показать
+ * корзину. `false` говорит провайдеру не ходить за ней вовсе — так делает
+ * каркас админки, где шапка витрины есть, а счётчика в ней нет.
+ */
+export const useCart = (isSubscribed = true): ICartContextValue => {
   const value = useContext(CartContext)
 
   if (value === null) {
     throw new Error('useCart вызван вне <CartProvider>')
   }
+
+  /*
+    Сам факт вызова и есть подписка: провайдер не ходит за данными, пока их
+    никто не показывает (см. `useDemand`). `subscribe` возвращает отписку,
+    поэтому эффекту достаточно её вернуть.
+
+    Условный хук после `throw` — не нарушение правил: отсутствие провайдера
+    роняет рендер целиком, и до второго вызова с тем же деревом дело не дойдёт.
+  */
+  const { subscribe } = value
+
+  useEffect(() => (isSubscribed ? subscribe() : undefined), [isSubscribed, subscribe])
 
   return value
 }
