@@ -13,6 +13,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import { useWishlist } from '@/contexts/WishlistContext'
 import { listCategories } from '@/services/endpoints/catalog'
 import { categoriesKey } from '@/services/swrKeys'
+import * as styles from '@/styles/layout.css'
 
 /**
  * Избранное. Приватное и целиком клиентское, как корзина: данные идут через
@@ -44,9 +45,20 @@ const WishlistPage: React.FC = () => {
   const products = useMemo(() => (wishlist?.items ?? []).map(item => item.product), [wishlist])
 
   const content = (): React.ReactNode => {
-    // Пока сессия не проверена, «войдите» показывать нельзя: у залогиненного
-    // это была бы вспышка чужого экрана вместо его списка.
-    if (user === null && !isAuthLoading) {
+    /*
+      Пока сессия не проверена, не показываем ничего.
+
+      «Войдите» тут нельзя: у вошедшего это была бы вспышка чужого экрана
+      вместо его списка. Но и скелетон сетки нельзя — восемь карточек это
+      больше тысячи пикселей, и у гостя они через полсекунды схлопывались в
+      короткое «войдите», втягивая подвал обратно в кадр. Ровно это и есть
+      CLS 0.394 — худший на сайте.
+    */
+    if (isAuthLoading) {
+      return null
+    }
+
+    if (user === null) {
       return (
         <EmptyState
           title="Избранное у каждого своё"
@@ -70,7 +82,7 @@ const WishlistPage: React.FC = () => {
 
         <ProductGrid
           products={products}
-          isLoading={isAuthLoading || isLoading}
+          isLoading={isLoading}
           buildHref={product => `/catalog/${product.slug}`}
           categoryNames={categoryNames}
           renderAction={product =>
@@ -105,7 +117,7 @@ const WishlistPage: React.FC = () => {
         title="Избранное"
         summary={products.length === 0 ? undefined : `Сохранено товаров: ${products.length}`}
       >
-        {content()}
+        <div className={styles.sessionArea}>{content()}</div>
       </CatalogTemplate>
     </SiteLayout>
   )

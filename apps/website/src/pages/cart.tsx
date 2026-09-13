@@ -9,6 +9,7 @@ import { SiteLayout } from '@/layouts/SiteLayout'
 import { EditableOrderNotice } from '@/components/EditableOrderNotice'
 import { useAuth } from '@/contexts/AuthContext'
 import { useCart } from '@/contexts/CartContext'
+import * as styles from '@/styles/layout.css'
 
 /**
  * Корзина. Приватная и целиком клиентская: данные идут через прокси,
@@ -99,7 +100,12 @@ const CartPage: React.FC = () => {
         title="Корзина"
         summary="Оплата не проводится: это заявка, которую владелец подтвердит после закрытия сбора"
       >
-        {content()}
+        {/*
+          Высота под содержимое зарезервирована: «войдите» и корзина отличаются
+          высотой вдвое, и на ответе `/api/auth/me` подвал переезжал (см.
+          `styles/layout.css`).
+        */}
+        <div className={styles.sessionArea}>{content()}</div>
       </CartTemplate>
     </SiteLayout>
   )
