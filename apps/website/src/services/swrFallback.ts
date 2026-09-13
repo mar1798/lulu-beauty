@@ -1,4 +1,4 @@
-import { unstable_serialize } from 'swr'
+import { unstable_serialize, type Key } from 'swr'
 import type { IOrderCycle } from 'widgets/types'
 import { activeCycleKey } from './swrKeys'
 
@@ -27,3 +27,20 @@ export type ISwrFallback = Record<string, unknown>
 export const activeCycleFallback = (cycle: IOrderCycle | null): ISwrFallback => ({
   [unstable_serialize(activeCycleKey)]: cycle,
 })
+
+/**
+ * Лежит ли значение по этому ключу в `fallback` текущей страницы.
+ *
+ * Нужно затем, чтобы **не** перепроверять его при монтировании. `fallback`
+ * по умолчанию ревалидируется, поэтому статика, аккуратно уложенная в
+ * `getStaticProps`, всё равно уезжала повторным запросом сразу после
+ * гидратации — на холодном заходе он уходил в одну секунду с `/api/auth/me`
+ * и конкурировал с ним за канал. Свежее ISR-копии этот запрос всё равно не
+ * приносит: страница пересобирается по `revalidate`, и то, что лежит в
+ * `fallback`, устарело ровно настолько же, насколько сама страница.
+ *
+ * Проверка — по сериализованному виду ключа: `SWRConfig` хранит `fallback`
+ * строками (см. `unstable_serialize` выше).
+ */
+export const hasFallback = (fallback: ISwrFallback | undefined, key: Key): boolean =>
+  fallback !== undefined && unstable_serialize(key) in fallback

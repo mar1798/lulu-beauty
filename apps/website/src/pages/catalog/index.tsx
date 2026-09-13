@@ -126,6 +126,18 @@ const CatalogPage: React.FC<ICatalogPageProps> = ({ categories, brands, initial 
 
   const isDefaultParams = categorySlug === null && brand === null && pageNumber === 1 && q === ''
 
+  /*
+    Первая страница без фильтров уже пришла статикой. `fallbackData` сам по
+    себе повторный запрос не отменяет — SWR всё равно перепроверяет значение
+    при монтировании, и запрос уходил, конкурируя с гидратацией и
+    `/api/auth/me`. Свежее он ничего не приносил: страница пересобирается по
+    `revalidate: 60`, и статика устаревает ровно на столько же.
+
+    Только при монтировании: смена категории, бренда, поиска или страницы
+    меняет ключ, и новый набор запрашивается как обычно.
+  */
+  const staticPage = isDefaultParams && initial !== null ? initial : undefined
+
   const {
     data: page,
     error: fetchError,
@@ -134,8 +146,8 @@ const CatalogPage: React.FC<ICatalogPageProps> = ({ categories, brands, initial 
     ['catalog-products', categorySlug, brand, q, pageNumber],
     fetchCatalogPage,
     {
-      // Первая страница без фильтров уже пришла статикой — подставляем её, а не гоняем повторный запрос.
-      fallbackData: isDefaultParams && initial !== null ? initial : undefined,
+      fallbackData: staticPage,
+      revalidateOnMount: staticPage === undefined,
       // Смена категории/страницы не должна перекрашивать сетку в скелетон:
       // прошлая страница остаётся на экране, пока грузится следующая.
       keepPreviousData: true,

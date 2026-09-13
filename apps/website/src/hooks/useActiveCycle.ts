@@ -1,6 +1,7 @@
-import useSWR from 'swr'
+import useSWR, { useSWRConfig } from 'swr'
 import type { IOrderCycle } from 'widgets/types'
 import { getActiveCycleOrNull } from '@/services/endpoints/cycles'
+import { hasFallback } from '@/services/swrFallback'
 import { activeCycleKey } from '@/services/swrKeys'
 
 /**
@@ -31,7 +32,21 @@ export interface IActiveCycleState {
 }
 
 export const useActiveCycle = (): IActiveCycleState => {
-  const { data, error } = useSWR(activeCycleKey, () => getActiveCycleOrNull())
+  /*
+    На странице со статикой состояние сбора уже приехало в `fallback` — и
+    перепроверять его при монтировании незачем: страница пересобирается по
+    `revalidate: 60`, значит свежее этого запрос всё равно ничего не принесёт,
+    а уходит он ровно в ту секунду, когда браузер занят гидратацией и
+    `/api/auth/me` (см. `services/swrFallback.ts`).
+
+    Страницы без статики (админка, заявки) `fallback` не кладут — там условие
+    ложно, и всё работает как прежде.
+  */
+  const { fallback } = useSWRConfig()
+
+  const { data, error } = useSWR(activeCycleKey, () => getActiveCycleOrNull(), {
+    revalidateOnMount: !hasFallback(fallback, activeCycleKey),
+  })
 
   /*
     «Ответ есть» — это `data !== undefined`, а не `!isLoading`. Значение из
