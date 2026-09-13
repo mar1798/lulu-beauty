@@ -88,6 +88,17 @@ services:
       TRUST_PROXY_HEADERS: 'true'
     depends_on:
       - api
+    volumes:
+      # Кэш ISR и оптимизатора картинок. Образ собирается без доступа к API
+      # (так и задумано, см. apps/website/Dockerfile), поэтому готовых страниц
+      # в нём нет ни одной: без тома каждый редеплой обнуляет и статику, и
+      # перекодированные AVIF — генерацию страницы и пересжатие фотографий
+      # оплачивает первый посетитель. Путь — тот, что создаёт Dockerfile
+      # (`outputFileTracingRoot` сохраняет внутри standalone структуру репозитория).
+      #
+      # После правки вёрстки чистить том не нужно: страницы протухают сами по
+      # `revalidate: 60`, а ключ кэша картинок включает параметры запроса.
+      - next_cache:/app/apps/website/.next/cache
     healthcheck:
       test: ['CMD-SHELL', 'node -e "fetch(''http://127.0.0.1:3000/'').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"']
       interval: 30s
@@ -121,5 +132,6 @@ services:
 volumes:
   pgdata:
   uploads:
+  next_cache:
   caddy_data:
   caddy_config:
