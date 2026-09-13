@@ -34,6 +34,16 @@ silently fails in the browser. `X-Frame-Options` is deliberately absent — it c
 **SWR `fallback` keys must go through `unstable_serialize`.** `useSWR` accepts tuples, but
 `fallback` looks up the serialized form; a raw tuple never matches, with no error.
 
+**`fallback` and `fallbackData` are revalidated on mount by default**, so prefilling a key
+from `getStaticProps` does not, by itself, remove the request — it just moves it into the
+hydration second. Pair the prefill with `revalidateOnMount: false` (`hasFallback` in
+`services/swrFallback.ts`).
+
+**Don't hand `onIdle` a `timeout` unless the work really has a deadline.** A bare
+`requestIdleCallback` waits for genuine idle; a timeout forces the work through while the page
+is still settling. Giving `usePrefetchRoutes` a 2 s deadline cost `/catalog` 1.8 s of LCP in
+Lighthouse — prefetching three routes right as the first screen was finishing.
+
 **Query-parameter casing is inconsistent by accident.** Public `GET /products` takes
 `in_stock` / `page_size`; admin `GET /admin/products` takes `inStock` / `pageSize` /
 `includeDeleted`. Check the router.

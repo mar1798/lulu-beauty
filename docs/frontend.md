@@ -118,6 +118,14 @@ Client-side fetching is [SWR](https://swr.vercel.app/), configured globally in `
   so any component can read them by key instead of receiving them as a prop through several
   layers. Fallback keys must be run through `unstable_serialize` — `useSWR` accepts tuples but
   `fallback` looks up the serialized form, and a raw tuple simply never matches, silently.
+  **A prefilled key must also switch mount revalidation off.** `fallback` and `fallbackData`
+  are revalidated on mount by default, so data carefully baked into `getStaticProps` was
+  re-fetched anyway, in the same second as hydration and `/api/auth/me`. It can't be fresher
+  than the page: `revalidate: 60` bounds both. `hasFallback(fallback, key)` (same module,
+  reading `useSWRConfig().fallback`) answers "is this one prefilled on this page" —
+  `useActiveCycle` passes it to `revalidateOnMount`, and `pages/catalog/index.tsx` does the
+  same for the first, unfiltered product page. Changing a filter or page changes the key and
+  fetches as usual; only the mount is skipped.
 - `src/services/apiErrors.ts` — `ApiError { status, code, fields }` plus the machine-code →
   Russian-message table. The backend emits codes only, so **every new `HTTPException` detail
   needs an entry here**. Messages are chosen by **code + `ErrorScope`**, not by code alone:
@@ -129,6 +137,13 @@ Client-side fetching is [SWR](https://swr.vercel.app/), configured globally in `
 
 - `src/contexts/` — `AuthContext`, `CartContext`, `WishlistContext`, all backed by SWR.
   `/api/auth/me` returning 401 means "guest", not an error.
+  `CartProvider`/`WishlistProvider` sit in `_app.tsx`, i.e. on every page, but **fetch only
+  once something subscribes**: `useDemand` counts live consumers, and calling `useCart()` /
+  `useWishlist()` is the subscription (the hook subscribes from an effect). So the wishlist is
+  not loaded on `/account`, `/orders`, `/login` or in the admin section, where nothing shows
+  it. `useCart(false)` opts out of the data while keeping the actions — `AdminShell` passes
+  `isCartCountShown={false}` to `SiteLayout` for exactly that: no badge in the admin header,
+  and therefore no cart request on admin pages.
 - `src/layouts/` — `SiteLayout` and `AdminShell`, wrapping the `widgets` templates with
   site-specific navigation.
 - `src/components/` — the website-side adapters injected into `widgets` via `ServicesContext`
@@ -138,6 +153,13 @@ Client-side fetching is [SWR](https://swr.vercel.app/), configured globally in `
 - `src/hooks/` — `useAdminGate`, `useActiveCycle`, `useEditableOrder`, `useProductSearch`,
   `useTelegramLogin`, `useTelegramMiniApp`, `useQrCode`, `useQueryParams`,
   `usePrefetchRoutes`, `useRedirectIfAuthenticated`.
+- **Anything the session decides must not resize the page.** All pages are static, so the
+  first frame does not know guest from signed-in, and `/cart`, `/wishlist` and `/login` used
+  to swap a short "войдите" for a full list half a second later — the footer rode along, and
+  that was the worst CLS on the site (0.394 on `/wishlist`). `styles/layout.css.ts`'s
+  `sessionArea` reserves a screen around such a region, and `/wishlist` renders **nothing**
+  until the session is known: its skeleton is eight cards tall, and collapsing that into an
+  empty state is a shift no `min-height` can absorb.
 
 ## Link previews and icons
 
