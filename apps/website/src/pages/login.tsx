@@ -10,6 +10,7 @@ import { useRedirectIfAuthenticated } from '@/hooks/useRedirectIfAuthenticated'
 import { useQrCode } from '@/hooks/useQrCode'
 import { useTelegramLogin } from '@/hooks/useTelegramLogin'
 import { safeRedirectPath } from '@/utils/redirect'
+import * as layout from '@/styles/layout.css'
 import * as styles from '@/styles/login.css'
 
 /**
@@ -32,7 +33,7 @@ const LoginPage: React.FC = () => {
   // Пока сессия проверяется, вход не начинаем: вошедший всё равно уедет отсюда,
   // а лишняя ссылка на бота была бы выдана и брошена.
   const { botUrl, status, error, retry } = useTelegramLogin(!isRedirecting)
-  const qrDataUrl = useQrCode(botUrl)
+  const { dataUrl: qrDataUrl, isFailed: isQrFailed } = useQrCode(botUrl)
 
   return (
     <SiteLayout>
@@ -45,33 +46,58 @@ const LoginPage: React.FC = () => {
         title="Вход"
         subtitle="Через Telegram — регистрация не нужна, аккаунт заведётся сам"
       >
-        {isRedirecting ? (
-          <Spinner label="Проверяем сессию" />
-        ) : (
-          <TelegramLoginPanel
-            botUrl={botUrl}
-            status={status}
-            error={error}
-            onRetry={retry}
-            /*
-              Виджета нет вовсе, пока домен не прописан боту в BotFather: там он
-              нарисуется и откажет, а сломанная кнопка рядом с рабочей хуже, чем её
-              отсутствие. Слот, а не импорт внутри виджетов, — как и QR: рисует
-              кнопку чужой скрипт с telegram.org.
-            */
-            loginWidget={isTelegramLoginWidgetEnabled() ? <TelegramLoginWidget /> : null}
-            qr={
-              qrDataUrl === null ? null : (
+        {/*
+          Высота зарезервирована: проверка сессии показывает спиннер, а панель
+          входа вчетверо выше его — подвал переезжал (см. `styles/layout.css`).
+        */}
+        <div className={layout.sessionArea}>
+          {isRedirecting ? (
+            <Spinner label="Проверяем сессию" />
+          ) : (
+            <TelegramLoginPanel
+              botUrl={botUrl}
+              status={status}
+              error={error}
+              onRetry={retry}
+              /*
+                Виджета нет вовсе, пока домен не прописан боту в BotFather: там он
+                нарисуется и откажет, а сломанная кнопка рядом с рабочей хуже, чем
+                её отсутствие. Слот, а не импорт внутри виджетов, — как и QR:
+                рисует кнопку чужой скрипт с telegram.org.
+              */
+              loginWidget={isTelegramLoginWidgetEnabled() ? <TelegramLoginWidget /> : null}
+              qr={
                 /*
-                  Обычный <img>, а не next/image: это `data:`-URL, сгенерированный
-                  в браузере, — оптимизатору Next нечего с ним делать.
+                  Подложка появляется вместе с панелью, а код — когда посчитается
+                  (кодирование отложено до простоя, см. `useQrCode`). Без неё код
+                  въезжал в готовый экран и сдвигал всё, что ниже, — в том числе
+                  подвал.
+
+                  Отказ кодировщика — единственный случай, когда места под код нет
+                  вовсе: держать пустой квадрат, в котором ничего не появится,
+                  хуже, чем не обещать кода совсем.
                 */
-                // eslint-disable-next-line @next/next/no-img-element
-                <img className={styles.qr} src={qrDataUrl} alt="QR-код со ссылкой на бота" />
-              )
-            }
-          />
-        )}
+                isQrFailed ? null : (
+                  <div className={styles.qr}>
+                    {qrDataUrl !== null && (
+                      /*
+                        Обычный <img>, а не next/image: это `data:`-URL,
+                        сгенерированный в браузере, — оптимизатору Next нечего
+                        с ним делать.
+                      */
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        className={styles.qrImage}
+                        src={qrDataUrl}
+                        alt="QR-код со ссылкой на бота"
+                      />
+                    )}
+                  </div>
+                )
+              }
+            />
+          )}
+        </div>
       </AuthTemplate>
     </SiteLayout>
   )

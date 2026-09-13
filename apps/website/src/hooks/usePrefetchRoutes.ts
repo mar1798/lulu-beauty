@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
 import { useRouter } from 'next/router'
+import { onIdle } from '@/utils/idle'
 
 /**
  * Подтягивает чанки (и данные, если у страницы есть `getStaticProps`) для
@@ -50,14 +51,9 @@ export const usePrefetchRoutes = (routes: readonly string[]): void => {
      */
     pending.forEach(route => requested.add(route))
 
-    // `requestIdleCallback` есть не везде (Safari до 16.4) — там просто таймаут.
-    const schedule =
-      window.requestIdleCallback ?? ((callback: () => void) => window.setTimeout(callback, 1))
-    const cancel = window.cancelIdleCallback ?? window.clearTimeout
-
     let started = false
 
-    const handle = schedule(() => {
+    const cancelIdle = onIdle(() => {
       started = true
 
       for (const route of pending) {
@@ -67,7 +63,7 @@ export const usePrefetchRoutes = (routes: readonly string[]): void => {
     })
 
     return () => {
-      cancel(handle as number)
+      cancelIdle()
 
       // Не успели до размонтирования — снимаем отметку, иначе маршрут
       // останется «запрошенным», ни разу не будучи запрошенным.
