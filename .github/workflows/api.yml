@@ -8,6 +8,9 @@ on:
 
 jobs:
   check:
+    # Парное имя к `Website and widgets` в node.js.yml: в required status checks
+    # у master оба job'а иначе назывались бы одинаково — `check`.
+    name: API
     runs-on: ubuntu-latest
     defaults:
       run:

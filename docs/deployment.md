@@ -456,7 +456,8 @@ csp-violation report script-src-elem blocked=https://cdn.example/a.js page=https
 
 Две ветки. `development` — куда идёт работа, `master` — то, что стоит в проде.
 Прямой пуш в `master` закрыт настройками GitHub, попасть туда можно только
-релизным мержем с зелёными `Node.js CI` и `API CI`.
+релизным мержем с зелёными проверками — в настройках ветки они называются
+`Website and widgets` и `API` (имена job'ов, а не воркфлоу).
 
 ```
 feature/* ──► development ──(PR)──► master ──► тег vГГГГ.ММ.ДД ──► сервер
