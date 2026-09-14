@@ -16,7 +16,7 @@ pushed commits) unless the user asks for exactly that.
 Work happens on **`development`**. **`master` is what production runs** — release merges
 only, direct pushes blocked on GitHub. On `master`, don't commit: say so and offer to move
 the changes to `development`. Releases are a merge into `master`, a `vYYYY.MM.DD` tag, and
-`deploy/release.sh <tag>` on the server — «Релизы» in [docs/deployment.md](docs/deployment.md).
+`deploy/release.sh <tag>` on the server — "Releases" in [docs/deployment.md](docs/deployment.md).
 A release carries **only expanding migrations** (see [docs/backend.md](docs/backend.md)):
 production never runs `alembic downgrade`, so a dropped column makes the rollback path
 a restore from backup.
@@ -40,7 +40,7 @@ Read-only git needs no asking: `git status`, `git diff`, `git log`, `git show`,
 | [docs/development.md](docs/development.md) | Setup, dev servers, ports, checks. |
 | [docs/environment.md](docs/environment.md) | Adding, renaming or debugging an env var. |
 | [docs/testing.md](docs/testing.md) | Writing or running tests — **always** before pointing pytest at a database. |
-| [docs/deployment.md](docs/deployment.md) | Deploying (Russian). |
+| [docs/deployment.md](docs/deployment.md) | Deploying, operating and releasing: server setup, the prod stack, backups, monitoring. |
 
 ## Repository overview
 
@@ -71,7 +71,13 @@ Not obvious from any single file, and easy to break:
 - Comments and docstrings in `apps/api` are **English**; only user-facing strings there are
   Russian (`telegram/messages.py`, `export/service.py`, `catalog/import_service.py`,
   `orders/service.py`).
-- `docs/`, this file and `README.md` are **English**; `docs/deployment.md` is Russian.
+- `docs/`, this file and `README.md` are **English** — all of them, `docs/deployment.md`
+  included (it used to be the one Russian document).
+- **Commit messages are English.** History before September 2026 is Russian; match the new
+  language, not the old commits, and keep the `Area: what changed` shape either way.
+- The scripts under `deploy/` still carry Russian comments and print Russian output — they
+  are read while operating the server, not while reading the codebase. Leave them Russian
+  unless the whole file is being rewritten.
 
 ## Commands
 
