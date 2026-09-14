@@ -102,6 +102,12 @@ uv run alembic upgrade head
 The Docker image only runs `alembic upgrade head`; it never generates. A new model must be
 imported in `app/models.py` first or autogenerate silently misses its table.
 
+## Branches
+
+`development` is the default branch and where work lands. `master` is what production runs:
+release merges only, direct pushes blocked, both CI workflows required to pass. Releases are
+tagged `vYYYY.MM.DD` on the merge commit and deployed by tag.
+
 ## CI
 
 - `.github/workflows/node.js.yml` — `npm ci` → `npm run check` → `npm test`.
@@ -113,4 +119,6 @@ Both run on `development`, `master` and `staging`.
 ## Deployment
 
 See [deployment.md](deployment.md) (Russian): Caddy + Docker Compose on a single VPS, with
-backup and restore scripts under `deploy/`.
+backup, restore and release scripts under `deploy/`. Production is deployed by tag with
+`deploy/release.sh`; the migration rule that keeps rollback safe is in
+[backend.md](backend.md#migrations).
