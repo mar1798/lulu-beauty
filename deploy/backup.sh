@@ -16,8 +16,12 @@
 #
 #   BACKUP_DIR     where to put the archives        ($HOME/lulu-backups)
 #   KEEP_DAYS      how many days to keep locally    (14)
-#   BACKUP_REMOTE  rclone remote to upload to       (empty — local copies only)
+#   BACKUP_REMOTE  rclone remote to upload to       (BACKUP_REMOTE in .env.prod)
 #                  for example: r2:lulu-backups  or  s3:my-bucket/lulu
+#                  Kept in .env.prod rather than in the cron line, so that a
+#                  backup taken by deploy/release.sh uploads too — that one is
+#                  snapshotting the state we are about to change, and it is the
+#                  worst of all to leave on the server alone.
 #   ENV_FILE       path to .env.prod                (<repository root>/.env.prod)
 #   BACKUP_PING_URL  monitoring ping address        (empty — don't ping)
 #                  healthchecks.io and compatible: success goes to <url>,
@@ -40,7 +44,6 @@ REPO_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 
 BACKUP_DIR="${BACKUP_DIR:-$HOME/lulu-backups}"
 KEEP_DAYS="${KEEP_DAYS:-14}"
-BACKUP_REMOTE="${BACKUP_REMOTE:-}"
 ENV_FILE="${ENV_FILE:-$REPO_ROOT/.env.prod}"
 BACKUP_PING_URL="${BACKUP_PING_URL:-}"
 
@@ -105,6 +108,11 @@ trap finish EXIT
 
 [[ -f "$ENV_FILE" ]] || die "$ENV_FILE not found"
 command -v docker >/dev/null || die "docker is not installed"
+
+# Resolved only after the file is known to exist: under `set -e` a failing sed
+# here would take the whole script down. The environment still wins, so a
+# one-off run can redirect the upload without touching .env.prod.
+BACKUP_REMOTE="${BACKUP_REMOTE:-$(sed -n 's/^BACKUP_REMOTE=//p' "$ENV_FILE" | tail -n1)}"
 
 mkdir -p "$BACKUP_DIR"
 

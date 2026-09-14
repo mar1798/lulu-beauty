@@ -342,7 +342,7 @@ Configured through environment variables:
 | --- | --- | --- |
 | `BACKUP_DIR` | `$HOME/lulu-backups` | where to put the archives |
 | `KEEP_DAYS` | `14` | how many days to keep (locally and on the remote) |
-| `BACKUP_REMOTE` | empty | rclone remote to upload to, e.g. `r2:lulu-backups` |
+| `BACKUP_REMOTE` | `BACKUP_REMOTE` in `.env.prod` | rclone remote to upload to, e.g. `r2:lulu-backups` |
 | `ENV_FILE` | `<root>/.env.prod` | where compose reads variables from |
 | `BACKUP_PING_URL` | empty | monitoring ping address (Step 10) |
 
@@ -391,8 +391,17 @@ specifically (without a bucket name) is normal and means nothing: a token scoped
 to one bucket isn't allowed to list them all. Judge by operations on the bucket
 itself.
 
-Put `BACKUP_REMOTE` in the cron line (`17 3 * * * BACKUP_REMOTE=r2:lulu-backups
-/home/…`) and every run uploads.
+Put `BACKUP_REMOTE=r2:lulu-backups` in `.env.prod` and every run uploads — the
+nightly cron one and, just as importantly, the one `deploy/release.sh` takes
+before it rebuilds. That backup snapshots the state you are about to change, so
+it is the last one that should be sitting on the server alone. The environment
+still wins over the file, so `BACKUP_REMOTE=r2:elsewhere ./deploy/backup.sh`
+redirects a single run without editing anything.
+
+`BACKUP_PING_URL` stays in the cron line on purpose: it describes that scheduled
+job, not the installation. Ping from a release-time backup and healthchecks.io
+resets its timer off-schedule, which is precisely how a nightly run that stopped
+happening goes unnoticed.
 
 **Restoring** — `deploy/restore.sh`, from the same pair of archives:
 
