@@ -194,9 +194,10 @@ behavior into a proper `widgets` atom/molecule/organism (scaffolded via
 `shadcn add`/`npx @magicuidesign/cli` into this repo, and never introduce Tailwind as a second
 styling system.
 
-**Animation**: use the `motion` skill (`.claude/skills/motion/`, invoke as `/motion`) and the
-`motion` MCP server (`https://mcp.motion.dev`) rather than guessing timing/easing values;
-`best-practices/` under the skill works offline. The library **is installed** in
+**Animation**: use the `motion` skill (invoke as `/motion`, if it is installed under
+`.claude/skills/` on this machine — `.claude/` is git-ignored, so the skill is per-machine
+and not shipped with the repo) and the `motion` MCP server (`https://mcp.motion.dev`) rather
+than guessing timing/easing values; `best-practices/` under the skill works offline. The library **is installed** in
 `packages/widgets` and used by `Appear`, `Alert`, `MobileMenu`, `ToastViewport`, `Modal` and
 `ConfirmDialog` — always import from `motion/react`, never the deprecated `framer-motion`, and
 reuse the shared timings in `src/utils/motion.ts`. The paid `motion-plus` server is
