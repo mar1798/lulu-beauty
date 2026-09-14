@@ -1,14 +1,13 @@
 name: Node.js CI
 
-# The two triggers deliberately cover disjoint branches. A PR is always
-# `development` -> `master` here, so listing the same branches under both would
-# run every check twice for one commit: once for the push to `development` and
-# once for the pull request into `master`.
+# Push only, deliberately. Work lands by pushing straight to `development`, and
+# a `pull_request` trigger would fire on `synchronize` for every one of those
+# pushes while the release PR is open — the same commit checked twice. Required
+# status checks match a check run by commit SHA and name, not by event, so the
+# run from the push is the run the release PR into `master` waits on.
 on:
   push:
     branches: [ "development", "staging" ]
-  pull_request:
-    branches: [ "master" ]
 
 jobs:
   check:

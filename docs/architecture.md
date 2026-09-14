@@ -109,8 +109,7 @@ Plan → send → stamp is the order on purpose; see [domain.md](domain.md#the-o
 
 ## CI
 
-Two independent workflows, both on pushes to `development` / `staging` and on pull
-requests into `master`:
+Two independent workflows, both on pushes to `development` / `staging`:
 
 - `.github/workflows/node.js.yml` — `npm ci` → `npm run check` (types + lint for `website`
   and `widgets`) → `npm test` (the vitest suites in `widgets`).

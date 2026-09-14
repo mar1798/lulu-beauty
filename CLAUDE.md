@@ -135,8 +135,9 @@ to orphan the `product_images` rows.
 
 CI runs `.github/workflows/node.js.yml` (`npm ci` → `npm run check` → `npm test`) and
 `.github/workflows/api.yml` (ruff → mypy → `alembic upgrade head` → pytest against a real
-Postgres), on pushes to `development`/`staging` and on pull requests into `master` — the
-two trigger lists are disjoint so one commit isn't checked twice.
+Postgres), on pushes to `development`/`staging` and on nothing else — a `pull_request`
+trigger would re-check the same commit on every push while the release PR is open, and
+`master`'s required checks are satisfied by the push's run anyway.
 
 ## Rules that hold everywhere
 
