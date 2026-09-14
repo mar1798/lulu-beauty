@@ -26,6 +26,7 @@ export const Footer: FC<IFooterProps & IBasicStyling> = ({
 
             {column.links.map(item => (
               <AppLink key={item.link.href} {...item.link} className={styles.link}>
+                {item.icon !== undefined && <span className={styles.icon}>{item.icon}</span>}
                 {item.label}
               </AppLink>
             ))}

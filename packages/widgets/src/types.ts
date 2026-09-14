@@ -639,9 +639,14 @@ export interface IMobileMenuProps {
   footer?: ReactNode
 }
 
+export interface IFooterLink extends ILinkedLabel {
+  /** Знак перед подписью — у внешних ссылок это логотип сети. */
+  icon?: ReactNode
+}
+
 export interface IFooterColumn {
   title: string
-  links: ILinkedLabel[]
+  links: IFooterLink[]
 }
 
 export interface IFooterProps {

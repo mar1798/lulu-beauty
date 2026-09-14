@@ -3,6 +3,7 @@ import { useRouter } from 'next/router'
 import type { IFooterColumn, ILinkedLabel } from 'widgets/types'
 import { Footer, Header, MobileMenu } from 'widgets/organisms'
 import { useDisclosure } from 'widgets/hooks'
+import { IconInstagram } from 'widgets/svg'
 import { BaseLayout } from 'widgets/templates'
 import { useAuth } from '@/contexts/AuthContext'
 import { useCart } from '@/contexts/CartContext'
@@ -30,6 +31,22 @@ const SHOP_COLUMN: IFooterColumn = {
     { label: 'Каталог', link: { href: '/catalog' } },
     { label: 'Избранное', link: { href: '/wishlist' } },
     { label: 'Мои заявки', link: { href: '/orders' } },
+  ],
+}
+
+/**
+ * Связаться с владельцем можно только вне сайта: своего мессенджера здесь нет,
+ * и пока единственный публичный контакт — Instagram магазина. Ссылка внешняя,
+ * поэтому открывается новой вкладкой (`rel` проставит адаптер `Link`).
+ */
+const CONTACTS_COLUMN: IFooterColumn = {
+  title: 'Контакты',
+  links: [
+    {
+      label: 'Instagram',
+      icon: <IconInstagram />,
+      link: { href: 'https://www.instagram.com/sululu_kg', target: '_blank' },
+    },
   ],
 }
 
@@ -115,7 +132,7 @@ export const SiteLayout: React.FC<ISiteLayoutProps> = ({ children, isCartCountSh
   const headerUser = user === null ? null : { name: user.name, link: { href: '/account' } }
 
   const footerColumns = useMemo<IFooterColumn[]>(
-    () => [SHOP_COLUMN, accountColumn(user !== null)],
+    () => [SHOP_COLUMN, accountColumn(user !== null), CONTACTS_COLUMN],
     [user]
   )
 
