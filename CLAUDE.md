@@ -15,8 +15,9 @@ pushed commits) unless the user asks for exactly that.
 
 Work happens on **`development`**. **`master` is what production runs** — release merges
 only, direct pushes blocked on GitHub. On `master`, don't commit: say so and offer to move
-the changes to `development`. Releases are a merge into `master`, a `vYYYY.MM.DD` tag, and
-`deploy/release.sh <tag>` on the server — "Releases" in [docs/deployment.md](docs/deployment.md).
+the changes to `development`. Releases are a merge into `master`, which CI tags `vYYYY.MM.DD`
+by itself, and then `deploy/release.sh <tag>` on the server — "Releases" in
+[docs/deployment.md](docs/deployment.md).
 A release carries **only expanding migrations** (see [docs/backend.md](docs/backend.md)):
 production never runs `alembic downgrade`, so a dropped column makes the rollback path
 a restore from backup.

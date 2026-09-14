@@ -548,9 +548,25 @@ in is a release merge with green checks — in the branch settings they are call
 feature/* ──► development ──(PR)──► master ──► tag vYYYY.MM.DD ──► server
 ```
 
-**1. Merge and tag.** A PR `development → master`, a **merge commit** (not a
-squash: a history of meaningful commits is the point here), then a tag on the
-merge commit:
+**1. Merge.** A PR `development → master`, a **merge commit** (not a squash: a
+history of meaningful commits is the point here). That is the whole manual part:
+`.github/workflows/release-tag.yml` tags the merge commit by itself, because
+every merge into master is a release and the name of one shouldn't depend on
+somebody remembering to type it.
+
+The `vYYYY.MM.DD` scheme rather than semver: nothing is published as a package,
+and the versions in `package.json` and `pyproject.toml` have nothing to do with
+what is deployed. Two releases in one day — `v2026.09.14.2`, and the workflow
+counts the suffix up from the tags that already exist. The date is taken in
+`Asia/Bishkek`, not UTC: it is a date a human reads, and a merge at 03:00 local
+would otherwise be stamped with the previous day.
+
+The tag is annotated, and its message lists the commits since the previous tag —
+so `git show <tag>` on the server answers "what is in this release" without
+reaching for the network. Re-running the workflow on an already tagged commit
+does nothing rather than inventing a second name for the same release.
+
+By hand, if ever needed (the workflow is disabled, or a tag has to move):
 
 ```bash
 git checkout master && git pull
@@ -558,9 +574,11 @@ git tag -a v2026.09.14 -m "Monitoring, ISR cache, Sululu branding"
 git push origin v2026.09.14
 ```
 
-The `vYYYY.MM.DD` scheme rather than semver: nothing is published as a package,
-and the versions in `package.json` and `pyproject.toml` have nothing to do with
-what is deployed. Two releases in one day — `v2026.09.14.2`.
+⚠️ A tag created by a workflow through the default `GITHUB_TOKEN` **does not
+trigger other workflows** — GitHub prevents the recursion deliberately. Nothing
+depends on that today, but anything built on `on: push: tags:` later will need a
+PAT or a deploy key instead, and its absence is silent: the workflow simply never
+runs.
 
 **2. Deploy.** On the server, as `deploy`:
 
@@ -660,7 +678,8 @@ alive.
 - **A staging environment.** The same compose on a second domain/server.
 - **CI deployment.** A human starts the deploy on the server
   (`deploy/release.sh`), even if it is one command with checks. GitHub Actions
-  runs the tests and keeps `master` closed to direct pushes, but doesn't deploy:
+  runs the tests, keeps `master` closed to direct pushes and tags the release
+  (Step 1 under "Releases"), but doesn't deploy:
   that would need a deploy key on the server, and such a runner would have to be
   trusted with production entirely. The next step here isn't "Actions over SSH"
   but building images into a registry, so that production is left with `pull` +
