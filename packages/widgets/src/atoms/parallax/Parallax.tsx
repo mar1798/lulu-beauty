@@ -3,6 +3,7 @@ import { useRef, type FC, type RefObject } from 'react'
 import { motion, useReducedMotion } from 'motion/react'
 import type { IBasicStyling, IParallaxProps } from '../../types'
 import { useParallaxOffset } from '../../hooks/useParallaxOffset'
+import { useStillNode } from '../../hooks/useStillNode'
 import * as styles from './Parallax.css'
 
 /**
@@ -74,12 +75,21 @@ export const Parallax: FC<IParallaxProps & IBasicStyling> = ({
   className,
 }) => {
   const isReduced = useReducedMotion() ?? false
+  const stillRef = useStillNode()
 
   if (isReduced) {
-    /* Тот же узел и тот же класс — меняется только то, что он никуда не едет. */
+    /*
+      Тот же узел и тот же класс — меняется только то, что он никуда не едет.
+      `ref` не декоративен: сервер уже напечатал сюда смещение motion-ветки, и
+      снять его может только сам узел после гидратации (см. `useStillNode`).
+    */
     const Tag = as
 
-    return <Tag className={clsx(styles.container, className)}>{children}</Tag>
+    return (
+      <Tag ref={stillRef} className={clsx(styles.container, className)}>
+        {children}
+      </Tag>
+    )
   }
 
   return (

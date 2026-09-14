@@ -53,7 +53,30 @@ export const Reveal: FC<IRevealProps & IBasicStyling> = ({
   }
 
   if (isReduced) {
-    return <Tag className={clsx(styles.container, className)}>{children}</Tag>
+    /*
+      Движения нет, но конечное состояние выставить обязательно — и не только
+      своё. Сервер всегда рисует motion-ветку (`useReducedMotion` там `false`),
+      поэтому в разметке уже лежит `opacity:0;transform:translateY(24px)`, а
+      гидратация чужой атрибут не трогает: без этого секция оставалась бы
+      невидимой навсегда. Детали мини-сцен внутри (`StepScene`) своих `initial`
+      не имеют вовсе — они берут вариант от этой обёртки, и без неё застревали
+      бы в `hidden` тем же образом.
+
+      Поэтому здесь тот же motion-узел с тем же набором вариантов, но
+      `initial={false}`: motion встаёт сразу в `visible` — и себе, и потомкам, —
+      не проигрывая перехода. Подписки на вьюпорт при этом не появляется:
+      `whileInView` в этой ветке нет.
+    */
+    return (
+      <Tag
+        className={clsx(styles.container, className)}
+        variants={variants}
+        initial={false}
+        animate="visible"
+      >
+        {children}
+      </Tag>
+    )
   }
 
   return (

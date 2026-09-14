@@ -5,6 +5,7 @@ import type { IBasicStyling, IHomeHeroProps } from '../../types'
 import { IconChevronDown } from '../../svg/icons'
 import { Container } from '../../atoms/container'
 import { useParallaxOffset } from '../../hooks/useParallaxOffset'
+import { useStillNode } from '../../hooks/useStillNode'
 import { HERO_RISE_BOTTOM, HERO_RISE_TITLE, HERO_STAGGER_STEP_MS } from '../../utils/motion'
 import * as styles from './HomeHero.css'
 
@@ -76,14 +77,20 @@ const HeroRise: FC<{
   strength: number
   className?: string
   children: ReactNode
-}> = ({ isReduced, sectionRef, strength, className, children }) =>
-  isReduced ? (
-    <div className={className}>{children}</div>
+}> = ({ isReduced, sectionRef, strength, className, children }) => {
+  const stillRef = useStillNode()
+
+  return isReduced ? (
+    /* Смещение, напечатанное сервером, снимается после гидратации (`useStillNode`). */
+    <div ref={stillRef} className={className}>
+      {children}
+    </div>
   ) : (
     <HeroRiseMotion sectionRef={sectionRef} strength={strength} className={className}>
       {children}
     </HeroRiseMotion>
   )
+}
 
 export const HomeHero: FC<IHomeHeroProps & IBasicStyling> = ({
   title,

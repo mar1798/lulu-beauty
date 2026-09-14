@@ -4,6 +4,7 @@ import { motion, useInView, useReducedMotion } from 'motion/react'
 import type { IBasicStyling, IDecorFieldProps, IDecorSpot } from '../../types'
 import { AppImage } from '../../atoms/app-image'
 import { useParallaxOffset } from '../../hooks/useParallaxOffset'
+import { useStillNode } from '../../hooks/useStillNode'
 import {
   DECOR_FLOAT_DURATION_MS,
   DECOR_PARALLAX_PX,
@@ -76,6 +77,7 @@ const Spot: FC<{
   isActive: boolean
   isReduced: boolean
 }> = ({ spot, containerRef, isActive, isReduced }) => {
+  const stillRef = useStillNode()
   const phase = spot.floatPhase ?? 0
   const halo = spot.halo ?? 'brand'
 
@@ -117,8 +119,12 @@ const Spot: FC<{
         /*
           Тот же слой, но обычным блоком: `will-change` не ставим — промотировать
           неподвижный слой не за чем (та же логика, что у класса `moving`).
+          `ref` снимает смещение, которое сервер напечатал из motion-ветки
+          (см. `useStillNode`).
         */
-        <div className={styles.drift}>{layers}</div>
+        <div ref={stillRef} className={styles.drift}>
+          {layers}
+        </div>
       ) : (
         <SpotDrift containerRef={containerRef} depth={spot.depth} isActive={isActive}>
           {layers}
