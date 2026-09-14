@@ -1,33 +1,33 @@
 #!/usr/bin/env bash
 #
-# Восстановление продового стека Sululu из архивов, снятых
-# deploy/backup.sh. База и фотографии восстанавливаются независимо — можно
-# передать оба архива или только один.
+# Restores the Sululu production stack from archives taken by deploy/backup.sh.
+# The database and the photos are restored independently — pass both archives
+# or just one.
 #
 #   ./deploy/restore.sh ~/lulu-backups/db-2026-08-18-0317.sql.gz \
 #                       ~/lulu-backups/uploads-2026-08-18-0317.tar.gz
 #
 #   ./deploy/restore.sh --yes ~/lulu-backups/db-2026-08-18-0317.sql.gz
 #
-# Что происходит:
-#   1. архивы проверяются (gzip -t), скрипт печатает план и спрашивает подтверждение;
-#   2. снимается страховочная копия текущего состояния (pre-restore-*) —
-#      отключается флагом --no-safety;
-#   3. останавливаются `website` и `api`, чтобы никто не писал во время замены;
-#   4. база пересоздаётся (DROP/CREATE) и наливается из дампа;
-#   5. содержимое тома uploads заменяется целиком, владелец файлов чинится под
-#      пользователя контейнера api;
-#   6. сервисы поднимаются обратно.
+# What happens:
+#   1. the archives are verified (gzip -t), the plan is printed and confirmed;
+#   2. a safety copy of the current state is taken (pre-restore-*) —
+#      disabled with --no-safety;
+#   3. `website` and `api` are stopped, so nobody writes during the swap;
+#   4. the database is recreated (DROP/CREATE) and loaded from the dump;
+#   5. the contents of the uploads volume are replaced wholesale, and file
+#      ownership is fixed up for the api container's user;
+#   6. the services are brought back up.
 #
-# ⚠️ Операция разрушающая: текущие база и фотографии заменяются полностью.
-# Восстановление «поверх» без DROP не делается намеренно — дамп pg_dump не
-# содержит DROP-ов, и налив в непустую базу упал бы на конфликтах ключей,
-# оставив половину старых и половину новых строк.
+# ⚠️ The operation is destructive: the current database and photos are replaced
+# entirely. Restoring "on top" without a DROP is deliberately not done — a
+# pg_dump dump contains no DROPs, and loading it into a non-empty database would
+# fail on key conflicts, leaving half the old rows and half the new.
 #
-# Настройки — переменными окружения:
+# Settings come from environment variables:
 #
-#   BACKUP_DIR   куда класть страховочную копию   ($HOME/lulu-backups)
-#   ENV_FILE     путь к .env.prod                 (<корень репозитория>/.env.prod)
+#   BACKUP_DIR   where to put the safety copy  ($HOME/lulu-backups)
+#   ENV_FILE     path to .env.prod             (<repository root>/.env.prod)
 
 set -Eeuo pipefail
 
@@ -38,7 +38,7 @@ ENV_FILE="${ENV_FILE:-$REPO_ROOT/.env.prod}"
 COMPOSE=(docker compose --env-file "$ENV_FILE" -f "$REPO_ROOT/docker-compose.prod.yml")
 
 log() { printf '%s  %s\n' "$(date '+%F %T')" "$*"; }
-die() { log "ОШИБКА: $*"; exit 1; }
+die() { log "ERROR: $*"; exit 1; }
 
 usage() {
   sed -n '2,30p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
@@ -55,82 +55,83 @@ while [[ $# -gt 0 ]]; do
     -y|--yes)    ASSUME_YES=true ;;
     --no-safety) SAFETY=false ;;
     -h|--help)   usage 0 ;;
-    -*)          die "неизвестный флаг: $1" ;;
+    -*)          die "unknown flag: $1" ;;
     *.sql.gz)    DB_ARCHIVE="$1" ;;
     *.tar.gz)    UPLOADS_ARCHIVE="$1" ;;
-    *)           die "непонятный аргумент: $1 (ожидаются *.sql.gz и/или *.tar.gz)" ;;
+    *)           die "unrecognised argument: $1 (expected *.sql.gz and/or *.tar.gz)" ;;
   esac
   shift
 done
 
 [[ -n "$DB_ARCHIVE" || -n "$UPLOADS_ARCHIVE" ]] || usage 1
-[[ -f "$ENV_FILE" ]] || die "не найден $ENV_FILE"
-command -v docker >/dev/null || die "docker не установлен"
+[[ -f "$ENV_FILE" ]] || die "$ENV_FILE not found"
+command -v docker >/dev/null || die "docker is not installed"
 
-# Проверяем архивы до того, как что-либо остановлено: обнаружить битый дамп
-# после DROP DATABASE — худший из возможных моментов.
+# The archives are verified before anything is stopped: discovering a corrupt
+# dump after DROP DATABASE is the worst possible moment for it.
 for f in "$DB_ARCHIVE" "$UPLOADS_ARCHIVE"; do
   [[ -z "$f" ]] && continue
-  [[ -f "$f" ]] || die "не найден архив: $f"
-  gzip -t "$f" || die "архив повреждён: $f"
+  [[ -f "$f" ]] || die "archive not found: $f"
+  gzip -t "$f" || die "archive is corrupt: $f"
 done
 
 echo
-echo "Восстановление Sululu. Текущие данные будут ЗАМЕНЕНЫ:"
-[[ -n "$DB_ARCHIVE" ]]      && echo "  база        ← $DB_ARCHIVE ($(du -h "$DB_ARCHIVE" | cut -f1))"
-[[ -n "$UPLOADS_ARCHIVE" ]] && echo "  фотографии  ← $UPLOADS_ARCHIVE ($(du -h "$UPLOADS_ARCHIVE" | cut -f1))"
-$SAFETY && echo "  страховочная копия текущего состояния → $BACKUP_DIR/pre-restore-*"
+echo "Restoring Sululu. The current data will be REPLACED:"
+[[ -n "$DB_ARCHIVE" ]]      && echo "  database  ← $DB_ARCHIVE ($(du -h "$DB_ARCHIVE" | cut -f1))"
+[[ -n "$UPLOADS_ARCHIVE" ]] && echo "  photos    ← $UPLOADS_ARCHIVE ($(du -h "$UPLOADS_ARCHIVE" | cut -f1))"
+$SAFETY && echo "  safety copy of the current state → $BACKUP_DIR/pre-restore-*"
 echo
 
 if ! $ASSUME_YES; then
-  read -r -p 'Введите "restore" для продолжения: ' answer
-  [[ "$answer" == 'restore' ]] || { log "отменено"; exit 1; }
+  read -r -p 'Type "restore" to continue: ' answer
+  [[ "$answer" == 'restore' ]] || { log "cancelled"; exit 1; }
 fi
 
-# Имя контейнера api нужно и для тома uploads (через --volumes-from работает
-# даже с остановленным контейнером), поэтому берём его заранее.
+# The api container's name is needed for the uploads volume as well (--volumes-from
+# works even with the container stopped), so it is looked up in advance.
 API_CID="$("${COMPOSE[@]}" ps -aq api || true)"
-[[ -n "$API_CID" || -z "$UPLOADS_ARCHIVE" ]] || die "контейнер api не создан — сначала up -d"
+[[ -n "$API_CID" || -z "$UPLOADS_ARCHIVE" ]] || die "the api container does not exist — run up -d first"
 
-log "поднимаю db"
+log "starting db"
 "${COMPOSE[@]}" up -d db
-# Ждём healthcheck: сразу после старта Postgres ещё не принимает соединения.
+# Wait for the healthcheck: right after start Postgres isn't accepting connections yet.
 for _ in $(seq 1 30); do
   "${COMPOSE[@]}" exec -T db pg_isready -q && break
   sleep 2
 done
-"${COMPOSE[@]}" exec -T db pg_isready -q || die "Postgres не отвечает"
+"${COMPOSE[@]}" exec -T db pg_isready -q || die "Postgres is not responding"
 
-# --- Страховочная копия ------------------------------------------------------
+# --- Safety copy -------------------------------------------------------------
 if $SAFETY; then
   mkdir -p "$BACKUP_DIR"
   STAMP="$(date +%F-%H%M)"
-  log "страховочная копия текущего состояния…"
-  # shellcheck disable=SC2016  # переменные раскрывает shell контейнера, не наш
+  log "safety copy of the current state…"
+  # shellcheck disable=SC2016  # the container's shell expands these, not ours
   "${COMPOSE[@]}" exec -T db sh -c 'pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB"' \
     | gzip > "$BACKUP_DIR/pre-restore-db-$STAMP.sql.gz"
-  gzip -t "$BACKUP_DIR/pre-restore-db-$STAMP.sql.gz" || die "страховочный дамп повреждён"
+  gzip -t "$BACKUP_DIR/pre-restore-db-$STAMP.sql.gz" || die "the safety dump is corrupt"
   if [[ -n "$API_CID" ]]; then
     docker run --rm --volumes-from "$API_CID" alpine \
       tar czf - -C /app/uploads . > "$BACKUP_DIR/pre-restore-uploads-$STAMP.tar.gz"
-    gzip -t "$BACKUP_DIR/pre-restore-uploads-$STAMP.tar.gz" || die "страховочный архив повреждён"
+    gzip -t "$BACKUP_DIR/pre-restore-uploads-$STAMP.tar.gz" || die "the safety archive is corrupt"
   fi
-  log "страховочная копия: $BACKUP_DIR/pre-restore-*-$STAMP.*"
+  log "safety copy: $BACKUP_DIR/pre-restore-*-$STAMP.*"
 fi
 
-# --- Останавливаем писателей -------------------------------------------------
-# api пишет в оба хранилища (планировщик тикает сам по себе, без запросов),
-# website держит ISR-кеш страниц каталога — его тоже гасим, чтобы после
-# восстановления он не отдавал старые страницы.
-log "останавливаю website и api"
+# --- Stop the writers --------------------------------------------------------
+# api writes to both stores (the scheduler ticks on its own, without requests),
+# and website holds the ISR cache of catalog pages — it is stopped too, so it
+# doesn't serve the old pages after the restore.
+log "stopping website and api"
 "${COMPOSE[@]}" stop website api
 
-# --- База --------------------------------------------------------------------
+# --- Database ----------------------------------------------------------------
 if [[ -n "$DB_ARCHIVE" ]]; then
-  log "пересоздаю базу и наливаю дамп…"
-  # shellcheck disable=SC2016  # весь скрипт ниже исполняет shell контейнера
-  # DROP DATABASE откажет, пока есть хоть одно соединение, — рвём чужие сами.
-  # Всё выполняется из служебной базы `postgres`, иначе psql рубил бы сук под собой.
+  log "recreating the database and loading the dump…"
+  # shellcheck disable=SC2016  # the whole script below runs in the container's shell
+  # DROP DATABASE refuses while even one connection is open — we cut the others.
+  # Everything runs from the `postgres` maintenance database, or psql would be
+  # sawing off the branch it sits on.
   "${COMPOSE[@]}" exec -T db sh -c '
     set -e
     psql -U "$POSTGRES_USER" -d postgres -v ON_ERROR_STOP=1 -c \
@@ -141,15 +142,16 @@ if [[ -n "$DB_ARCHIVE" ]]; then
   # shellcheck disable=SC2016
   gunzip -c "$DB_ARCHIVE" | "${COMPOSE[@]}" exec -T db sh -c \
     'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=1 -q' >/dev/null
-  log "база восстановлена"
+  log "database restored"
 fi
 
-# --- Фотографии --------------------------------------------------------------
+# --- Photos ------------------------------------------------------------------
 if [[ -n "$UPLOADS_ARCHIVE" ]]; then
-  log "заменяю содержимое тома uploads…"
-  # Владельца каталога снимаем с него самого и возвращаем распакованным файлам:
-  # tar из-под root создал бы root-овые файлы, и api (непривилегированный
-  # apiusr из Dockerfile) не смог бы удалить фотографию товара.
+  log "replacing the contents of the uploads volume…"
+  # The owner is taken from the directory itself and handed back to the
+  # extracted files: tar running as root would create root-owned files, and api
+  # (the unprivileged apiusr from the Dockerfile) could then not delete a
+  # product photo.
   gunzip -c "$UPLOADS_ARCHIVE" | docker run --rm -i --volumes-from "$API_CID" alpine sh -c '
     set -e
     owner=$(stat -c "%u:%g" /app/uploads)
@@ -157,13 +159,13 @@ if [[ -n "$UPLOADS_ARCHIVE" ]]; then
     tar xf - -C /app/uploads
     chown -R "$owner" /app/uploads
   '
-  log "фотографии восстановлены"
+  log "photos restored"
 fi
 
-# --- Поднимаем обратно -------------------------------------------------------
-log "поднимаю api и website"
+# --- Bring it back up --------------------------------------------------------
+log "starting api and website"
 "${COMPOSE[@]}" up -d api website
 
-log "готово. Проверьте:"
+log "done. Check:"
 log "  ${COMPOSE[*]} ps"
-log "  curl -sf https://<домен>/api/proxy/health"
+log "  curl -sf https://<domain>/api/proxy/health"

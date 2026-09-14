@@ -75,9 +75,9 @@ Not obvious from any single file, and easy to break:
   included (it used to be the one Russian document).
 - **Commit messages are English.** History before September 2026 is Russian; match the new
   language, not the old commits, and keep the `Area: what changed` shape either way.
-- The scripts under `deploy/` still carry Russian comments and print Russian output — they
-  are read while operating the server, not while reading the codebase. Leave them Russian
-  unless the whole file is being rewritten.
+- The scripts under `deploy/` are **English** too, comments and printed output alike. Their
+  output is what an operator reads at three in the morning, so keep the wording plain and
+  say what failed, not that something did.
 
 ## Commands
 

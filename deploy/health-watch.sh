@@ -1,36 +1,36 @@
 #!/usr/bin/env bash
 #
-# Внешняя проверка живости сайта: дёргает публичную ручку /health и отчитывается
-# в healthchecks.io. Дополняет UptimeRobot, который на бесплатном тарифе умеет
-# только HEAD и потому видит лишь статические страницы — а они отдаются и с
-# мёртвой базой.
+# An external liveness check for the site: it hits the public /health endpoint
+# and reports to healthchecks.io. It complements UptimeRobot, which on the free
+# tier can only do HEAD and therefore sees nothing but static pages — and those
+# are served even with a dead database.
 #
-# Запуск по cron (каждые 5 минут):
+# From cron (every 5 minutes):
 #
 #   */5 * * * * HEALTH_PING_URL=https://hc-ping.com/<uuid> /home/deploy/lulu-beauty/deploy/health-watch.sh
 #
-# Настройки — переменными окружения (значения по умолчанию в скобках):
+# Settings come from environment variables (defaults in brackets):
 #
-#   HEALTH_PING_URL  адрес проверки в healthchecks.io  (пусто — только код возврата)
-#   HEALTH_URL       что дёргать        (https://<SITE_DOMAIN>/api/proxy/health)
-#   ENV_FILE         откуда брать домен (<корень репозитория>/.env.prod)
-#   LOG_FILE         куда писать падения               ($HOME/health-watch.log)
+#   HEALTH_PING_URL  healthchecks.io check address     (empty — exit code only)
+#   HEALTH_URL       what to request    (https://<SITE_DOMAIN>/api/proxy/health)
+#   ENV_FILE         where to read the domain from  (<repo root>/.env.prod)
+#   LOG_FILE         where failures are written        ($HOME/health-watch.log)
 #
-# Молчание в логе означает, что всё в порядке: успехи не пишутся, иначе за сутки
-# накопится 288 строк ни о чём. Пишутся только падения.
+# Silence in the log means everything is fine: successes are not written, or 288
+# lines of nothing would pile up every day. Only failures are.
 #
-# Смерть самого сервера эта схема тоже ловит — но не сама: пинг просто перестаёт
-# приходить, и тревогу поднимает healthchecks по расписанию проверки.
+# This scheme catches the death of the server too — but not by itself: the pings
+# simply stop arriving, and healthchecks raises the alarm on its own schedule.
 
 set -uo pipefail
 
-# Корень репозитория — на два уровня выше самого скрипта, поэтому запускать его
-# можно из любой директории (в том числе из cron, где $PWD — домашняя папка).
+# The repository root is two levels above this script, so it can be run from any
+# directory (including cron, where $PWD is the home directory).
 REPO_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 ENV_FILE="${ENV_FILE:-$REPO_ROOT/.env.prod}"
 
-# Домен берётся из той же переменной, по которой Caddy выпускает сертификат, —
-# иначе однажды проверялся бы один адрес, а работал другой.
+# The domain comes from the same variable Caddy issues the certificate for —
+# otherwise one address would be checked one day while another one served.
 SITE_DOMAIN="${SITE_DOMAIN:-$(sed -n 's/^SITE_DOMAIN=//p' "$ENV_FILE" 2>/dev/null | tail -n1)}"
 
 HEALTH_URL="${HEALTH_URL:-https://$SITE_DOMAIN/api/proxy/health}"
@@ -39,34 +39,36 @@ LOG_FILE="${LOG_FILE:-$HOME/health-watch.log}"
 
 log() { printf '%s  %s\n' "$(date '+%F %T')" "$*" >> "$LOG_FILE"; }
 
-# Без домена проверять нечего, а молча пинговать «всё хорошо» — худшее, что может
-# сделать монитор: тишина в healthchecks означала бы, что сайт жив.
+# With no domain there is nothing to check, and silently pinging "all good" is
+# the worst thing a monitor can do: silence in healthchecks would mean the site
+# is alive.
 if [[ -z "$SITE_DOMAIN" ]]; then
-  log "ОШИБКА: не удалось определить SITE_DOMAIN (нет $ENV_FILE?), проверка не выполнена"
+  log "ERROR: could not determine SITE_DOMAIN (no $ENV_FILE?), the check did not run"
   exit 2
 fi
 
-# Одна проверка: код ответа и тело. Успехом считается 200 с базой в состоянии up —
-# ручка отдаёт 503, когда Postgres недоступен, но полагаться только на код мало:
-# 200 с чужим или пустым телом означал бы, что отвечает не то, что мы думаем.
+# One probe: the status code and the body. Success means 200 with the database
+# up — the endpoint answers 503 when Postgres is unreachable, but relying on the
+# code alone is too little: a 200 with an empty or foreign body would mean
+# something other than what we think is answering.
 probe() {
   local body code
-  # Текст ошибки curl (недостижимый хост, таймаут, TLS) обязан дойти до письма:
-  # «ПАДЕНИЕ» без причины ничем не помогает тому, кого оно разбудило.
+  # The curl error text (unreachable host, timeout, TLS) has to reach the email:
+  # "FAILURE" without a reason helps nobody who was woken up by it.
   body="$(curl -sS -m 15 -w '\n%{http_code}' "$HEALTH_URL" 2>&1)" || {
-    printf 'сеть: %s' "$(printf '%s' "$body" | tr '\n' ' ')"
+    printf 'network: %s' "$(printf '%s' "$body" | tr '\n' ' ')"
     return 1
   }
   code="$(printf '%s' "$body" | tail -n1)"
   body="$(printf '%s' "$body" | sed '$d')"
 
-  [[ "$code" == "200" ]] || { printf '%s' "код $code: $body"; return 1; }
-  printf '%s' "$body" | grep -q '"status":"ok"' || { printf '%s' "тело без status=ok: $body"; return 1; }
-  printf '%s' "$body" | grep -q '"database":{"status":"up"}' || { printf '%s' "база не up: $body"; return 1; }
+  [[ "$code" == "200" ]] || { printf '%s' "code $code: $body"; return 1; }
+  printf '%s' "$body" | grep -q '"status":"ok"' || { printf '%s' "body without status=ok: $body"; return 1; }
+  printf '%s' "$body" | grep -q '"database":{"status":"up"}' || { printf '%s' "database not up: $body"; return 1; }
   return 0
 }
 
-# Вторая попытка через 10 секунд: разовая сетевая икота не должна будить человека.
+# A second attempt 10 seconds later: a one-off network hiccup must not wake anyone.
 if ! DETAIL="$(probe)"; then
   sleep 10
   DETAIL="$(probe)" && FAILED=0 || FAILED=1
@@ -76,16 +78,16 @@ fi
 
 if [[ -n "$HEALTH_PING_URL" ]]; then
   if [[ $FAILED -eq 0 ]]; then
-    curl -fsS -m 10 --retry 2 -o /dev/null "$HEALTH_PING_URL" || log "предупреждение: пинг успеха не ушёл"
+    curl -fsS -m 10 --retry 2 -o /dev/null "$HEALTH_PING_URL" || log "warning: the success ping did not go out"
   else
     curl -fsS -m 10 --retry 2 -o /dev/null --data-raw "$DETAIL" "$HEALTH_PING_URL/fail" ||
-      log "предупреждение: пинг падения не ушёл"
+      log "warning: the failure ping did not go out"
   fi
 fi
 
 if [[ $FAILED -eq 1 ]]; then
-  log "ПАДЕНИЕ: $DETAIL"
-  # Лог не должен расти бесконечно, даже если сайт лежит неделю.
+  log "FAILURE: $DETAIL"
+  # The log must not grow without bound, even if the site is down for a week.
   [[ $(stat -c%s "$LOG_FILE") -gt 1048576 ]] && tail -n 500 "$LOG_FILE" > "$LOG_FILE.tmp" && mv "$LOG_FILE.tmp" "$LOG_FILE"
   exit 1
 fi
