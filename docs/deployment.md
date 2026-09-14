@@ -365,10 +365,34 @@ Configured through environment variables:
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `BACKUP_DIR` | `$HOME/lulu-backups` | where to put the archives |
-| `KEEP_DAYS` | `14` | how many days to keep (locally and on the remote) |
+| `KEEP_DAYS` | `14` | how long to keep the database dumps (locally and on the remote) |
+| `KEEP_DAYS_UPLOADS` | `4` | how long to keep the photo archives, same two places |
 | `BACKUP_REMOTE` | `BACKUP_REMOTE` in `.env.prod` | rclone remote to upload to, e.g. `r2:lulu-backups` |
 | `ENV_FILE` | `<root>/.env.prod` | where compose reads variables from |
 | `BACKUP_PING_URL` | empty | monitoring ping address (Step 10) |
+
+**Why the two windows differ.** The database changes continuously, so fourteen
+dumps are fourteen different states worth returning to, and they cost kilobytes.
+The photos don't change at all — the names are uuids and the bytes behind one
+never change (`app/common/static.py` leans on exactly that for its year-long
+`Cache-Control`) — so every nightly archive is another copy of the same bytes.
+Keeping fourteen of those means paying fourteen times for one catalogue: 700 MB
+of photos would fill the free 10 GB of R2 on its own, and the same again on a
+40 GB disk. Four days is enough to notice that something is wrong and reach for
+an archive; beyond that the extra copies buy nothing.
+
+⚠️ **A dump older than `KEEP_DAYS_UPLOADS` has no photo archive of its own
+date.** Restore it against the newest photo archive: the files are immutable and
+only ever added, so a later set is the older one plus extras no restored row
+mentions. What it can lack are photos deleted in between — the owner replacing a
+product's picture — and those rows then point at nothing, exactly as they would
+after losing the volume.
+
+The day the photos outgrow this shape, the fix isn't a smaller window but a
+different one: `rclone sync` of the volume instead of a nightly tar, with
+`--backup-dir` so a deletion is moved aside rather than repeated. That stores one
+copy instead of four and lifts the ceiling to the full 10 GB — at the price of
+rewriting the photo half of `restore.sh`, which is why it isn't done yet.
 
 ⚠️ **Until `BACKUP_REMOTE` is set, the copies sit on the same server** — which
 doesn't help when you lose it, and the script warns about this on every run.
