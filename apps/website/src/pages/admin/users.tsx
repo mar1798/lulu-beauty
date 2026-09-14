@@ -16,10 +16,13 @@ import * as styles from '@/styles/admin.css'
 /**
  * Аккаунты и доступ в админку.
  *
- * Владельцев в магазине может быть несколько: уведомления бота и так уходят
- * каждому `ADMIN` (`telegram/recipients.get_owners`), а сид из `OWNER_*` заводит
- * только первого — этой страницы не хватало, чтобы назначить второго, не открывая
- * консоль базы.
+ * Админов в магазине может быть несколько: уведомления бота уходят каждому
+ * (`telegram/recipients.get_owners`), а сид из `OWNER_*` заводит одного —
+ * `SUPER_ADMIN`. Раздаёт и снимает доступ только он: остальные админы видят тот
+ * же список, но без кнопок, и бэкенд отвечает им `super_admin_only`.
+ *
+ * Роль самого super admin не меняется ничем — ни из админки, ни им самим. Это и
+ * есть гарантия, что магазин не останется без входа в собственную панель.
  *
  * Заводить аккаунты отсюда нельзя и не нужно: аккаунт создаёт бот, когда человек
  * делится номером. Здесь только роль.
@@ -32,7 +35,7 @@ const SEARCH_DELAY_MS = 300
 const AdminUsersPage: React.FC = () => {
   const { notify } = useToast()
   const { confirm } = useConfirm()
-  const { user } = useAuth()
+  const { isSuperAdmin } = useAuth()
 
   const [{ q: query, page }, setParams] = useQueryParams({ q: textParam, page: pageParam })
 
@@ -63,7 +66,7 @@ const AdminUsersPage: React.FC = () => {
     const confirmed = await confirm({
       title: isGranting ? 'Дать доступ в админку?' : 'Снять доступ в админку?',
       description: isGranting
-        ? `${target.name} сможет всё то же, что и вы: править каталог, сборы и заявки. Уведомления о новых заявках будут приходить и ему.`
+        ? `${target.name} станет админом: сможет править каталог, сборы и заявки, а уведомления о новых заявках будут приходить и ему. Раздавать доступ останетесь только вы.`
         : `${target.name} потеряет доступ к админке и уведомлениям о заявках. Аккаунт и его заявки останутся на месте.`,
       confirmLabel: isGranting ? 'Дать доступ' : 'Снять доступ',
     })
@@ -95,7 +98,11 @@ const AdminUsersPage: React.FC = () => {
   return (
     <AdminShell
       title="Доступ"
-      summary="Владельцев может быть несколько: каждый видит админку целиком и получает уведомления о заявках. Аккаунт заводит бот — здесь только роль."
+      summary={
+        isSuperAdmin
+          ? 'Админов может быть несколько: каждый видит админку целиком и получает уведомления о заявках. Аккаунт заводит бот — здесь только роль.'
+          : 'Кто имеет доступ к админке. Выдаёт и снимает его super admin магазина.'
+      }
     >
       <div className={styles.stack}>
         <SearchField
@@ -119,7 +126,7 @@ const AdminUsersPage: React.FC = () => {
 
       <AdminUsersTable
         users={data?.items ?? []}
-        currentUserId={user?.id ?? null}
+        canManageRoles={isSuperAdmin}
         // Скелетон — только пока показывать нечего: `isLoading` из SWR становится
         // истинным и на смене запроса, и таблица мигала бы на каждую букву.
         isLoading={data === undefined && error === null}

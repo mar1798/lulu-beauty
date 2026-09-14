@@ -157,7 +157,7 @@ Migrations and the owner account:
 ```bash
 uv run alembic revision --autogenerate -m "<message>"   # commit the generated file
 uv run alembic upgrade head
-uv run python -m app.scripts.seed                       # upserts the ADMIN owner from OWNER_* env vars
+uv run python -m app.scripts.seed                       # upserts the SUPER_ADMIN owner from OWNER_* env vars
 ```
 
 Domain modules under `app/` cover auth, users, catalog (with xlsx/csv import), cart, orders, order cycles/deadlines, the wishlist, the Telegram bot, xlsx export and file storage.

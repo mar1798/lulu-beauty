@@ -9,22 +9,34 @@ truth: `apps/api/app/*/models.py` and `*/service.py`.
 | --- | --- | --- |
 | Order cycle / сбор | `OrderCycle` | A collection window with a deadline. The shop buys once per cycle. |
 | Request / заявка | `Order` | What a customer submits. Called "order" in code, "заявка" in Russian copy — there is no payment, so it is a request to buy. |
-| Owner | `Role.ADMIN` | The person running the shop. There may be several. |
+| Admin | `Role.ADMIN` | Someone who runs the shop day to day. There may be several. Called "admin" in the UI too — Russian copy says "владелец" only about the person who owns the shop, never about a level of access. |
+| Super admin | `Role.SUPER_ADMIN` | The shop's own account: the only one that hands out and takes back `ADMIN`, and the only one whose own role nothing can change. Exactly one, created by the seed. |
 | Customer | `Role.CUSTOMER` | Everyone else. Created by the bot when they share a contact. |
 
 ## Users and roles
 
-`Role` is `CUSTOMER` or `ADMIN`. Accounts are keyed by a **phone number normalized to E.164**
-(`app/common/phone.py`) and are created in exactly one place: `telegram/handlers.py`, when
-someone shares their contact with the bot. There is no registration endpoint, no password
-column and no OTP — see [telegram.md](telegram.md#sign-in).
+`Role` is `CUSTOMER`, `ADMIN` or `SUPER_ADMIN`. Accounts are keyed by a **phone number
+normalized to E.164** (`app/common/phone.py`) and are created in exactly one place:
+`telegram/handlers.py`, when someone shares their contact with the bot. There is no
+registration endpoint, no password column and no OTP — see [telegram.md](telegram.md#sign-in).
 
-- The shop can have several ADMINs. `PATCH /admin/users/{id}/role` grants the role; **you
-  cannot change your own** (`own_role_change`).
-- The first owner is bootstrapped by `uv run python -m app.scripts.seed` from `OWNER_PHONE` /
-  `OWNER_NAME`. The script normalizes the phone the same way the bot does — an unnormalized
+- ADMIN and SUPER_ADMIN see the same admin panel (`require_admin` accepts both, via
+  `ADMIN_ROLES` in `app/auth/models.py`). They differ over exactly one thing: who may
+  change roles.
+- `PATCH /admin/users/{id}/role` is **SUPER_ADMIN-only** (`require_super_admin`, otherwise
+  `super_admin_only`). It grants and revokes `ADMIN`, and nothing else: `SUPER_ADMIN`
+  cannot be handed out (`super_admin_not_assignable`) and the row that holds it cannot be
+  changed by anybody, its own owner included (`super_admin_immutable`).
+- That immutability is what keeps the shop out of a locked panel: there is always one
+  account with a way in, so no sequence of role changes can end with zero admins. It
+  replaced the older "you cannot change your own role" rule, which only held while every
+  admin could hand the role out.
+- The head owner is bootstrapped by `uv run python -m app.scripts.seed` from `OWNER_PHONE` /
+  `OWNER_NAME` — the only way the role is ever assigned, and the way back in if the panel
+  is ever lost. The script normalizes the phone the same way the bot does — an unnormalized
   `OWNER_PHONE` used to produce a second, CUSTOMER account with no way into the admin panel.
-- Anything addressed to "the owner" goes to **every** ADMIN (`telegram/recipients.get_owners`).
+- Anything addressed to "the owner" goes to **every** admin of either role
+  (`telegram/recipients.get_owners`).
 
 ## The order cycle
 

@@ -76,6 +76,11 @@ services:
         NEXT_PUBLIC_SITE_URL: https://${SITE_DOMAIN}
         NEXT_PUBLIC_TELEGRAM_BOT_USERNAME: ${TELEGRAM_BOT_USERNAME}
         NEXT_PUBLIC_TELEGRAM_LOGIN_WIDGET: ${NEXT_PUBLIC_TELEGRAM_LOGIN_WIDGET:-true}
+        # Тот же адрес, что и в `environment:` ниже, и он нужен в обоих местах:
+        # рерайт `/files/*` на API запекается в манифест на этапе сборки (см.
+        # apps/website/Dockerfile), а `getStaticProps` и API-роуты читают
+        # переменную в рантайме.
+        API_BASE_URL: http://api:3001
     restart: unless-stopped
     logging: *default-logging
     environment:

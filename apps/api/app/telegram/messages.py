@@ -439,7 +439,7 @@ UNLINK_KEPT = "Ничего не меняю — чат остался привя
 
 # Toasts, not messages: Telegram shows these on the button itself and cuts them at 200
 # characters, so each says one thing and stops.
-CALLBACK_NOT_FOR_YOU = "Эта кнопка работает только у владельца магазина"
+CALLBACK_NOT_FOR_YOU = "Эта кнопка работает только у админов магазина"
 CALLBACK_ORDER_GONE = "Заявка не найдена — возможно, она уже удалена"
 CALLBACK_ORDER_MOVED_ON = (
     "С этой заявкой уже что-то произошло: её отменили или она ушла дальше по статусам. "

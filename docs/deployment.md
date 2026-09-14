@@ -154,6 +154,30 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml \
 (the user and database names come from the container's own environment, so the
 command can't drift from `POSTGRES_USER`/`POSTGRES_DB` in `.env.prod`)
 
+**Docker Hub.** The base images (`postgres:16-alpine`, `caddy:2-alpine`) are
+pulled anonymously unless the server logs in, and an anonymous pull is metered at
+10 an hour per IP address. That ceiling is only ever reached at the worst
+possible moment — a rebuild in the middle of an incident — and it arrives looking
+like a broken release rather than like a quota. A free account raises it to 200
+an hour and meters them against the account instead of the address:
+
+```bash
+# as deploy, not through sudo: the credentials land in the home directory of
+# whoever logs in, and it is deploy that runs compose and deploy/release.sh
+docker login -u <hub-account>     # at the prompt, paste an access token
+```
+
+Create the token in Docker Hub → **Account settings** → **Personal access
+tokens**, with **Public Repo Read-only** permissions — not the account password.
+`~/.docker/config.json` keeps whatever is entered in base64, which is encoding
+and not encryption, so what sits there should be a key that can do nothing but
+read public images and can be revoked by itself.
+
+Nothing else changes: compose and `deploy/release.sh` find the credentials on
+their own. `docker-ratelimit-source` in the registry's response answers which
+limit is in force — the account name means the login took, an IP address means it
+did not.
+
 ---
 
 ## Step 2. Domain
@@ -280,10 +304,16 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml \
   exec api python -m app.scripts.seed
 ```
 
-The script creates an ADMIN row for the number in `OWNER_PHONE`. There is no
-password — signing in happens only through Telegram, so the owner then has to
-open the bot **from that exact number** and share their contact: only then does
-the Telegram account bind to the admin row that was created.
+The script creates a SUPER_ADMIN row for the number in `OWNER_PHONE` — the head
+owner, who is the only account that can grant and revoke `ADMIN` in the panel and
+whose own role nothing can change. There is no password — signing in happens only
+through Telegram, so the owner then has to open the bot **from that exact number**
+and share their contact: only then does the Telegram account bind to the admin row
+that was created.
+
+Re-running the script is safe and idempotent, and it is the only way the role is
+ever assigned: on a shop that predates the role it promotes the existing owner, and
+it is also the way back in should the head owner's number ever change.
 
 Sharing the contact from a different number produces an ordinary customer with
 no access to `/admin`.
@@ -341,10 +371,34 @@ Configured through environment variables:
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `BACKUP_DIR` | `$HOME/lulu-backups` | where to put the archives |
-| `KEEP_DAYS` | `14` | how many days to keep (locally and on the remote) |
-| `BACKUP_REMOTE` | empty | rclone remote to upload to, e.g. `r2:lulu-backups` |
+| `KEEP_DAYS` | `14` | how long to keep the database dumps (locally and on the remote) |
+| `KEEP_DAYS_UPLOADS` | `4` | how long to keep the photo archives, same two places |
+| `BACKUP_REMOTE` | `BACKUP_REMOTE` in `.env.prod` | rclone remote to upload to, e.g. `r2:lulu-backups` |
 | `ENV_FILE` | `<root>/.env.prod` | where compose reads variables from |
 | `BACKUP_PING_URL` | empty | monitoring ping address (Step 10) |
+
+**Why the two windows differ.** The database changes continuously, so fourteen
+dumps are fourteen different states worth returning to, and they cost kilobytes.
+The photos don't change at all — the names are uuids and the bytes behind one
+never change (`app/common/static.py` leans on exactly that for its year-long
+`Cache-Control`) — so every nightly archive is another copy of the same bytes.
+Keeping fourteen of those means paying fourteen times for one catalogue: 700 MB
+of photos would fill the free 10 GB of R2 on its own, and the same again on a
+40 GB disk. Four days is enough to notice that something is wrong and reach for
+an archive; beyond that the extra copies buy nothing.
+
+⚠️ **A dump older than `KEEP_DAYS_UPLOADS` has no photo archive of its own
+date.** Restore it against the newest photo archive: the files are immutable and
+only ever added, so a later set is the older one plus extras no restored row
+mentions. What it can lack are photos deleted in between — the owner replacing a
+product's picture — and those rows then point at nothing, exactly as they would
+after losing the volume.
+
+The day the photos outgrow this shape, the fix isn't a smaller window but a
+different one: `rclone sync` of the volume instead of a nightly tar, with
+`--backup-dir` so a deletion is moved aside rather than repeated. That stores one
+copy instead of four and lifts the ceiling to the full 10 GB — at the price of
+rewriting the photo half of `restore.sh`, which is why it isn't done yet.
 
 ⚠️ **Until `BACKUP_REMOTE` is set, the copies sit on the same server** — which
 doesn't help when you lose it, and the script warns about this on every run.
@@ -391,8 +445,17 @@ specifically (without a bucket name) is normal and means nothing: a token scoped
 to one bucket isn't allowed to list them all. Judge by operations on the bucket
 itself.
 
-Put `BACKUP_REMOTE` in the cron line (`17 3 * * * BACKUP_REMOTE=r2:lulu-backups
-/home/…`) and every run uploads.
+Put `BACKUP_REMOTE=r2:lulu-backups` in `.env.prod` and every run uploads — the
+nightly cron one and, just as importantly, the one `deploy/release.sh` takes
+before it rebuilds. That backup snapshots the state you are about to change, so
+it is the last one that should be sitting on the server alone. The environment
+still wins over the file, so `BACKUP_REMOTE=r2:elsewhere ./deploy/backup.sh`
+redirects a single run without editing anything.
+
+`BACKUP_PING_URL` stays in the cron line on purpose: it describes that scheduled
+job, not the installation. Ping from a release-time backup and healthchecks.io
+resets its timer off-schedule, which is precisely how a nightly run that stopped
+happening goes unnoticed.
 
 **Restoring** — `deploy/restore.sh`, from the same pair of archives:
 
@@ -437,20 +500,29 @@ curl https://your-domain/api/proxy/health
 `200` means the whole chain is alive — Caddy, Next, the API and the database (a
 real `SELECT 1` inside); `503` means the database is unreachable.
 
-Checking the domain root instead of `/health` is pointless: the pages are static
-and are served even with a dead database. But `/health` alone isn't enough
-either — a check performed by the server itself goes quiet together with it. So
-monitoring has two halves, each covering the other's blind spot.
+The root alone says little: the pages are static and are served even with a dead
+database. But `/health` alone isn't enough either — a check performed by the
+server itself goes quiet together with it. So monitoring has two halves, each
+covering the other's blind spot.
 
 **First half: the view from outside.** A monitor on `https://your-domain/` —
 it catches what the server cannot report: the machine is off, Caddy didn't come
 up, the certificate expired, the A record broke, the host had an outage.
 
-⚠️ `/health` **answers `405` to a HEAD request**, and free tiers of external
-monitors usually only do HEAD (an arbitrary method is a paid option on
-UptimeRobot). Point a free monitor at `/health` and you get a permanent "site is
-down" for a working site. So the root is what's checked from outside (`HEAD /` →
-`200`), and the database is covered by the second half.
+⚠️ There is no `/health` **outside**: Caddy sends only `/telegram/webhook`
+straight to the API and everything else to Next, so the public address of the
+check is `/api/proxy/health` — `HEAD /health` on the domain is a 404 from Next,
+not a health check. And that address is no good for a free monitor either. The
+proxy forwards the method as it is (`pages/api/proxy/[...path].ts`) and passes
+the upstream status back untouched, while `/health` is registered with
+`@router.get`, which in FastAPI — unlike a bare Starlette route — does not answer
+HEAD: the reply is `405`. Free tiers usually do nothing but HEAD (an arbitrary
+method is a paid option on UptimeRobot), so a monitor pointed there reports a
+working site as permanently down.
+
+The root is therefore what is checked from outside (`HEAD /` → `200`), and the
+database is covered by the second half. That split is the better shape anyway: a
+check on the root doesn't depend on the proxy route surviving the next edit.
 
 **Second half: `deploy/health-watch.sh`.** Every 5 minutes it GETs `/health`
 itself and reports to healthchecks.io:
@@ -539,9 +611,25 @@ in is a release merge with green checks — in the branch settings they are call
 feature/* ──► development ──(PR)──► master ──► tag vYYYY.MM.DD ──► server
 ```
 
-**1. Merge and tag.** A PR `development → master`, a **merge commit** (not a
-squash: a history of meaningful commits is the point here), then a tag on the
-merge commit:
+**1. Merge.** A PR `development → master`, a **merge commit** (not a squash: a
+history of meaningful commits is the point here). That is the whole manual part:
+`.github/workflows/release-tag.yml` tags the merge commit by itself, because
+every merge into master is a release and the name of one shouldn't depend on
+somebody remembering to type it.
+
+The `vYYYY.MM.DD` scheme rather than semver: nothing is published as a package,
+and the versions in `package.json` and `pyproject.toml` have nothing to do with
+what is deployed. Two releases in one day — `v2026.09.14.2`, and the workflow
+counts the suffix up from the tags that already exist. The date is taken in
+`Asia/Bishkek`, not UTC: it is a date a human reads, and a merge at 03:00 local
+would otherwise be stamped with the previous day.
+
+The tag is annotated, and its message lists the commits since the previous tag —
+so `git show <tag>` on the server answers "what is in this release" without
+reaching for the network. Re-running the workflow on an already tagged commit
+does nothing rather than inventing a second name for the same release.
+
+By hand, if ever needed (the workflow is disabled, or a tag has to move):
 
 ```bash
 git checkout master && git pull
@@ -549,9 +637,11 @@ git tag -a v2026.09.14 -m "Monitoring, ISR cache, Sululu branding"
 git push origin v2026.09.14
 ```
 
-The `vYYYY.MM.DD` scheme rather than semver: nothing is published as a package,
-and the versions in `package.json` and `pyproject.toml` have nothing to do with
-what is deployed. Two releases in one day — `v2026.09.14.2`.
+⚠️ A tag created by a workflow through the default `GITHUB_TOKEN` **does not
+trigger other workflows** — GitHub prevents the recursion deliberately. Nothing
+depends on that today, but anything built on `on: push: tags:` later will need a
+PAT or a deploy key instead, and its absence is silent: the workflow simply never
+runs.
 
 **2. Deploy.** On the server, as `deploy`:
 
@@ -564,9 +654,19 @@ The script checks that the working tree is clean, lists the commits between what
 is deployed and what's coming, warns about migrations in the release, asks for
 confirmation, takes a backup, does a `checkout --detach` onto the tag, rebuilds
 the stack, waits for `db`, `api` and `website` to be `healthy`, hits
-`https://<domain>/api/proxy/health` from outside, and appends a line to
-`~/releases.log`. On failure it prints a ready-made rollback command. Flags:
-`--yes`, `--no-backup`, `--no-wait`.
+`https://<domain>/api/proxy/health` from outside, drops build cache older than a
+week, and appends a line to `~/releases.log`. On failure it prints a ready-made
+rollback command. Flags: `--yes`, `--no-backup`, `--no-wait`, `--no-prune`.
+
+The cleanup is there because nothing else does it: every `up -d --build` leaves
+layers behind, and on a 40 GB disk the cache outgrows the images, the volumes and
+the database put together within a few dozen releases — then it runs out during a
+build, which is to say during a deploy. It runs after the build, never before:
+the warm cache is what makes this release, and a rollback straight after it,
+quick. The age cut (`PRUNE_OLDER_THAN`, `168h` by default) is the compromise — a
+rollback to a tag older than that rebuilds from further back and takes minutes
+longer, which is the price of a disk that doesn't fill up quietly. A failed
+cleanup is a warning and nothing more: the release is already running by then.
 
 The detached HEAD on the server is intentional: committing in production isn't
 possible. The answer to "what is in production right now" is `git describe
@@ -622,6 +722,22 @@ generation and photo re-encoding. It exists so that doesn't happen after every
 redeploy: the site image is built **without** access to the API (by design), so
 it contains no pre-rendered pages at all.
 
+**Disk.** Releases clean up after themselves (see "Releases"), so this is a check
+rather than a chore — but the volumes and the database grow on their own, and the
+server has no monitor for space:
+
+```bash
+df -h /             # the whole disk
+docker system df    # images, containers, volumes, build cache separately
+```
+
+Two things grow without a ceiling: `~/lulu-backups`, which keeps **full** copies
+— `KEEP_DAYS` (14) of the database, `KEEP_DAYS_UPLOADS` (4) of the photos — and
+the `uploads` volume itself. The multiplier is the thing to remember: with the
+four-day window, 700 MB of product photos is some 2.8 GB of local archives and
+the same again in R2, where the free tier ends at 10 GB. See "Why the two
+windows differ" in Step 9 for what to do when that stops being enough.
+
 **Logs and status:**
 
 ```bash
@@ -651,7 +767,8 @@ alive.
 - **A staging environment.** The same compose on a second domain/server.
 - **CI deployment.** A human starts the deploy on the server
   (`deploy/release.sh`), even if it is one command with checks. GitHub Actions
-  runs the tests and keeps `master` closed to direct pushes, but doesn't deploy:
+  runs the tests, keeps `master` closed to direct pushes and tags the release
+  (Step 1 under "Releases"), but doesn't deploy:
   that would need a deploy key on the server, and such a runner would have to be
   trusted with production entirely. The next step here isn't "Actions over SSH"
   but building images into a registry, so that production is left with `pull` +

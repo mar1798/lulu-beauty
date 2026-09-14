@@ -15,9 +15,22 @@
 # Settings come from environment variables (defaults in brackets):
 #
 #   BACKUP_DIR     where to put the archives        ($HOME/lulu-backups)
-#   KEEP_DAYS      how many days to keep locally    (14)
-#   BACKUP_REMOTE  rclone remote to upload to       (empty — local copies only)
+#   KEEP_DAYS      how long to keep the dumps       (14)
+#   KEEP_DAYS_UPLOADS  how long to keep the photos  (4)
+#                  Shorter than the dumps on purpose. The database changes all
+#                  the time, so fourteen points in it are fourteen different
+#                  states worth returning to. The photos do not change at all:
+#                  the names are uuids and the bytes behind one never change
+#                  (see app/common/static.py), so each nightly archive is
+#                  another copy of the same bytes. Fourteen of those cost
+#                  fourteen times the catalogue — 700 MB of photos would fill
+#                  the free 10 GB of R2 by itself.
+#   BACKUP_REMOTE  rclone remote to upload to       (BACKUP_REMOTE in .env.prod)
 #                  for example: r2:lulu-backups  or  s3:my-bucket/lulu
+#                  Kept in .env.prod rather than in the cron line, so that a
+#                  backup taken by deploy/release.sh uploads too — that one is
+#                  snapshotting the state we are about to change, and it is the
+#                  worst of all to leave on the server alone.
 #   ENV_FILE       path to .env.prod                (<repository root>/.env.prod)
 #   BACKUP_PING_URL  monitoring ping address        (empty — don't ping)
 #                  healthchecks.io and compatible: success goes to <url>,
@@ -31,6 +44,14 @@
 #
 #   ./deploy/restore.sh ~/lulu-backups/db-2026-08-18-0317.sql.gz \
 #                       ~/lulu-backups/uploads-2026-08-18-0317.tar.gz
+#
+# Since the two are kept for different lengths of time, a dump older than
+# KEEP_DAYS_UPLOADS has no photo archive of its own date left. Restore it
+# against the newest photo archive instead: the files are immutable and only
+# ever added, so a later set is the older one plus extras that no restored row
+# mentions. What it can be missing are photos deleted between the two dates —
+# the owner replacing a product's picture — and those rows then point at
+# nothing, exactly as they would after losing the volume.
 
 set -Eeuo pipefail
 
@@ -40,7 +61,7 @@ REPO_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 
 BACKUP_DIR="${BACKUP_DIR:-$HOME/lulu-backups}"
 KEEP_DAYS="${KEEP_DAYS:-14}"
-BACKUP_REMOTE="${BACKUP_REMOTE:-}"
+KEEP_DAYS_UPLOADS="${KEEP_DAYS_UPLOADS:-4}"
 ENV_FILE="${ENV_FILE:-$REPO_ROOT/.env.prod}"
 BACKUP_PING_URL="${BACKUP_PING_URL:-}"
 
@@ -106,6 +127,11 @@ trap finish EXIT
 [[ -f "$ENV_FILE" ]] || die "$ENV_FILE not found"
 command -v docker >/dev/null || die "docker is not installed"
 
+# Resolved only after the file is known to exist: under `set -e` a failing sed
+# here would take the whole script down. The environment still wins, so a
+# one-off run can redirect the upload without touching .env.prod.
+BACKUP_REMOTE="${BACKUP_REMOTE:-$(sed -n 's/^BACKUP_REMOTE=//p' "$ENV_FILE" | tail -n1)}"
+
 mkdir -p "$BACKUP_DIR"
 
 # Two backups at once (cron overlapping a manual run) are pointless: the second
@@ -156,8 +182,9 @@ if [[ -n "$BACKUP_REMOTE" ]]; then
   log "rclone → $BACKUP_REMOTE"
   rclone copy "$DB_FILE" "$BACKUP_REMOTE" --no-traverse
   rclone copy "$UPLOADS_FILE" "$BACKUP_REMOTE" --no-traverse
-  # Rotation on the remote side: the same KEEP_DAYS as locally.
-  rclone delete "$BACKUP_REMOTE" --min-age "${KEEP_DAYS}d" --include 'db-*.sql.gz' --include 'uploads-*.tar.gz'
+  # Rotation on the remote side: the same two windows as locally.
+  rclone delete "$BACKUP_REMOTE" --min-age "${KEEP_DAYS}d" --include 'db-*.sql.gz'
+  rclone delete "$BACKUP_REMOTE" --min-age "${KEEP_DAYS_UPLOADS}d" --include 'uploads-*.tar.gz'
   log "uploaded"
 else
   log "WARNING: BACKUP_REMOTE is not set — the copies are on this server only."
@@ -165,12 +192,30 @@ else
 fi
 
 # --- Rotate the local copies -------------------------------------------------
-# The safety copies from restore.sh (pre-restore-*) are rotated here as well —
-# they have no schedule of their own.
-find "$BACKUP_DIR" -maxdepth 1 -type f \
-  \( -name 'db-*.sql.gz' -o -name 'uploads-*.tar.gz' -o -name 'pre-restore-*' \) \
-  -mtime "+$KEEP_DAYS" -print -delete | while read -r old; do
-    log "removed old: $(basename "$old")"
+# Two windows, for the reason spelled out at the top of this file. The safety
+# copies from restore.sh (pre-restore-*) are rotated here as well — they have no
+# schedule of their own — and they keep the longer window whichever half they
+# hold: one is taken immediately before a destructive restore, which is the
+# moment a copy is worth the most. The `uploads-*` pattern does not match them,
+# `pre-restore-uploads-*.tar.gz` starts with something else.
+rotate() {
+  local days="$1"
+  shift
+
+  local match=()
+  local pattern
+  for pattern in "$@"; do
+    [[ ${#match[@]} -eq 0 ]] || match+=(-o)
+    match+=(-name "$pattern")
   done
+
+  find "$BACKUP_DIR" -maxdepth 1 -type f \( "${match[@]}" \) -mtime "+$days" -print -delete |
+    while read -r old; do
+      log "removed old: $(basename "$old")"
+    done
+}
+
+rotate "$KEEP_DAYS" 'db-*.sql.gz' 'pre-restore-*'
+rotate "$KEEP_DAYS_UPLOADS" 'uploads-*.tar.gz'
 
 log "done"

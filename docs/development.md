@@ -87,7 +87,7 @@ Seeding:
 
 ```bash
 cd apps/api
-uv run python -m app.scripts.seed          # the first ADMIN owner, from OWNER_* env vars
+uv run python -m app.scripts.seed          # the SUPER_ADMIN owner, from OWNER_* env vars
 uv run python -m app.scripts.seed_catalog  # sample catalog data
 ```
 
@@ -115,9 +115,15 @@ tagged `vYYYY.MM.DD` on the merge commit and deployed by tag.
 - `.github/workflows/api.yml`, job **`API`** — `ruff` → `mypy` → `alembic upgrade head` →
   `pytest` against a real Postgres service.
 
-Both run on `development`, `master` and `staging`. The job names are the names `master`'s
-required status checks are configured by, so renaming one means editing the branch rule in
-the same breath — otherwise the old name stays pending forever and blocks every merge.
+Both run on pushes to `development` and `staging`, and on nothing else. A
+`pull_request` trigger is deliberately absent: work lands by pushing straight to
+`development`, so while the release PR into `master` is open that trigger would fire on
+`synchronize` for every such push and check the same commit a second time. The release PR
+is not left unchecked by this — a required status check is matched on the head commit's
+SHA by name, whatever event produced the run, so the push's run is what it waits on. The
+job names are therefore the names `master`'s required status checks are configured by, and
+renaming one means editing the branch rule in the same breath — otherwise the old name
+stays pending forever and blocks every merge.
 
 ## Deployment
 

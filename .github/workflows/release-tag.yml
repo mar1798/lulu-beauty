@@ -1,0 +1,94 @@
+name: Release tag
+
+# Every merge into master is a release (direct pushes are blocked in the branch
+# settings), so the tag that names it should not depend on someone remembering
+# to type it. The deploy stays manual on purpose — see "Left out of the MVP" in
+# docs/deployment.md.
+on:
+  push:
+    branches: [ "master" ]
+
+# Two merges landing at once would otherwise race for the same name and one of
+# them would fail the push rather than take the next number.
+concurrency:
+  group: release-tag
+  cancel-in-progress: false
+
+jobs:
+  tag:
+    name: Tag
+    runs-on: ubuntu-latest
+
+    # The default token is read-only in this repository; creating a tag needs
+    # write. Nothing else is granted: this job must not be able to touch code.
+    permissions:
+      contents: write
+
+    steps:
+      - name: Get repository code
+        uses: actions/checkout@v4
+        with:
+          # The whole history and every tag: the name of the next tag is derived
+          # from the existing ones, and the message lists commits since the
+          # previous release. A shallow clone has neither.
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Create and push the tag
+        run: |
+          set -Eeuo pipefail
+
+          # Re-running the workflow on an already tagged commit must not invent
+          # a second name for the same release.
+          if existing="$(git describe --exact-match --tags HEAD 2>/dev/null)"; then
+            echo "HEAD is already tagged as $existing — nothing to do"
+            exit 0
+          fi
+
+          # Bishkek, not UTC: the tag is a date a human reads, and the owner's
+          # day is the one that counts. A merge at 03:00 local would otherwise
+          # be stamped with the previous day.
+          base="v$(TZ=Asia/Bishkek date +%Y.%m.%d)"
+
+          # Second and later releases of the same day get .2, .3 — the scheme
+          # documented in "Releases". The first one carries no suffix.
+          if git rev-parse -q --verify "refs/tags/$base" >/dev/null; then
+            n=2
+            while git rev-parse -q --verify "refs/tags/$base.$n" >/dev/null; do
+              n=$((n + 1))
+            done
+            tag="$base.$n"
+          else
+            tag="$base"
+          fi
+
+          # Sorted by version rather than lexically, the same way
+          # deploy/release.sh picks the latest tag.
+          previous="$(git tag -l 'v*' --sort=-v:refname | head -n1)"
+
+          {
+            printf 'Release %s\n\n' "$tag"
+            if [[ -n "$previous" ]]; then
+              printf 'Commits since %s:\n\n' "$previous"
+              git log --format='  %s' "$previous..HEAD"
+            else
+              printf 'The first tagged release.\n'
+            fi
+          } > /tmp/tag-message
+
+          # An annotated tag, so that `git show` on the server answers "what is
+          # in this release" without a network round trip, and `git describe`
+          # prefers it over any lightweight tag.
+          git -c user.name='github-actions[bot]' \
+              -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
+              tag -a "$tag" -F /tmp/tag-message
+
+          git push origin "$tag"
+
+          echo "tagged $(git rev-parse --short HEAD) as $tag"
+          echo "### Tagged \`$tag\`" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          cat /tmp/tag-message >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Deploy: \`./deploy/release.sh $tag\` on the server." >> "$GITHUB_STEP_SUMMARY"

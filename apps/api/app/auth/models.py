@@ -11,8 +11,27 @@ from app.db import Base
 
 
 class Role(enum.StrEnum):
+    """Who someone is to the shop.
+
+    SUPER_ADMIN is the shop's own account, bootstrapped by `app/scripts/seed.py` from
+    OWNER_PHONE. It differs from ADMIN in exactly two ways, both in `users/service.py`:
+    it is the only role that may hand out and take back ADMIN, and its own role cannot
+    be changed by anybody — including itself. Everything else an ADMIN can do it can do
+    too, and every "the owner" notification reaches both (`telegram/recipients`).
+
+    That immutability is also what keeps the shop from locking itself out: there is
+    always at least one account with a way into the panel, so no sequence of role
+    changes can leave zero admins behind.
+    """
+
     CUSTOMER = "CUSTOMER"
     ADMIN = "ADMIN"
+    SUPER_ADMIN = "SUPER_ADMIN"
+
+
+#: Every role that gets into the admin panel. SUPER_ADMIN is an ADMIN plus the rights
+#: above it, so anything checking "is this the owner" has to accept both.
+ADMIN_ROLES = (Role.ADMIN, Role.SUPER_ADMIN)
 
 
 class User(UUIDPrimaryKeyMixin, TimestampMixin, Base):

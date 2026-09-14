@@ -15,8 +15,9 @@ pushed commits) unless the user asks for exactly that.
 
 Work happens on **`development`**. **`master` is what production runs** — release merges
 only, direct pushes blocked on GitHub. On `master`, don't commit: say so and offer to move
-the changes to `development`. Releases are a merge into `master`, a `vYYYY.MM.DD` tag, and
-`deploy/release.sh <tag>` on the server — "Releases" in [docs/deployment.md](docs/deployment.md).
+the changes to `development`. Releases are a merge into `master`, which CI tags `vYYYY.MM.DD`
+by itself, and then `deploy/release.sh <tag>` on the server — "Releases" in
+[docs/deployment.md](docs/deployment.md).
 A release carries **only expanding migrations** (see [docs/backend.md](docs/backend.md)):
 production never runs `alembic downgrade`, so a dropped column makes the rollback path
 a restore from backup.
@@ -124,7 +125,7 @@ uv sync
 uv run uvicorn app.main:app --reload --port 3001
 uv run pytest / uv run ruff check . / uv run mypy app   # all three before finishing a change
 uv run alembic revision --autogenerate -m "…" / uv run alembic upgrade head
-uv run python -m app.scripts.seed          # upserts the first ADMIN owner from OWNER_* vars
+uv run python -m app.scripts.seed          # upserts the SUPER_ADMIN owner from OWNER_* vars
 curl http://localhost:3001/health          # real DB check; 503 if the database is unreachable
 ```
 
@@ -134,7 +135,9 @@ to orphan the `product_images` rows.
 
 CI runs `.github/workflows/node.js.yml` (`npm ci` → `npm run check` → `npm test`) and
 `.github/workflows/api.yml` (ruff → mypy → `alembic upgrade head` → pytest against a real
-Postgres), on `development`/`master`/`staging`.
+Postgres), on pushes to `development`/`staging` and on nothing else — a `pull_request`
+trigger would re-check the same commit on every push while the release PR is open, and
+`master`'s required checks are satisfied by the push's run anyway.
 
 ## Rules that hold everywhere
 

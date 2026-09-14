@@ -3,7 +3,12 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth.dependencies import CurrentUser, get_current_user, require_admin
+from app.auth.dependencies import (
+    CurrentUser,
+    get_current_user,
+    require_admin,
+    require_super_admin,
+)
 from app.auth.models import User
 from app.common.schemas import PageResponse
 from app.db import get_session
@@ -13,7 +18,12 @@ from app.users.schemas import (
     UserRoleUpdateRequest,
     UserUpdateRequest,
 )
-from app.users.service import OwnRoleChangeError, UserNotFoundError, UsersService
+from app.users.service import (
+    SuperAdminImmutableError,
+    SuperAdminNotAssignableError,
+    UserNotFoundError,
+    UsersService,
+)
 
 router = APIRouter(tags=["users"])
 
@@ -91,19 +101,23 @@ async def update_user_role(
     user_id: uuid.UUID,
     body: UserRoleUpdateRequest,
     session: AsyncSession = Depends(get_session),
-    admin: CurrentUser = Depends(require_admin),
+    _super_admin: CurrentUser = Depends(require_super_admin),
 ) -> AdminUserResponse:
-    """Grants or revokes admin rights.
+    """Grants or revokes admin rights — SUPER_ADMIN only.
 
-    The shop can have any number of owners: notifications already go to every ADMIN
-    (`telegram/recipients.get_owners`), and the seed only bootstraps the first one.
+    The shop can have any number of owners: notifications already go to every admin
+    (`telegram/recipients.get_owners`). Who they are, though, is decided by exactly one
+    account — the one the seed bootstrapped — and that account's own role is the thing
+    this endpoint cannot touch at all.
     """
     try:
-        user = await UsersService(session).set_role(admin.id, user_id, body.role)
-    except OwnRoleChangeError as error:
-        # Otherwise the last admin could lock the whole shop out of its own panel, and
-        # the only way back in would be a database console.
-        raise HTTPException(status.HTTP_409_CONFLICT, "own_role_change") from error
+        user = await UsersService(session).set_role(user_id, body.role)
+    except SuperAdminNotAssignableError as error:
+        raise HTTPException(status.HTTP_409_CONFLICT, "super_admin_not_assignable") from error
+    except SuperAdminImmutableError as error:
+        # Including the caller's own row: that is what makes "the shop always has a way
+        # into its panel" a property of the schema rather than of everyone's care.
+        raise HTTPException(status.HTTP_409_CONFLICT, "super_admin_immutable") from error
     except UserNotFoundError as error:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "user_not_found") from error
 

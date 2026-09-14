@@ -22,17 +22,19 @@ describe('AdminUsersTable', () => {
     const onRoleChange = vi.fn()
 
     renderWidget(<AdminUsersTable {...props} onRoleChange={onRoleChange} />)
-    await userEvent.click(screen.getByRole('button', { name: /Дать доступ в админку: Бакыт/ }))
+    await userEvent.click(screen.getByRole('button', { name: /Дать доступ в админку: Чолпон/ }))
+    await userEvent.click(screen.getByRole('button', { name: /Снять доступ в админку: Бакыт/ }))
 
-    expect(onRoleChange).toHaveBeenCalledWith(props.users[1], 'ADMIN')
+    expect(onRoleChange).toHaveBeenNthCalledWith(1, props.users[2], 'ADMIN')
+    expect(onRoleChange).toHaveBeenNthCalledWith(2, props.users[1], 'CUSTOMER')
   })
 
   /*
-    Разжаловать себя — это закрыть магазину вход в собственную панель: обратно
-    пускала бы только консоль базы. Бэкенд отвечает `own_role_change`, а кнопка
-    объясняет это до нажатия.
+    Роль super admin не меняется ничем: это единственный доступ, потеря которого
+    закрывает магазину вход в собственную панель. Бэкенд отвечает
+    `super_admin_immutable`, а кнопка объясняет это до нажатия.
   */
-  it('не даёт изменить собственную роль', async () => {
+  it('не даёт изменить роль super admin', async () => {
     const props = feedAdminUsersTable()
     const onRoleChange = vi.fn()
 
@@ -40,5 +42,23 @@ describe('AdminUsersTable', () => {
     await userEvent.click(screen.getByRole('button', { name: /Снять доступ в админку: Айгуль/ }))
 
     expect(onRoleChange).not.toHaveBeenCalled()
+  })
+
+  /*
+    Обычный admin роли не раздаёт — у него это вообще не действие, а строка
+    списка: кнопка, на которую бэкенд ответит `super_admin_only`, только злит.
+  */
+  it('без права раздавать доступ не показывает ни кнопок, ни колонки', () => {
+    renderWidget(<AdminUsersTable {...feedAdminUsersTable()} canManageRoles={false} />)
+
+    expect(screen.queryAllByRole('button')).toHaveLength(0)
+    expect(screen.queryByRole('columnheader', { name: 'Доступ' })).toBeNull()
+  })
+
+  it('называет роли так же, как они называются в коде', () => {
+    renderWidget(<AdminUsersTable {...feedAdminUsersTable()} />)
+
+    expect(screen.getByText('Super admin')).toBeTruthy()
+    expect(screen.getByText('Admin')).toBeTruthy()
   })
 })

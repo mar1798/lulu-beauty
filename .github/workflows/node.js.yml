@@ -1,10 +1,13 @@
 name: Node.js CI
 
+# Push only, deliberately. Work lands by pushing straight to `development`, and
+# a `pull_request` trigger would fire on `synchronize` for every one of those
+# pushes while the release PR is open — the same commit checked twice. Required
+# status checks match a check run by commit SHA and name, not by event, so the
+# run from the push is the run the release PR into `master` waits on.
 on:
   push:
-    branches: [ "development", "master", "staging" ]
-  pull_request:
-    branches: [ "development", "master", "staging" ]
+    branches: [ "development", "staging" ]
 
 jobs:
   check:

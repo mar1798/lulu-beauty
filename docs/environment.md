@@ -32,7 +32,7 @@ default, so importing `app.*` without them fails immediately — which is why
 | `TELEGRAM_USE_WEBHOOK` | `false` | Needs all three webhook vars; falls back to polling otherwise. |
 | `TELEGRAM_WEBHOOK_URL` | `""` | The API's public base; `/telegram/webhook` is appended. |
 | `TELEGRAM_WEBHOOK_SECRET` | `""` | Without it the endpoint accepts updates from anyone who guesses the path, and the bot refuses the mode. |
-| `OWNER_PHONE` | *required* | Bootstraps the first ADMIN via `app.scripts.seed`. Normalized to E.164 by the script. |
+| `OWNER_PHONE` | *required* | Bootstraps the SUPER_ADMIN owner via `app.scripts.seed` — the only way that role is ever assigned. Normalized to E.164 by the script. |
 | `OWNER_NAME` | *required* | |
 | `CYCLE_TIMEZONE` | `Asia/Bishkek` | |
 | `CURRENCY` | `KGS` | Appears in xlsx export headers. |
@@ -57,7 +57,7 @@ to be inlined into the client bundle; `serverConfig` values throw when read in t
 | Variable | Default | Notes |
 | --- | --- | --- |
 | `NEXT_PUBLIC_API_BASE_URL` | `http://localhost:3001` | The API as the **browser** sees it. Used for `/files/*` images; private requests go through `/api/proxy/*`. |
-| `API_BASE_URL` | `http://localhost:3001` | The API as the **Next server** sees it (`getStaticProps`, `/api/*`). Inside compose: `http://api:3001`. |
+| `API_BASE_URL` | `http://localhost:3001` | The API as the **Next server** sees it (`getStaticProps`, `/api/*`). Inside compose: `http://api:3001`. Read **twice**: at runtime by the server code, and at **build** time by `rewrites()` in `next.config.js`, which bakes the `/files/*` destination into `routes-manifest.json`. The prod image therefore takes it as a build arg as well — set it in only one of the two places and product photos 500. |
 | `NEXT_PUBLIC_SITE_URL` | `http://localhost:3000` | The site's own public address, for the absolute URLs a link preview needs (`og:image`, `og:url`). Same string as `NEXT_PUBLIC_API_BASE_URL` in production, different in development. Also gates the `Reporting-Endpoints` header: that one accepts only an absolute https URL, so CSP's `report-to` is emitted only when this is `https://…` (dev still reports through `report-uri`). |
 | `NEXT_PUBLIC_TELEGRAM_BOT_USERNAME` | `""` | Without the `@`. The bot link must be clean (`https://t.me/<username>`, no `?start=`) or the bot's exact `/start` match sends it to the fallback handler. |
 | `NEXT_PUBLIC_TELEGRAM_LOGIN_WIDGET` | `false` | Show the Login Widget on `/login`. Only works on the domain registered with `/setdomain` in BotFather — elsewhere the button renders and then refuses, which is worse than absent. |
@@ -84,10 +84,12 @@ Values the prod compose file sets itself, so they do **not** belong in `.env.pro
 `DATABASE_URL` (always the `db` service), `API_BASE_URL: http://api:3001`,
 `AUTH_COOKIE_SECURE: true`, `TRUST_PROXY_HEADERS: true`, and the website's build args
 `NEXT_PUBLIC_API_BASE_URL: https://${SITE_DOMAIN}`, `NEXT_PUBLIC_SITE_URL: https://${SITE_DOMAIN}`,
-`NEXT_PUBLIC_TELEGRAM_BOT_USERNAME`, `NEXT_PUBLIC_TELEGRAM_LOGIN_WIDGET`.
+`NEXT_PUBLIC_TELEGRAM_BOT_USERNAME`, `NEXT_PUBLIC_TELEGRAM_LOGIN_WIDGET`, `API_BASE_URL`
+(the same `http://api:3001`, passed as a build arg *and* as a runtime variable).
 
-Note that `NEXT_PUBLIC_*` values are baked in **at build time** — changing one requires
-rebuilding the website image, not just restarting it. Full procedure:
+Note that `NEXT_PUBLIC_*` values, and the `/files/*` rewrite destination taken from
+`API_BASE_URL`, are baked in **at build time**: changing one requires rebuilding the
+website image, not just restarting it. Full procedure:
 [deployment.md](deployment.md).
 
 ## Tests

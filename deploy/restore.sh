@@ -19,6 +19,13 @@
 #      ownership is fixed up for the api container's user;
 #   6. the services are brought back up.
 #
+# ⚠️ The two archives need not share a date. The photos are kept for fewer days
+# than the dumps (KEEP_DAYS_UPLOADS in deploy/backup.sh), so an older dump is
+# restored against the newest photo archive: the files are immutable and only
+# ever added, so a later set is the older one plus extras that no restored row
+# mentions. What it can be missing are photos deleted in between, whose rows then
+# point at nothing.
+#
 # ⚠️ The operation is destructive: the current database and photos are replaced
 # entirely. Restoring "on top" without a DROP is deliberately not done — a
 # pg_dump dump contains no DROPs, and loading it into a non-empty database would

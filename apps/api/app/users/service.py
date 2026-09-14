@@ -11,12 +11,23 @@ class UserNotFoundError(Exception):
     pass
 
 
-class OwnRoleChangeError(Exception):
-    """The owner tried to change their own role.
+class SuperAdminImmutableError(Exception):
+    """Somebody tried to change the role on the shop's own account.
 
-    The only guard the role list needs: an admin who cannot demote themselves means the
-    shop can never end up with zero admins, and the alternative (counting the remaining
-    ones) forbids exactly the same move a step later, with a worse explanation.
+    The rule that keeps the panel reachable: SUPER_ADMIN is the one row no role change
+    can touch, so the shop can never end up with zero admins — not by demoting the last
+    one, and not by demoting the person doing the demoting. It replaces the older
+    "you can't change your own role" guard, which protected the same invariant only as
+    long as every admin could hand out the role.
+    """
+
+
+class SuperAdminNotAssignableError(Exception):
+    """SUPER_ADMIN was asked for as a target role.
+
+    It is granted by deployment (`app/scripts/seed.py`, from OWNER_PHONE), never through
+    the panel: a role nobody can take back is not something to hand out with one click,
+    and a second one would be a second person who can strip the first of everything.
     """
 
 
@@ -58,9 +69,10 @@ class UsersService:
         total = await self._session.scalar(select(func.count()).select_from(query.subquery())) or 0
         result = await self._session.execute(
             query.order_by(
-                # ADMIN sorts before CUSTOMER alphabetically, but relying on that would be
-                # a rule nobody wrote down: the ordering is spelled out instead.
-                case((User.role == Role.ADMIN, 0), else_=1),
+                # Spelled out rather than left to the enum's alphabet: SUPER_ADMIN, ADMIN
+                # and CUSTOMER happen to sort that way as text only by accident, and the
+                # shop's own account belongs at the top of its own list.
+                case((User.role == Role.SUPER_ADMIN, 0), (User.role == Role.ADMIN, 1), else_=2),
                 User.created_at.desc(),
                 # Same tiebreak the order listings need: accounts created in one tick
                 # (the seed, a burst of sign-ups) otherwise straddle the page boundary
@@ -72,12 +84,21 @@ class UsersService:
         )
         return list(result.scalars().all()), total
 
-    async def set_role(self, actor_id: uuid.UUID, user_id: uuid.UUID, role: Role) -> User:
-        """Grants or revokes admin rights. Refuses to touch the actor's own row."""
-        if actor_id == user_id:
-            raise OwnRoleChangeError
+    async def set_role(self, user_id: uuid.UUID, role: Role) -> User:
+        """Grants or revokes admin rights. Only the caller's rights are not checked here —
+        that is the router's `require_super_admin`.
+
+        No actor argument any more: the "not your own row" guard it existed for is now
+        covered by SUPER_ADMIN being unchangeable, and the only account that reaches this
+        method is a SUPER_ADMIN one.
+        """
+        if role is Role.SUPER_ADMIN:
+            raise SuperAdminNotAssignableError
 
         user = await self.get(user_id)
+        if user.role is Role.SUPER_ADMIN:
+            raise SuperAdminImmutableError
+
         user.role = role
         await self._session.flush()
         return user
