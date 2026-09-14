@@ -137,3 +137,12 @@ stop it with `npm run dev:api:stop`.
 
 **`NEXT_PUBLIC_*` is baked in at build time.** Changing one in production needs an image
 rebuild, not a restart.
+
+**`API_BASE_URL` is baked in at build time too — only for the `/files/*` rewrite.** `rewrites()`
+runs during `next build` and its result lands in `.next/routes-manifest.json`; the standalone
+server reads that file and never re-runs `next.config.js`. A runtime `environment:` entry is
+enough for `getStaticProps` and the API routes, but not for the rewrite, so the prod image
+gets the same value as a build arg as well. Without it the manifest keeps the default
+`http://localhost:3001`, where nothing listens inside the website container: every `/files/*`
+answers **500** and `/_next/image` reports **400 "The requested resource isn't a valid image"** —
+a broken photo whose cause is nowhere near the image code.

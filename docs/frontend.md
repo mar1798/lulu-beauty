@@ -218,6 +218,13 @@ of a live WordPress integration.
 - **`rewrites()`** proxies `/files/:path*` to `${API_BASE_URL}/files/:path*` so product images
   are same-origin; Next 16's image optimizer refuses hosts resolving to a private IP.
   `src/components/Image.tsx` rewrites the API's absolute URLs to those relative ones.
+  The destination is resolved **at build time**: `next build` writes it into
+  `.next/routes-manifest.json`, and the standalone server reads that manifest instead of
+  re-running `next.config.js`. So `API_BASE_URL` has to be present during the image build —
+  `apps/website/Dockerfile` takes it as a build arg, `docker-compose.prod.yml` passes
+  `http://api:3001` there as well as in `environment:`. Miss the build arg and every photo
+  is proxied to `http://localhost:3001` inside the website container: `/files/*` answers 500,
+  and `/_next/image` turns that into 400 ("The requested resource isn't a valid image").
 - **`allowedDevOrigins`** lists private-network patterns plus anything in `NEXT_DEV_ORIGINS`.
   Next 16 blocks `/_next/*` (including the HMR websocket) for any origin but `localhost`, and
   the symptom is not an error but the page **reloading itself** about every 90 seconds — the

@@ -39,7 +39,17 @@ ARG NEXT_PUBLIC_API_BASE_URL
 ARG NEXT_PUBLIC_SITE_URL
 ARG NEXT_PUBLIC_TELEGRAM_BOT_USERNAME
 ARG NEXT_PUBLIC_TELEGRAM_LOGIN_WIDGET=false
-ENV NEXT_PUBLIC_API_BASE_URL=$NEXT_PUBLIC_API_BASE_URL \
+# Не `NEXT_PUBLIC_`, но тоже аргумент сборки: `rewrites()` из next.config.js
+# вычисляется во время `next build` и запекается в `.next/routes-manifest.json`.
+# Standalone-сервер читает готовый манифест и next.config.js больше не
+# исполняет, поэтому `API_BASE_URL` из `environment:` на адрес рерайта
+# `/files/*` уже не влияет — без этого аргумента образ навсегда проксирует
+# фотографии на `http://localhost:3001` внутри своего же контейнера (пусто →
+# 500 на `/files/*` и 400 от `/_next/image`). Значение обязано совпадать с
+# рантаймовым `API_BASE_URL` в compose.
+ARG API_BASE_URL=http://localhost:3001
+ENV API_BASE_URL=$API_BASE_URL \
+    NEXT_PUBLIC_API_BASE_URL=$NEXT_PUBLIC_API_BASE_URL \
     NEXT_PUBLIC_SITE_URL=$NEXT_PUBLIC_SITE_URL \
     NEXT_PUBLIC_TELEGRAM_BOT_USERNAME=$NEXT_PUBLIC_TELEGRAM_BOT_USERNAME \
     NEXT_PUBLIC_TELEGRAM_LOGIN_WIDGET=$NEXT_PUBLIC_TELEGRAM_LOGIN_WIDGET \
