@@ -277,6 +277,39 @@ rclone config           # добавить remote (Cloudflare R2 / S3 / любо
 BACKUP_REMOTE=r2:lulu-backups ./deploy/backup.sh
 ```
 
+**Cloudflare R2 по шагам** (бесплатно до 10 ГБ, исходящий трафик не тарифицируется
+вовсе — в отличие от S3, где вывоз данных и есть основная статья расходов):
+
+1. Дашборд Cloudflare → **R2 Object Storage** → включить (попросит карту даже для
+   бесплатного уровня) → **Create bucket**, класс **Standard**, доступ приватный.
+2. **Manage R2 API Tokens** → **Create API token**. Тип — **Account**, а не User:
+   user-токен работает от имени человека и умирает вместе с его доступом, а ночной
+   бэкап не должен зависеть от того, кто ещё состоит в аккаунте.
+3. Права — **Object Read & Write** (не Admin: скрипту нужно класть, читать и удалять
+   объекты, а не сносить бакеты), **Apply to specific buckets** → выбрать свой.
+4. **Client IP Address Filtering** заполнять на этом шаге не нужно — сначала
+   добейтесь работающей выгрузки, потом ограничьте адресом сервера. Иначе при
+   отказе не отличить неверный ключ от отсечённого адреса.
+5. Со страницы результата (показывается **один раз**) скопировать **кнопками**
+   Access Key ID, Secret Access Key и S3-endpoint.
+
+`~/.config/rclone/rclone.conf` под пользователем `deploy`, права `600`:
+
+```ini
+[r2]
+type = s3
+provider = Cloudflare
+access_key_id = …
+secret_access_key = …
+endpoint = https://<account_id>.r2.cloudflarestorage.com
+region = auto
+no_check_bucket = true
+```
+
+Проверка доступа — `rclone ls r2:<бакет>`. Отказ `AccessDenied` именно на `rclone lsd r2:`
+(без имени бакета) нормален и ничего не значит: токен, ограниченный одним бакетом,
+не имеет права перечислять все. Смотреть надо на операции с самим бакетом.
+
 Задав `BACKUP_REMOTE` в cron-строке (`17 3 * * * BACKUP_REMOTE=r2:lulu-backups /home/…`),
 выгрузку получаешь на каждом запуске.
 
