@@ -304,10 +304,16 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml \
   exec api python -m app.scripts.seed
 ```
 
-The script creates an ADMIN row for the number in `OWNER_PHONE`. There is no
-password — signing in happens only through Telegram, so the owner then has to
-open the bot **from that exact number** and share their contact: only then does
-the Telegram account bind to the admin row that was created.
+The script creates a SUPER_ADMIN row for the number in `OWNER_PHONE` — the head
+owner, who is the only account that can grant and revoke `ADMIN` in the panel and
+whose own role nothing can change. There is no password — signing in happens only
+through Telegram, so the owner then has to open the bot **from that exact number**
+and share their contact: only then does the Telegram account bind to the admin row
+that was created.
+
+Re-running the script is safe and idempotent, and it is the only way the role is
+ever assigned: on a shop that predates the role it promotes the existing owner, and
+it is also the way back in should the head owner's number ever change.
 
 Sharing the contact from a different number produces an ordinary customer with
 no access to `/admin`.

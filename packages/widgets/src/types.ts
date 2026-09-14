@@ -88,7 +88,15 @@ export type OrderStatus =
   /** Владелец отменил — руками или сняв с продажи последний товар заявки. */
   | 'CANCELLED_BY_OWNER'
 export type CycleStatus = 'UPCOMING' | 'ACTIVE' | 'CLOSED'
-export type Role = 'CUSTOMER' | 'ADMIN'
+/**
+ * Роль аккаунта. `SUPER_ADMIN` — сам магазин: единственный, кто выдаёт и снимает
+ * `ADMIN`, и единственный, чью роль не меняет никто, включая его самого. Заводится
+ * при настройке магазина (сид из `OWNER_*`), в админке не выдаётся.
+ *
+ * В интерфейсе роли так и называются — «Super admin» и «Admin»: слово «владелец»
+ * в копии сайта занято человеком, который ведёт магазин, а не уровнем доступа.
+ */
+export type Role = 'CUSTOMER' | 'ADMIN' | 'SUPER_ADMIN'
 
 /** Конверт пагинации: `GET /products`, `GET /admin/products`, `GET /admin/orders`. */
 export interface IPage<T> {
@@ -1559,10 +1567,11 @@ export interface IAdminUser extends IAuthUser {
 export interface IAdminUsersTableProps {
   users: IAdminUser[]
   /**
-   * Свой аккаунт: его строка не меняется. Владелец, разжаловавший себя, закрывает
-   * магазину вход в собственную панель — бэкенд отвечает `own_role_change`.
+   * Может ли смотрящий раздавать доступ. Роли меняет только `SUPER_ADMIN` — у
+   * остальных админов таблица остаётся списком: кнопок нет, а не «нажми и
+   * получи 403».
    */
-  currentUserId?: string | null
+  canManageRoles?: boolean
   onRoleChange: (user: IAdminUser, role: Role) => void
   isLoading?: boolean
   skeletonRows?: number

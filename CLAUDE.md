@@ -125,7 +125,7 @@ uv sync
 uv run uvicorn app.main:app --reload --port 3001
 uv run pytest / uv run ruff check . / uv run mypy app   # all three before finishing a change
 uv run alembic revision --autogenerate -m "…" / uv run alembic upgrade head
-uv run python -m app.scripts.seed          # upserts the first ADMIN owner from OWNER_* vars
+uv run python -m app.scripts.seed          # upserts the SUPER_ADMIN owner from OWNER_* vars
 curl http://localhost:3001/health          # real DB check; 503 if the database is unreachable
 ```
 

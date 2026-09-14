@@ -1000,19 +1000,16 @@ export const feedAdminUser = (overrides: Partial<IAdminUser> = {}): IAdminUser =
   ...overrides,
 })
 
-export const feedAdminUsersTable = (): IAdminUsersTableProps => {
-  const owner = feedAdminUser({ name: 'Айгуль', role: 'ADMIN' })
-
-  return {
-    users: [
-      owner,
-      feedAdminUser({ name: 'Бакыт', phone: '+996555222333' }),
-      feedAdminUser({ name: 'Чолпон', phone: '+996555444555' }),
-    ],
-    currentUserId: owner.id,
-    onRoleChange: noop,
-  }
-}
+export const feedAdminUsersTable = (): IAdminUsersTableProps => ({
+  users: [
+    feedAdminUser({ name: 'Айгуль', role: 'SUPER_ADMIN' }),
+    feedAdminUser({ name: 'Бакыт', phone: '+996555222333', role: 'ADMIN' }),
+    feedAdminUser({ name: 'Чолпон', phone: '+996555444555' }),
+  ],
+  // Витрина — глазами super admin: только у него в этой таблице есть кнопки.
+  canManageRoles: true,
+  onRoleChange: noop,
+})
 
 export const feedAdminOrdersTable = (): IAdminOrdersTableProps => ({
   orders: [

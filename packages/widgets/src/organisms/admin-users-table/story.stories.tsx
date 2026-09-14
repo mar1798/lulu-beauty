@@ -19,3 +19,7 @@ Default.args = feedAdminUsersTable()
 
 export const Loading = Template.bind({})
 Loading.args = { ...feedAdminUsersTable(), users: [], isLoading: true }
+
+/** Глазами обычного admin: роли раздаёт только super admin, кнопок здесь нет. */
+export const WithoutRoleRights = Template.bind({})
+WithoutRoleRights.args = { ...feedAdminUsersTable(), canManageRoles: false }

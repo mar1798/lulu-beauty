@@ -32,7 +32,7 @@ default, so importing `app.*` without them fails immediately — which is why
 | `TELEGRAM_USE_WEBHOOK` | `false` | Needs all three webhook vars; falls back to polling otherwise. |
 | `TELEGRAM_WEBHOOK_URL` | `""` | The API's public base; `/telegram/webhook` is appended. |
 | `TELEGRAM_WEBHOOK_SECRET` | `""` | Without it the endpoint accepts updates from anyone who guesses the path, and the bot refuses the mode. |
-| `OWNER_PHONE` | *required* | Bootstraps the first ADMIN via `app.scripts.seed`. Normalized to E.164 by the script. |
+| `OWNER_PHONE` | *required* | Bootstraps the SUPER_ADMIN owner via `app.scripts.seed` — the only way that role is ever assigned. Normalized to E.164 by the script. |
 | `OWNER_NAME` | *required* | |
 | `CYCLE_TIMEZONE` | `Asia/Bishkek` | |
 | `CURRENCY` | `KGS` | Appears in xlsx export headers. |

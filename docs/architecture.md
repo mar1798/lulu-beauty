@@ -82,7 +82,8 @@ ISR. No session is involved, which is why `getStaticProps` can only ever fetch p
   a `next/*` import to `widgets` and Storybook breaks. It also holds no API or analytics
   logic — it is strictly the visual layer.
 - **The API owns every rule.** The admin gate on the frontend is a client-side redirect for
-  *UX*; every admin endpoint independently checks the ADMIN role. Admin JS chunks are
+  *UX*; every admin endpoint independently checks the role itself (`require_admin`, and
+  `require_super_admin` for handing out roles). Admin JS chunks are
   publicly fetchable — treat the admin UI structure as public and never put a secret in it.
 - **The API is stateful on purpose.** It runs a permanent scheduler (`app/scheduler.py`) and
   writes product images to a local disk volume, so serverless / scale-to-zero is out. This is

@@ -87,7 +87,7 @@ Seeding:
 
 ```bash
 cd apps/api
-uv run python -m app.scripts.seed          # the first ADMIN owner, from OWNER_* env vars
+uv run python -m app.scripts.seed          # the SUPER_ADMIN owner, from OWNER_* env vars
 uv run python -m app.scripts.seed_catalog  # sample catalog data
 ```
 

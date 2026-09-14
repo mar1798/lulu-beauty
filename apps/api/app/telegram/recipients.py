@@ -10,19 +10,20 @@ from collections.abc import Sequence
 from sqlalchemy import select, union, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth.models import Role, User
+from app.auth.models import ADMIN_ROLES, User
 from app.cart.models import Cart
 from app.orders.models import CANCELLED_STATUSES, Order
 
 
 async def get_owners(session: AsyncSession) -> list[User]:
-    """Every ADMIN, not "the" owner.
+    """Every account with admin rights, not "the" owner.
 
-    The seed (app/scripts/seed.py) creates exactly one, by OWNER_PHONE — but nothing in
-    the schema enforces that, and picking one arbitrarily would silently drop a
-    notification if a second one ever exists.
+    Both roles: the seed (app/scripts/seed.py) bootstraps one SUPER_ADMIN by OWNER_PHONE
+    and every ADMIN beside it was granted the role precisely so they would share the
+    work — a notification that reached only one of them is a notification nobody
+    answered.
     """
-    result = await session.execute(select(User).where(User.role == Role.ADMIN))
+    result = await session.execute(select(User).where(User.role.in_(ADMIN_ROLES)))
     return list(result.scalars().all())
 
 

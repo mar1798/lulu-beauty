@@ -59,10 +59,12 @@ export const listAdminUsers = (params: IAdminUserListParams = {}): Promise<IPage
   })
 
 /**
- * Выдать или снять доступ в админку. Владельцев может быть сколько угодно:
- * уведомления бота и так уходят каждому `ADMIN`, а сид заводит только первого.
+ * Выдать или снять доступ в админку. Админов может быть сколько угодно:
+ * уведомления бота уходят каждому из них.
  *
- * Свою роль изменить нельзя — бэкенд ответит `own_role_change`.
+ * Ручка только для `SUPER_ADMIN` — остальным `super_admin_only`. Саму роль super
+ * admin ни выдать (`super_admin_not_assignable`), ни снять (`super_admin_immutable`)
+ * нельзя: её ставит сид при настройке магазина.
  */
 export const updateUserRole = (userId: string, role: Role): Promise<IAdminUser> =>
   api.patch(`/admin/users/${encodeURIComponent(userId)}/role`, { body: { role } })

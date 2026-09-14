@@ -1,9 +1,11 @@
-"""Upserts the first ADMIN owner account from OWNER_* env vars.
+"""Upserts the shop's SUPER_ADMIN account from OWNER_* env vars.
 
-The first, not the only one: further owners are granted in the admin panel
-(`PATCH /admin/users/{id}/role`), and every notification meant for "the owner" already
-goes to every ADMIN (`telegram/recipients.get_owners`). This script exists to bootstrap
-the very first one, who has nobody to be granted access by.
+The first owner, and the only one this script makes: further owners are granted ADMIN in
+the admin panel (`PATCH /admin/users/{id}/role`), and every notification meant for "the
+owner" goes to all of them (`telegram/recipients.get_owners`). This script exists to
+bootstrap the one account that has nobody to be granted access by — and, because
+SUPER_ADMIN is the role the panel cannot hand out or take away, it is also the only way
+that account ever moves. Running it again on a shop that already has one is a no-op.
 
 No credentials to seed: the owner signs in through the bot like everyone else, so the
 one thing this cannot do is bind their Telegram — that happens the first time they share
@@ -38,7 +40,10 @@ async def seed_owner() -> None:
             session.add(owner)
 
         owner.name = settings.owner_name
-        owner.role = Role.ADMIN
+        # Overwrites ADMIN as readily as CUSTOMER: on a shop that predates the role this
+        # is the step that promotes the owner, and re-running it is how an owner locked
+        # out by a botched role change gets back in.
+        owner.role = Role.SUPER_ADMIN
 
         await session.commit()
 

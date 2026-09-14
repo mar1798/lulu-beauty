@@ -20,7 +20,7 @@ uv run ruff check .                            # lint
 uv run mypy app                                # strict = true
 uv run alembic revision --autogenerate -m "…"  # commit the generated file
 uv run alembic upgrade head
-uv run python -m app.scripts.seed              # upsert the first ADMIN owner
+uv run python -m app.scripts.seed              # upsert the SUPER_ADMIN owner
 ```
 
 **Run all three of `pytest` / `ruff` / `mypy` before finishing any `apps/api` change.**
@@ -102,7 +102,8 @@ Public and customer-facing:
 | `POST`/`PATCH`/`DELETE`       | `/orders/{id}/items[/{item_id}]`              | Add / change quantity / remove.                              |
 | `POST`                        | `/orders/{id}/cancel`, `/orders/{id}/restore` |                                                              |
 
-Owner-only (`ADMIN`, checked on the API — the frontend gate is UX only):
+Owner-only (`ADMIN` or `SUPER_ADMIN`, checked on the API — the frontend gate is UX only).
+`PATCH /admin/users/{id}/role` is the one exception: **SUPER_ADMIN only**.
 
 | Method   | Path                                                                                                                                                                        |
 | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -146,7 +147,8 @@ cycle_not_found           invalid_refresh_token     invalid_token
 last_order_item           no_active_cycle           not_authenticated
 order_item_not_found      order_not_editable        order_not_found
 order_not_restorable      order_status_not_assignable
-order_status_transition_invalid                     own_role_change
+order_status_transition_invalid                     super_admin_immutable
+super_admin_not_assignable                          super_admin_only
 product_image_not_found   product_not_found         slug_already_exists
 telegram_account_not_linked                         telegram_auth_expired
 telegram_auth_invalid     telegram_webhook_forbidden

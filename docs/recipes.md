@@ -78,7 +78,7 @@ Without step 2 the user gets a status-based placeholder that explains nothing.
 
 1. Wording in `apps/api/app/telegram/messages.py` (Russian).
 2. Sending function in `notify.py`; recipients through `recipients.py` — "the owner" means
-   every ADMIN.
+   every admin, of either role (`ADMIN_ROLES`).
 3. Call it **after the commit** of the transaction that produced the state, never inside the
    service. Services return what needs saying.
 4. If it is periodic, it belongs in a sweep in `cycles/scheduler_service.py` + a job in

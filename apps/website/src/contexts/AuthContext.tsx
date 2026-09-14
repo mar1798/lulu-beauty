@@ -29,6 +29,11 @@ export interface IAuthContextValue {
   /** true, пока не завершилась первая проверка сессии — до этого не редиректим. */
   isLoading: boolean
   isAdmin: boolean
+  /**
+   * Super admin: единственный, кто выдаёт и снимает доступ в админку. Саму
+   * админку видят обе роли — различие только в правах на роли.
+   */
+  isSuperAdmin: boolean
   /** Открывает вход и отдаёт ссылку на бота. */
   startTelegramLogin: () => Promise<ITelegramLoginSession>
   /** Один опрос: `null` — ещё ждём, профиль — вошли. */
@@ -151,7 +156,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     () => ({
       user,
       isLoading,
-      isAdmin: user?.role === 'ADMIN',
+      isAdmin: user?.role === 'ADMIN' || user?.role === 'SUPER_ADMIN',
+      isSuperAdmin: user?.role === 'SUPER_ADMIN',
       startTelegramLogin,
       pollTelegramLogin,
       signInWithMiniApp,

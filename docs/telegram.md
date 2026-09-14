@@ -94,8 +94,8 @@ bot.
 
 ## Notifications
 
-`app/telegram/notify.py`. Everything addressed to "the owner" fans out to **every** ADMIN
-(`recipients.get_owners`).
+`app/telegram/notify.py`. Everything addressed to "the owner" fans out to **every** account
+with admin rights — `ADMIN` and `SUPER_ADMIN` alike (`recipients.get_owners`).
 
 | Trigger | Who hears |
 | --- | --- |

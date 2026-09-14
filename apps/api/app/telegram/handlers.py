@@ -23,7 +23,7 @@ from aiogram.types import CallbackQuery, InlineKeyboardMarkup, Message, ReplyKey
 from aiogram.types import User as TelegramUser
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth.models import Role, User
+from app.auth.models import ADMIN_ROLES, User
 from app.auth.service import AuthService
 from app.auth.telegram_login import TelegramLoginService
 from app.cart.schemas import CartResponse
@@ -406,7 +406,7 @@ async def handle_order_action(query: CallbackQuery, callback_data: OrderAction) 
         # from_user is who pressed. For the private chat an owner binds via /start the
         # two ids are the same, and a button that leaks into a group stays inert.
         actor = await recipients.find_user_by_chat_id(session, query.from_user.id)
-        if actor is None or actor.role is not Role.ADMIN:
+        if actor is None or actor.role not in ADMIN_ROLES:
             await query.answer(messages.CALLBACK_NOT_FOR_YOU, show_alert=True)
             return
 
