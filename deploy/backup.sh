@@ -27,7 +27,7 @@
 # ⚠️ Бэкап, лежащий на том же сервере, от потери сервера не спасает.
 # Пока BACKUP_REMOTE не задан, скрипт об этом предупреждает при каждом запуске.
 #
-# Восстановление — deploy/restore.sh (см. также «Шаг 9» в DEPLOY.md):
+# Восстановление — deploy/restore.sh (см. также «Step 9» в docs/deployment.md):
 #
 #   ./deploy/restore.sh ~/lulu-backups/db-2026-08-18-0317.sql.gz \
 #                       ~/lulu-backups/uploads-2026-08-18-0317.tar.gz

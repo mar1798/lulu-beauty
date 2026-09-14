@@ -183,7 +183,7 @@ tag leaves the new schema in place. A migration that only adds — a nullable co
 an index — stays compatible with the previous release, which makes that rollback safe. Drops,
 renames and `NOT NULL` on an existing column don't: they belong in the *next* release, once
 the one that stopped writing the old shape has lived in production. A release that breaks
-this rule can only be undone through `deploy/restore.sh`. See «Релизы» in
+this rule can only be undone through `deploy/restore.sh`. See "Releases" in
 [deployment.md](deployment.md).
 
 ## Docker

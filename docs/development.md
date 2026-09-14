@@ -121,7 +121,7 @@ the same breath — otherwise the old name stays pending forever and blocks ever
 
 ## Deployment
 
-See [deployment.md](deployment.md) (Russian): Caddy + Docker Compose on a single VPS, with
+See [deployment.md](deployment.md): Caddy + Docker Compose on a single VPS, with
 backup, restore and release scripts under `deploy/`. Production is deployed by tag with
 `deploy/release.sh`; the migration rule that keeps rollback safe is in
 [backend.md](backend.md#migrations).

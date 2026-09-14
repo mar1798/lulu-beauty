@@ -1,150 +1,222 @@
-# Деплой Sululu
+# Deploying Sululu
 
-Разворачивание всего стека на одном сервере: Caddy (TLS) → `website` (Next) →
-`api` (FastAPI) → `db` (Postgres 16). Всё поднимается одной командой
-`docker compose`, наружу смотрит только Caddy.
+The whole stack on a single server: Caddy (TLS) → `website` (Next) → `api`
+(FastAPI) → `db` (Postgres 16). One `docker compose` command brings it up, and
+only Caddy faces the internet.
 
-Такой вариант выбран для MVP осознанно: у API есть постоянный планировщик
-(`app/scheduler.py` — напоминания, закрытие сборов, чистка сессий) и локальный
-диск под фотографии товаров (`LocalDiskStorage`), поэтому serverless и
-scale-to-zero не подходят, а горизонтального масштабирования пока не требуется.
+That shape is a deliberate choice for the MVP: the API runs a permanent
+scheduler (`app/scheduler.py` — reminders, closing cycles, session cleanup) and
+keeps product photos on local disk (`LocalDiskStorage`), so serverless and
+scale-to-zero don't fit, and horizontal scaling isn't needed yet.
 
 ---
 
-## Что уже сделано (в репозитории)
+## Already done (in the repository)
 
-| Файл | Назначение |
+| File | Purpose |
 | --- | --- |
-| `apps/api/Dockerfile` | Образ бэкенда. Контекст сборки — сам `apps/api`. На старте делает `alembic upgrade head` |
-| `apps/api/.dockerignore` | Для контекста бэкенда: `.venv`, кеши, локальный `uploads/` |
-| `apps/website/Dockerfile` | Образ фронтенда. Контекст сборки — **корень репозитория** (Next компилирует `widgets` из исходников) |
-| `.dockerignore` | Для контекста фронтенда, т.е. всего репозитория: не пускает в образ `.git`, `node_modules`, `.env*` |
-| `docker-compose.prod.yml` | Прод-стек из четырёх сервисов: `db`, `api`, `website`, `caddy` |
-| `deploy/Caddyfile` | Маршруты и автоматический TLS |
-| `deploy/.env.prod.example` | Шаблон всех прод-переменных (копируется в `.env.prod` в корне) |
-| `deploy/backup.sh` | Бэкап базы и фотографий, проверка архивов, ротация, выгрузка через `rclone`, пинг мониторингу |
-| `deploy/restore.sh` | Восстановление из этих архивов, со страховочной копией текущего состояния |
-| `deploy/health-watch.sh` | Проверка живости сайта раз в 5 минут с пингом в healthchecks.io (Шаг 10) |
-| `deploy/release.sh` | Выкатка релиза по тегу: бэкап, сборка, ожидание `healthy`, проверка `/health`, журнал (раздел «Релизы») |
-| `apps/website/next.config.js` | `output: 'standalone'`, заголовки безопасности, рерайт `/files/*` — трогать не нужно |
-| `.gitignore` | Содержит `.env.prod` — секреты в git не попадут |
+| `apps/api/Dockerfile` | Backend image. Build context is `apps/api` itself. Runs `alembic upgrade head` on start |
+| `apps/api/.dockerignore` | For the backend context: `.venv`, caches, the local `uploads/` |
+| `apps/website/Dockerfile` | Frontend image. Build context is the **repository root** (Next compiles `widgets` from source) |
+| `.dockerignore` | For the frontend context, i.e. the whole repo: keeps `.git`, `node_modules`, `.env*` out of the image |
+| `docker-compose.prod.yml` | The production stack: `db`, `api`, `website`, `caddy` |
+| `deploy/Caddyfile` | Routes and automatic TLS |
+| `deploy/.env.prod.example` | Template for every production variable (copied to `.env.prod` at the root) |
+| `deploy/backup.sh` | Backs up the database and photos, verifies the archives, rotates them, uploads via `rclone`, pings the monitor |
+| `deploy/restore.sh` | Restores from those archives, keeping a safety copy of the current state |
+| `deploy/health-watch.sh` | Checks the site every 5 minutes and pings healthchecks.io (Step 10) |
+| `deploy/release.sh` | Deploys a release by tag: backup, build, wait for `healthy`, check `/health`, write the log (see "Releases") |
+| `apps/website/next.config.js` | `output: 'standalone'`, security headers, the `/files/*` rewrite — nothing to change here |
+| `.gitignore` | Contains `.env.prod`, so secrets never reach git |
 
-Корневой `docker-compose.yml` (без суффикса) — **девелоперский**: поднимает
-только `db` и `api` для локальной разработки. В проде он не используется,
-поэтому все команды ниже идут с явным `-f docker-compose.prod.yml`.
+The root `docker-compose.yml` (no suffix) is the **development** one: it brings
+up only `db` and `api` for local work. Production never uses it, which is why
+every command below passes `-f docker-compose.prod.yml` explicitly.
 
-Проверено локально: образ фронтенда собирается, контейнер поднимается и отдаёт
-`200` на `/`, `/login`, `/catalog` даже при недоступном API (страницы каталога
-наполнятся через ISR при первом обращении).
+Verified locally: the frontend image builds, the container starts and answers
+`200` on `/`, `/login` and `/catalog` even when the API is unreachable (catalog
+pages fill in through ISR on first request).
 
-**Ничего из кода менять для деплоя не требуется.** Всё ниже — действия с вашей
-стороны: сервер, домен, бот, секреты.
+**No code change is needed to deploy.** Everything below is on your side:
+server, domain, bot, secrets.
 
 ---
 
-## Шаг 1. Сервер
+## Step 1. Server
 
-Нужен VPS с Docker: 2 vCPU / 4 ГБ RAM / 40 ГБ диска с запасом хватает
-(Hetzner CX22 ≈ €4.5/мес, любой аналог подойдёт). ОС — Ubuntu 24.04 LTS.
+A VPS with Docker: 2 vCPU / 4 GB RAM / 40 GB disk is comfortably enough
+(Hetzner CX22 ≈ €4.5/month, any equivalent works). OS — Ubuntu 24.04 LTS.
 
-На чистом сервере:
+On a fresh server:
 
 ```bash
-# от root
+# as root
 apt update && apt upgrade -y
 curl -fsSL https://get.docker.com | sh          # docker + docker compose plugin
-adduser deploy && usermod -aG docker deploy     # не работать под root
+adduser --disabled-password deploy              # no password needed: key-only login
+usermod -aG docker deploy                       # don't work as root
+install -d -m 700 -o deploy -g deploy /home/deploy/.ssh
+cp /root/.ssh/authorized_keys /home/deploy/.ssh/
+chown deploy:deploy /home/deploy/.ssh/authorized_keys
+chmod 600 /home/deploy/.ssh/authorized_keys
 ```
 
-Дальше — под пользователем `deploy`.
-
-**Файрвол.** Наружу нужны только SSH, `80` и `443` — последний и по TCP, и по
-UDP (отсюда четыре правила на три порта). Всё остальное закрыть:
+**Privileges.** `deploy` is in the `docker` group, which covers everything
+routine: compose, backups, releases. System commands (`apt`, `ufw`,
+`systemctl`) are needed rarely but are needed — and the account has no password
+and never will, so `sudo` has to work without one:
 
 ```bash
-ufw allow OpenSSH
-ufw allow 80/tcp
-ufw allow 443/tcp
-ufw allow 443/udp     # HTTP/3; без него Caddy молча откатится на TCP
-ufw enable
+# as root
+printf 'deploy ALL=(ALL) NOPASSWD:ALL\n' > /etc/sudoers.d/90-deploy
+chmod 440 /etc/sudoers.d/90-deploy
+visudo -c                                       # mandatory: a broken sudoers means no sudo at all
 ```
 
-Порт `5432` в правилах не появляется намеренно: в `docker-compose.prod.yml`
-сервис `db` вообще не публикует портов, база доступна только изнутри сети
-compose (в отличие от девелоперского `docker-compose.yml`, который вешает её на
-хост). Поэтому и туннель `ssh -L 5432:localhost:5432` подключаться будет не к
-чему — работать с базой на сервере так:
+`NOPASSWD` is not a concession here. Access to the docker socket already equals
+root (mounting `/` is one command away), and `deploy` is in the `docker` group
+out of necessity — without it neither compose nor `deploy/backup.sh` works. A
+password on `sudo` would imitate a barrier this machine does not have.
+
+**SSH access.** Keys only, no root at all:
+
+```bash
+# as root
+cat > /etc/ssh/sshd_config.d/99-hardening.conf <<'EOF'
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+PermitRootLogin no
+EOF
+sshd -t && systemctl reload ssh                 # -t is mandatory: a broken config locks you out
+```
+
+⚠️ **Order matters.** Make sure `sudo -n true` as `deploy` succeeds **before**
+you close root: `PermitRootLogin no` with a broken `sudo` leaves the hosting
+provider's console as the only way in.
+
+Verify both halves:
+
+```bash
+ssh root@server true        # expect: Permission denied (publickey)
+ssh deploy@server true      # expect: silence and exit code 0
+```
+
+Passwords are disabled not because anyone is guessing them — `root` and
+`deploy` have them locked (`passwd -S` → `L`), there is nothing to guess. The
+point is the day someone needs `passwd deploy`: without this, the account would
+silently become reachable from the internet by password and nobody would
+remember why. `PermitRootLogin` defaults to key-only anyway, but the key sitting
+in root's `authorized_keys` is the same one `deploy` uses — a second door with
+no gain, and one whose actions can't be told apart from the owner's in the logs.
+
+From here on, work as `deploy`, through `sudo`.
+
+**fail2ban.** Installs and starts itself, and its `sshd` jail is enabled out of
+the box (`/etc/fail2ban/jail.d/defaults-debian.conf`); it reads the journal and
+bans for 10 minutes after 5 failures:
+
+```bash
+sudo apt install -y fail2ban
+sudo fail2ban-client status sshd                # the banned list fills up within hours
+```
+
+The value is mostly hygiene: with passwords off, guessing is doomed regardless,
+but ~40 attempts a day from a couple of dozen addresses stop cluttering the log.
+
+**Firewall.** Only SSH, `80` and `443` need to be reachable — the last one over
+both TCP and UDP (hence four rules for three ports). Close everything else:
+
+```bash
+sudo ufw allow OpenSSH
+sudo ufw allow 80/tcp
+sudo ufw allow 443/tcp
+sudo ufw allow 443/udp     # HTTP/3; without it Caddy silently falls back to TCP
+sudo ufw enable
+```
+
+⚠️ **ufw does not govern ports published by Docker.** Docker writes its own
+`iptables` rules, bypassing `ufw`, so `80`/`443` from `caddy` would be reachable
+even with the firewall closed. The rules above aren't for them — they're for
+everything else listening on the host itself: today that's a lone `sshd`, but
+every `apt install` that starts a service would otherwise land on the internet.
+
+Port `5432` is deliberately absent: in `docker-compose.prod.yml` the `db`
+service publishes no ports at all, and the database is reachable only from
+inside the compose network (unlike the development `docker-compose.yml`, which
+binds it to the host). An `ssh -L 5432:localhost:5432` tunnel would therefore
+have nothing to connect to — work with the database on the server like this:
 
 ```bash
 docker compose --env-file .env.prod -f docker-compose.prod.yml \
   exec db sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB"'
 ```
 
-(имя пользователя и базы берутся из окружения самого контейнера — так команда
-не разъедется с `POSTGRES_USER`/`POSTGRES_DB` в `.env.prod`)
+(the user and database names come from the container's own environment, so the
+command can't drift from `POSTGRES_USER`/`POSTGRES_DB` in `.env.prod`)
 
 ---
 
-## Шаг 2. Домен
+## Step 2. Domain
 
-1. Купить домен (или взять существующий).
-2. Сделать `A`-запись на IP сервера (и `AAAA`, если есть IPv6).
-3. **Дождаться, пока запись разойдётся** (`dig +short ваш-домен` должен вернуть
-   IP сервера).
+1. Buy a domain (or use an existing one).
+2. Point an `A` record at the server's IP (and `AAAA` if you have IPv6).
+3. **Wait for it to propagate** (`dig +short your-domain` must return the
+   server's IP).
 
-Это обязательно сделать **до** первого запуска: Caddy выпускает сертификат
-Let's Encrypt сразу при старте и без работающего DNS получит отказ. Несколько
-неудачных попыток подряд упираются в недельные лимиты Let's Encrypt.
-
----
-
-## Шаг 3. Telegram-бот
-
-В [@BotFather](https://t.me/BotFather):
-
-1. `/newbot` — получить **токен** и **username** бота.
-2. Зарегистрировать домен: `/mybots` → бот → **Bot Settings** → **Login Widget**
-   → в **Allowed URLs** добавить `https://ваш-домен`.
-   Команда `/setdomain` больше не работает — BotFather отвечает на неё ссылкой на
-   [документацию](https://core.telegram.org/bots/telegram-login). Адресов теперь
-   можно зарегистрировать несколько, так что staging не требует второго бота.
-   **Client ID и Client Secret, которые BotFather покажет в этом разделе, здесь не
-   нужны** — это OIDC, проект им не пользуется. Redirect URI тоже не нужен:
-   `TelegramLoginWidget` работает через колбэк `data-onauth`, без перенаправления.
-   Без зарегистрированного адреса кнопка «Log in with Telegram» на `/login`
-   нарисуется и откажет авторизовать; тогда в `.env.prod` нужно поставить
-   `NEXT_PUBLIC_TELEGRAM_LOGIN_WIDGET=false`.
-3. Опционально: `/setmenubutton`, описание, аватар.
-
-Вход через бота (переход в чат, подтверждение) работает **и без** этой
-регистрации — она нужна только кнопке, которая авторизует прямо в браузере.
-
-Вебхук регистрировать руками не нужно — бэкенд делает это сам на старте, если в
-`.env.prod` заполнены все три переменные `TELEGRAM_USE_WEBHOOK` /
-`TELEGRAM_WEBHOOK_URL` / `TELEGRAM_WEBHOOK_SECRET`.
+This has to happen **before** the first start: Caddy requests a Let's Encrypt
+certificate as soon as it comes up, and without working DNS it gets refused.
+Several failures in a row run into Let's Encrypt's weekly limits.
 
 ---
 
-## Шаг 4. Код на сервере
+## Step 3. Telegram bot
+
+In [@BotFather](https://t.me/BotFather):
+
+1. `/newbot` — get the bot's **token** and **username**.
+2. Register the domain: `/mybots` → your bot → **Bot Settings** → **Login
+   Widget** → add `https://your-domain` under **Allowed URLs**.
+   `/setdomain` no longer works — BotFather answers it with a link to the
+   [documentation](https://core.telegram.org/bots/telegram-login). Several
+   addresses can be registered now, so a staging environment doesn't need a
+   second bot. **The Client ID and Client Secret BotFather shows in that section
+   are not needed here** — that's OIDC, which this project doesn't use. Neither
+   is a Redirect URI: `TelegramLoginWidget` works through the `data-onauth`
+   callback, without a redirect. With no address registered, the "Log in with
+   Telegram" button on `/login` renders and then refuses to authorize; set
+   `NEXT_PUBLIC_TELEGRAM_LOGIN_WIDGET=false` in `.env.prod` in that case.
+3. Optional: `/setmenubutton`, description, avatar.
+
+Signing in through the bot itself (opening the chat, confirming) works **without**
+this registration — it is only needed for the button that authorizes right in
+the browser.
+
+The webhook needs no manual registration: the backend does it on start, provided
+all three of `TELEGRAM_USE_WEBHOOK` / `TELEGRAM_WEBHOOK_URL` /
+`TELEGRAM_WEBHOOK_SECRET` are filled in `.env.prod`.
+
+---
+
+## Step 4. Code on the server
 
 ```bash
-git clone <адрес репозитория> lulu-beauty
+git clone <repository address> lulu-beauty
 cd lulu-beauty
-git checkout --detach v2026.09.14   # последний тег: git tag -l 'v*' --sort=-v:refname | head -1
+git checkout --detach v2026.09.14   # latest tag: git tag -l 'v*' --sort=-v:refname | head -1
 ```
 
-Прод живёт на теге, а не на ветке (см. «Релизы» ниже) — но на первом запуске
-тега может ещё не быть, тогда просто оставайтесь на `master`.
+Production lives on a tag, not a branch (see "Releases" below) — but on the very
+first run there may be no tag yet, in which case just stay on `master`.
 
 ---
 
-## Шаг 5. Переменные окружения
+## Step 5. Environment variables
 
 ```bash
 cp deploy/.env.prod.example .env.prod
 ```
 
-Сгенерировать четыре значения (каждое — своей командой, не копировать одно и то же):
+Generate four values (each with its own command — don't reuse one):
 
 ```bash
 openssl rand -hex 32   # JWT_ACCESS_SECRET
@@ -153,153 +225,155 @@ openssl rand -hex 32   # TELEGRAM_WEBHOOK_SECRET
 openssl rand -hex 16   # POSTGRES_PASSWORD
 ```
 
-Заполнить в `.env.prod`:
+Fill in `.env.prod`:
 
-| Переменная | Значение |
+| Variable | Value |
 | --- | --- |
-| `SITE_DOMAIN` | `ваш-домен` (без `https://`) |
-| `ACME_EMAIL` | ваша почта — на неё Let's Encrypt шлёт предупреждения |
-| `POSTGRES_PASSWORD` | сгенерированный пароль |
-| `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET` | сгенерированные секреты |
-| `CORS_ORIGIN`, `WEBSITE_BASE_URL`, `TELEGRAM_WEBHOOK_URL` | `https://ваш-домен` |
-| `PUBLIC_FILES_BASE_URL` | `https://ваш-домен/files` |
-| `TELEGRAM_BOT_TOKEN`, `TELEGRAM_BOT_USERNAME` | из BotFather (username без `@`) |
-| `TELEGRAM_WEBHOOK_SECRET` | сгенерированный секрет |
-| `OWNER_PHONE`, `OWNER_NAME` | телефон и имя владельца магазина |
+| `SITE_DOMAIN` | `your-domain` (without `https://`) |
+| `ACME_EMAIL` | your email — Let's Encrypt sends expiry warnings there |
+| `POSTGRES_PASSWORD` | the generated password |
+| `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET` | the generated secrets |
+| `CORS_ORIGIN`, `WEBSITE_BASE_URL`, `TELEGRAM_WEBHOOK_URL` | `https://your-domain` |
+| `PUBLIC_FILES_BASE_URL` | `https://your-domain/files` |
+| `TELEGRAM_BOT_TOKEN`, `TELEGRAM_BOT_USERNAME` | from BotFather (username without `@`) |
+| `TELEGRAM_WEBHOOK_SECRET` | the generated secret |
+| `OWNER_PHONE`, `OWNER_NAME` | the shop owner's phone and name |
 
-Остальное в шаблоне уже заполнено разумными значениями, но проверьте под свой
-магазин: `CYCLE_TIMEZONE` (`Asia/Bishkek` — по ней считаются дедлайны сборов),
-`CURRENCY` (`KGS`) и `NEXT_PUBLIC_TELEGRAM_LOGIN_WIDGET` (выключить, если домен
-боту ещё не прописан через `/setdomain`).
+The rest of the template already has sensible values, but check them against
+your shop: `CYCLE_TIMEZONE` (`Asia/Bishkek` — cycle deadlines are computed in
+it), `CURRENCY` (`KGS`) and `NEXT_PUBLIC_TELEGRAM_LOGIN_WIDGET` (turn it off if
+the domain isn't registered with the bot yet).
 
-⚠️ **`PUBLIC_FILES_BASE_URL` обязан быть ровно `https://<SITE_DOMAIN>/files`.**
-Это не косметика: `apps/website/src/components/Image.tsx` отрезает от
-сохранённого в базе адреса фотографии именно этот префикс, чтобы картинка стала
-относительной (`/files/...`) и прошла через рерайт Next. Разойдутся адреса —
-фотографии товаров перестанут отображаться.
+⚠️ **`PUBLIC_FILES_BASE_URL` must be exactly `https://<SITE_DOMAIN>/files`.**
+This isn't cosmetic: `apps/website/src/components/Image.tsx` strips precisely
+that prefix off the photo address stored in the database so the image becomes
+relative (`/files/...`) and goes through Next's rewrite. Let the two drift apart
+and product photos stop showing.
 
-Файл `.env.prod` содержит секреты, он в `.gitignore` — **не коммитить**.
+`.env.prod` holds secrets and is in `.gitignore` — **never commit it**.
 
 ---
 
-## Шаг 6. Первый запуск
+## Step 6. First start
 
 ```bash
 docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --build
 ```
 
-Первая сборка занимает несколько минут. Дальше:
+The first build takes a few minutes. Then:
 
 ```bash
-# все четыре сервиса должны быть Up (db, api и website — ещё и healthy;
-# у caddy healthcheck нет)
+# all four services must be Up (db, api and website healthy as well;
+# caddy has no healthcheck)
 docker compose --env-file .env.prod -f docker-compose.prod.yml ps
 
-# логи, если что-то не поднялось
+# logs, if something didn't come up
 docker compose --env-file .env.prod -f docker-compose.prod.yml logs -f caddy
 ```
 
 ---
 
-## Шаг 7. Аккаунт владельца
+## Step 7. Owner account
 
 ```bash
 docker compose --env-file .env.prod -f docker-compose.prod.yml \
   exec api python -m app.scripts.seed
 ```
 
-Скрипт создаёт запись ADMIN по номеру из `OWNER_PHONE`. Пароля нет — вход в
-проект только через Telegram, поэтому дальше владелец должен **с того самого
-номера** открыть бота и поделиться контактом: только тогда Telegram-аккаунт
-привяжется к созданной админской записи.
+The script creates an ADMIN row for the number in `OWNER_PHONE`. There is no
+password — signing in happens only through Telegram, so the owner then has to
+open the bot **from that exact number** and share their contact: only then does
+the Telegram account bind to the admin row that was created.
 
-Если поделиться контактом с другого номера, получится обычный покупатель без
-доступа в `/admin`.
-
----
-
-## Шаг 8. Проверка
-
-- [ ] `https://ваш-домен` открывается, замок в адресной строке зелёный
-- [ ] `/catalog` открывается (пустой каталог — нормально, товаров ещё нет)
-- [ ] `/login` → вход через Telegram доходит до конца, бот присылает подтверждение
-- [ ] владелец попадает в `/admin` (покупателя оттуда редиректит на `/catalog` — так и задумано)
-- [ ] в админке добавляется товар **с фотографией**, и фотография видна в каталоге
-      (это проверяет связку `PUBLIC_FILES_BASE_URL` ↔ `NEXT_PUBLIC_API_BASE_URL`)
-- [ ] открывается сбор, товар кладётся в корзину, заявка оформляется, бот шлёт уведомление
-- [ ] выгрузка заказа в xlsx скачивается
-- [ ] ссылка на сайт, отправленная в Telegram, раскрывается превью с картинкой
-      (адрес для `og:*` собирается из `SITE_DOMAIN` на сборке образа — если превью
-      пустое, проверьте, что `website` пересобран, а не просто перезапущен)
-- [ ] `./deploy/backup.sh` отрабатывает и кладёт два непустых архива (Шаг 9)
-- [ ] `curl -o /dev/null -w '%{http_code}\n' https://ваш-домен/api/proxy/health` → `200`
-      (этот же адрес дальше уходит внешнему монитору, Шаг 10)
+Sharing the contact from a different number produces an ordinary customer with
+no access to `/admin`.
 
 ---
 
-## Шаг 9. Бэкапы
+## Step 8. Verification
 
-Состояние живёт в двух местах: том `pgdata` (база) и том `uploads` (фотографии
-товаров). Потеря второго — это строки `product_images` в базе, указывающие в
-пустоту. Том `caddy_data` (сертификаты) в бэкап намеренно не входит: Caddy
-выпустит их заново — но именно поэтому не стоит пересоздавать этот том без
-нужды, недельные лимиты Let's Encrypt считаются по домену. Том `next_cache`
-(кеш ISR и перекодированных картинок) в бэкап тоже не входит: он наполняется
-сам, первым посетителем каждой страницы.
+- [ ] `https://your-domain` opens and the padlock is green
+- [ ] `/catalog` opens (an empty catalog is fine — there are no products yet)
+- [ ] `/login` → signing in through Telegram goes all the way through and the bot confirms
+- [ ] the owner lands in `/admin` (a customer is redirected to `/catalog` — that's intended)
+- [ ] a product **with a photo** can be added in the admin UI and the photo shows in the catalog
+      (this is what verifies `PUBLIC_FILES_BASE_URL` ↔ `NEXT_PUBLIC_API_BASE_URL`)
+- [ ] a cycle opens, a product goes into the cart, an order is placed, the bot sends a notification
+- [ ] the xlsx export of an order downloads
+- [ ] a link to the site sent in Telegram unfurls into a preview with an image
+      (the `og:*` address is built from `SITE_DOMAIN` at image build time — if the preview
+      is empty, check that `website` was rebuilt and not merely restarted)
+- [ ] `./deploy/backup.sh` runs and produces two non-empty archives (Step 9)
+- [ ] `curl -o /dev/null -w '%{http_code}\n' https://your-domain/api/proxy/health` → `200`
+      (the same address goes to the external monitor later, Step 10)
 
-Скрипт `deploy/backup.sh` снимает оба, проверяет архивы на целостность,
-опционально выгружает их наружу через `rclone` и удаляет старые:
+---
+
+## Step 9. Backups
+
+State lives in two places: the `pgdata` volume (database) and the `uploads`
+volume (product photos). Losing the second one leaves `product_images` rows in
+the database pointing at nothing. The `caddy_data` volume (certificates) is
+deliberately excluded: Caddy will issue them again — which is also why you
+shouldn't recreate that volume without reason, since Let's Encrypt's weekly
+limits are counted per domain. The `next_cache` volume (ISR cache and
+re-encoded images) is excluded too: it refills on its own, paid for by the first
+visitor of each page.
+
+`deploy/backup.sh` takes both, verifies the archives, optionally uploads them
+off the box through `rclone`, and deletes old ones:
 
 ```bash
 ./deploy/backup.sh
 ```
 
-Из зависимостей нужны только `docker` и `flock` (есть в Ubuntu из коробки);
-`rclone` — опционально, для выгрузки наружу.
+Its only dependencies are `docker` and `flock` (both present in Ubuntu by
+default); `rclone` is optional, for uploading off-site.
 
-Раз в сутки по cron (от пользователя `deploy`, `crontab -e`):
+Daily, from cron (as `deploy`, `crontab -e`):
 
 ```
 17 3 * * * /home/deploy/lulu-beauty/deploy/backup.sh >> /home/deploy/backup.log 2>&1
 ```
 
-Настраивается переменными окружения:
+Configured through environment variables:
 
-| Переменная | По умолчанию | Назначение |
+| Variable | Default | Purpose |
 | --- | --- | --- |
-| `BACKUP_DIR` | `$HOME/lulu-backups` | куда складывать архивы |
-| `KEEP_DAYS` | `14` | сколько дней хранить (локально и на remote) |
-| `BACKUP_REMOTE` | пусто | rclone-remote для выгрузки, напр. `r2:lulu-backups` |
-| `ENV_FILE` | `<корень>/.env.prod` | откуда compose берёт переменные |
-| `BACKUP_PING_URL` | пусто | адрес пинга мониторингу (Шаг 10) |
+| `BACKUP_DIR` | `$HOME/lulu-backups` | where to put the archives |
+| `KEEP_DAYS` | `14` | how many days to keep (locally and on the remote) |
+| `BACKUP_REMOTE` | empty | rclone remote to upload to, e.g. `r2:lulu-backups` |
+| `ENV_FILE` | `<root>/.env.prod` | where compose reads variables from |
+| `BACKUP_PING_URL` | empty | monitoring ping address (Step 10) |
 
-⚠️ **Пока `BACKUP_REMOTE` не задан, копии лежат на том же сервере** — от его
-потери это не спасает, и скрипт предупреждает об этом при каждом запуске.
-Внешнее хранилище настраивается один раз:
+⚠️ **Until `BACKUP_REMOTE` is set, the copies sit on the same server** — which
+doesn't help when you lose it, and the script warns about this on every run.
+Off-site storage is a one-time setup:
 
 ```bash
 sudo -v ; curl https://rclone.org/install.sh | sudo bash
-rclone config           # добавить remote (Cloudflare R2 / S3 / любой другой)
+rclone config           # add a remote (Cloudflare R2 / S3 / anything else)
 BACKUP_REMOTE=r2:lulu-backups ./deploy/backup.sh
 ```
 
-**Cloudflare R2 по шагам** (бесплатно до 10 ГБ, исходящий трафик не тарифицируется
-вовсе — в отличие от S3, где вывоз данных и есть основная статья расходов):
+**Cloudflare R2 step by step** (free up to 10 GB, and egress isn't billed at all
+— unlike S3, where getting data out is the main line item):
 
-1. Дашборд Cloudflare → **R2 Object Storage** → включить (попросит карту даже для
-   бесплатного уровня) → **Create bucket**, класс **Standard**, доступ приватный.
-2. **Manage R2 API Tokens** → **Create API token**. Тип — **Account**, а не User:
-   user-токен работает от имени человека и умирает вместе с его доступом, а ночной
-   бэкап не должен зависеть от того, кто ещё состоит в аккаунте.
-3. Права — **Object Read & Write** (не Admin: скрипту нужно класть, читать и удалять
-   объекты, а не сносить бакеты), **Apply to specific buckets** → выбрать свой.
-4. **Client IP Address Filtering** заполнять на этом шаге не нужно — сначала
-   добейтесь работающей выгрузки, потом ограничьте адресом сервера. Иначе при
-   отказе не отличить неверный ключ от отсечённого адреса.
-5. Со страницы результата (показывается **один раз**) скопировать **кнопками**
-   Access Key ID, Secret Access Key и S3-endpoint.
+1. Cloudflare dashboard → **R2 Object Storage** → enable it (a card is required
+   even for the free tier) → **Create bucket**, class **Standard**, private access.
+2. **Manage R2 API Tokens** → **Create API token**. Type — **Account**, not User:
+   a user token acts on behalf of a person and dies together with their access,
+   and a nightly backup must not depend on who else is in the account.
+3. Permissions — **Object Read & Write** (not Admin: the script needs to put, get
+   and delete objects, not destroy buckets), **Apply to specific buckets** → pick
+   yours.
+4. **Client IP Address Filtering** can be left alone at this stage — get the
+   upload working first, then restrict it to the server's address. Otherwise a
+   failure is indistinguishable between a wrong key and a filtered address.
+5. From the result page (shown **once**) copy the Access Key ID, Secret Access
+   Key and S3 endpoint **using the buttons**.
 
-`~/.config/rclone/rclone.conf` под пользователем `deploy`, права `600`:
+`~/.config/rclone/rclone.conf` as `deploy`, mode `600`:
 
 ```ini
 [r2]
@@ -312,263 +386,277 @@ region = auto
 no_check_bucket = true
 ```
 
-Проверка доступа — `rclone ls r2:<бакет>`. Отказ `AccessDenied` именно на `rclone lsd r2:`
-(без имени бакета) нормален и ничего не значит: токен, ограниченный одним бакетом,
-не имеет права перечислять все. Смотреть надо на операции с самим бакетом.
+Check access with `rclone ls r2:<bucket>`. An `AccessDenied` on `rclone lsd r2:`
+specifically (without a bucket name) is normal and means nothing: a token scoped
+to one bucket isn't allowed to list them all. Judge by operations on the bucket
+itself.
 
-Задав `BACKUP_REMOTE` в cron-строке (`17 3 * * * BACKUP_REMOTE=r2:lulu-backups /home/…`),
-выгрузку получаешь на каждом запуске.
+Put `BACKUP_REMOTE` in the cron line (`17 3 * * * BACKUP_REMOTE=r2:lulu-backups
+/home/…`) and every run uploads.
 
-**Восстановление** — `deploy/restore.sh`, тем же набором архивов:
+**Restoring** — `deploy/restore.sh`, from the same pair of archives:
 
 ```bash
 ./deploy/restore.sh ~/lulu-backups/db-2026-08-18-0317.sql.gz \
                     ~/lulu-backups/uploads-2026-08-18-0317.tar.gz
 ```
 
-Можно передать только один архив — база и фотографии восстанавливаются
-независимо. Скрипт проверяет архивы, спрашивает подтверждение, снимает
-страховочную копию текущего состояния (`pre-restore-*`), гасит `website` и `api`
-на время замены, пересоздаёт базу и наливает дамп, заменяет содержимое тома
-`uploads` и поднимает сервисы обратно. `--yes` пропускает вопрос,
-`--no-safety` — страховочную копию.
+You can pass just one — the database and the photos are restored independently.
+The script verifies the archives, asks for confirmation, takes a safety copy of
+the current state (`pre-restore-*`), stops `website` and `api` during the swap,
+recreates the database and loads the dump, replaces the contents of the
+`uploads` volume and brings the services back up. `--yes` skips the question,
+`--no-safety` skips the safety copy.
 
-⚠️ Операция разрушающая: текущие данные заменяются целиком. База именно
-пересоздаётся (DROP/CREATE), а не наливается поверх: дамп `pg_dump` не содержит
-DROP-ов, и налив в непустую базу упал бы на конфликтах ключей, оставив половину
-старых строк и половину новых.
+⚠️ The operation is destructive: current data is replaced wholesale. The
+database is genuinely recreated (DROP/CREATE) rather than loaded over: a
+`pg_dump` dump contains no DROPs, and loading it into a non-empty database would
+fail on key conflicts, leaving half the old rows and half the new.
 
-**Проверьте восстановление хотя бы раз.** Бэкап, который никогда не
-разворачивали, — это не бэкап, а надежда.
+**Test a restore at least once.** A backup that has never been restored isn't a
+backup, it's a hope.
 
 ---
 
-## Шаг 10. Мониторинг
+## Step 10. Monitoring
 
-Три вещи, о которых иначе узнаёшь последним: сайт лёг, ночной бэкап не прошёл,
-политика CSP ломает страницу у посетителя. Всё, что можно было сделать в
-репозитории, сделано; здесь остаётся завести внешние сервисы и вписать адреса
-проверок в cron.
+Three things you'd otherwise learn about last: the site is down, the nightly
+backup didn't run, the CSP policy is breaking a page for a visitor. Everything
+that could be done inside the repository is done; what's left is signing up for
+the external services and putting the check addresses into cron.
 
-### Сайт и база — внешняя проверка
+### Site and database — an external check
 
-Ручка `/health` открыта наружу через прокси Next:
+The `/health` endpoint is exposed through Next's proxy:
 
 ```bash
-curl https://ваш-домен/api/proxy/health
+curl https://your-domain/api/proxy/health
 # {"status":"ok","info":{"database":{"status":"up"}}}
 ```
 
-`200` означает, что жива вся цепочка — Caddy, Next, API и база (внутри
-настоящий `SELECT 1`), `503` — что база недоступна.
+`200` means the whole chain is alive — Caddy, Next, the API and the database (a
+real `SELECT 1` inside); `503` means the database is unreachable.
 
-Проверять корень домена вместо `/health` бессмысленно: страницы статические и
-отдаются даже с мёртвой базой. Но и одного `/health` мало — проверка, которую
-делает сам сервер, молчит вместе с ним. Поэтому наблюдение состоит из двух
-половин, и каждая закрывает слепое пятно другой.
+Checking the domain root instead of `/health` is pointless: the pages are static
+and are served even with a dead database. But `/health` alone isn't enough
+either — a check performed by the server itself goes quiet together with it. So
+monitoring has two halves, each covering the other's blind spot.
 
-**Половина первая: взгляд снаружи.** Монитор на `https://ваш-домен/` — ловит то,
-о чём сервер сообщить не может: машина выключена, Caddy не поднялся, сертификат
-протух, сломана A-запись, авария у хостера.
+**First half: the view from outside.** A monitor on `https://your-domain/` —
+it catches what the server cannot report: the machine is off, Caddy didn't come
+up, the certificate expired, the A record broke, the host had an outage.
 
-⚠️ Ручка `/health` **отвечает `405` на HEAD-запрос**, а бесплатные тарифы внешних
-мониторов обычно умеют только HEAD (произвольный метод у UptimeRobot — платная
-опция). Направив бесплатный монитор на `/health`, вы получите вечное «сайт лежит»
-на работающем сайте. Поэтому снаружи проверяется корень (`HEAD /` → `200`), а базу
-проверяет вторая половина.
+⚠️ `/health` **answers `405` to a HEAD request**, and free tiers of external
+monitors usually only do HEAD (an arbitrary method is a paid option on
+UptimeRobot). Point a free monitor at `/health` and you get a permanent "site is
+down" for a working site. So the root is what's checked from outside (`HEAD /` →
+`200`), and the database is covered by the second half.
 
-**Половина вторая: `deploy/health-watch.sh`.** Раз в 5 минут дёргает `/health`
-своим GET и отчитывается в healthchecks.io:
+**Second half: `deploy/health-watch.sh`.** Every 5 minutes it GETs `/health`
+itself and reports to healthchecks.io:
 
 ```
 */5 * * * * HEALTH_PING_URL=https://hc-ping.com/<uuid> /home/deploy/lulu-beauty/deploy/health-watch.sh
 ```
 
-Успехом считается `200` **и** `"status":"ok"` **и** `"database":{"status":"up"}` в
-теле: кода мало, `200` с чужим или пустым телом означал бы, что отвечает не то,
-что мы думаем. Перед объявлением падения делается вторая попытка через 10 секунд —
-разовая сетевая икота не должна никого будить. В лог (`$HOME/health-watch.log`)
-пишутся только падения, иначе за сутки набегает 288 строк ни о чём.
+Success means `200` **and** `"status":"ok"` **and** `"database":{"status":"up"}`
+in the body: the code alone is too little, since a `200` with an empty or
+foreign body would mean something other than what we think is answering. Before
+declaring a failure it retries once after 10 seconds — a one-off network hiccup
+shouldn't wake anyone. Only failures are written to the log
+(`$HOME/health-watch.log`), otherwise it accumulates 288 lines of nothing a day.
 
-Домен скрипт берёт из `SITE_DOMAIN` в `.env.prod` — той же переменной, по которой
-Caddy выпускает сертификат, чтобы проверяемый адрес не разошёлся с рабочим. Не
-найдя домена, скрипт выходит с кодом `2` и **не пингует**: молчание в мониторинге
-означало бы «всё хорошо».
+The script takes the domain from `SITE_DOMAIN` in `.env.prod` — the same
+variable Caddy issues the certificate for, so the checked address can't drift
+from the working one. Finding no domain, it exits with code `2` and **does not
+ping**: silence in monitoring would read as "all good".
 
-Смерть сервера эта половина тоже ловит, но не сама: пинги просто перестают
-приходить, и тревогу поднимает healthchecks по расписанию проверки. Заведите её с
-периодом 5 минут и grace time 15 минут — тогда пропуск из-за перезагрузки не
-поднимет тревогу, а три подряд поднимут.
+This half catches the death of the server too, but not by itself: the pings
+simply stop arriving and healthchecks raises the alarm on its own schedule. Set
+it up with a 5-minute period and a 15-minute grace time — then a miss caused by
+a reboot won't alert, and three in a row will.
 
-### Бэкап — пинг об успехе
+### Backup — a ping on success
 
-`deploy/backup.sh` умеет отмечаться в мониторинге: при успехе дёргает
-`BACKUP_PING_URL`, при падении — `$BACKUP_PING_URL/fail`, телом уходят
-последние 20 строк лога (в письме сразу видно, на чём остановилось). Протокол
-healthchecks.io, бесплатного тарифа хватает с запасом.
+`deploy/backup.sh` can report to monitoring: on success it pings
+`BACKUP_PING_URL`, on failure `$BACKUP_PING_URL/fail`, with the last 20 log
+lines as the body (so the email shows where it stopped). The healthchecks.io
+protocol; the free tier is more than enough.
 
-Заведите там проверку с расписанием «раз в сутки» и подставьте её адрес в cron:
+Create a check there with a "daily" schedule and put its address into cron:
 
 ```
 17 3 * * * BACKUP_PING_URL=https://hc-ping.com/<uuid> /home/deploy/lulu-beauty/deploy/backup.sh >> /home/deploy/backup.log 2>&1
 ```
 
-Если задан ещё и `BACKUP_REMOTE`, обе переменные пишутся в одну строку, до пути
-к скрипту.
+If `BACKUP_REMOTE` is set as well, both variables go on the same line, before
+the path to the script.
 
-Ценность тут именно в **молчании**: письмо придёт и в том случае, когда бэкап не
-запускался вовсе — сервер выключен, cron сломан, диск кончился. Сам пинг бэкап
-не роняет: три попытки, десять секунд на каждую, недоступный мониторинг —
-только предупреждение в логе.
+The value here is precisely the **silence**: the email also arrives when the
+backup didn't run at all — the server is off, cron is broken, the disk is full.
+The ping itself can't fail the backup: three attempts, ten seconds each, and an
+unreachable monitor is only a warning in the log.
 
-### CSP — отчёты в логе
+### CSP — reports in the log
 
-Полная политика в `apps/website/next.config.js` пока в режиме `Report-Only`:
-браузеры присылают нарушения на свою же ручку `/api/csp-report`, а она пишет их
-в stdout контейнера.
+The full policy in `apps/website/next.config.js` is still in `Report-Only` mode:
+browsers send violations to the site's own `/api/csp-report` endpoint, which
+writes them to the container's stdout.
 
 ```bash
 docker compose --env-file .env.prod -f docker-compose.prod.yml logs website | grep csp-violation
 ```
 
-Строка выглядит так:
+A line looks like this:
 
 ```
-csp-violation report script-src-elem blocked=https://cdn.example/a.js page=https://ваш-домен/catalog at=https://ваш-домен/_next/static/chunk.js:42
+csp-violation report script-src-elem blocked=https://cdn.example/a.js page=https://your-domain/catalog at=https://your-domain/_next/static/chunk.js:42
 ```
 
-— что заблокировано, на какой странице и каким файлом вызвано. `enforce` вместо
-`report` означает нарушение **действующей** части политики: такое ломается у
-посетителя прямо сейчас. Одинаковые нарушения пишутся один раз (счёт
-обнуляется при перезапуске контейнера), отчёты чужих расширений браузера
-отбрасываются — иначе они забили бы лог целиком.
+— what was blocked, on which page, and which file caused it. `enforce` instead
+of `report` means a violation of the **enforced** part of the policy: that one
+is breaking for a visitor right now. Identical violations are logged once (the
+count resets when the container restarts), and reports from other people's
+browser extensions are discarded — otherwise they would fill the log entirely.
 
-Через неделю-две живого трафика лог стоит прочитать. Если своих нарушений нет
-(или они исправлены), политику пора переводить в принудительный режим: перенести
-директивы из `REPORT_ONLY_CSP` в `ENFORCED_CSP` и пересобрать `website`.
-`script-src` останется с `'unsafe-inline'`, пока страницы статические, но
-остальные директивы (`img-src`, `connect-src`, `frame-src`) от этого хуже не
-работают.
+After a week or two of live traffic the log is worth reading. If there are no
+violations of your own (or they're fixed), it's time to switch the policy to
+enforcing mode: move the directives from `REPORT_ONLY_CSP` to `ENFORCED_CSP` and
+rebuild `website`. `script-src` will keep `'unsafe-inline'` while the pages are
+static, but the other directives (`img-src`, `connect-src`, `frame-src`) are
+none the worse for it.
 
 ---
 
-## Релизы
+## Releases
 
-Две ветки. `development` — куда идёт работа, `master` — то, что стоит в проде.
-Прямой пуш в `master` закрыт настройками GitHub, попасть туда можно только
-релизным мержем с зелёными проверками — в настройках ветки они называются
-`Website and widgets` и `API` (имена job'ов, а не воркфлоу).
+Two branches. `development` is where work lands, `master` is what production
+runs. Direct pushes to `master` are blocked in GitHub's settings; the only way
+in is a release merge with green checks — in the branch settings they are called
+`Website and widgets` and `API` (the job names, not the workflow names).
 
 ```
-feature/* ──► development ──(PR)──► master ──► тег vГГГГ.ММ.ДД ──► сервер
+feature/* ──► development ──(PR)──► master ──► tag vYYYY.MM.DD ──► server
 ```
 
-**1. Слить и пометить.** PR `development → master`, **merge commit** (не squash:
-история осмысленных коммитов здесь ценность), затем тег на мерж-коммите:
+**1. Merge and tag.** A PR `development → master`, a **merge commit** (not a
+squash: a history of meaningful commits is the point here), then a tag on the
+merge commit:
 
 ```bash
 git checkout master && git pull
-git tag -a v2026.09.14 -m "Мониторинг, кеш ISR, бренд Sululu"
+git tag -a v2026.09.14 -m "Monitoring, ISR cache, Sululu branding"
 git push origin v2026.09.14
 ```
 
-Схема `vГГГГ.ММ.ДД`, а не semver: публикуемых пакетов нет, версии в
-`package.json` и `pyproject.toml` к выкаченному отношения не имеют. Два релиза
-в один день — `v2026.09.14.2`.
+The `vYYYY.MM.DD` scheme rather than semver: nothing is published as a package,
+and the versions in `package.json` and `pyproject.toml` have nothing to do with
+what is deployed. Two releases in one day — `v2026.09.14.2`.
 
-**2. Выкатить.** На сервере, от пользователя `deploy`:
+**2. Deploy.** On the server, as `deploy`:
 
 ```bash
-./deploy/release.sh              # последний тег
-./deploy/release.sh v2026.09.14  # конкретный — им же откатываются назад
+./deploy/release.sh              # the latest tag
+./deploy/release.sh v2026.09.14  # a specific one — rollbacks use the same command
 ```
 
-Скрипт проверяет чистоту рабочего дерева, показывает список коммитов между
-выкаченным и новым, предупреждает о миграциях в релизе, спрашивает
-подтверждение, снимает бэкап, делает `checkout --detach` на тег, пересобирает
-стек, дожидается `healthy` у `db`, `api` и `website`, дёргает
-`https://<домен>/api/proxy/health` снаружи и дописывает строку в
-`~/releases.log`. При отказе печатает готовую команду отката. Флаги: `--yes`,
-`--no-backup`, `--no-wait`.
+The script checks that the working tree is clean, lists the commits between what
+is deployed and what's coming, warns about migrations in the release, asks for
+confirmation, takes a backup, does a `checkout --detach` onto the tag, rebuilds
+the stack, waits for `db`, `api` and `website` to be `healthy`, hits
+`https://<domain>/api/proxy/health` from outside, and appends a line to
+`~/releases.log`. On failure it prints a ready-made rollback command. Flags:
+`--yes`, `--no-backup`, `--no-wait`.
 
-Detached HEAD на сервере — так и задумано: закоммитить на проде не получится.
-Ответ на вопрос «что сейчас в проде» — `git describe --tags` на сервере или
-`~/releases.log`.
+The detached HEAD on the server is intentional: committing in production isn't
+possible. The answer to "what is in production right now" is `git describe
+--tags` on the server, or `~/releases.log`.
 
-**3. Откат** — тот же скрипт с предыдущим тегом. Работает всегда, **кроме
-схемы базы**: `api` накатывает `alembic upgrade head` на каждом старте, а назад
-миграции сами не уходят.
+**3. Rollback** — the same script with the previous tag. It always works,
+**except for the database schema**: `api` runs `alembic upgrade head` on every
+start, and migrations never go back on their own.
 
-⚠️ Отсюда правило релиза: **в одном релизе только расширяющая миграция** —
-добавить nullable-колонку, таблицу, индекс. Удаление колонки или таблицы,
-переименование, `NOT NULL` на существующем поле — следующим релизом, когда
-предыдущий уже пожил в проде. Тогда откат кода безопасен всегда и не требует ни
-`alembic downgrade`, ни восстановления из бэкапа. Релиз, нарушающий это
-правило, откатывается только через `deploy/restore.sh`.
+⚠️ Hence the release rule: **only expanding migrations in a single release** —
+add a nullable column, a table, an index. Dropping a column or a table, renaming
+one, adding `NOT NULL` to an existing field — those go in the next release, once
+the previous one has lived in production. Then a code rollback is always safe
+and needs neither `alembic downgrade` nor a restore from backup. A release that
+breaks this rule can only be undone through `deploy/restore.sh`.
 
-**Хотфикс** — ветка от `master`, PR в `master`, тег, выкатка; затем `master`
-сливается обратно в `development`, иначе правка потеряется в следующем релизе.
+**A hotfix** is a branch off `master`, a PR into `master`, a tag, a deploy; then
+`master` is merged back into `development`, or the fix is lost in the next
+release.
 
 ---
 
-## Повседневные операции
+## Everyday operations
 
-**Изменение публичных переменных фронтенда** (`NEXT_PUBLIC_*` — домен, username
-бота, флаг виджета входа): их Next вшивает в бандл **на этапе сборки**, поэтому
-перезапуска мало — нужна пересборка:
+Everything below runs **as `deploy`** (root over SSH is closed, Step 1). If you
+somehow get onto the server another way, run git commands in
+`/home/deploy/lulu-beauty` as `deploy` anyway — `sudo -u deploy -H git …`.
+Otherwise `.git` ends up with root-owned objects, and the next run of
+`deploy/release.sh` as `deploy` fails on permissions at the worst possible
+moment.
+
+**Changing the frontend's public variables** (`NEXT_PUBLIC_*` — domain, bot
+username, the login-widget flag): Next bakes them into the bundle **at build
+time**, so a restart isn't enough — it takes a rebuild:
 
 ```bash
 docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --build website
 ```
 
-**Остановка и снос:**
+**Stopping and tearing down:**
 
 ```bash
-docker compose --env-file .env.prod -f docker-compose.prod.yml stop      # погасить
-docker compose --env-file .env.prod -f docker-compose.prod.yml down      # снести контейнеры
+docker compose --env-file .env.prod -f docker-compose.prod.yml stop      # stop
+docker compose --env-file .env.prod -f docker-compose.prod.yml down      # remove containers
 ```
 
-⚠️ `down -v` дополнительно удаляет тома — это разом база, фотографии и
-сертификаты. Флаг здесь не нужен никогда.
+⚠️ `down -v` also deletes the volumes — that's the database, the photos and the
+certificates in one go. That flag is never needed here.
 
-Том `next_cache` (`/app/apps/website/.next/cache`) — исключение: его снос
-ничего не теряет, только заставляет первых посетителей заново оплатить
-генерацию страниц и перекодирование фотографий. Держится он затем, чтобы
-этого не происходило после каждого редеплоя: образ сайта собирается **без**
-доступа к API (так задумано), поэтому готовых страниц в нём нет ни одной.
+The `next_cache` volume (`/app/apps/website/.next/cache`) is the exception:
+deleting it loses nothing, it only makes the first visitors pay again for page
+generation and photo re-encoding. It exists so that doesn't happen after every
+redeploy: the site image is built **without** access to the API (by design), so
+it contains no pre-rendered pages at all.
 
-**Логи и статус:**
+**Logs and status:**
 
 ```bash
 docker compose --env-file .env.prod -f docker-compose.prod.yml logs -f api
-curl https://ваш-домен/api/proxy/health   # /health открыт через прокси Next
-tail -n 50 ~/backup.log                   # последний ночной бэкап
+curl https://your-domain/api/proxy/health   # /health is exposed through Next's proxy
+tail -n 50 ~/backup.log                     # the last nightly backup
 
-# нарушения CSP, собранные браузерами посетителей (Шаг 10)
+# CSP violations collected from visitors' browsers (Step 10)
 docker compose --env-file .env.prod -f docker-compose.prod.yml logs website | grep csp-violation
 ```
 
-`/health` делает настоящий `SELECT 1` — `200` означает, что и API, и база живы.
+`/health` does a real `SELECT 1` — `200` means both the API and the database are
+alive.
 
 ---
 
-## Что осталось за рамками MVP
+## Left out of the MVP
 
-- **Фотографии в объектном хранилище.** Сейчас `STORAGE_DRIVER=local`, файлы на
-  диске сервера, и из-за этого контейнер `api` должен быть ровно один. Переезд
-  на S3-совместимое хранилище (Cloudflare R2 — бесплатный исходящий трафик)
-  снимет и это ограничение, и половину работы `deploy/backup.sh` (архив
-  `uploads` стал бы не нужен).
-- **Трекинг ошибок.** Sentry или аналог: сейчас исключение на странице у
-  покупателя не видно нигде, а пятисотки — только в `docker logs`. Внешняя
-  проверка `/health` и пинг об успешном бэкапе уже есть, это Шаг 10.
-- **Staging-окружение.** Тот же compose на втором домене/сервере.
-- **CI-деплой.** Выкатку запускает человек на сервере (`deploy/release.sh`), пусть
-  и одной командой с проверками. GitHub Actions гоняет тесты и закрывает `master`
-  от прямого пуша, но не выкатывает: для этого нужен деплой-ключ на сервере, а
-  такому раннеру пришлось бы доверить прод целиком. Следующий шаг здесь — не
-  «Actions ходит по SSH», а сборка образов в registry, чтобы на проде осталось
-  только `pull` + `up -d`.
-- **Промотирование CSP.** В `apps/website/next.config.js` полная политика пока в
-  режиме `Report-Only`. Отчёты уже собираются в лог (Шаг 10) — осталось
-  накопить их на живом трафике и перевести политику в принудительный режим.
+- **Photos in object storage.** Right now `STORAGE_DRIVER=local`, the files are
+  on the server's disk, and because of that there must be exactly one `api`
+  container. Moving to S3-compatible storage (Cloudflare R2 — free egress)
+  removes that constraint and half the work of `deploy/backup.sh` (the `uploads`
+  archive would no longer be needed).
+- **Error tracking.** Sentry or similar: today an exception on a customer's page
+  is visible nowhere, and 500s only in `docker logs`. The external `/health`
+  check and the backup success ping already exist, that's Step 10.
+- **A staging environment.** The same compose on a second domain/server.
+- **CI deployment.** A human starts the deploy on the server
+  (`deploy/release.sh`), even if it is one command with checks. GitHub Actions
+  runs the tests and keeps `master` closed to direct pushes, but doesn't deploy:
+  that would need a deploy key on the server, and such a runner would have to be
+  trusted with production entirely. The next step here isn't "Actions over SSH"
+  but building images into a registry, so that production is left with `pull` +
+  `up -d`.
+- **Promoting the CSP.** In `apps/website/next.config.js` the full policy is
+  still `Report-Only`. The reports are already collected in the log (Step 10) —
+  what's left is accumulating them on live traffic and switching the policy to
+  enforcing.
