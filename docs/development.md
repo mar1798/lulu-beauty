@@ -115,9 +115,12 @@ tagged `vYYYY.MM.DD` on the merge commit and deployed by tag.
 - `.github/workflows/api.yml`, job **`API`** — `ruff` → `mypy` → `alembic upgrade head` →
   `pytest` against a real Postgres service.
 
-Both run on `development`, `master` and `staging`. The job names are the names `master`'s
-required status checks are configured by, so renaming one means editing the branch rule in
-the same breath — otherwise the old name stays pending forever and blocks every merge.
+Both run on pushes to `development` and `staging`, and on pull requests into `master`.
+The two branch lists are disjoint on purpose: the only pull request here is
+`development` -> `master`, so overlapping lists would check one commit twice — once for
+the push and once for the pull request. The job names are the names `master`'s required
+status checks are configured by, so renaming one means editing the branch rule in the
+same breath — otherwise the old name stays pending forever and blocks every merge.
 
 ## Deployment
 

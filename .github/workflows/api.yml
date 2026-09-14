@@ -1,10 +1,14 @@
 name: API CI
 
+# The two triggers deliberately cover disjoint branches. A PR is always
+# `development` -> `master` here, so listing the same branches under both would
+# run every check twice for one commit: once for the push to `development` and
+# once for the pull request into `master`.
 on:
   push:
-    branches: [ "development", "master", "staging" ]
+    branches: [ "development", "staging" ]
   pull_request:
-    branches: [ "development", "master", "staging" ]
+    branches: [ "master" ]
 
 jobs:
   check:
