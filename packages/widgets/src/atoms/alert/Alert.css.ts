@@ -1,7 +1,31 @@
-import { style, styleVariants } from '@vanilla-extract/css'
+import { keyframes, style, styleVariants } from '@vanilla-extract/css'
 import { border, color, font, rem } from '../../styling/lib'
 import { flexColumn, flexRow } from '../../styling/mixin'
 import { vars } from '../../styling/themes/contract.css'
+import { APPEAR_DURATION_MS, APPEAR_OFFSET } from '../../utils/motion'
+
+/**
+ * Появление на CSS, а не на Motion, — по той же причине, что у `Appear`, и
+ * причина здесь измерена.
+ *
+ * У Motion начальное состояние уезжает в серверную разметку, поэтому врезка
+ * приезжала к человеку с `opacity:0` и ждала гидратации. На `/catalog` врезка
+ * «Приём заказов закрыт» стоит выше сгиба и оказывалась самым крупным
+ * элементом первого экрана: невидима с 1368 до 2617 мс на 4× CPU + Slow 4G,
+ * LCP 3389 мс при FCP 1479 мс. CSS-анимация играет с первой же отрисовки и от
+ * JS не зависит вовсе — а врезка, показанная в ответ на действие, всё так же
+ * проявляется, потому что узел рождается в этот момент.
+ */
+const rise = keyframes({
+  from: { opacity: 0, transform: `translateY(${APPEAR_OFFSET}px)` },
+  to: { opacity: 1, transform: 'translateY(0)' },
+})
+
+/** При `prefers-reduced-motion` остаётся одна прозрачность — движение убирается. */
+const fade = keyframes({
+  from: { opacity: 0 },
+  to: { opacity: 1 },
+})
 
 export const container = style({
   ...flexRow(12),
@@ -9,6 +33,19 @@ export const container = style({
   padding: `${vars.space.sm} ${vars.space.md}`,
   border: border(1, 'transparent'),
   borderRadius: vars.radius.xl,
+  animationName: rise,
+  animationDuration: `${APPEAR_DURATION_MS}ms`,
+  animationTimingFunction: 'ease-out',
+  animationFillMode: 'both',
+  /*
+    `will-change` не ставим: анимируются `opacity` и `transform`, слой браузер
+    поднимает сам (см. `best-practices` скилла `/motion`).
+  */
+  '@media': {
+    '(prefers-reduced-motion: reduce)': {
+      animationName: fade,
+    },
+  },
 })
 
 export const tone = styleVariants({

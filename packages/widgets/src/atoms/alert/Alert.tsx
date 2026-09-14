@@ -1,8 +1,6 @@
 import clsx from 'clsx'
-import { motion, useReducedMotion } from 'motion/react'
 import { type FC } from 'react'
 import type { IAlertProps, IBasicStyling } from '../../types'
-import { APPEAR_OFFSET, APPEAR_TRANSITION } from '../../utils/motion'
 import { IconClose } from '../../svg/icons'
 import { IconButton } from '../icon-button'
 import * as styles from './Alert.css'
@@ -15,10 +13,16 @@ import * as styles from './Alert.css'
  * (`status`). Это разные `aria-live`, и путать их не стоит.
  *
  * Появление анимировано прямо здесь, а не обёрткой снаружи: сообщение
- * всегда возникает в ответ на действие и всегда сдвигает форму под собой —
- * без проявления этот сдвиг читается как подёргивание страницы. Обёртку
- * `Appear` тут применить нельзя: она добавила бы лишний блок между `alert`
- * и его контейнером в тех местах, где алерт стоит в сетке.
+ * сдвигает форму под собой, и без проявления этот сдвиг читается как
+ * подёргивание страницы. Обёртку `Appear` тут применить нельзя: она добавила
+ * бы лишний блок между `alert` и его контейнером в тех местах, где алерт
+ * стоит в сетке, — поэтому анимация живёт в `Alert.css.ts` на самом узле.
+ *
+ * Почему CSS, а не Motion: врезка появляется не только в ответ на действие —
+ * «Приём заказов закрыт» приезжает уже в статической разметке каталога, а
+ * начальный кадр Motion уехал бы в неё и держал бы её невидимой до гидратации
+ * (замеры — в комментарии `Alert.css.ts`). `prefers-reduced-motion` там же
+ * решается медиа-запросом, без JS.
  */
 export const Alert: FC<IAlertProps & IBasicStyling> = ({
   children,
@@ -28,17 +32,10 @@ export const Alert: FC<IAlertProps & IBasicStyling> = ({
   onClose,
   className,
 }) => {
-  const isReduced = useReducedMotion() ?? false
-
   return (
-    <motion.div
+    <div
       className={clsx(styles.container, styles.tone[tone], className)}
       role={tone === 'danger' ? 'alert' : 'status'}
-      initial={
-        isReduced ? { opacity: 0 } : { opacity: 0, transform: `translateY(${APPEAR_OFFSET}px)` }
-      }
-      animate={isReduced ? { opacity: 1 } : { opacity: 1, transform: 'translateY(0px)' }}
-      transition={APPEAR_TRANSITION}
     >
       <div className={styles.body}>
         {title !== undefined && <span className={styles.title}>{title}</span>}
@@ -57,6 +54,6 @@ export const Alert: FC<IAlertProps & IBasicStyling> = ({
           onClick={onClose}
         />
       )}
-    </motion.div>
+    </div>
   )
 }
