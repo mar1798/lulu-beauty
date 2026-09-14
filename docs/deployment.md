@@ -154,6 +154,30 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml \
 (the user and database names come from the container's own environment, so the
 command can't drift from `POSTGRES_USER`/`POSTGRES_DB` in `.env.prod`)
 
+**Docker Hub.** The base images (`postgres:16-alpine`, `caddy:2-alpine`) are
+pulled anonymously unless the server logs in, and an anonymous pull is metered at
+10 an hour per IP address. That ceiling is only ever reached at the worst
+possible moment — a rebuild in the middle of an incident — and it arrives looking
+like a broken release rather than like a quota. A free account raises it to 200
+an hour and meters them against the account instead of the address:
+
+```bash
+# as deploy, not through sudo: the credentials land in the home directory of
+# whoever logs in, and it is deploy that runs compose and deploy/release.sh
+docker login -u <hub-account>     # at the prompt, paste an access token
+```
+
+Create the token in Docker Hub → **Account settings** → **Personal access
+tokens**, with **Public Repo Read-only** permissions — not the account password.
+`~/.docker/config.json` keeps whatever is entered in base64, which is encoding
+and not encryption, so what sits there should be a key that can do nothing but
+read public images and can be revoked by itself.
+
+Nothing else changes: compose and `deploy/release.sh` find the credentials on
+their own. `docker-ratelimit-source` in the registry's response answers which
+limit is in force — the account name means the login took, an IP address means it
+did not.
+
 ---
 
 ## Step 2. Domain
