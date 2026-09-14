@@ -470,20 +470,29 @@ curl https://your-domain/api/proxy/health
 `200` means the whole chain is alive — Caddy, Next, the API and the database (a
 real `SELECT 1` inside); `503` means the database is unreachable.
 
-Checking the domain root instead of `/health` is pointless: the pages are static
-and are served even with a dead database. But `/health` alone isn't enough
-either — a check performed by the server itself goes quiet together with it. So
-monitoring has two halves, each covering the other's blind spot.
+The root alone says little: the pages are static and are served even with a dead
+database. But `/health` alone isn't enough either — a check performed by the
+server itself goes quiet together with it. So monitoring has two halves, each
+covering the other's blind spot.
 
 **First half: the view from outside.** A monitor on `https://your-domain/` —
 it catches what the server cannot report: the machine is off, Caddy didn't come
 up, the certificate expired, the A record broke, the host had an outage.
 
-⚠️ `/health` **answers `405` to a HEAD request**, and free tiers of external
-monitors usually only do HEAD (an arbitrary method is a paid option on
-UptimeRobot). Point a free monitor at `/health` and you get a permanent "site is
-down" for a working site. So the root is what's checked from outside (`HEAD /` →
-`200`), and the database is covered by the second half.
+⚠️ There is no `/health` **outside**: Caddy sends only `/telegram/webhook`
+straight to the API and everything else to Next, so the public address of the
+check is `/api/proxy/health` — `HEAD /health` on the domain is a 404 from Next,
+not a health check. And that address is no good for a free monitor either. The
+proxy forwards the method as it is (`pages/api/proxy/[...path].ts`) and passes
+the upstream status back untouched, while `/health` is registered with
+`@router.get`, which in FastAPI — unlike a bare Starlette route — does not answer
+HEAD: the reply is `405`. Free tiers usually do nothing but HEAD (an arbitrary
+method is a paid option on UptimeRobot), so a monitor pointed there reports a
+working site as permanently down.
+
+The root is therefore what is checked from outside (`HEAD /` → `200`), and the
+database is covered by the second half. That split is the better shape anyway: a
+check on the root doesn't depend on the proxy route surviving the next edit.
 
 **Second half: `deploy/health-watch.sh`.** Every 5 minutes it GETs `/health`
 itself and reports to healthchecks.io:
