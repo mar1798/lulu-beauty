@@ -122,11 +122,28 @@ Cyrillic is one line in `tokens.ts` rather than two dozen style files.
 
 ## Animation
 
-`motion` (formerly Framer Motion) **is installed** here and used by `Appear`, `Alert`,
-`MobileMenu`, `ToastViewport`, `Modal` and `ConfirmDialog`. Always import from `motion/react`,
-never the deprecated `framer-motion` package. Shared timings and easings live in
-`src/utils/motion.ts` — reuse them instead of inlining new values, and use the `/motion` skill
-rather than guessing. Details in [conventions.md](conventions.md#building-new-ui).
+`motion` (formerly Framer Motion) **is installed** here and used by `Reveal`, `Parallax`,
+`DecorField`, `HomeHero`, `MobileMenu`, `ToastViewport`, `Modal` and `ConfirmDialog`. Always
+import from `motion/react`, never the deprecated `framer-motion` package. Shared timings and
+easings live in `src/utils/motion.ts` — reuse them instead of inlining new values, and use the
+`/motion` skill rather than guessing. Details in
+[conventions.md](conventions.md#building-new-ui).
+
+**Anything that can appear in server-rendered markup animates in CSS, not motion.** motion
+serializes `initial` into the SSR output, so a block that ships inside static HTML arrives at
+`opacity: 0` and stays invisible until hydration — measured at 1.2 s on a mid-range phone
+before `Alert` was moved to CSS, and it cost `/catalog` its LCP. `Appear`, `Alert` and
+`HomeHero`'s entrance are CSS for exactly this reason. motion is for what mounts in response
+to an action (`Modal`, `ToastViewport`, `MobileMenu`, dropdowns) and for what is driven by
+scroll (`Reveal`, `Parallax`, `DecorField`).
+
+**A reduced-motion branch must state its final visual state.** `useReducedMotion()` is always
+`false` on the server, so the markup carries motion's initial frame; React does not reconcile
+that attribute during hydration, so a branch that simply renders "the same node without
+animation" leaves the server's `opacity: 0` / `transform` in place forever. `Reveal` solves it
+by keeping the motion node with `initial={false} animate="visible"` (which also un-hides
+children that inherit its variants, such as `StepScene`); `Parallax`, `DecorField` and
+`HomeHero` render plain nodes and clear the leftovers with `useStillNode`.
 
 ## Tests
 
