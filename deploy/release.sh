@@ -15,12 +15,14 @@
 #   --yes        don't ask for confirmation (for non-interactive runs)
 #   --no-backup  skip the backup before deploying
 #   --no-wait    don't wait for healthy and don't check /health (just build and start)
+#   --no-prune   keep the build cache this release would otherwise clean up
 #
 # Settings come from environment variables (defaults in brackets):
 #
-#   ENV_FILE      path to .env.prod            (<repository root>/.env.prod)
-#   RELEASE_LOG   log of deployments           ($HOME/releases.log)
-#   WAIT_SECONDS  how long to wait for healthy (240)
+#   ENV_FILE          path to .env.prod             (<repository root>/.env.prod)
+#   RELEASE_LOG       log of deployments            ($HOME/releases.log)
+#   WAIT_SECONDS      how long to wait for healthy  (240)
+#   PRUNE_OLDER_THAN  build cache age to drop       (168h)
 #
 # ⚠️ Rolling the code back does **not** roll back the database schema: the `api`
 # container runs `alembic upgrade head` on every start, and migrations never go
@@ -38,12 +40,14 @@ REPO_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 ENV_FILE="${ENV_FILE:-$REPO_ROOT/.env.prod}"
 RELEASE_LOG="${RELEASE_LOG:-$HOME/releases.log}"
 WAIT_SECONDS="${WAIT_SECONDS:-240}"
+PRUNE_OLDER_THAN="${PRUNE_OLDER_THAN:-168h}"
 
 COMPOSE=(docker compose --env-file "$ENV_FILE" -f "$REPO_ROOT/docker-compose.prod.yml")
 
 ASSUME_YES=0
 DO_BACKUP=1
 DO_WAIT=1
+DO_PRUNE=1
 TARGET=""
 
 log() { printf '%s  %s\n' "$(date '+%F %T')" "$*"; }
@@ -54,6 +58,7 @@ while [[ $# -gt 0 ]]; do
     --yes) ASSUME_YES=1 ;;
     --no-backup) DO_BACKUP=0 ;;
     --no-wait) DO_WAIT=0 ;;
+    --no-prune) DO_PRUNE=0 ;;
     -*) die "unknown flag: $1" ;;
     *) [[ -z "$TARGET" ]] || die "extra argument: $1"; TARGET="$1" ;;
   esac
@@ -136,7 +141,29 @@ rollback_hint() {
     log "         (migrations, if this release had any, won't revert by themselves)"
 }
 
+# Every `up -d --build` leaves layers behind and nothing removes them: on a 40 GB
+# disk the cache outgrows the images, the volumes and the database put together
+# within a few dozen releases, and it runs out during a build — which is to say
+# during a deploy.
+#
+# Always after the build, never before it: the warm cache is what makes this
+# release, and a rollback right after it, quick. The age cut is the compromise —
+# a rollback to a tag older than PRUNE_OLDER_THAN rebuilds from further back and
+# takes minutes longer, which is worth a disk that doesn't fill up quietly.
+#
+# A failure here is reported and no more. By this point the release is already
+# running, and housekeeping is no reason to exit non-zero.
+prune_build_cache() {
+  [[ $DO_PRUNE -eq 1 ]] || return 0
+
+  log "cleaning up build cache older than $PRUNE_OLDER_THAN…"
+  docker builder prune --force --filter "until=$PRUNE_OLDER_THAN" 2>&1 |
+    tail -n1 | sed 's/^/  /' ||
+    log "warning: could not clean the build cache — check the disk with docker system df"
+}
+
 if [[ $DO_WAIT -eq 0 ]]; then
+  prune_build_cache
   log "verification skipped (--no-wait); deployed: $TARGET ($TARGET_SHA)"
   exit 0
 fi
@@ -196,6 +223,8 @@ else
     exit 1
   fi
 fi
+
+prune_build_cache
 
 # The deployment log. The only answer to "what did we deploy, and when": there
 # are no image tags here and no registry.

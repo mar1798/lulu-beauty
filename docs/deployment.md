@@ -648,9 +648,19 @@ The script checks that the working tree is clean, lists the commits between what
 is deployed and what's coming, warns about migrations in the release, asks for
 confirmation, takes a backup, does a `checkout --detach` onto the tag, rebuilds
 the stack, waits for `db`, `api` and `website` to be `healthy`, hits
-`https://<domain>/api/proxy/health` from outside, and appends a line to
-`~/releases.log`. On failure it prints a ready-made rollback command. Flags:
-`--yes`, `--no-backup`, `--no-wait`.
+`https://<domain>/api/proxy/health` from outside, drops build cache older than a
+week, and appends a line to `~/releases.log`. On failure it prints a ready-made
+rollback command. Flags: `--yes`, `--no-backup`, `--no-wait`, `--no-prune`.
+
+The cleanup is there because nothing else does it: every `up -d --build` leaves
+layers behind, and on a 40 GB disk the cache outgrows the images, the volumes and
+the database put together within a few dozen releases — then it runs out during a
+build, which is to say during a deploy. It runs after the build, never before:
+the warm cache is what makes this release, and a rollback straight after it,
+quick. The age cut (`PRUNE_OLDER_THAN`, `168h` by default) is the compromise — a
+rollback to a tag older than that rebuilds from further back and takes minutes
+longer, which is the price of a disk that doesn't fill up quietly. A failed
+cleanup is a warning and nothing more: the release is already running by then.
 
 The detached HEAD on the server is intentional: committing in production isn't
 possible. The answer to "what is in production right now" is `git describe
@@ -705,6 +715,22 @@ deleting it loses nothing, it only makes the first visitors pay again for page
 generation and photo re-encoding. It exists so that doesn't happen after every
 redeploy: the site image is built **without** access to the API (by design), so
 it contains no pre-rendered pages at all.
+
+**Disk.** Releases clean up after themselves (see "Releases"), so this is a check
+rather than a chore — but the volumes and the database grow on their own, and the
+server has no monitor for space:
+
+```bash
+df -h /             # the whole disk
+docker system df    # images, containers, volumes, build cache separately
+```
+
+Two things grow without a ceiling: `~/lulu-backups`, which keeps **full** copies
+— `KEEP_DAYS` (14) of the database, `KEEP_DAYS_UPLOADS` (4) of the photos — and
+the `uploads` volume itself. The multiplier is the thing to remember: with the
+four-day window, 700 MB of product photos is some 2.8 GB of local archives and
+the same again in R2, where the free tier ends at 10 GB. See "Why the two
+windows differ" in Step 9 for what to do when that stops being enough.
 
 **Logs and status:**
 
