@@ -177,6 +177,15 @@ as `target_metadata`. Generate with `alembic revision --autogenerate` and **comm
 under `migrations/versions/`** — the Docker image only runs `alembic upgrade head`, it never
 generates.
 
+**One release, one expanding migration.** Production runs `alembic upgrade head` on every
+container start and nothing ever runs `downgrade`, so rolling the code back to the previous
+tag leaves the new schema in place. A migration that only adds — a nullable column, a table,
+an index — stays compatible with the previous release, which makes that rollback safe. Drops,
+renames and `NOT NULL` on an existing column don't: they belong in the *next* release, once
+the one that stopped writing the old shape has lived in production. A release that breaks
+this rule can only be undone through `deploy/restore.sh`. See "Releases" in
+[deployment.md](deployment.md).
+
 ## Docker
 
 `apps/api/Dockerfile` is a multi-stage `uv` build (builder → runtime, non-root user) whose

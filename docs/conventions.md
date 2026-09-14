@@ -98,10 +98,15 @@ Tailwind as a second styling system alongside vanilla-extract.
 
 ## Animation
 
-For fade/slide/stagger and similar patterns, use the `motion` skill (`.claude/skills/motion/`,
-invoke as `/motion`) and the `motion` MCP server (`https://mcp.motion.dev`, free, no account)
-rather than guessing timing and easing values. `best-practices/` under the skill works fully
-offline if the server is unreachable.
+For fade/slide/stagger and similar patterns, use the `motion` skill (invoke as `/motion`) and
+the `motion` MCP server (`https://mcp.motion.dev`, free, no account) rather than guessing
+timing and easing values. `best-practices/` under the skill works fully offline if the server
+is unreachable.
+
+The skill lives under `.claude/skills/motion/`, which is git-ignored: agent configuration is
+per-machine and no longer travels with the repository. If `/motion` isn't there, the MCP
+server alone still answers, and `packages/widgets/src/utils/motion.ts` holds the timings this
+project actually uses.
 
 The library is installed in `packages/widgets` (`npm install motion -w widgets` if ever
 missing) and already used by `Appear`, `Alert`, `MobileMenu`, `ToastViewport`, `Modal` and

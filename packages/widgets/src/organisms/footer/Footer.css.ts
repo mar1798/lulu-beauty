@@ -32,6 +32,10 @@ export const title = style({
 /** На тёмном ссылки ведёт нейтральный 400, а наведение — пастельная марка. */
 export const link = style([
   {
+    ...flexRow(8),
+    alignItems: 'center',
+    /* Ссылка с иконкой — строка, а не блок: подчёркивать пустоту справа незачем. */
+    alignSelf: 'flex-start',
     font: font('14/22'),
     color: color.neutral('400'),
     textDecoration: 'none',
@@ -42,6 +46,13 @@ export const link = style([
   },
   focusVisibleRing(color.brand('300')),
 ])
+
+/** Знак наследует кегль ссылки — так же, как в кнопке. */
+export const icon = style({
+  display: 'inline-flex',
+  fontSize: '1.15em',
+  flexShrink: 0,
+})
 
 export const bottom = style({
   ...flexColumn(8),

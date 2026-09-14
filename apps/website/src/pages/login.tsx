@@ -42,62 +42,64 @@ const LoginPage: React.FC = () => {
         <meta name="robots" content="noindex" />
       </Head>
 
+      {/*
+        Высота зарезервирована на обёртке, а не внутри карточки: проверка сессии
+        показывает спиннер, а панель входа вчетверо выше его — подвал переезжал
+        (см. `styles/layout.css`). Резерв внутри карточки растягивал бы и её саму,
+        оставляя под панелью пустой подвал в треть экрана; на обёртке он только
+        центрирует карточку по высоте экрана.
+      */}
       <AuthTemplate
+        className={layout.sessionArea}
         title="Вход"
         subtitle="Через Telegram — регистрация не нужна, аккаунт заведётся сам"
       >
-        {/*
-          Высота зарезервирована: проверка сессии показывает спиннер, а панель
-          входа вчетверо выше его — подвал переезжал (см. `styles/layout.css`).
-        */}
-        <div className={layout.sessionArea}>
-          {isRedirecting ? (
-            <Spinner label="Проверяем сессию" />
-          ) : (
-            <TelegramLoginPanel
-              botUrl={botUrl}
-              status={status}
-              error={error}
-              onRetry={retry}
+        {isRedirecting ? (
+          <Spinner label="Проверяем сессию" />
+        ) : (
+          <TelegramLoginPanel
+            botUrl={botUrl}
+            status={status}
+            error={error}
+            onRetry={retry}
+            /*
+              Виджета нет вовсе, пока домен не прописан боту в BotFather: там он
+              нарисуется и откажет, а сломанная кнопка рядом с рабочей хуже, чем
+              её отсутствие. Слот, а не импорт внутри виджетов, — как и QR:
+              рисует кнопку чужой скрипт с telegram.org.
+            */
+            loginWidget={isTelegramLoginWidgetEnabled() ? <TelegramLoginWidget /> : null}
+            qr={
               /*
-                Виджета нет вовсе, пока домен не прописан боту в BotFather: там он
-                нарисуется и откажет, а сломанная кнопка рядом с рабочей хуже, чем
-                её отсутствие. Слот, а не импорт внутри виджетов, — как и QR:
-                рисует кнопку чужой скрипт с telegram.org.
-              */
-              loginWidget={isTelegramLoginWidgetEnabled() ? <TelegramLoginWidget /> : null}
-              qr={
-                /*
-                  Подложка появляется вместе с панелью, а код — когда посчитается
-                  (кодирование отложено до простоя, см. `useQrCode`). Без неё код
-                  въезжал в готовый экран и сдвигал всё, что ниже, — в том числе
-                  подвал.
+                Подложка появляется вместе с панелью, а код — когда посчитается
+                (кодирование отложено до простоя, см. `useQrCode`). Без неё код
+                въезжал в готовый экран и сдвигал всё, что ниже, — в том числе
+                подвал.
 
-                  Отказ кодировщика — единственный случай, когда места под код нет
-                  вовсе: держать пустой квадрат, в котором ничего не появится,
-                  хуже, чем не обещать кода совсем.
-                */
-                isQrFailed ? null : (
-                  <div className={styles.qr}>
-                    {qrDataUrl !== null && (
-                      /*
-                        Обычный <img>, а не next/image: это `data:`-URL,
-                        сгенерированный в браузере, — оптимизатору Next нечего
-                        с ним делать.
-                      */
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        className={styles.qrImage}
-                        src={qrDataUrl}
-                        alt="QR-код со ссылкой на бота"
-                      />
-                    )}
-                  </div>
-                )
-              }
-            />
-          )}
-        </div>
+                Отказ кодировщика — единственный случай, когда места под код нет
+                вовсе: держать пустой квадрат, в котором ничего не появится,
+                хуже, чем не обещать кода совсем.
+              */
+              isQrFailed ? null : (
+                <div className={styles.qr}>
+                  {qrDataUrl !== null && (
+                    /*
+                      Обычный <img>, а не next/image: это `data:`-URL,
+                      сгенерированный в браузере, — оптимизатору Next нечего
+                      с ним делать.
+                    */
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      className={styles.qrImage}
+                      src={qrDataUrl}
+                      alt="QR-код со ссылкой на бота"
+                    />
+                  )}
+                </div>
+              )
+            }
+          />
+        )}
       </AuthTemplate>
     </SiteLayout>
   )

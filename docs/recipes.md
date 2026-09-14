@@ -44,6 +44,10 @@ Without step 2 the user gets a status-based placeholder that explains nothing.
    `uv run alembic upgrade head`.
 4. Commit the file under `migrations/versions/` — the Docker image only applies migrations.
 5. If it is money, it is an integer `*_cents`. If it is a product, remember the soft delete.
+6. Keep the migration **expanding only** — add a nullable column, a table, an index. A drop,
+   a rename or a `NOT NULL` on an existing column goes in the release *after* the one that
+   stopped using the old shape: production never runs `downgrade`, so anything else makes the
+   release impossible to roll back. See [backend.md](backend.md#migrations).
 
 ## Add a widget
 

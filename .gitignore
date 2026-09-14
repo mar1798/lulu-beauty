@@ -11,7 +11,9 @@ coverage/
 
 =======
 # Local
-.claude/commands/commit.md
+# Agent configuration: skills, slash commands, settings and worktrees are
+# per-machine, not part of the project.
+.claude/
 .env
 .env.prod
 dist

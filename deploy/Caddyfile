@@ -1,42 +1,43 @@
 {
-	# Сюда Let's Encrypt пишет о проблемах с продлением сертификата.
+	# Where Let's Encrypt writes about problems renewing the certificate.
 	email {$ACME_EMAIL}
 }
 
 {$SITE_DOMAIN} {
 	encode zstd gzip
 
-	# Потолок тела запроса — первый из трёх: Caddy обрывает соединение, не доводя
-	# байты до Next, тот стримит их в API (bodyParser: false), а API добирает
-	# собственным BodySizeLimitMiddleware. Нужен именно здесь, потому что
-	# загрузка multipart разбирается FastAPI раньше, чем отрабатывает
-	# require_admin, — без внешнего лимита анонимный POST пишет на диск.
-	# Значение чуть выше MAX_IMPORT_BYTES (10 MiB): запас на границы multipart.
+	# The request body ceiling, first of three: Caddy cuts the connection without
+	# passing the bytes to Next, which streams them into the API
+	# (bodyParser: false), and the API adds its own BodySizeLimitMiddleware. It is
+	# needed here specifically because FastAPI parses a multipart upload before
+	# require_admin runs — without an outer limit an anonymous POST writes to disk.
+	# The value is slightly above MAX_IMPORT_BYTES (10 MiB): room for multipart
+	# boundaries.
 	request_body {
 		max_size 12MB
 	}
 
-	# Единственный путь, ведущий в API напрямую: Telegram обязан достучаться
-	# до вебхука сам, через прокси Next он не пойдёт.
+	# The only path that leads into the API directly: Telegram has to reach the
+	# webhook itself, and it will not go through Next's proxy.
 	#
-	# Всё остальное API закрыто снаружи намеренно — браузер ходит в него через
-	# /api/proxy/* самого Next, который прикладывает httpOnly-куки. Открой мы
-	# API целиком, куки перестали бы быть единственным входом.
+	# Everything else in the API is deliberately closed from outside — the browser
+	# reaches it through Next's own /api/proxy/*, which attaches the httpOnly
+	# cookies. Expose the API wholesale and those cookies stop being the only way in.
 	#
-	# Путь совпадает с тем, что регистрирует бот: TELEGRAM_WEBHOOK_URL — это
-	# база, к которой app/telegram/bot.py дописывает /telegram/webhook.
+	# The path matches what the bot registers: TELEGRAM_WEBHOOK_URL is the base
+	# that app/telegram/bot.py appends /telegram/webhook to.
 	handle /telegram/webhook {
 		reverse_proxy api:3001
 	}
 
 	handle {
-		# Фотографии товаров (/files/*) тоже идут сюда: Next рерайтит их на API
-		# сам (см. next.config.js), поэтому отдельного маршрута им не нужно.
+		# Product photos (/files/*) come here too: Next rewrites them onto the API
+		# itself (see next.config.js), so they need no route of their own.
 		reverse_proxy website:3000
 	}
 
-	# Заголовки безопасности (CSP, HSTS, Permissions-Policy) выставляет сам Next
-	# в next.config.js — дублировать их здесь значит однажды разойтись с ним.
+	# Security headers (CSP, HSTS, Permissions-Policy) are set by Next itself in
+	# next.config.js — duplicating them here means drifting apart from it one day.
 
 	log {
 		output file /data/access.log {

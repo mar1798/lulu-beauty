@@ -1,41 +1,41 @@
 #!/usr/bin/env bash
 #
-# Бэкап продового стека Sululu: база (pg_dump) + фотографии товаров
-# (том `uploads`). Состояние живёт только в этих двух местах — потеря второго
-# оставит в БД строки product_images, указывающие в пустоту.
+# Backs up the Sululu production stack: the database (pg_dump) and the product
+# photos (the `uploads` volume). State lives in those two places only — losing
+# the second one leaves product_images rows in the database pointing at nothing.
 #
-# Запуск вручную:
+# Manual run:
 #
 #   ./deploy/backup.sh
 #
-# Раз в сутки по cron (от пользователя `deploy`, `crontab -e`):
+# Daily, from cron (as `deploy`, `crontab -e`):
 #
 #   17 3 * * * /home/deploy/lulu-beauty/deploy/backup.sh >> /home/deploy/backup.log 2>&1
 #
-# Настройки — переменными окружения (значения по умолчанию в скобках):
+# Settings come from environment variables (defaults in brackets):
 #
-#   BACKUP_DIR     куда складывать архивы           ($HOME/lulu-backups)
-#   KEEP_DAYS      сколько дней хранить локально    (14)
-#   BACKUP_REMOTE  rclone-remote для выгрузки       (пусто — только локально)
-#                  например: r2:lulu-backups  или  s3:my-bucket/lulu
-#   ENV_FILE       путь к .env.prod                 (<корень репозитория>/.env.prod)
-#   BACKUP_PING_URL  адрес пинга мониторингу        (пусто — не пинговать)
-#                  healthchecks.io и совместимые: на <url> уходит успех,
-#                  на <url>/fail — падение, вместе с последними строками лога.
-#                  Без него об упавшем ночном бэкапе узнаёшь только из backup.log.
+#   BACKUP_DIR     where to put the archives        ($HOME/lulu-backups)
+#   KEEP_DAYS      how many days to keep locally    (14)
+#   BACKUP_REMOTE  rclone remote to upload to       (empty — local copies only)
+#                  for example: r2:lulu-backups  or  s3:my-bucket/lulu
+#   ENV_FILE       path to .env.prod                (<repository root>/.env.prod)
+#   BACKUP_PING_URL  monitoring ping address        (empty — don't ping)
+#                  healthchecks.io and compatible: success goes to <url>,
+#                  failure to <url>/fail, along with the last lines of the log.
+#                  Without it, a failed nightly backup shows up only in backup.log.
 #
-# ⚠️ Бэкап, лежащий на том же сервере, от потери сервера не спасает.
-# Пока BACKUP_REMOTE не задан, скрипт об этом предупреждает при каждом запуске.
+# ⚠️ A backup sitting on the same server does not survive losing that server.
+# Until BACKUP_REMOTE is set, the script says so on every run.
 #
-# Восстановление — deploy/restore.sh (см. также «Шаг 9» в DEPLOY.md):
+# Restoring — deploy/restore.sh (see also "Step 9" in docs/deployment.md):
 #
 #   ./deploy/restore.sh ~/lulu-backups/db-2026-08-18-0317.sql.gz \
 #                       ~/lulu-backups/uploads-2026-08-18-0317.tar.gz
 
 set -Eeuo pipefail
 
-# Корень репозитория — на два уровня выше самого скрипта, поэтому запускать его
-# можно из любой директории (в том числе из cron, где $PWD — домашняя папка).
+# The repository root is two levels above this script, so it can be run from any
+# directory (including cron, where $PWD is the home directory).
 REPO_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 
 BACKUP_DIR="${BACKUP_DIR:-$HOME/lulu-backups}"
@@ -46,8 +46,8 @@ BACKUP_PING_URL="${BACKUP_PING_URL:-}"
 
 COMPOSE=(docker compose --env-file "$ENV_FILE" -f "$REPO_ROOT/docker-compose.prod.yml")
 
-# Весь вывод дублируется в память, чтобы отправить хвост лога мониторингу:
-# в письме healthchecks.io о падении видно причину, а не только сам факт.
+# Every line is mirrored into memory so the tail of the log can be sent to the
+# monitor: the healthchecks.io email then shows the cause, not just the fact.
 LOG_TAIL=""
 log() {
   local line
@@ -55,43 +55,43 @@ log() {
   printf '%s\n' "$line"
   LOG_TAIL="$LOG_TAIL$line"$'\n'
 }
-die() { log "ОШИБКА: $*"; exit 1; }
+die() { log "ERROR: $*"; exit 1; }
 
-# Пинг мониторингу. Протокол healthchecks.io: успех — GET/POST на сам адрес,
-# падение — на <адрес>/fail; тело запроса становится текстом события.
-# Молчание здесь намеренно: недоступный мониторинг не должен превращать
-# успешный бэкап в неуспешный, поэтому ошибка curl только отмечается в логе.
+# The monitoring ping. healthchecks.io protocol: success is a GET/POST to the
+# address itself, failure to <address>/fail; the request body becomes the event
+# text. The silence here is deliberate: an unreachable monitor must not turn a
+# successful backup into a failed one, so a curl error is only noted in the log.
 ping_monitor() {
   [[ -n "$BACKUP_PING_URL" ]] || return 0
 
   if ! command -v curl >/dev/null; then
-    log "предупреждение: BACKUP_PING_URL задан, но curl не установлен"
+    log "warning: BACKUP_PING_URL is set, but curl is not installed"
     return 0
   fi
 
   curl -fsS -m 10 --retry 3 -o /dev/null \
     --data-raw "$(printf '%s' "$LOG_TAIL" | tail -n 20)" \
     "$BACKUP_PING_URL$1" ||
-    log "предупреждение: не удалось отправить пинг мониторингу"
+    log "warning: could not send the monitoring ping"
 }
 
-# Пингуем только те запуски, которые действительно делали бэкап: выход по
-# занятому локу (cron наложился на ручной запуск) — не событие.
+# Only runs that actually took a backup are pinged: exiting because the lock was
+# held (cron overlapping a manual run) is not an event.
 NOTIFY=0
 
-# Любой обрыв на середине оставляет недописанные архивы — убираем их, чтобы
-# битый файл не выглядел как валидный бэкап.
+# Any interruption halfway leaves half-written archives — remove them, so a
+# broken file can't pass for a valid backup.
 finish() {
   local code=$?
 
   if [[ $code -ne 0 ]]; then
-    # Файлов может уже и не быть: обрыв на выгрузке наружу случается после
-    # того, как оба архива переименованы в окончательные.
+    # The files may already be gone: an interruption during the upload happens
+    # after both archives have been renamed to their final names.
     if [[ -f "${DB_TMP:-}" || -f "${UPLOADS_TMP:-}" ]]; then
       rm -f "${DB_TMP:-}" "${UPLOADS_TMP:-}"
-      log "прервано с кодом $code, незавершённые файлы удалены"
+      log "interrupted with code $code, unfinished files removed"
     else
-      log "прервано с кодом $code"
+      log "interrupted with code $code"
     fi
 
     [[ $NOTIFY -eq 1 ]] && ping_monitor /fail
@@ -103,15 +103,15 @@ finish() {
 }
 trap finish EXIT
 
-[[ -f "$ENV_FILE" ]] || die "не найден $ENV_FILE"
-command -v docker >/dev/null || die "docker не установлен"
+[[ -f "$ENV_FILE" ]] || die "$ENV_FILE not found"
+command -v docker >/dev/null || die "docker is not installed"
 
 mkdir -p "$BACKUP_DIR"
 
-# Два бэкапа одновременно (cron наложился на ручной запуск) не нужны: второй
-# просто выходит, а не борется за место и IO.
+# Two backups at once (cron overlapping a manual run) are pointless: the second
+# one simply leaves instead of competing for disk and IO.
 exec 9>"$BACKUP_DIR/.lock"
-flock -n 9 || { log "другой бэкап уже идёт — выхожу"; exit 0; }
+flock -n 9 || { log "another backup is already running — leaving"; exit 0; }
 
 NOTIFY=1
 
@@ -121,56 +121,56 @@ UPLOADS_FILE="$BACKUP_DIR/uploads-$STAMP.tar.gz"
 DB_TMP="$DB_FILE.part"
 UPLOADS_TMP="$UPLOADS_FILE.part"
 
-log "бэкап в $BACKUP_DIR"
+log "backing up into $BACKUP_DIR"
 
-# --- База --------------------------------------------------------------------
-# Имя пользователя и базы берём из окружения самого контейнера, а не парсим
-# .env.prod: там они опциональны (в compose есть значения по умолчанию).
+# --- Database ----------------------------------------------------------------
+# The user and database names come from the container's own environment rather
+# than from parsing .env.prod, where they are optional (compose has defaults).
 log "pg_dump…"
-# Одинарные кавычки намеренно: $POSTGRES_USER/$POSTGRES_DB должны раскрыться
-# внутри контейнера, а не здесь.
+# The single quotes are deliberate: $POSTGRES_USER/$POSTGRES_DB must expand
+# inside the container, not here.
 # shellcheck disable=SC2016
 "${COMPOSE[@]}" exec -T db sh -c 'pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB"' \
   | gzip > "$DB_TMP"
 
-# pg_dump в конвейере может упасть уже после того, как gzip создал файл, —
-# `set -o pipefail` это ловит, но пустой/битый архив проверяем отдельно.
-gzip -t "$DB_TMP" || die "дамп базы повреждён"
-[[ -s "$DB_TMP" ]] || die "дамп базы пустой"
+# pg_dump can fail after gzip has already created the file — `set -o pipefail`
+# catches that, but an empty or corrupt archive is checked separately.
+gzip -t "$DB_TMP" || die "the database dump is corrupt"
+[[ -s "$DB_TMP" ]] || die "the database dump is empty"
 mv "$DB_TMP" "$DB_FILE"
-log "база: $(du -h "$DB_FILE" | cut -f1)"
+log "database: $(du -h "$DB_FILE" | cut -f1)"
 
-# --- Фотографии --------------------------------------------------------------
-# Читаем том через сам контейнер api, чтобы не угадывать имя тома (оно зависит
-# от имени директории проекта: <project>_uploads).
-log "архив uploads…"
+# --- Photos ------------------------------------------------------------------
+# The volume is read through the api container itself, to avoid guessing the
+# volume name (it depends on the project directory: <project>_uploads).
+log "archiving uploads…"
 "${COMPOSE[@]}" exec -T api tar czf - -C /app/uploads . > "$UPLOADS_TMP"
 
-gzip -t "$UPLOADS_TMP" || die "архив фотографий повреждён"
+gzip -t "$UPLOADS_TMP" || die "the photo archive is corrupt"
 mv "$UPLOADS_TMP" "$UPLOADS_FILE"
-log "фотографии: $(du -h "$UPLOADS_FILE" | cut -f1)"
+log "photos: $(du -h "$UPLOADS_FILE" | cut -f1)"
 
-# --- Выгрузка наружу ---------------------------------------------------------
+# --- Upload off the box ------------------------------------------------------
 if [[ -n "$BACKUP_REMOTE" ]]; then
-  command -v rclone >/dev/null || die "BACKUP_REMOTE задан, но rclone не установлен"
+  command -v rclone >/dev/null || die "BACKUP_REMOTE is set, but rclone is not installed"
   log "rclone → $BACKUP_REMOTE"
   rclone copy "$DB_FILE" "$BACKUP_REMOTE" --no-traverse
   rclone copy "$UPLOADS_FILE" "$BACKUP_REMOTE" --no-traverse
-  # Ротация на удалённой стороне: те же KEEP_DAYS, что и локально.
+  # Rotation on the remote side: the same KEEP_DAYS as locally.
   rclone delete "$BACKUP_REMOTE" --min-age "${KEEP_DAYS}d" --include 'db-*.sql.gz' --include 'uploads-*.tar.gz'
-  log "выгружено"
+  log "uploaded"
 else
-  log "ВНИМАНИЕ: BACKUP_REMOTE не задан — копии только на этом сервере."
-  log "          Потеря сервера = потеря бэкапов. Настройте rclone-remote."
+  log "WARNING: BACKUP_REMOTE is not set — the copies are on this server only."
+  log "         Losing the server means losing the backups. Set up an rclone remote."
 fi
 
-# --- Ротация локальных копий -------------------------------------------------
-# Страховочные копии от restore.sh (pre-restore-*) ротируются здесь же —
-# отдельного расписания у них нет.
+# --- Rotate the local copies -------------------------------------------------
+# The safety copies from restore.sh (pre-restore-*) are rotated here as well —
+# they have no schedule of their own.
 find "$BACKUP_DIR" -maxdepth 1 -type f \
   \( -name 'db-*.sql.gz' -o -name 'uploads-*.tar.gz' -o -name 'pre-restore-*' \) \
   -mtime "+$KEEP_DAYS" -print -delete | while read -r old; do
-    log "удалён старый: $(basename "$old")"
+    log "removed old: $(basename "$old")"
   done
 
-log "готово"
+log "done"

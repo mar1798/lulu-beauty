@@ -21,7 +21,7 @@ unlike the user-facing copy — see [conventions.md](conventions.md#language) fo
 | [testing.md](testing.md) | You write or run tests — and **always** before pointing pytest at a database. |
 | [recipes.md](recipes.md) | You add a feature that crosses packages ("new endpoint", "new error code", "new widget"). Step-by-step checklists. |
 | [gotchas.md](gotchas.md) | Something behaves impossibly. The list of traps this repo is known to contain. |
-| [deployment.md](deployment.md) | Deploying to a server (Russian; written for the person doing the deploy). |
+| [deployment.md](deployment.md) | Deploying to a server, and everything that keeps it running: releases, backups, monitoring. |
 
 ## Keeping these current
 
