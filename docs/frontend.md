@@ -159,7 +159,9 @@ Client-side fetching is [SWR](https://swr.vercel.app/), configured globally in `
   that was the worst CLS on the site (0.394 on `/wishlist`). `styles/layout.css.ts`'s
   `sessionArea` reserves a screen around such a region, and `/wishlist` renders **nothing**
   until the session is known: its skeleton is eight cards tall, and collapsing that into an
-  empty state is a shift no `min-height` can absorb.
+  empty state is a shift no `min-height` can absorb. Put the reserve on a wrapper *around* a
+  card, never inside one — inside, it stretches the card itself and leaves a third of a screen
+  of empty space framed under the content (`/login` did exactly that).
 
 ## Link previews and icons
 
