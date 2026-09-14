@@ -80,7 +80,7 @@ export const AdminShell: React.FC<IAdminShellProps> = ({
     return (
       <SiteLayout isCartCountShown={false}>
         <Head>
-          <title>Админка Sulu by Lulu</title>
+          <title>Админка Sululu</title>
           <meta name="robots" content="noindex" />
         </Head>
 
@@ -95,7 +95,7 @@ export const AdminShell: React.FC<IAdminShellProps> = ({
   return (
     <SiteLayout isCartCountShown={false}>
       <Head>
-        <title>{`${title} — админка Sulu by Lulu`}</title>
+        <title>{`${title} — админка Sululu`}</title>
         <meta name="robots" content="noindex" />
       </Head>
 

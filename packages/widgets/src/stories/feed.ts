@@ -280,7 +280,7 @@ export const feedPortal = (): IPortalProps => ({
 })
 
 export const feedHeader = (): IHeaderProps => ({
-  logo: { label: 'Sulu by Lulu', link: { href: '/' } },
+  logo: { label: 'Sululu', link: { href: '/' } },
   navigation: [
     { label: 'Каталог', link: { href: '/catalog' } },
     { label: 'Как заказать', link: { href: '/how-to-order' } },
@@ -326,7 +326,7 @@ export const feedFooter = (): IFooterProps => ({
       ],
     },
   ],
-  copyright: '© 2026 Sulu by Lulu',
+  copyright: '© 2026 Sululu',
   note: 'Оплата и доставка обсуждаются лично',
 })
 

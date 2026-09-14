@@ -92,7 +92,7 @@ const CartPage: React.FC = () => {
   return (
     <SiteLayout>
       <Head>
-        <title>Корзина — Sulu by Lulu</title>
+        <title>Корзина — Sululu</title>
         <meta name="robots" content="noindex" />
       </Head>
 

@@ -124,7 +124,7 @@ export const SiteLayout: React.FC<ISiteLayoutProps> = ({ children, isCartCountSh
       header={
         <>
           <Header
-            logo={{ label: 'Sulu by Lulu', link: { href: '/' } }}
+            logo={{ label: 'Sululu', link: { href: '/' } }}
             navigation={navigation}
             cartLink={{ href: '/cart' }}
             cartCount={isCartCountShown ? itemCount : 0}
@@ -159,7 +159,7 @@ export const SiteLayout: React.FC<ISiteLayoutProps> = ({ children, isCartCountSh
       footer={
         <Footer
           columns={footerColumns}
-          copyright={`© ${START_YEAR} Sulu by Lulu`}
+          copyright={`© ${START_YEAR} Sululu`}
           note="Оплата и доставка обсуждаются лично"
         />
       }

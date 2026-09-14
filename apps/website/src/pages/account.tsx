@@ -135,7 +135,7 @@ const AccountPage: React.FC = () => {
   return (
     <SiteLayout>
       <Head>
-        <title>Профиль — Sulu by Lulu</title>
+        <title>Профиль — Sululu</title>
         <meta name="robots" content="noindex" />
       </Head>
 

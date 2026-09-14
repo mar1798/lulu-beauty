@@ -17,7 +17,7 @@ import { SiteLayout } from '@/layouts/SiteLayout'
 const NotFoundPage: React.FC = () => (
   <SiteLayout>
     <Head>
-      <title>Страница не найдена — Sulu by Lulu</title>
+      <title>Страница не найдена — Sululu</title>
       <meta name="robots" content="noindex" />
     </Head>
 

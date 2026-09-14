@@ -8,7 +8,7 @@ web
 
 ## Users
 
-Repeat local customers who order from Sulu by Lulu regularly, not first-time/discovery shoppers. They are comfortable with the offline-fulfillment model (no online payment — the owner fulfills requests offline). Customers authenticate through Telegram only: there is no password and no code to type — the bot confirms a waiting tab, and sharing a contact with the bot is what creates the account.
+Repeat local customers who order from Sululu regularly, not first-time/discovery shoppers. They are comfortable with the offline-fulfillment model (no online payment — the owner fulfills requests offline). Customers authenticate through Telegram only: there is no password and no code to type — the bot confirms a waiting tab, and sharing a contact with the bot is what creates the account.
 
 ## Product Purpose
 

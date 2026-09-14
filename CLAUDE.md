@@ -36,7 +36,7 @@ Read-only git needs no asking: `git status`, `git diff`, `git log`, `git show`,
 
 ## Repository overview
 
-Turborepo monorepo for the Sulu by Lulu online catalog/ordering platform. No payments —
+Turborepo monorepo for the Sululu online catalog/ordering platform. No payments —
 customers submit requests (заявки) before a deadline, and the owner fulfills them offline.
 
 - `apps/website` — Next.js 16 (Pages Router) site: public catalog/product/cart/checkout/

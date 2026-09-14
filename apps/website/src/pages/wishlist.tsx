@@ -109,7 +109,7 @@ const WishlistPage: React.FC = () => {
   return (
     <SiteLayout>
       <Head>
-        <title>Избранное — Sulu by Lulu</title>
+        <title>Избранное — Sululu</title>
         <meta name="robots" content="noindex" />
       </Head>
 

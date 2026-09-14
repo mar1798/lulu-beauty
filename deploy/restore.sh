@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Восстановление продового стека Lulu Beauty из архивов, снятых
+# Восстановление продового стека Sululu из архивов, снятых
 # deploy/backup.sh. База и фотографии восстанавливаются независимо — можно
 # передать оба архива или только один.
 #
@@ -76,7 +76,7 @@ for f in "$DB_ARCHIVE" "$UPLOADS_ARCHIVE"; do
 done
 
 echo
-echo "Восстановление Lulu Beauty. Текущие данные будут ЗАМЕНЕНЫ:"
+echo "Восстановление Sululu. Текущие данные будут ЗАМЕНЕНЫ:"
 [[ -n "$DB_ARCHIVE" ]]      && echo "  база        ← $DB_ARCHIVE ($(du -h "$DB_ARCHIVE" | cut -f1))"
 [[ -n "$UPLOADS_ARCHIVE" ]] && echo "  фотографии  ← $UPLOADS_ARCHIVE ($(du -h "$UPLOADS_ARCHIVE" | cut -f1))"
 $SAFETY && echo "  страховочная копия текущего состояния → $BACKUP_DIR/pre-restore-*"

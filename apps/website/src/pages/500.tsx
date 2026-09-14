@@ -14,7 +14,7 @@ import { SiteLayout } from '@/layouts/SiteLayout'
 const ServerErrorPage: React.FC = () => (
   <SiteLayout>
     <Head>
-      <title>Ошибка на сервере — Sulu by Lulu</title>
+      <title>Ошибка на сервере — Sululu</title>
       <meta name="robots" content="noindex" />
     </Head>
 
