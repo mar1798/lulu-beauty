@@ -92,6 +92,10 @@ failure **falls back to polling** rather than raising: a bad bot setting must no
 limiting. Note that long polling is what makes `uvicorn --reload` awkward while working on the
 bot.
 
+A token can be delivered to only one of the two at a time, so a local bot sharing the
+production token never receives an update — see **Local dev needs its own bot** in
+[gotchas.md](gotchas.md).
+
 ## Notifications
 
 `app/telegram/notify.py`. Everything addressed to "the owner" fans out to **every** account
