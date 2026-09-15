@@ -10,7 +10,7 @@ import { vars } from '../../styling/themes/contract.css'
  * спорила с подборкой товаров — а это оглавление, не витрина.
  */
 export const container = style({
-  ...gridAutoFit(150, 10),
+  ...gridAutoFit(170, 10),
   listStyle: 'none',
 })
 

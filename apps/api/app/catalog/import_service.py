@@ -464,7 +464,11 @@ class CatalogImportService:
         if len(name) > MAX_TEXT_LENGTH:
             raise ImportRowError(f"название длиннее {MAX_TEXT_LENGTH} символов")
 
-        slug = row.get("slug", "").strip()
+        # Lower-cased, not rejected: `SLUG_PATTERN` allows only lower-case latin, and a
+        # file exported from a supplier's system routinely titles its slugs
+        # ("Celimax-Dual-Barrier-Toner"). The slug is the upsert key, so the whole file
+        # has to agree on one spelling — casing it here is what makes it agree.
+        slug = row.get("slug", "").strip().lower()
         if not slug:
             raise ImportRowError("не указан slug")
         if len(slug) > MAX_TEXT_LENGTH:

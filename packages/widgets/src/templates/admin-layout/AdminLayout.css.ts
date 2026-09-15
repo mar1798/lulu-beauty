@@ -169,7 +169,11 @@ export const head = style({
 
 export const headText = style({
   ...flexColumn(4),
-  maxWidth: rem(400),
+})
+
+/** Подзаголовок раздела: строка комфортной длины, а не во всю ширину экрана. */
+export const summary = style({
+  maxWidth: rem(640),
 })
 
 export const actions = style({

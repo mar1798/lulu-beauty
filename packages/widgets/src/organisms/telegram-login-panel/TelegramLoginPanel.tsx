@@ -55,7 +55,7 @@ export const TelegramLoginPanel: FC<ITelegramLoginPanelProps & IBasicStyling> = 
       ) : (
         <>
           <ol className={styles.steps}>
-            <li>Откройте бота кнопкой ниже — на телефоне или в Telegram на компьютере</li>
+            <li>Откройте бота кнопкой ниже</li>
             <li>Нажмите «Start», если чат новый, — или просто дождитесь ответа бота</li>
             <li>
               В первый раз бот попросит поделиться номером — это и есть регистрация, заполнять

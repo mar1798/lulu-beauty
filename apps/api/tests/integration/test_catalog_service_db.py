@@ -254,6 +254,36 @@ async def test_import_folds_a_slug_repeated_inside_one_file(db_session: AsyncSes
     ]
 
 
+async def test_import_lower_cases_the_slug_column(db_session: AsyncSession) -> None:
+    """A title-cased slug is imported, not rejected, and lands on the existing product.
+
+    Supplier exports routinely title their slugs. Lower-casing happens before the upsert
+    key is read, so "Krem-1" and "krem-1" are one product rather than two rows fighting
+    over one UNIQUE index.
+    """
+    existing = await make_product(db_session, slug="krem-1", name="Старое имя")
+    await db_session.flush()
+
+    content = (
+        "name,slug,price\n"
+        "Новое имя,Krem-1,150.00\n"
+        "Совсем новый,Celimax-Dual-Barrier-Creamy-Toner,10.00\n"
+    ).encode()
+
+    summary, _ = await CatalogImportService(db_session).import_file("catalog.csv", content)
+    await db_session.flush()
+
+    assert (summary.created, summary.updated, summary.errors) == (1, 1, [])
+    await db_session.refresh(existing)
+    assert existing.name == "Новое имя"
+    created = (
+        await db_session.execute(
+            select(Product).where(Product.slug == "celimax-dual-barrier-creamy-toner")
+        )
+    ).scalar_one()
+    assert created.name == "Совсем новый"
+
+
 async def test_import_folds_brand_case_variants(db_session: AsyncSession) -> None:
     """Регистр бренда в файле не создаёт второй бренд.
 

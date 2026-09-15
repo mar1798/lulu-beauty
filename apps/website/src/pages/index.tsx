@@ -53,7 +53,7 @@ const SECTION_CONTENT_DELAY = staggerDelay(2)
 const STEPS: IStep[] = [
   {
     title: 'Соберите корзину',
-    description: 'Каталог открыт всегда. Товары появляются перед каждым сбором, цены — за них же.',
+    description: 'Каталог открыт всегда. Товары появляются перед каждым сбором',
     visual: 'cart',
   },
   {

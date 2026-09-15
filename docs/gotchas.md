@@ -78,6 +78,14 @@ from them. A hex value there produces invalid CSS silently.
 **Use `renderWidget`, not bare `render`, in tests** — otherwise anything touching
 `AppLink`/`AppImage` fails on an empty `ServicesContext`.
 
+**`preflight.css.ts` declares `color-scheme: light` on `html`, and it has to stay there.**
+There is one theme (`themes/light.css.ts`); without the declaration a visitor whose system is
+in dark mode gets the UA's dark rendering for everything the browser paints itself —
+scrollbars, autofill, native controls — on top of a light page. The visible symptom was the
+Telegram Login Widget on `/login`: an embedded document inherits `color-scheme` from its
+embedder, so Telegram's iframe painted a dark backdrop that showed through the corners of the
+rounded button as black wedges.
+
 **No Tailwind, no Radix, no shadcn runtime.** Reference implementations are hand-ported into
 vanilla-extract. Never run `shadcn add` here.
 

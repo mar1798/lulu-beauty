@@ -91,7 +91,9 @@ send: for a deadline nudge a duplicate is a nuisance and a miss is a lost order.
   `packages/widgets/src/utils/slug.ts` for the admin forms. **Keep them in sync.**
 - Import accepts xlsx and csv. Required headers: `name`, `slug`, `price`. Headers are
   normalized (lowercased, spaces/dashes → underscores) and aliased — `instock` → `in_stock`,
-  `volume_ml` / `объем` / `объём` → `volume`. Ceilings: `MAX_IMPORT_ROWS = 50 000`,
+  `volume_ml` / `объем` / `объём` → `volume`. The `slug` cell is lower-cased before it is
+  validated and before it is used as the upsert key, so `Krem-1` and `krem-1` are one
+  product; anything still outside `SLUG_PATTERN` after that fails the row. Ceilings: `MAX_IMPORT_ROWS = 50 000`,
   `MAX_REPORTED_ERRORS = 200`, text columns 255 chars. A too-big file is refused as a file
   error, not per row: xlsx is deflate, and 4 MB can expand to ~150 MB of parsed rows.
 
