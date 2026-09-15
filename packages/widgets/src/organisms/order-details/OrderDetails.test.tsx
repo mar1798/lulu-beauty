@@ -18,9 +18,7 @@ describe('OrderDetails', () => {
   })
 
   it('без обработчиков не показывает управления даже у правимой заявки', () => {
-    renderWidget(
-      <OrderDetails {...feedOrderDetails()} order={feedOrder({ isEditable: true })} />
-    )
+    renderWidget(<OrderDetails {...feedOrderDetails()} order={feedOrder({ isEditable: true })} />)
 
     expect(screen.queryByRole('button', { name: /Убрать из заявки/ })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Отменить заявку' })).not.toBeInTheDocument()
@@ -119,7 +117,11 @@ describe('OrderDetails', () => {
     renderWidget(
       <OrderDetails
         {...feedOrderDetails()}
-        order={feedOrder({ status: 'CANCELLED_BY_CUSTOMER', isEditable: false, isRestorable: true })}
+        order={feedOrder({
+          status: 'CANCELLED_BY_CUSTOMER',
+          isEditable: false,
+          isRestorable: true,
+        })}
         onRestore={onRestore}
       />
     )
@@ -132,7 +134,11 @@ describe('OrderDetails', () => {
     renderWidget(
       <OrderDetails
         {...feedOrderDetails()}
-        order={feedOrder({ status: 'CANCELLED_BY_CUSTOMER', isEditable: false, isRestorable: false })}
+        order={feedOrder({
+          status: 'CANCELLED_BY_CUSTOMER',
+          isEditable: false,
+          isRestorable: false,
+        })}
         isCurrentCycle={true}
         onRestore={vi.fn()}
       />
@@ -146,7 +152,11 @@ describe('OrderDetails', () => {
     renderWidget(
       <OrderDetails
         {...feedOrderDetails()}
-        order={feedOrder({ status: 'CANCELLED_BY_CUSTOMER', isEditable: false, isRestorable: true })}
+        order={feedOrder({
+          status: 'CANCELLED_BY_CUSTOMER',
+          isEditable: false,
+          isRestorable: true,
+        })}
         isCurrentCycle={true}
         onRestore={vi.fn()}
       />

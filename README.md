@@ -41,13 +41,13 @@ npm ci
 
 Then start what you need (all commands run from the repo root):
 
-| Command | Starts | Ports |
-| --- | --- | --- |
-| `npm run dev:web` | frontend only | 3000 |
-| `npm run dev:api` | backend + database in Docker, logs in the foreground | 3001, 5432 |
-| `npm run dev:all` | backend detached + frontend in the foreground | 3000, 3001 |
-| `npm run dev:storybook` | Storybook for `widgets` | 6006 |
-| `npm run dev:api:stop` | stops the containers `dev:api`/`dev:all` started | — |
+| Command                 | Starts                                               | Ports      |
+| ----------------------- | ---------------------------------------------------- | ---------- |
+| `npm run dev:web`       | frontend only                                        | 3000       |
+| `npm run dev:api`       | backend + database in Docker, logs in the foreground | 3001, 5432 |
+| `npm run dev:all`       | backend detached + frontend in the foreground        | 3000, 3001 |
+| `npm run dev:storybook` | Storybook for `widgets`                              | 6006       |
+| `npm run dev:api:stop`  | stops the containers `dev:api`/`dev:all` started     | —          |
 
 `dev:all` runs the api with `-d`, so `Ctrl+C` only stops the frontend — use `npm run dev:api:stop` for the containers. None of these rebuild the api image; after changing `apps/api/Dockerfile` run `docker compose up --build api`.
 

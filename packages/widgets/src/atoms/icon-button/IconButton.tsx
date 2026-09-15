@@ -38,12 +38,7 @@ export const IconButton: FC<IIconButtonProps & IBasicStyling> = ({
 }) => {
   const isUnavailable = unavailableReason !== null && unavailableReason !== ''
   const accessibleLabel = isUnavailable ? `${label} — ${unavailableReason}` : label
-  const classes = clsx(
-    styles.container,
-    styles.variant[variant],
-    styles.size[size],
-    className
-  )
+  const classes = clsx(styles.container, styles.variant[variant], styles.size[size], className)
   const content = (
     <>
       {isLoading ? <Spinner size="sm" label={null} /> : icon}

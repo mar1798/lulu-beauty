@@ -129,11 +129,7 @@ const SCENES: Record<IStepSceneProps['kind'], FC<{ base: number }>> = {
   handover: HandoverScene,
 }
 
-export const StepScene: FC<IStepSceneProps & IBasicStyling> = ({
-  kind,
-  delay = 0,
-  className,
-}) => {
+export const StepScene: FC<IStepSceneProps & IBasicStyling> = ({ kind, delay = 0, className }) => {
   const Scene = SCENES[kind]
 
   return (

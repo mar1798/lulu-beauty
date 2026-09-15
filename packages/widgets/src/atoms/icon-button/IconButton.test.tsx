@@ -20,12 +20,7 @@ describe('IconButton', () => {
   it('с `unavailableReason` остаётся фокусируемой, но не кликается', async () => {
     const onClick = vi.fn()
     renderWidget(
-      <IconButton
-        icon="+"
-        label="В корзину"
-        unavailableReason="Сбор закрыт"
-        onClick={onClick}
-      />
+      <IconButton icon="+" label="В корзину" unavailableReason="Сбор закрыт" onClick={onClick} />
     )
 
     const button = screen.getByRole('button')

@@ -49,19 +49,16 @@ export const ORDERS_TAG = 'orders'
  * их нужно все разом: после оформления, отмены или правки меняется не только
  * открытая страница, но и то, как заявки разложены по остальным.
  */
-export const ordersKey = (userId: string, page: number) =>
-  [ORDERS_TAG, userId, page] as const
+export const ordersKey = (userId: string, page: number) => [ORDERS_TAG, userId, page] as const
 
-export const isOrdersKey = (key: unknown): boolean =>
-  Array.isArray(key) && key[0] === ORDERS_TAG
+export const isOrdersKey = (key: unknown): boolean => Array.isArray(key) && key[0] === ORDERS_TAG
 
 export const orderKey = (userId: string, orderId: string) => ['order', userId, orderId] as const
 
 export const ADMIN_OVERVIEW_TAG = 'admin-overview'
 
 /** Счётчики зависят от активного сбора, поэтому ключ — с его id, а не голый тег. */
-export const adminOverviewKey = (cycleId: string | null) =>
-  [ADMIN_OVERVIEW_TAG, cycleId] as const
+export const adminOverviewKey = (cycleId: string | null) => [ADMIN_OVERVIEW_TAG, cycleId] as const
 
 /** Инвалидация сводки вне зависимости от того, для какого сбора она была посчитана. */
 export const isAdminOverviewKey = (key: unknown): boolean =>

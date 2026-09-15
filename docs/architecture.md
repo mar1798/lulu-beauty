@@ -56,7 +56,7 @@ hosts resolving to a private IP).
 
 ## How a request travels
 
-**Public catalog page.** Built at build time by `getStaticProps` calling the API *anonymously*
+**Public catalog page.** Built at build time by `getStaticProps` calling the API _anonymously_
 (`src/services/api.ts` resolves to `serverConfig('apiBaseUrl')` on the server), revalidated by
 ISR. No session is involved, which is why `getStaticProps` can only ever fetch public data.
 
@@ -82,7 +82,7 @@ ISR. No session is involved, which is why `getStaticProps` can only ever fetch p
   a `next/*` import to `widgets` and Storybook breaks. It also holds no API or analytics
   logic — it is strictly the visual layer.
 - **The API owns every rule.** The admin gate on the frontend is a client-side redirect for
-  *UX*; every admin endpoint independently checks the role itself (`require_admin`, and
+  _UX_; every admin endpoint independently checks the role itself (`require_admin`, and
   `require_super_admin` for handing out roles). Admin JS chunks are
   publicly fetchable — treat the admin UI structure as public and never put a secret in it.
 - **The API is stateful on purpose.** It runs a permanent scheduler (`app/scheduler.py`) and
@@ -98,11 +98,11 @@ ISR. No session is involved, which is why `getStaticProps` can only ever fetch p
 300s), each re-reading state from the database rather than holding per-cycle timers so a
 restart loses nothing:
 
-| Job | What it does |
-| --- | --- |
-| `reminder_sweep` | Plans deadline nudges (24h and 3h before), sends them, *then* stamps them. |
-| `deadline_sweep` | Closes cycles whose deadline passed, rescues carts into wishlists, notifies afterwards. |
-| `auth_session_cleanup` | Deletes expired/spent Telegram login sessions and dead refresh tokens. |
+| Job                    | What it does                                                                            |
+| ---------------------- | --------------------------------------------------------------------------------------- |
+| `reminder_sweep`       | Plans deadline nudges (24h and 3h before), sends them, _then_ stamps them.              |
+| `deadline_sweep`       | Closes cycles whose deadline passed, rescues carts into wishlists, notifies afterwards. |
+| `auth_session_cleanup` | Deletes expired/spent Telegram login sessions and dead refresh tokens.                  |
 
 Plan → send → stamp is the order on purpose; see [domain.md](domain.md#the-order-cycle) and
 [telegram.md](telegram.md#notifications).

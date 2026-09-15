@@ -1,9 +1,4 @@
-import {
-  IBasicStyling,
-  IImageComponentProps,
-  ILink,
-  IWrapperComponent,
-} from '../types'
+import { IBasicStyling, IImageComponentProps, ILink, IWrapperComponent } from '../types'
 import { unmanagedContainer } from '../utils'
 
 /**

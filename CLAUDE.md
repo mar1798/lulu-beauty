@@ -27,21 +27,21 @@ Read-only git needs no asking: `git status`, `git diff`, `git log`, `git show`,
 
 ## Documentation map
 
-| Document | Read before |
-| --- | --- |
-| [docs/architecture.md](docs/architecture.md) | Anything cross-cutting: topology, request flow, why the packages are split. |
-| [docs/domain.md](docs/domain.md) | Touching business rules — cycles, cart, orders, statuses, roles, money, limits. |
-| [docs/backend.md](docs/backend.md) | Working in `apps/api`: layout, endpoints, patterns, error codes, migrations. |
-| [docs/frontend.md](docs/frontend.md) | Working in `apps/website`: pages, auth cookies, the proxy, SWR, security headers. |
-| [docs/widgets.md](docs/widgets.md) | Working in `packages/widgets`: tiers, vanilla-extract, tokens, barrels, Storybook. |
-| [docs/telegram.md](docs/telegram.md) | Touching sign-in, the bot, or any notification. |
-| [docs/conventions.md](docs/conventions.md) | Writing any code — language rule, naming, lint, how new UI may be built. |
-| [docs/recipes.md](docs/recipes.md) | Any change that crosses packages ("new endpoint", "new error code", "new widget"). |
-| [docs/gotchas.md](docs/gotchas.md) | Something behaves impossibly. |
-| [docs/development.md](docs/development.md) | Setup, dev servers, ports, checks. |
-| [docs/environment.md](docs/environment.md) | Adding, renaming or debugging an env var. |
-| [docs/testing.md](docs/testing.md) | Writing or running tests — **always** before pointing pytest at a database. |
-| [docs/deployment.md](docs/deployment.md) | Deploying, operating and releasing: server setup, the prod stack, backups, monitoring. |
+| Document                                     | Read before                                                                            |
+| -------------------------------------------- | -------------------------------------------------------------------------------------- |
+| [docs/architecture.md](docs/architecture.md) | Anything cross-cutting: topology, request flow, why the packages are split.            |
+| [docs/domain.md](docs/domain.md)             | Touching business rules — cycles, cart, orders, statuses, roles, money, limits.        |
+| [docs/backend.md](docs/backend.md)           | Working in `apps/api`: layout, endpoints, patterns, error codes, migrations.           |
+| [docs/frontend.md](docs/frontend.md)         | Working in `apps/website`: pages, auth cookies, the proxy, SWR, security headers.      |
+| [docs/widgets.md](docs/widgets.md)           | Working in `packages/widgets`: tiers, vanilla-extract, tokens, barrels, Storybook.     |
+| [docs/telegram.md](docs/telegram.md)         | Touching sign-in, the bot, or any notification.                                        |
+| [docs/conventions.md](docs/conventions.md)   | Writing any code — language rule, naming, lint, how new UI may be built.               |
+| [docs/recipes.md](docs/recipes.md)           | Any change that crosses packages ("new endpoint", "new error code", "new widget").     |
+| [docs/gotchas.md](docs/gotchas.md)           | Something behaves impossibly.                                                          |
+| [docs/development.md](docs/development.md)   | Setup, dev servers, ports, checks.                                                     |
+| [docs/environment.md](docs/environment.md)   | Adding, renaming or debugging an env var.                                              |
+| [docs/testing.md](docs/testing.md)           | Writing or running tests — **always** before pointing pytest at a database.            |
+| [docs/deployment.md](docs/deployment.md)     | Deploying, operating and releasing: server setup, the prod stack, backups, monitoring. |
 
 ## Repository overview
 
@@ -84,24 +84,24 @@ Not obvious from any single file, and easy to break:
 
 Run from the repo root unless noted. Workspace-scoped commands use `-w <workspace>`.
 
-| Command | Does |
-| --- | --- |
-| `npm run check` | `tsc --noEmit` + eslint across `website` and `widgets`. **Run before finishing any change touching them.** Does not cover `apps/api`. |
-| `npm test` | each JS workspace's tests (`vitest run` in `widgets`). Not `apps/api`. |
-| `npm run lint` | eslint only. |
-| `npm run barrels` | regenerate the auto-generated `index.ts` barrels. |
-| `npm run format` | Prettier across the repo. |
+| Command           | Does                                                                                                                                  |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `npm run check`   | `tsc --noEmit` + eslint across `website` and `widgets`. **Run before finishing any change touching them.** Does not cover `apps/api`. |
+| `npm test`        | each JS workspace's tests (`vitest run` in `widgets`). Not `apps/api`.                                                                |
+| `npm run lint`    | eslint only.                                                                                                                          |
+| `npm run barrels` | regenerate the auto-generated `index.ts` barrels.                                                                                     |
+| `npm run format`  | Prettier across the repo.                                                                                                             |
 
 Dev servers:
 
-| Command | Starts | Ports |
-| --- | --- | --- |
-| `npm run dev:web` | frontend only | 3000 |
-| `npm run dev:api` | backend in the foreground (`docker compose up api`; `db` via `depends_on`) | 3001, 5432 |
-| `npm run dev:storybook` | Storybook for `widgets` | 6006 |
-| `npm run dev:all` | backend detached + frontend in the foreground | 3000, 3001 |
-| `npm run dev:api:stop` | `docker compose stop` | — |
-| `npm run dev` | turbo `dev` across JS workspaces — the frontend alone, deliberately not an alias for `dev:all` | 3000 |
+| Command                 | Starts                                                                                         | Ports      |
+| ----------------------- | ---------------------------------------------------------------------------------------------- | ---------- |
+| `npm run dev:web`       | frontend only                                                                                  | 3000       |
+| `npm run dev:api`       | backend in the foreground (`docker compose up api`; `db` via `depends_on`)                     | 3001, 5432 |
+| `npm run dev:storybook` | Storybook for `widgets`                                                                        | 6006       |
+| `npm run dev:all`       | backend detached + frontend in the foreground                                                  | 3000, 3001 |
+| `npm run dev:api:stop`  | `docker compose stop`                                                                          | —          |
+| `npm run dev`           | turbo `dev` across JS workspaces — the frontend alone, deliberately not an alias for `dev:all` | 3000       |
 
 - `dev:all` starts the api with `-d` **on purpose** (no `concurrently` installed, and two
   foreground processes can't share one npm script), so `Ctrl+C` kills only the frontend —
@@ -148,7 +148,7 @@ trigger would re-check the same commit on every push while the release PR is ope
   the Russian text lives in `apps/website/src/services/apiErrors.ts`, chosen by code **+
   scope**. Every new code needs an entry there, and UI branches on `error.code`, never on text.
 - **Services take an `AsyncSession`, mutate, and do not commit.** The caller owns the
-  transaction; notifications fire *after* the commit.
+  transaction; notifications fire _after_ the commit.
 - **Every new SQLAlchemy model is imported in `app/models.py`**, or Alembic autogenerate
   silently misses its table.
 - **All API calls on the frontend go through `src/services/endpoints/*`**, and every SWR key is

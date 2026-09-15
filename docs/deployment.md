@@ -13,21 +13,21 @@ scale-to-zero don't fit, and horizontal scaling isn't needed yet.
 
 ## Already done (in the repository)
 
-| File | Purpose |
-| --- | --- |
-| `apps/api/Dockerfile` | Backend image. Build context is `apps/api` itself. Runs `alembic upgrade head` on start |
-| `apps/api/.dockerignore` | For the backend context: `.venv`, caches, the local `uploads/` |
-| `apps/website/Dockerfile` | Frontend image. Build context is the **repository root** (Next compiles `widgets` from source) |
-| `.dockerignore` | For the frontend context, i.e. the whole repo: keeps `.git`, `node_modules`, `.env*` out of the image |
-| `docker-compose.prod.yml` | The production stack: `db`, `api`, `website`, `caddy` |
-| `deploy/Caddyfile` | Routes and automatic TLS |
-| `deploy/.env.prod.example` | Template for every production variable (copied to `.env.prod` at the root) |
-| `deploy/backup.sh` | Backs up the database and photos, verifies the archives, rotates them, uploads via `rclone`, pings the monitor |
-| `deploy/restore.sh` | Restores from those archives, keeping a safety copy of the current state |
-| `deploy/health-watch.sh` | Checks the site every 5 minutes and pings healthchecks.io (Step 10) |
-| `deploy/release.sh` | Deploys a release by tag: backup, build, wait for `healthy`, check `/health`, write the log (see "Releases") |
-| `apps/website/next.config.js` | `output: 'standalone'`, security headers, the `/files/*` rewrite — nothing to change here |
-| `.gitignore` | Contains `.env.prod`, so secrets never reach git |
+| File                          | Purpose                                                                                                        |
+| ----------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `apps/api/Dockerfile`         | Backend image. Build context is `apps/api` itself. Runs `alembic upgrade head` on start                        |
+| `apps/api/.dockerignore`      | For the backend context: `.venv`, caches, the local `uploads/`                                                 |
+| `apps/website/Dockerfile`     | Frontend image. Build context is the **repository root** (Next compiles `widgets` from source)                 |
+| `.dockerignore`               | For the frontend context, i.e. the whole repo: keeps `.git`, `node_modules`, `.env*` out of the image          |
+| `docker-compose.prod.yml`     | The production stack: `db`, `api`, `website`, `caddy`                                                          |
+| `deploy/Caddyfile`            | Routes and automatic TLS                                                                                       |
+| `deploy/.env.prod.example`    | Template for every production variable (copied to `.env.prod` at the root)                                     |
+| `deploy/backup.sh`            | Backs up the database and photos, verifies the archives, rotates them, uploads via `rclone`, pings the monitor |
+| `deploy/restore.sh`           | Restores from those archives, keeping a safety copy of the current state                                       |
+| `deploy/health-watch.sh`      | Checks the site every 5 minutes and pings healthchecks.io (Step 10)                                            |
+| `deploy/release.sh`           | Deploys a release by tag: backup, build, wait for `healthy`, check `/health`, write the log (see "Releases")   |
+| `apps/website/next.config.js` | `output: 'standalone'`, security headers, the `/files/*` rewrite — nothing to change here                      |
+| `.gitignore`                  | Contains `.env.prod`, so secrets never reach git                                                               |
 
 The root `docker-compose.yml` (no suffix) is the **development** one: it brings
 up only `db` and `api` for local work. Production never uses it, which is why
@@ -128,10 +128,10 @@ both TCP and UDP (hence four rules for three ports). The filtering is done by a
 **Hetzner Cloud Firewall**, which is configured in the Hetzner console
 (Cloud → project → Firewalls) and is already attached to this server:
 
-| Direction | Rules |
-| --- | --- |
-| Inbound | `22/tcp`, `80/tcp`, `443/tcp`, `443/udp` — everything else dropped |
-| Outbound | **left open on purpose** |
+| Direction | Rules                                                              |
+| --------- | ------------------------------------------------------------------ |
+| Inbound   | `22/tcp`, `80/tcp`, `443/tcp`, `443/udp` — everything else dropped |
+| Outbound  | **left open on purpose**                                           |
 
 `443/udp` is not optional: that's HTTP/3, and without it Caddy silently falls
 back to TCP — the site keeps working, so the omission goes unnoticed for months.
@@ -296,17 +296,17 @@ openssl rand -hex 16   # POSTGRES_PASSWORD
 
 Fill in `.env.prod`:
 
-| Variable | Value |
-| --- | --- |
-| `SITE_DOMAIN` | `your-domain` (without `https://`) |
-| `ACME_EMAIL` | your email — Let's Encrypt sends expiry warnings there |
-| `POSTGRES_PASSWORD` | the generated password |
-| `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET` | the generated secrets |
-| `CORS_ORIGIN`, `WEBSITE_BASE_URL`, `TELEGRAM_WEBHOOK_URL` | `https://your-domain` |
-| `PUBLIC_FILES_BASE_URL` | `https://your-domain/files` |
-| `TELEGRAM_BOT_TOKEN`, `TELEGRAM_BOT_USERNAME` | from BotFather (username without `@`) |
-| `TELEGRAM_WEBHOOK_SECRET` | the generated secret |
-| `OWNER_PHONE`, `OWNER_NAME` | the shop owner's phone and name |
+| Variable                                                  | Value                                                  |
+| --------------------------------------------------------- | ------------------------------------------------------ |
+| `SITE_DOMAIN`                                             | `your-domain` (without `https://`)                     |
+| `ACME_EMAIL`                                              | your email — Let's Encrypt sends expiry warnings there |
+| `POSTGRES_PASSWORD`                                       | the generated password                                 |
+| `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`                 | the generated secrets                                  |
+| `CORS_ORIGIN`, `WEBSITE_BASE_URL`, `TELEGRAM_WEBHOOK_URL` | `https://your-domain`                                  |
+| `PUBLIC_FILES_BASE_URL`                                   | `https://your-domain/files`                            |
+| `TELEGRAM_BOT_TOKEN`, `TELEGRAM_BOT_USERNAME`             | from BotFather (username without `@`)                  |
+| `TELEGRAM_WEBHOOK_SECRET`                                 | the generated secret                                   |
+| `OWNER_PHONE`, `OWNER_NAME`                               | the shop owner's phone and name                        |
 
 The rest of the template already has sensible values, but check them against
 your shop: `CYCLE_TIMEZONE` (`Asia/Bishkek` — cycle deadlines are computed in
@@ -416,14 +416,14 @@ Daily, from cron (as `deploy`, `crontab -e`):
 
 Configured through environment variables:
 
-| Variable | Default | Purpose |
-| --- | --- | --- |
-| `BACKUP_DIR` | `$HOME/lulu-backups` | where to put the archives |
-| `KEEP_DAYS` | `14` | how long to keep the database dumps (locally and on the remote) |
-| `KEEP_DAYS_UPLOADS` | `4` | how long to keep the photo archives, same two places |
-| `BACKUP_REMOTE` | `BACKUP_REMOTE` in `.env.prod` | rclone remote to upload to, e.g. `r2:lulu-backups` |
-| `ENV_FILE` | `<root>/.env.prod` | where compose reads variables from |
-| `BACKUP_PING_URL` | empty | monitoring ping address (Step 10) |
+| Variable            | Default                        | Purpose                                                         |
+| ------------------- | ------------------------------ | --------------------------------------------------------------- |
+| `BACKUP_DIR`        | `$HOME/lulu-backups`           | where to put the archives                                       |
+| `KEEP_DAYS`         | `14`                           | how long to keep the database dumps (locally and on the remote) |
+| `KEEP_DAYS_UPLOADS` | `4`                            | how long to keep the photo archives, same two places            |
+| `BACKUP_REMOTE`     | `BACKUP_REMOTE` in `.env.prod` | rclone remote to upload to, e.g. `r2:lulu-backups`              |
+| `ENV_FILE`          | `<root>/.env.prod`             | where compose reads variables from                              |
+| `BACKUP_PING_URL`   | empty                          | monitoring ping address (Step 10)                               |
 
 **Why the two windows differ.** The database changes continuously, so fourteen
 dumps are fourteen different states worth returning to, and they cost kilobytes.

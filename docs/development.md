@@ -23,14 +23,14 @@ uv sync
 
 All from the repo root:
 
-| Command | Starts | Ports |
-| --- | --- | --- |
-| `npm run dev:web` | frontend only (`npm run dev -w website`) | 3000 |
-| `npm run dev:api` | backend in the foreground with logs (`docker compose up api`; `db` comes up via `depends_on`) | 3001, 5432 |
-| `npm run dev:storybook` | Storybook for `packages/widgets` | 6006 |
-| `npm run dev:all` | backend detached + frontend in the foreground | 3000, 3001 |
-| `npm run dev:api:stop` | `docker compose stop` — the off-switch for whatever `dev:api`/`dev:all` left running | — |
-| `npm run dev` | turbo `dev` across JS workspaces, i.e. the frontend alone | 3000 |
+| Command                 | Starts                                                                                        | Ports      |
+| ----------------------- | --------------------------------------------------------------------------------------------- | ---------- |
+| `npm run dev:web`       | frontend only (`npm run dev -w website`)                                                      | 3000       |
+| `npm run dev:api`       | backend in the foreground with logs (`docker compose up api`; `db` comes up via `depends_on`) | 3001, 5432 |
+| `npm run dev:storybook` | Storybook for `packages/widgets`                                                              | 6006       |
+| `npm run dev:all`       | backend detached + frontend in the foreground                                                 | 3000, 3001 |
+| `npm run dev:api:stop`  | `docker compose stop` — the off-switch for whatever `dev:api`/`dev:all` left running          | —          |
+| `npm run dev`           | turbo `dev` across JS workspaces, i.e. the frontend alone                                     | 3000       |
 
 Two things worth knowing:
 
@@ -53,13 +53,13 @@ curl http://localhost:3001/health     # verifies live DB connectivity, 503 if un
 
 ## Checks
 
-| Command | Covers |
-| --- | --- |
-| `npm run check` | `tsc --noEmit` + eslint across `website` and `widgets` (via turbo) |
-| `npm run lint` | eslint only |
-| `npm test` | each JS workspace's `test` script — `vitest run` in `widgets` |
-| `npm run format` | Prettier across the repo |
-| `npm run barrels` | regenerate the auto-generated `index.ts` barrels |
+| Command           | Covers                                                             |
+| ----------------- | ------------------------------------------------------------------ |
+| `npm run check`   | `tsc --noEmit` + eslint across `website` and `widgets` (via turbo) |
+| `npm run lint`    | eslint only                                                        |
+| `npm test`        | each JS workspace's `test` script — `vitest run` in `widgets`      |
+| `npm run format`  | Prettier across the repo                                           |
+| `npm run barrels` | regenerate the auto-generated `index.ts` barrels                   |
 
 **None of these cover `apps/api`.** From `apps/api`:
 

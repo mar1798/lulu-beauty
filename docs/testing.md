@@ -2,11 +2,11 @@
 
 Three suites, none of which covers another.
 
-| Package | Runner | Command |
-| --- | --- | --- |
+| Package            | Runner                   | Command                                                        |
+| ------------------ | ------------------------ | -------------------------------------------------------------- |
 | `packages/widgets` | vitest + Testing Library | `npm test -w widgets` (or `npm test` from the root, via turbo) |
-| `apps/api` | pytest + pytest-asyncio | `uv run pytest` from `apps/api` |
-| `apps/website` | *(no test suite)* | covered by `npm run check` — types + lint |
+| `apps/api`         | pytest + pytest-asyncio  | `uv run pytest` from `apps/api`                                |
+| `apps/website`     | _(no test suite)_        | covered by `npm run check` — types + lint                      |
 
 ## ⚠️ Never point the API suite at your dev database
 

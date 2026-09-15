@@ -43,9 +43,7 @@ export const useAdminGate = (): IAdminAccess => {
       обратно в редирект.
     */
     const destination =
-      user === null
-        ? `${LOGIN_PATH}?next=${encodeURIComponent(router.asPath)}`
-        : CUSTOMER_FALLBACK
+      user === null ? `${LOGIN_PATH}?next=${encodeURIComponent(router.asPath)}` : CUSTOMER_FALLBACK
 
     void router.replace(destination)
   }, [access, user, router])

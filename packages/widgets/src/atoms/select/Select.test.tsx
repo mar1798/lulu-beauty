@@ -119,10 +119,9 @@ describe('Select', () => {
     // И список остаётся открытым: по заблокированной строке нажатие не значит ничего.
     // Проверяем после того, как исчезновение успело бы доиграть, — иначе тест проходил
     // бы и на закрывающемся списке, который просто ещё виден.
-    await waitFor(() => expect(screen.getByRole('combobox')).toHaveAttribute(
-      'aria-expanded',
-      'true'
-    ))
+    await waitFor(() =>
+      expect(screen.getByRole('combobox')).toHaveAttribute('aria-expanded', 'true')
+    )
     expect(screen.getByRole('listbox')).toBeInTheDocument()
   })
 

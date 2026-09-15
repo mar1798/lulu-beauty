@@ -31,14 +31,9 @@ const DEFAULT_STRENGTH = 24
  * движении сюда просто не заходят, и ни подписки, ни motion-элемента не
  * появляется вовсе.
  */
-const ParallaxMotion: FC<Omit<IParallaxProps, 'strength'> & IBasicStyling & { strength: number }> = ({
-  children,
-  strength,
-  axis,
-  containerRef,
-  as,
-  className,
-}) => {
+const ParallaxMotion: FC<
+  Omit<IParallaxProps, 'strength'> & IBasicStyling & { strength: number }
+> = ({ children, strength, axis, containerRef, as, className }) => {
   const ownRef = useRef<HTMLElement | null>(null)
   const offset = useParallaxOffset(containerRef ?? ownRef, strength)
   const style = axis === 'x' ? { x: offset } : { y: offset }

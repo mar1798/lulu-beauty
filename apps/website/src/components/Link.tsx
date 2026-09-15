@@ -10,7 +10,8 @@ import type { IBasicStyling, ILink, IWrapperComponent } from 'widgets/types'
  * Внешние адреса и явный `legacy` уходят в обычную `<a>`: клиентская
  * навигация Next для них бессмысленна.
  */
-const isExternal = (href: string): boolean => /^(https?:)?\/\//.test(href) || href.startsWith('mailto:')
+const isExternal = (href: string): boolean =>
+  /^(https?:)?\/\//.test(href) || href.startsWith('mailto:')
 
 export const Link: React.FC<IWrapperComponent & ILink & IBasicStyling> = ({
   href,

@@ -13,7 +13,7 @@ describe('CategoryTiles', () => {
     const links = screen.getAllByRole('link')
 
     expect(links.map(link => link.textContent)).toEqual(
-      feed.categories.map(category => category.name),
+      feed.categories.map(category => category.name)
     )
 
     for (const [index, category] of feed.categories.entries()) {
@@ -31,9 +31,7 @@ describe('CategoryTiles', () => {
   })
 
   it('ничего не рендерит на пустом списке — секцию прячет страница', () => {
-    const { container } = renderWidget(
-      <CategoryTiles {...feedCategoryTiles()} categories={[]} />,
-    )
+    const { container } = renderWidget(<CategoryTiles {...feedCategoryTiles()} categories={[]} />)
 
     expect(screen.queryAllByRole('link')).toHaveLength(0)
     expect(container.querySelector('li')).toBeNull()

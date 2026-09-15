@@ -20,7 +20,7 @@ describe('Reveal', () => {
     const { container } = renderWidget(
       <Reveal as="li">
         <span>Пункт</span>
-      </Reveal>,
+      </Reveal>
     )
 
     expect(container.firstElementChild?.tagName).toBe('LI')

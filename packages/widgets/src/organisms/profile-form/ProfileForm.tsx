@@ -105,12 +105,7 @@ export const ProfileForm: FC<IProfileFormProps & IBasicStyling> = ({
         readOnly={true}
       />
 
-      <Button
-        className={styles.submit}
-        type="submit"
-        isLoading={isSubmitting}
-        disabled={!isDirty}
-      >
+      <Button className={styles.submit} type="submit" isLoading={isSubmitting} disabled={!isDirty}>
         Сохранить
       </Button>
 

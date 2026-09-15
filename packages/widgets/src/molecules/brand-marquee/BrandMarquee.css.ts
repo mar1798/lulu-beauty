@@ -20,8 +20,7 @@ const marquee = keyframes({
  */
 export const container = style({
   overflow: 'hidden',
-  maskImage:
-    'linear-gradient(to right, transparent, black 8%, black 92%, transparent)',
+  maskImage: 'linear-gradient(to right, transparent, black 8%, black 92%, transparent)',
   ...media({
     /*
       Без движения лента становится обычной прокручиваемой строкой: бренды за

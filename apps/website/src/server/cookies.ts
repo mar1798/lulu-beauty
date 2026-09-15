@@ -66,11 +66,7 @@ const serialize = (name: string, value: string, maxAge: number): string => {
 /** Дописывает `Set-Cookie`, не затирая уже выставленные заголовки ответа. */
 const appendSetCookie = (res: ICookieResponse, cookies: string[]): void => {
   const existing = res.getHeader('Set-Cookie')
-  const before = Array.isArray(existing)
-    ? existing
-    : typeof existing === 'string'
-      ? [existing]
-      : []
+  const before = Array.isArray(existing) ? existing : typeof existing === 'string' ? [existing] : []
 
   res.setHeader('Set-Cookie', [...before, ...cookies])
 }

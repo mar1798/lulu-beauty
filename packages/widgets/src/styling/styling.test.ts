@@ -21,7 +21,7 @@ describe('тема', () => {
 
   it('контракт и значения совпадают ключами один в один', () => {
     expect(leafPaths(vars as unknown as ITokenTree)).toEqual(
-      leafPaths(lightTokens as unknown as ITokenTree),
+      leafPaths(lightTokens as unknown as ITokenTree)
     )
   })
 

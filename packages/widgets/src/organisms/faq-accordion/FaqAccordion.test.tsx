@@ -87,7 +87,7 @@ describe('FaqAccordion', () => {
 
     expect(screen.getByRole('button', { name: feed.items[0].question })).toHaveAttribute(
       'aria-expanded',
-      'false',
+      'false'
     )
   })
 
@@ -102,7 +102,7 @@ describe('FaqAccordion', () => {
 
     expect(screen.getByRole('button', { name: feed.items[0].question })).toHaveAttribute(
       'aria-expanded',
-      'true',
+      'true'
     )
   })
 })

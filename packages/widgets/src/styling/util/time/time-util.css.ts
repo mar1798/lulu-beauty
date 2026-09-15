@@ -10,20 +10,26 @@ export const vars = {
   duration: createVar(),
 }
 
-export const compiledDelay = delays.reduce((acc, delay) => {
-  acc[delay] = style({
-    vars: {
-      [vars.delay]: `${delay.toString()}ms`,
-    },
-  })
-  return acc
-}, {} as Record<IDelay, string>)
+export const compiledDelay = delays.reduce(
+  (acc, delay) => {
+    acc[delay] = style({
+      vars: {
+        [vars.delay]: `${delay.toString()}ms`,
+      },
+    })
+    return acc
+  },
+  {} as Record<IDelay, string>
+)
 
-export const compiledDuration = durations.reduce((acc, duration) => {
-  acc[duration] = style({
-    vars: {
-      [vars.duration]: `${duration.toString()}ms`,
-    },
-  })
-  return acc
-}, {} as Record<IDuration, string>)
+export const compiledDuration = durations.reduce(
+  (acc, duration) => {
+    acc[duration] = style({
+      vars: {
+        [vars.duration]: `${duration.toString()}ms`,
+      },
+    })
+    return acc
+  },
+  {} as Record<IDuration, string>
+)

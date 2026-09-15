@@ -14,14 +14,14 @@ Read-only git needs no asking: `git status`, `git diff`, `git log`, `git show`,
 
 This is the rule most easily broken, because no single file states it:
 
-| Where | Language |
-| --- | --- |
-| All user-facing copy — UI strings, Telegram bot messages, xlsx export headers, import error text | **Russian** |
-| Comments and docstrings in `apps/website` and `packages/widgets` | **Russian** |
-| Comments and docstrings in `apps/api` | **English** |
-| User-facing strings inside `apps/api` (`telegram/messages.py`, `export/service.py`, `catalog/import_service.py`, `orders/service.py`) | **Russian** |
-| Documentation under `docs/`, `CLAUDE.md`, `README.md` | **English** |
-| `docs/deployment.md` | **Russian** (written for the person doing the deploy) |
+| Where                                                                                                                                 | Language                                              |
+| ------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------- |
+| All user-facing copy — UI strings, Telegram bot messages, xlsx export headers, import error text                                      | **Russian**                                           |
+| Comments and docstrings in `apps/website` and `packages/widgets`                                                                      | **Russian**                                           |
+| Comments and docstrings in `apps/api`                                                                                                 | **English**                                           |
+| User-facing strings inside `apps/api` (`telegram/messages.py`, `export/service.py`, `catalog/import_service.py`, `orders/service.py`) | **Russian**                                           |
+| Documentation under `docs/`, `CLAUDE.md`, `README.md`                                                                                 | **English**                                           |
+| `docs/deployment.md`                                                                                                                  | **Russian** (written for the person doing the deploy) |
 
 Match the surrounding file. Essentially every file in `website`/`widgets` is commented in
 Russian; a lone English comment there reads as an outsider's patch.
@@ -120,12 +120,12 @@ wire up.
 
 ## Before finishing a change
 
-| Touched | Run |
-| --- | --- |
-| `apps/website` or `packages/widgets` | `npm run check` (types + lint), `npm test` |
-| `packages/widgets` component added/removed | `npm run barrels` |
-| `apps/api` | `uv run ruff check .`, `uv run mypy app`, `uv run pytest` (from `apps/api`) |
-| A new API error code | Add it to `apps/website/src/services/apiErrors.ts` |
-| Anything documented here | Update the affected file under `docs/` |
+| Touched                                    | Run                                                                         |
+| ------------------------------------------ | --------------------------------------------------------------------------- |
+| `apps/website` or `packages/widgets`       | `npm run check` (types + lint), `npm test`                                  |
+| `packages/widgets` component added/removed | `npm run barrels`                                                           |
+| `apps/api`                                 | `uv run ruff check .`, `uv run mypy app`, `uv run pytest` (from `apps/api`) |
+| A new API error code                       | Add it to `apps/website/src/services/apiErrors.ts`                          |
+| Anything documented here                   | Update the affected file under `docs/`                                      |
 
 Cross-package checklists: [recipes.md](recipes.md).

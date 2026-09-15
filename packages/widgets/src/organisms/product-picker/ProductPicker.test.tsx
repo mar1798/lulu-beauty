@@ -53,11 +53,7 @@ describe('ProductPicker', () => {
     const product = feedProduct({ name: 'Крем для рук' })
 
     renderWidget(
-      <ProductPicker
-        {...feedProductPicker()}
-        products={[product]}
-        addedProductIds={[product.id]}
-      />
+      <ProductPicker {...feedProductPicker()} products={[product]} addedProductIds={[product.id]} />
     )
 
     expect(screen.getByText('Уже в заявке')).toBeInTheDocument()

@@ -20,9 +20,16 @@ const handler = async (req: NextApiRequest, res: NextApiResponse): Promise<void>
   }
 
   try {
-    const response = await fetchWithAuth(req, res, '/users/me', '', { method: 'GET' }, {
-      auth: 'required',
-    })
+    const response = await fetchWithAuth(
+      req,
+      res,
+      '/users/me',
+      '',
+      { method: 'GET' },
+      {
+        auth: 'required',
+      }
+    )
 
     await relayJson(res, response)
   } catch (error) {
