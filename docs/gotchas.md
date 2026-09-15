@@ -98,6 +98,15 @@ Telegram Login Widget on `/login`: an embedded document inherits `color-scheme` 
 embedder, so Telegram's iframe painted a dark backdrop that showed through the corners of the
 rounded button as black wedges.
 
+**That declaration only covers Chromium — WebKit does not propagate `color-scheme` into a
+cross-origin iframe.** Telegram's frame declares `:root { color-scheme: light dark }` of its
+own (`telegram.org/css/widget-frame.css`), so on iOS — where every browser, Chrome included,
+is WebKit — a phone in dark mode paints the frame's canvas black around the light button, and
+nothing on our side can reach inside: the canvas is opaque, so neither a background under the
+iframe nor a blend mode covers it. What does work is scissors: the button fills the iframe
+(191×40 at `data-size=large`), so `styles.telegramWidget` clips the wrapper to the same pill
+and the black survives only as a hairline along the right edge.
+
 **No Tailwind, no Radix, no shadcn runtime.** Reference implementations are hand-ported into
 vanilla-extract. Never run `shadcn add` here.
 

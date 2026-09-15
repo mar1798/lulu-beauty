@@ -26,3 +26,28 @@ export const qrImage = style({
   width: '100%',
   height: '100%',
 })
+
+/**
+ * Обёртка кнопки-виджета Telegram — она же ножницы.
+ *
+ * Кнопку рисует чужой iframe с `oauth.telegram.org`, и его документ объявляет
+ * себе `color-scheme: light dark`. Наш `color-scheme: light` (см.
+ * `widgets/styling/preflight`) браузер обязан пробросить во вложенный документ;
+ * Chromium это делает, WebKit для cross-origin iframe — нет. Поэтому на iPhone
+ * (там любой браузер — WebKit) при системной тёмной теме канву iframe красят
+ * чёрным, и вокруг светлой кнопки появляется чёрный прямоугольник.
+ *
+ * Изнутри это не поправить: чужой документ мы не стилизуем, а канва
+ * непрозрачна — ни фон под iframe, ни blend-mode её не перекроют. Зато можно
+ * обрезать: кнопка занимает iframe целиком (191×40 при `data-size=large`,
+ * `data-radius=20`), и за её пилюлю выходят только углы. `overflow: hidden` по
+ * той же форме их и срезает.
+ *
+ * `inline-flex` — чтобы обёртка села по размеру iframe: ширина у него своя,
+ * она зависит от длины имени в подписи кнопки.
+ */
+export const telegramWidget = style({
+  display: 'inline-flex',
+  borderRadius: rem(20),
+  overflow: 'hidden',
+})
