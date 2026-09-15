@@ -1,7 +1,7 @@
 import React, { useRef } from 'react'
 import type { GetStaticProps } from 'next'
 import type { ICategory, IDecorSpot, IOrderCycle, IProduct, IStep } from 'widgets/types'
-import { Button, Parallax, Reveal } from 'widgets/atoms'
+import { Badge, Button, Float, Parallax, Reveal } from 'widgets/atoms'
 import {
   BrandMarquee,
   CategoryTiles,
@@ -9,14 +9,16 @@ import {
   DeadlineCountdown,
   DecorField,
   HomeSection,
+  ProductCard,
   SectionHeading,
+  ShowcaseMore,
   StatusPanel,
   StepList,
 } from 'widgets/molecules'
 import { useCountdown } from 'widgets/hooks'
 import { FaqAccordion, HomeCta, HomeHero, ProductGrid } from 'widgets/organisms'
 import { HomeTemplate } from 'widgets/templates'
-import { staggerDelay } from 'widgets/utils'
+import { pluralize, staggerDelay } from 'widgets/utils'
 import { SiteLayout } from '@/layouts/SiteLayout'
 import { AddToCartButton } from '@/components/AddToCartButton'
 import { PageMeta, SITE_DESCRIPTION, SITE_TITLE } from '@/components/PageMeta'
@@ -140,40 +142,39 @@ const spot = (src: string, placement: Omit<IDecorSpot, 'image'>): IDecorSpot => 
 })
 
 /*
-  Крупное пятно стоит в свободной правой зоне: слева на высоте заголовка оно
-  легло бы под display-строки, и они перестали бы читаться. Мелкое уведено в
-  левый нижний угол — там заголовок уже кончился, а кнопки CTA непрозрачны и
-  сами закрывают баночку ровно настолько, чтобы она читалась как глубина.
+  Пятна героя, ревизия 3. Раньше правая зона первого экрана пустовала, и туда
+  вставала крупная баночка; теперь там витрина товаров, и декор ушёл в боковые
+  канавы — между краем экрана и `Container`, ровно как в плотных секциях ниже.
+  Оба пятна поэтому стали на ступень мельче и с маленькими отступами: чем
+  больше отступ, тем глубже баночка уходит под непрозрачные карточки.
+
+  Приоритетной загрузки здесь больше нет ни у одного пятна. LCP первого экрана
+  теперь — фотография первого товара витрины (`isPriority` у `ProductCard`), и
+  приоритет ушёл туда: тратить его на картинку, которая ничего не продаёт,
+  незачем, а два приоритетных изображения на экран — это отсутствие приоритета.
 */
 const HERO_SPOTS = [
   spot('/assets/anua.png', {
     /*
-      Не `isStrong`: на десктопе правая зона пуста, но на мобильном текст
-      занимает всю ширину и ложится поверх — а флаг общий на все ширины.
+      Не `isStrong`: до `lg` витрина уезжает под текст, и на мобильном пятно
+      оказывается под строками заголовка — а флаг общий на все ширины.
     */
     side: 'right',
-    offsetX: 'clamp(16px, 3vw, 56px)',
-    top: '34%',
-    size: 'lg',
-    depth: 0.35,
+    offsetX: 'clamp(8px, 1.5vw, 24px)',
+    top: '38%',
+    size: 'md',
+    depth: 0.5,
     floatPhase: 0,
-    /*
-      Единственное приоритетное пятно на сайте. Оно крупнее заголовка (248×372
-      против текстового прямоугольника `h1`), лежит в первом экране — и в
-      замерах Chrome именно оно, а не `h1`, оказывается LCP-элементом. Ленивым
-      браузер узнавал о нём только после раскладки.
-    */
-    isPriority: true,
   }),
   spot('/assets/celimax serum.png', {
     /*
-      Левый нижний угол, за кнопками CTA. Отступ маленький: баночка должна
-      выглядывать из-за кнопок краем, а не уходить под них целиком — вглубь
-      экрана её тянуть некуда, кнопки стоят от левого края `Container`.
+      Левая канава на высоте таймера и кнопок. Отступ маленький: баночка должна
+      выглядывать из-за них краем, а не уходить под них целиком — вглубь экрана
+      её тянуть некуда, кнопки стоят от левого края `Container`.
     */
     side: 'left',
     offsetX: 'clamp(8px, 4vw, 64px)',
-    top: '78%',
+    top: '64%',
     size: 'sm',
     depth: 0.8,
     floatPhase: 0.55,
@@ -251,6 +252,16 @@ interface IHomePageProps {
   /** `null` — открытого сбора нет либо API был недоступен на сборке. */
   cycle: IOrderCycle | null
   featured: IProduct[]
+  /**
+   * Сколько товаров сейчас в наличии — для строки доверия под кнопками и
+   * подписи замыкающей плитки витрины. Не `featured.length`: тот ограничен
+   * `FEATURED_COUNT` и сообщил бы «8 товаров» про каталог из двух сотен.
+   *
+   * Именно в наличии, а не всего: это `total` того же запроса, которым набрана
+   * витрина (`inStock: true`), и обещать сотню позиций, половина которых
+   * кончилась, страница не должна.
+   */
+  productCount: number
   categories: ICategory[]
   brands: string[]
   /** Тот же сбор, но для кеша SWR: его читают кнопки «в корзину» в подборке. */
@@ -262,57 +273,181 @@ export const getStaticProps: GetStaticProps<IHomePageProps> = async () => {
     Каждый запрос со своим `catch`: недоступный на сборке API не должен ронять
     `next build`, а пустая подборка не повод прятать сбор (и наоборот).
   */
-  const [cycle, featured, categories, brands] = await Promise.all([
+  const [cycle, page, categories, brands] = await Promise.all([
     getActiveCycleOrNull().catch(() => null),
-    listProducts({ pageSize: FEATURED_COUNT, inStock: true })
-      .then(page => page.items)
-      .catch(() => []),
+    /* Тот же запрос отдаёт и подборку, и общее число товаров — второй не нужен. */
+    listProducts({ pageSize: FEATURED_COUNT, inStock: true }).catch(() => ({
+      items: [] as IProduct[],
+      total: 0,
+    })),
     listCategories().catch((): ICategory[] => []),
     listBrands().catch((): string[] => []),
   ])
 
   return {
-    props: { cycle, featured, categories, brands, fallback: activeCycleFallback(cycle) },
+    props: {
+      cycle,
+      featured: page.items,
+      productCount: page.total,
+      categories,
+      brands,
+      fallback: activeCycleFallback(cycle),
+    },
     revalidate: REVALIDATE_SECONDS,
   }
 }
 
+/** Сколько карточек стоит в витрине героя. Ряд, а не сетка: см. `HomeHero`. */
+const SHOWCASE_COUNT = 3
+
 /**
- * Панель состояния сбора в слоте `aside` героя. Панель и таймер сами ничего
- * не знают друг о друге, поэтому «меньше суток» страница считает тем же
- * порогом, что и таймер (`DEADLINE_URGENT_HOURS`), и поднимает
- * `tone="urgent"` — правило одно, а не два. Состояние «сбора нет» — та же
- * панель с другой надписью: не деградация, а другая строка композиции.
+ * Левитация карточек витрины: у каждой своя.
  *
- * Истёкший дедлайн приводится к тому же состоянию: страница статическая с
- * `revalidate: 60`, а сбор закрывает планировщик API со своим интервалом, так
- * что минуту-другую после дедлайна `cycle` ещё приезжает открытым. Без этой
- * ветки панель показывала бы живую пульсирующую точку и метку «до закрытия
- * сбора» над строкой «сбор заказов закрыт» — три взаимоисключающих сигнала
- * разом.
+ * Фазы не по возрастанию намеренно — соседние по ряду карточки должны
+ * расходиться сильнее, чем крайние между собой, иначе кластер качается волной
+ * слева направо. Амплитуды разные по той же причине: при равном ходе три
+ * карточки идут по одной дуге, просто вразнобой, и кластер всё ещё читается
+ * как один качающийся объект. Ход у всех маленький — под слоем живой текст и
+ * кликабельная ссылка, а не приглушённая картинка.
  */
-const HeroStatus: React.FC<{ cycle: IOrderCycle | null }> = ({ cycle }) => {
+const SHOWCASE_FLOAT = [
+  { phase: 0, distance: 5 },
+  { phase: 0.62, distance: 2 },
+  { phase: 0.28, distance: 4 },
+]
+
+/**
+ * Ширина карточки витрины: лента до `lg`, треть правой колонки после.
+ *
+ * Ступень `xl` — не лишняя точность, а потолок. `Container` перестаёт расти на
+ * 1200px, то есть с ~1240px карточка кластера стоит фиксированные ~180px, а
+ * доля экрана продолжала бы расти: на 2560px `15vw` просит 384px — вдвое
+ * больше нужного, и это притом что первая карточка идёт приоритетной и её
+ * тянет `<link rel=preload>` ещё до раскладки. Ниже `xl` доля считает верно
+ * (на 1024px это 154px против нужных ~145).
+ */
+const SHOWCASE_SIZES = { fb: '44vw', lg: '15vw', xl: 180 } as const
+
+/**
+ * Герой целиком — отдельным компонентом, а не куском `HomePage`.
+ *
+ * Дело в таймере: `useCountdown` тикает раз в секунду, и в `HomePage` этот тик
+ * перерисовывал бы всю главную — четыре `DecorField`, сетку подборки с
+ * кнопками, ленту брендов, аккордеон. Здесь он перерисовывает только героя, а
+ * тяжёлые слоты (фон и карточки витрины) приходят сюда пропсами: элементы
+ * созданы снаружи, между тиками это одни и те же ссылки, и React пропускает их
+ * поддеревья целиком.
+ *
+ * Состояние сбора считает страница, а не виджет: сбор — данные сайта, герою
+ * про заявки знать не положено. Порог «меньше суток» берём тот же, которым
+ * живёт таймер (`DEADLINE_URGENT_HOURS`), — правило одно, а не два.
+ */
+const HeroCycle: React.FC<{
+  cycle: IOrderCycle | null
+  note?: string
+  background: React.ReactNode
+  showcase?: React.ReactNode
+  showcaseMore?: React.ReactNode
+}> = ({ cycle, note, background, showcase, showcaseMore }) => {
   const { days, hours, isExpired, isReady } = useCountdown(cycle?.deadlineAt ?? null)
 
-  if (cycle === null || (isReady && isExpired)) {
-    return (
-      <StatusPanel label="Сбор закрыт" tone="muted">
-        Открытого сбора сейчас нет. Сохраняйте понравившееся в избранное — список дождётся
-        следующего сбора.
-      </StatusPanel>
-    )
-  }
+  /*
+    Истёкший дедлайн приводится к «сбора нет»: страница статическая с
+    `revalidate: 60`, а сбор закрывает планировщик API со своим интервалом, так
+    что минуту-другую после дедлайна `cycle` ещё приезжает открытым. Без этой
+    ветки метка показывала бы живую пульсирующую точку и «сбор открыт» над
+    нулевым таймером — три взаимоисключающих сигнала разом.
 
-  const isUrgent = isReady && !isExpired && days === 0 && hours < DEADLINE_URGENT_HOURS
+    Открытый сбор — это сам `cycle`, а не флаг рядом с ним: так у панели с
+    таймером дедлайн виден типам, и `deadlineAt` не приходится подпирать
+    пустой строкой.
+  */
+  const openCycle = isReady && isExpired ? null : cycle
+  const isUrgent = openCycle !== null && isReady && days === 0 && hours < DEADLINE_URGENT_HOURS
 
   return (
-    <StatusPanel label="До закрытия сбора" isLive={true} tone={isUrgent ? 'urgent' : 'brand'}>
-      <DeadlineCountdown deadlineAt={cycle.deadlineAt} variant="blocks" isLabelHidden={true} />
-    </StatusPanel>
+    <HomeHero
+      title={['Уход по ценам закупки', 'без магазинной наценки']}
+      description="Берём напрямую и общим заказом — вы получаете уход по самым низким ценам. Оплаты на сайте нет: вы оставляете заявку, а решение по ней присылает бот."
+      background={background}
+      badge={
+        openCycle !== null ? (
+          <Badge tone="brand" withDot={true}>
+            Сбор открыт
+          </Badge>
+        ) : (
+          <Badge tone="neutral">Сбора сейчас нет</Badge>
+        )
+      }
+      status={
+        openCycle !== null ? (
+          <StatusPanel label="До закрытия сбора" isLive={true} tone={isUrgent ? 'urgent' : 'brand'}>
+            <DeadlineCountdown
+              deadlineAt={openCycle.deadlineAt}
+              variant="blocks"
+              isLabelHidden={true}
+            />
+          </StatusPanel>
+        ) : (
+          <StatusPanel label="Следующий сбор откроется — бот сообщит" tone="muted">
+            Каталог открыт всегда. Сохраняйте понравившееся в избранное — список дождётся следующего
+            сбора.
+          </StatusPanel>
+        )
+      }
+      actions={
+        <>
+          {/*
+            Одно действие, а не два равноправных: главная кнопка акцентная,
+            вторая — `secondary`. На телефоне обе во всю ширину: там кнопки
+            стоят друг под другом, и вторая вполовину уже первой читается как
+            обрезанная, а не как более тихая.
+          */}
+          <Button
+            link={{ href: openCycle !== null ? '/catalog' : '/wishlist' }}
+            isFullWidth="mobile"
+          >
+            {openCycle !== null ? 'Смотреть каталог' : 'Собрать избранное'}
+          </Button>
+
+          <Button
+            link={{ href: openCycle !== null ? '/orders' : '/catalog' }}
+            variant="secondary"
+            isFullWidth="mobile"
+          >
+            {openCycle !== null ? 'Мои заявки' : 'Смотреть каталог'}
+          </Button>
+        </>
+      }
+      note={note}
+      showcase={showcase}
+      showcaseMore={showcaseMore}
+    />
   )
 }
 
-const HomePage: React.FC<IHomePageProps> = ({ cycle, featured, categories, brands }) => {
+const HomePage: React.FC<IHomePageProps> = ({
+  cycle,
+  featured,
+  productCount,
+  categories,
+  brands,
+}) => {
+  /*
+    Приписка под кнопками — только объём каталога, счётчиками. Считаем по
+    товарам в наличии: это та же выборка, что стоит в витрине, и обещать сотню
+    позиций, половина которых кончилась, страница не должна. Каждый пустой
+    счётчик опускается: «0 товаров» — не честность, а поломка. Не осталось
+    ничего — приписки нет вовсе, пустой строкой место под ней не занимаем.
+  */
+  const heroNote =
+    [
+      productCount > 0 ? pluralize(productCount, ['товар', 'товара', 'товаров']) : null,
+      brands.length > 0 ? pluralize(brands.length, ['бренд', 'бренда', 'брендов']) : null,
+    ]
+      .filter(part => part !== null)
+      .join(' · ') || undefined
+
   /*
     Ссылки секций — цели `useScroll` в `DecorField`. Герою нужна обёртка:
     свой DOM-узел он наружу не отдаёт.
@@ -332,23 +467,61 @@ const HomePage: React.FC<IHomePageProps> = ({ cycle, featured, categories, brand
       <HomeTemplate
         hero={
           <div ref={heroRef}>
-            <HomeHero
-              title={['С заботой о вас', 'и о вашем бюджете']}
-              description="Косметика и уход по самым низким ценам: берём напрямую и общим заказом"
+            <HeroCycle
+              cycle={cycle}
+              note={heroNote}
               background={<DecorField spots={HERO_SPOTS} containerRef={heroRef} />}
-              scrollHint="Ниже — как это работает"
-              actions={
-                <>
-                  <Button link={{ href: '/catalog' }} isFullWidth="mobile">
-                    Смотреть каталог
-                  </Button>
-
-                  <Button link={{ href: '/orders' }} variant="secondary" isFullWidth="mobile">
-                    Мои заявки
-                  </Button>
-                </>
+              /*
+                Витрина прячется целиком, когда подборка пуста: три пустые
+                карточки на первом экране читаются как поломка, а герой без
+                `showcase` штатно раскладывается в одну колонку.
+              */
+              showcase={
+                featured.length > 0
+                  ? featured.slice(0, SHOWCASE_COUNT).map((product, index) => (
+                      <Float
+                        key={product.id}
+                        phase={SHOWCASE_FLOAT[index]?.phase ?? 0}
+                        distance={SHOWCASE_FLOAT[index]?.distance}
+                      >
+                        <ProductCard
+                          product={product}
+                          href={`/catalog/${product.slug}`}
+                          sizes={SHOWCASE_SIZES}
+                          /*
+                            LCP первого экрана на десктопе: там витрина стоит
+                            справа от заголовка, фотография крупнее него, и
+                            ленивой браузер узнаёт о ней только после раскладки.
+                            До `lg` витрина уезжает под текст и приоритет уже не
+                            про LCP — но предзагрузка идёт по `sizes` (44vw),
+                            то есть тянет ту же маленькую карточку, а не
+                            десктопный размер.
+                          */
+                          isPriority={index === 0}
+                          mediaAction={<WishlistButton productId={product.id} />}
+                        />
+                      </Float>
+                    ))
+                  : undefined
               }
-              aside={<HeroStatus cycle={cycle} />}
+              /*
+                Замыкает ленту на узком экране: последняя карточка там уезжает
+                за край, и без плитки конец списка читается как обрыв. В
+                кластере на десктопе герой прячет её сам.
+              */
+              showcaseMore={
+                featured.length > 0 ? (
+                  <ShowcaseMore
+                    label="Смотреть каталог"
+                    hint={
+                      productCount > 0
+                        ? pluralize(productCount, ['товар', 'товара', 'товаров'])
+                        : undefined
+                    }
+                    link={{ href: '/catalog' }}
+                  />
+                ) : undefined
+              }
             />
           </div>
         }
@@ -382,7 +555,7 @@ const HomePage: React.FC<IHomePageProps> = ({ cycle, featured, categories, brand
                 description="Товары в наличии — состав каталога меняется перед каждым сбором"
                 action={
                   <Button link={{ href: '/catalog' }} variant="secondary" size="sm">
-                    Весь каталог
+                    Смотреть каталог
                   </Button>
                 }
               />

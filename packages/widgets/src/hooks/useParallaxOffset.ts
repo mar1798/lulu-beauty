@@ -5,11 +5,16 @@ import { useScroll, useTransform, type MotionValue } from 'motion/react'
  * Смещение скролл-параллакса: элемент едет от `+strength` к `−strength` за
  * проход секции через вьюпорт.
  *
- * Единственное место в репозитории, где `useScroll`/`useTransform` зовутся
- * ради параллакса: пятна `DecorField`, обёртка `Parallax` и уход героя берут
- * смещение отсюда — вторая реализация разошлась бы с этой при первой правке.
+ * Отсюда берут смещение всё, что **въезжает в кадр из-под нижней кромки**:
+ * пятна `DecorField` и обёртка `Parallax`. Отсчёт (`start end`) на это и
+ * рассчитан — вторая такая реализация разошлась бы с этой при первой правке.
  * Внутри — rAF и composited transform, никаких обработчиков события `scroll`
  * и чтений геометрии в кадре.
+ *
+ * Уход героя считается **не здесь**: первый экран стоит в начале документа и
+ * ниоткуда не въезжает, поэтому его прогресс отсчитывается от `start start` и
+ * живёт своим контекстом в `HomeHero` — там же и причина, почему это важно
+ * для серверной разметки.
  *
  * ⚠️ **При `prefers-reduced-motion` этот хук вызывать нельзя.**
  *
@@ -28,7 +33,7 @@ import { useScroll, useTransform, type MotionValue } from 'motion/react'
  */
 export const useParallaxOffset = (
   containerRef: RefObject<HTMLElement | null>,
-  strength: number,
+  strength: number
 ): MotionValue<number> => {
   const { scrollYProgress } = useScroll({
     target: containerRef,

@@ -47,6 +47,7 @@ import {
   IFaqAccordionProps,
   IHomeCtaProps,
   IHomeSectionProps,
+  IFloatProps,
   IParallaxProps,
   IRevealProps,
   IStatusPanelProps,
@@ -69,6 +70,7 @@ import {
   IOrderListProps,
   IOrderStatusBadgeProps,
   IPaginationProps,
+  IShowcaseMoreProps,
   IProfileFormProps,
   IPhoneInputProps,
   IPortalProps,
@@ -364,7 +366,8 @@ export const feedStepList = (): IStepListProps => ({
     },
     {
       title: 'Дождитесь подтверждения',
-      description: 'После закрытия сбора владелец подтвердит заявку — уведомление придёт в Telegram.',
+      description:
+        'После закрытия сбора владелец подтвердит заявку — уведомление придёт в Telegram.',
       visual: 'confirm',
     },
     {
@@ -385,15 +388,20 @@ export const feedStatusPanel = (): IStatusPanelProps => ({
   children: '2 дн 14 час',
 })
 
+export const feedFloat = (): IFloatProps => ({
+  children: 'Левитирую',
+})
+
 export const feedParallax = (): IParallaxProps => ({
   children: 'Еду медленнее скролла',
 })
 
 export const feedHomeHero = (): IHomeHeroProps => ({
   // Готовая разбивка на строки: маска выхода работает построчно.
-  title: ['С заботой о вас', 'и о вашем бюджете'],
-  description: 'Косметика и уход по самым низким ценам: берём напрямую и общим заказом.',
-  scrollHint: 'Ниже — что можно взять сейчас',
+  title: ['Уход по ценам закупки', 'без магазинной наценки'],
+  description:
+    'Берём напрямую и общим заказом — вы получаете уход по самым низким ценам. Оплаты на сайте нет: вы оставляете заявку, а решение по ней присылает бот.',
+  note: '214 товаров · 26 брендов',
 })
 
 export const feedHomeTemplate = (): IHomeTemplateProps => ({
@@ -469,7 +477,8 @@ export const feedFaqAccordion = (): IFaqAccordionProps => ({
     },
     {
       question: 'Сбора сейчас нет — что делать?',
-      answer: 'Каталог открыт всегда, но корзина работает только при открытом сборе — понравившееся сохраняйте в избранное.',
+      answer:
+        'Каталог открыт всегда, но корзина работает только при открытом сборе — понравившееся сохраняйте в избранное.',
     },
   ],
 })
@@ -521,6 +530,12 @@ export const feedProductCard = (): IProductCardProps => {
 
   return { product, href: `/catalog/${product.slug}`, categoryName: 'Уход за кожей' }
 }
+
+export const feedShowcaseMore = (): IShowcaseMoreProps => ({
+  label: 'Смотреть каталог',
+  hint: '214 товаров',
+  link: { href: '/catalog' },
+})
 
 export const feedPagination = (): IPaginationProps => ({
   page: 3,
@@ -850,7 +865,12 @@ export const feedToastViewport = (): IToastViewportProps => ({
   toasts: [
     { id: 'toast-1', tone: 'success', title: 'Товар сохранён' },
     { id: 'toast-2', tone: 'info', title: 'Фотография загружена', description: 'Стала главной.' },
-    { id: 'toast-3', tone: 'danger', title: 'Не удалось удалить сбор', description: 'В нём есть заявки.' },
+    {
+      id: 'toast-3',
+      tone: 'danger',
+      title: 'Не удалось удалить сбор',
+      description: 'В нём есть заявки.',
+    },
   ],
   onDismiss: noop,
 })

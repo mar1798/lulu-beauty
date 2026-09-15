@@ -1,5 +1,5 @@
 import clsx from 'clsx'
-import { useRef, type CSSProperties, type FC, type ReactNode, type RefObject } from 'react'
+import { useRef, type FC, type ReactNode, type RefObject } from 'react'
 import { motion, useInView, useReducedMotion } from 'motion/react'
 import type { IBasicStyling, IDecorFieldProps, IDecorSpot } from '../../types'
 import { AppImage } from '../../atoms/app-image'
@@ -8,6 +8,8 @@ import { useStillNode } from '../../hooks/useStillNode'
 import {
   DECOR_FLOAT_DURATION_MS,
   DECOR_PARALLAX_PX,
+  FLOAT_ACTIVATION_MARGIN,
+  floatTiming,
   HALO_FLOAT_DURATION_MS,
 } from '../../utils/motion'
 import * as styles from './DecorField.css'
@@ -33,18 +35,6 @@ import * as styles from './DecorField.css'
  * оптимизатора картинок: `100vw` заставил бы его отдавать полный файл.
  */
 const SIZE_CEILING = { sm: '148px', md: '196px', lg: '248px' } as const
-
-/**
- * Период левитации конкретного пятна: базовый ±15 % от `floatPhase`, чтобы
- * соседние пятна расходились не только стартовой точкой, но и частотой.
- * Задержка отрицательная — анимация начинается с середины цикла, а не с
- * синхронного нуля.
- */
-const floatTiming = (baseMs: number, phase: number): CSSProperties => {
-  const duration = baseMs * (0.85 + 0.3 * phase)
-
-  return { animationDuration: `${duration}ms`, animationDelay: `${-phase * duration}ms` }
-}
 
 /**
  * Едущий слой пятна — отдельным компонентом, чтобы `useParallaxOffset`
@@ -134,13 +124,6 @@ const Spot: FC<{
   )
 }
 
-/**
- * Запас, на который поле «оживает» до появления в кадре: слой успевает
- * промотироваться и раскачаться, пока секция ещё за краем экрана, — иначе
- * человек увидел бы момент старта левитации.
- */
-const ACTIVATION_MARGIN = '200px'
-
 export const DecorField: FC<IDecorFieldProps & IBasicStyling> = ({
   spots,
   containerRef,
@@ -161,7 +144,7 @@ export const DecorField: FC<IDecorFieldProps & IBasicStyling> = ({
     страницы, и её ref к этому моменту может быть ещё пуст — наблюдатель
     тогда не завёлся бы вовсе, и пятна замерли бы навсегда.
   */
-  const isActive = useInView(fieldRef, { margin: ACTIVATION_MARGIN })
+  const isActive = useInView(fieldRef, { margin: FLOAT_ACTIVATION_MARGIN })
 
   /* Флаг читается здесь, один раз на поле, и раздаётся пятнам пропсом. */
   const isReduced = useReducedMotion() ?? false
