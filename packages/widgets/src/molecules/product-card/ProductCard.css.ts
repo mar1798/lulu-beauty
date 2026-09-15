@@ -66,15 +66,14 @@ export const link = style([
 
 /**
  * Бокс под картинку: фиксированная пропорция держит сетку ровной, даже пока
- * изображение грузится. Подложка — утопленная поверхность: у товарной съёмки
- * фон почти белый, и на белой карточке она без неё расплывалась бы.
+ * изображение грузится. Ни подложки, ни рамки — фотография лежит прямо на
+ * белой карточке.
  */
 export const media = style({
   position: 'relative',
   display: 'block',
   aspectRatio: '1 / 1',
   overflow: 'hidden',
-  backgroundColor: color.surface('sunken'),
   borderRadius: vars.radius.xl,
 })
 
