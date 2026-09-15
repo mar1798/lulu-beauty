@@ -23,11 +23,7 @@ export const Checkbox: FC<ICheckboxProps & IBasicStyling> = ({
   const fieldId = id ?? generatedId
 
   return (
-    <label
-      className={clsx(styles.container, className)}
-      htmlFor={fieldId}
-      data-disabled={disabled}
-    >
+    <label className={clsx(styles.container, className)} htmlFor={fieldId} data-disabled={disabled}>
       <input
         id={fieldId}
         name={name}

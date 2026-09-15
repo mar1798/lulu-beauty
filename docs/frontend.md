@@ -24,13 +24,13 @@ vanilla-extract plugin wired in here is the webpack one. **Don't drop that flag.
 
 ## Pages
 
-| Group | Pages | Rendering |
-| --- | --- | --- |
-| Public | `index`, `catalog/index`, `catalog/[slug]` | SSG + ISR |
-| Behind login | `cart`, `checkout`, `orders/index`, `orders/[id]`, `account`, `wishlist` | Static shell, client-rendered data |
-| Auth | `login` — **this is the registration too** | Static |
-| Owner-only | `admin/index`, `admin/products/{index,add,[id]}`, `admin/categories`, `admin/import`, `admin/cycles`, `admin/orders`, `admin/users` | Static, gated on the client |
-| Errors | `404`, `500` | Static |
+| Group        | Pages                                                                                                                               | Rendering                          |
+| ------------ | ----------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------- |
+| Public       | `index`, `catalog/index`, `catalog/[slug]`                                                                                          | SSG + ISR                          |
+| Behind login | `cart`, `checkout`, `orders/index`, `orders/[id]`, `account`, `wishlist`                                                            | Static shell, client-rendered data |
+| Auth         | `login` — **this is the registration too**                                                                                          | Static                             |
+| Owner-only   | `admin/index`, `admin/products/{index,add,[id]}`, `admin/categories`, `admin/import`, `admin/cycles`, `admin/orders`, `admin/users` | Static, gated on the client        |
+| Errors       | `404`, `500`                                                                                                                        | Static                             |
 
 There is **no `getServerSideProps` anywhere in the app**. Every page is static, which is why
 `next build` reports `/admin/*` as `○ (Static)`.
@@ -80,7 +80,7 @@ prerenders up to two thousand product slugs, and without that cache each one re-
   after editing the policy.
 - `src/server/clientAddress.ts` — `clientHeaders(req)` **sets** the `X-Forwarded-For` the API's
   limiter keys anonymous callers on. Without it every visitor arrives as the proxy's single
-  address and one impatient guest throttles the whole shop. An *incoming* `x-forwarded-for` is
+  address and one impatient guest throttles the whole shop. An _incoming_ `x-forwarded-for` is
   believed only when `TRUST_PROXY_HEADERS=true` (a real load balancer in front of Next);
   otherwise the connection address is used, since the browser can set the header itself.
   Every server-side call — `apiFetch`, `telegramSignIn`, the `auth/*` routes — passes these.
@@ -159,7 +159,7 @@ Client-side fetching is [SWR](https://swr.vercel.app/), configured globally in `
   that was the worst CLS on the site (0.394 on `/wishlist`). `styles/layout.css.ts`'s
   `sessionArea` reserves a screen around such a region, and `/wishlist` renders **nothing**
   until the session is known: its skeleton is eight cards tall, and collapsing that into an
-  empty state is a shift no `min-height` can absorb. Put the reserve on a wrapper *around* a
+  empty state is a shift no `min-height` can absorb. Put the reserve on a wrapper _around_ a
   card, never inside one — inside, it stretches the card itself and leaves a third of a screen
   of empty space framed under the content (`/login` did exactly that).
 

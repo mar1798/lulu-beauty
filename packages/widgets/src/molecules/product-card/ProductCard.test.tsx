@@ -71,9 +71,7 @@ describe('ProductCard', () => {
   })
 
   it('помечает товар не в наличии', () => {
-    renderWidget(
-      <ProductCard product={feedProduct({ inStock: false })} href="/catalog/x" />
-    )
+    renderWidget(<ProductCard product={feedProduct({ inStock: false })} href="/catalog/x" />)
 
     expect(screen.getByText('Нет в наличии')).toBeInTheDocument()
   })

@@ -44,14 +44,12 @@ describe('BrandMarquee', () => {
     const { container } = renderWidget(<BrandMarquee {...feed} />)
     const track = container.querySelector('ul')?.parentElement
 
-    expect(track?.style.animationDuration).toBe(
-      `${feed.brands.length * SECONDS_PER_BRAND}s`,
-    )
+    expect(track?.style.animationDuration).toBe(`${feed.brands.length * SECONDS_PER_BRAND}s`)
 
     const explicit = renderWidget(<BrandMarquee {...feed} durationSeconds={12} />)
 
-    expect(
-      explicit.container.querySelector('ul')?.parentElement?.style.animationDuration,
-    ).toBe('12s')
+    expect(explicit.container.querySelector('ul')?.parentElement?.style.animationDuration).toBe(
+      '12s'
+    )
   })
 })

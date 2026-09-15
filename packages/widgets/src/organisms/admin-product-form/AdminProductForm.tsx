@@ -74,7 +74,9 @@ const VOLUME_MAX_LENGTH = String(MAX_VOLUME_ML).length
 /** `MAX_PRICE_CENTS` бэкенда, в сомах: дальше не проходит 32-битная колонка. */
 const MAX_PRICE = 20_000_000
 
-const IMAGE_MAX_BYTES = 5 * 1024 * 1024
+/** Потолок `MAX_IMAGE_BYTES` бэкенда. Файл там пережимается в WebP, поэтому лимит
+ * стоит на загрузке, а не на том, что окажется на диске. */
+const IMAGE_MAX_BYTES = 15 * 1024 * 1024
 const IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp']
 const IMAGE_SIZES = { fb: '160px' } as const
 const CENTS = 100
@@ -390,7 +392,7 @@ export const AdminProductForm: FC<IAdminProductFormProps & IBasicStyling> = ({
               accept={IMAGE_TYPES.join(',')}
               allowedTypes={IMAGE_TYPES}
               maxBytes={IMAGE_MAX_BYTES}
-              hint="JPEG, PNG или WebP, до 5 МБ. Необязательно — можно добавить и позже."
+              hint="JPEG, PNG или WebP, до 15 МБ. Необязательно — можно добавить и позже."
               buttonLabel="Выбрать фотографию"
               onSelect={setPendingImage}
             />
@@ -479,7 +481,7 @@ export const AdminProductForm: FC<IAdminProductFormProps & IBasicStyling> = ({
             accept={IMAGE_TYPES.join(',')}
             allowedTypes={IMAGE_TYPES}
             maxBytes={IMAGE_MAX_BYTES}
-            hint={`JPEG, PNG или WebP, до 5 МБ${
+            hint={`JPEG, PNG или WebP, до 15 МБ${
               images.length === 0
                 ? ''
                 : images.length === 1

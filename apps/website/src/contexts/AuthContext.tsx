@@ -73,9 +73,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const { data, isLoading, mutate } = useSWR<IAuthUser | null>(meKey, loadUser)
   const user = data ?? null
 
-  const reload = useCallback(async (): Promise<IAuthUser | null> => (await mutate()) ?? null, [
-    mutate,
-  ])
+  const reload = useCallback(
+    async (): Promise<IAuthUser | null> => (await mutate()) ?? null,
+    [mutate]
+  )
 
   const startTelegramLogin = useCallback(() => startTelegramLoginRequest(), [])
 

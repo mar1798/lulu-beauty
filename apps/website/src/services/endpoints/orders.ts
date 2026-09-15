@@ -60,10 +60,9 @@ export const updateMyOrderItemQuantity = (
   itemId: string,
   quantity: number
 ): Promise<IOrder> =>
-  api.patch(
-    `/orders/${encodeURIComponent(orderId)}/items/${encodeURIComponent(itemId)}`,
-    { body: { quantity } }
-  )
+  api.patch(`/orders/${encodeURIComponent(orderId)}/items/${encodeURIComponent(itemId)}`, {
+    body: { quantity },
+  })
 
 export const removeMyOrderItem = (orderId: string, itemId: string): Promise<IOrder> =>
   api.remove(`/orders/${encodeURIComponent(orderId)}/items/${encodeURIComponent(itemId)}`)

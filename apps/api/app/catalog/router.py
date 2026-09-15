@@ -14,6 +14,11 @@ from fastapi import (
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import CurrentUser, require_admin
+from app.catalog.image_compression import (
+    ImageTooDetailedError,
+    UnreadableImageError,
+    compress_image,
+)
 from app.catalog.import_service import CatalogImportService
 from app.catalog.schemas import (
     CategoryCreateRequest,
@@ -42,13 +47,16 @@ from app.telegram.notify import notify_orders_item_dropped, notify_orders_repric
 
 router = APIRouter(tags=["catalog"])
 
-MAX_IMAGE_BYTES = 5 * 1024 * 1024
-# The stored file's extension comes from this table, never from the uploaded filename:
-# /files is served as static content and is same-origin with the site (next.config.js
-# rewrites it), so a name like "photo.html" would be stored and later served as a page
-# rather than as an image.
-IMAGE_EXTENSIONS = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp"}
-ALLOWED_IMAGE_CONTENT_TYPES = set(IMAGE_EXTENSIONS)
+# What may be *uploaded*. Generous because it is no longer what gets stored: every photo
+# is re-encoded by `compress_image` on the way in, so a 14 MB PNG straight out of a
+# camera lands in `uploads` as a few hundred kilobytes of WebP.
+MAX_IMAGE_BYTES = 15 * 1024 * 1024
+# The declared content type is only a first filter — it is chosen by the client, and the
+# decoder downstream is what actually decides whether this is an image. The stored file's
+# extension comes from the compressor, never from the uploaded filename: /files is served
+# as static content and is same-origin with the site (next.config.js rewrites it), so a
+# name like "photo.html" would be stored and later served as a page rather than an image.
+ALLOWED_IMAGE_CONTENT_TYPES = {"image/jpeg", "image/png", "image/webp"}
 MAX_IMPORT_BYTES = 10 * 1024 * 1024
 
 
@@ -323,9 +331,21 @@ async def upload_product_image(
     content = await _read_within(file, MAX_IMAGE_BYTES, "image_too_large")
 
     try:
+        compressed = await compress_image(content)
+    except ImageTooDetailedError as error:
+        # Not `image_too_large`: that one is about the bytes the owner can see in their
+        # file manager, and this is about a pixel count they cannot. A flat 40 MP export
+        # travels in 128 KB and still costs a few hundred megabytes to decode.
+        raise HTTPException(
+            status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, "image_too_many_pixels"
+        ) from error
+    except UnreadableImageError as error:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "image_unreadable") from error
+
+    try:
         service = ProductService(session)
         await service.get_by_id(product_id)  # 404 up front, before touching storage
-        key = await storage_service.save(f"image{IMAGE_EXTENSIONS[file.content_type]}", content)
+        key = await storage_service.save(f"image{compressed.extension}", compressed.content)
         image, replaced_urls = await service.add_image(
             product_id, storage_service.url_for(key), alt
         )
@@ -334,7 +354,7 @@ async def upload_product_image(
 
     await session.commit()
     # After the commit: a photo is a replacement, and until now the bytes it replaced
-    # stayed on disk forever — the `uploads` volume grew by up to 5 MB per re-upload with
+    # stayed on disk forever — the `uploads` volume grew with every re-upload, with
     # nothing able to tell an orphan from a live file afterwards.
     background_tasks.add_task(discard_files, replaced_urls)
     return ProductImageResponse(

@@ -5,13 +5,13 @@ truth: `apps/api/app/*/models.py` and `*/service.py`.
 
 ## Glossary
 
-| Term | In code | Meaning |
-| --- | --- | --- |
-| Order cycle / сбор | `OrderCycle` | A collection window with a deadline. The shop buys once per cycle. |
-| Request / заявка | `Order` | What a customer submits. Called "order" in code, "заявка" in Russian copy — there is no payment, so it is a request to buy. |
-| Admin | `Role.ADMIN` | Someone who runs the shop day to day. There may be several. Called "admin" in the UI too — Russian copy says "владелец" only about the person who owns the shop, never about a level of access. |
-| Super admin | `Role.SUPER_ADMIN` | The shop's own account: the only one that hands out and takes back `ADMIN`, and the only one whose own role nothing can change. Exactly one, created by the seed. |
-| Customer | `Role.CUSTOMER` | Everyone else. Created by the bot when they share a contact. |
+| Term               | In code            | Meaning                                                                                                                                                                                         |
+| ------------------ | ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Order cycle / сбор | `OrderCycle`       | A collection window with a deadline. The shop buys once per cycle.                                                                                                                              |
+| Request / заявка   | `Order`            | What a customer submits. Called "order" in code, "заявка" in Russian copy — there is no payment, so it is a request to buy.                                                                     |
+| Admin              | `Role.ADMIN`       | Someone who runs the shop day to day. There may be several. Called "admin" in the UI too — Russian copy says "владелец" only about the person who owns the shop, never about a level of access. |
+| Super admin        | `Role.SUPER_ADMIN` | The shop's own account: the only one that hands out and takes back `ADMIN`, and the only one whose own role nothing can change. Exactly one, created by the seed.                               |
+| Customer           | `Role.CUSTOMER`    | Everyone else. Created by the bot when they share a contact.                                                                                                                                    |
 
 ## Users and roles
 
@@ -48,7 +48,7 @@ deadline back into the future while another is open, fails with `active_cycle_ex
 second open cycle would silently become "the" cycle by nearest deadline while customers'
 carts stayed attached to the first one.
 
-`get_active_cycle()` requires *both* `deadline_at > now` **and** `status != CLOSED` — the owner
+`get_active_cycle()` requires _both_ `deadline_at > now` **and** `status != CLOSED` — the owner
 can close a cycle early, and a cycle whose carts have already been emptied must not keep
 accepting new ones just because its date hasn't arrived.
 
@@ -91,7 +91,9 @@ send: for a deadline nudge a duplicate is a nuisance and a miss is a lost order.
   `packages/widgets/src/utils/slug.ts` for the admin forms. **Keep them in sync.**
 - Import accepts xlsx and csv. Required headers: `name`, `slug`, `price`. Headers are
   normalized (lowercased, spaces/dashes → underscores) and aliased — `instock` → `in_stock`,
-  `volume_ml` / `объем` / `объём` → `volume`. Ceilings: `MAX_IMPORT_ROWS = 50 000`,
+  `volume_ml` / `объем` / `объём` → `volume`. The `slug` cell is lower-cased before it is
+  validated and before it is used as the upsert key, so `Krem-1` and `krem-1` are one
+  product; anything still outside `SLUG_PATTERN` after that fails the row. Ceilings: `MAX_IMPORT_ROWS = 50 000`,
   `MAX_REPORTED_ERRORS = 200`, text columns 255 chars. A too-big file is refused as a file
   error, not per row: xlsx is deflate, and 4 MB can expand to ~150 MB of parsed rows.
 
@@ -168,9 +170,9 @@ heart press into an ever-growing response.
 
 All in `app/common/limits.py`, shared rather than duplicated per schema:
 
-| Limit | Value | Why |
-| --- | --- | --- |
-| `MAX_ITEM_QUANTITY` | 999 | Nobody means a thousand of anything here. |
-| `MAX_WISHLIST_ITEMS` | 200 | Wishlist is returned whole on every call. |
-| `MAX_PRICE_CENTS` | 2 000 000 000 | 32-bit `INTEGER` column. |
-| `MAX_VOLUME_ML` | 10 000 | No five-litre cosmetics; same 32-bit column. |
+| Limit                | Value         | Why                                          |
+| -------------------- | ------------- | -------------------------------------------- |
+| `MAX_ITEM_QUANTITY`  | 999           | Nobody means a thousand of anything here.    |
+| `MAX_WISHLIST_ITEMS` | 200           | Wishlist is returned whole on every call.    |
+| `MAX_PRICE_CENTS`    | 2 000 000 000 | 32-bit `INTEGER` column.                     |
+| `MAX_VOLUME_ML`      | 10 000        | No five-litre cosmetics; same 32-bit column. |

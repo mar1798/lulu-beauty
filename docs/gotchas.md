@@ -78,6 +78,14 @@ from them. A hex value there produces invalid CSS silently.
 **Use `renderWidget`, not bare `render`, in tests** — otherwise anything touching
 `AppLink`/`AppImage` fails on an empty `ServicesContext`.
 
+**`preflight.css.ts` declares `color-scheme: light` on `html`, and it has to stay there.**
+There is one theme (`themes/light.css.ts`); without the declaration a visitor whose system is
+in dark mode gets the UA's dark rendering for everything the browser paints itself —
+scrollbars, autofill, native controls — on top of a light page. The visible symptom was the
+Telegram Login Widget on `/login`: an embedded document inherits `color-scheme` from its
+embedder, so Telegram's iframe painted a dark backdrop that showed through the corners of the
+rounded button as black wedges.
+
 **No Tailwind, no Radix, no shadcn runtime.** Reference implementations are hand-ported into
 vanilla-extract. Never run `shadcn add` here.
 
@@ -116,6 +124,18 @@ state, so each caller gets each worker's budget.
 
 **`RATE_LIMIT_TRUST_FORWARDED_FOR=true` is only safe behind the website's proxy.** Expose the
 API directly with it on and the header hands every caller unlimited identities.
+
+**Local dev needs its own bot.** Telegram delivers updates one way per token: point
+`TELEGRAM_BOT_TOKEN` at the production bot and long polling answers
+`TelegramConflictError: can't use getUpdates method while webhook is active`, because
+production holds the webhook. The bot still replies in the chat — production is answering —
+so the only visible symptom is a `/login` tab that polls until the session expires. Create a
+second bot in @BotFather and set `TELEGRAM_BOT_TOKEN` + `TELEGRAM_BOT_USERNAME` in
+`apps/api/.env` and `NEXT_PUBLIC_TELEGRAM_BOT_USERNAME` in `apps/website/.env`. Never run
+`deleteWebhook` on the production token to unblock yourself — that takes down sign-in and
+every notification in production until the webhook is registered again. `telegram_chat_id` is
+the Telegram user id and is the same across bots, so existing local accounts still match; the
+contact still has to be shared once with the new bot, since binding happens there.
 
 **Long polling makes `uvicorn --reload` awkward while working on the bot** — this is why the
 webhook mode exists, and why webhook registration failure falls back to polling rather than

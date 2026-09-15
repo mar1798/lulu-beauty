@@ -58,9 +58,7 @@ export const Input: FC<IInputProps & IBasicStyling> = ({
         </label>
       )}
 
-      <div
-        className={clsx(styles.shell, hasError && styles.invalid, disabled && styles.disabled)}
-      >
+      <div className={clsx(styles.shell, hasError && styles.invalid, disabled && styles.disabled)}>
         {prefix !== undefined && <span className={styles.affix}>{prefix}</span>}
 
         <input

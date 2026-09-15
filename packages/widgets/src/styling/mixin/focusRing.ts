@@ -8,7 +8,10 @@ const RING_WIDTH = 2,
  * Focus ring properties. Applied as is when the element is always focusable
  * (e.g. a custom control that draws its own ring).
  */
-export function focusRing(ringColor: string = color.border('focus'), width = RING_WIDTH): CSSProperties {
+export function focusRing(
+  ringColor: string = color.border('focus'),
+  width = RING_WIDTH
+): CSSProperties {
   return {
     outline: outline(width, ringColor),
     outlineOffset: rem(RING_OFFSET),
@@ -21,7 +24,7 @@ export function focusRing(ringColor: string = color.border('focus'), width = RIN
  */
 export function focusVisibleRing(
   ringColor: string = color.border('focus'),
-  width = RING_WIDTH,
+  width = RING_WIDTH
 ): StyleRule {
   return {
     selectors: {

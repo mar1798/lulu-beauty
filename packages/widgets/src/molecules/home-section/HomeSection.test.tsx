@@ -18,12 +18,12 @@ describe('HomeSection', () => {
   */
   it('ставит фоновый слот первым ребёнком, до контента', () => {
     const { container } = renderWidget(
-      <HomeSection background={<div data-testid="decor" />}>Контент</HomeSection>,
+      <HomeSection background={<div data-testid="decor" />}>Контент</HomeSection>
     )
 
     expect(container.querySelector('section')?.firstElementChild).toHaveAttribute(
       'data-testid',
-      'decor',
+      'decor'
     )
   })
 

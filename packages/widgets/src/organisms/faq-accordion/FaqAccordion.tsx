@@ -30,7 +30,7 @@ export const FaqAccordion: FC<IFaqAccordionProps & IBasicStyling> = ({
   const isReduced = useReducedMotion() ?? false
   const baseId = useId()
   const [openIndexes, setOpenIndexes] = useState<number[]>(
-    defaultOpenIndex === undefined ? [] : [defaultOpenIndex],
+    defaultOpenIndex === undefined ? [] : [defaultOpenIndex]
   )
 
   const toggle = (index: number): void => {
@@ -75,9 +75,7 @@ export const FaqAccordion: FC<IFaqAccordionProps & IBasicStyling> = ({
               >
                 <span className={styles.question}>{item.question}</span>
 
-                <IconChevronDown
-                  className={clsx(styles.chevron, isOpen && styles.chevronOpen)}
-                />
+                <IconChevronDown className={clsx(styles.chevron, isOpen && styles.chevronOpen)} />
               </button>
             </h3>
 

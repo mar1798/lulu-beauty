@@ -27,7 +27,7 @@ WithAction.args = {
   ...feedSectionHeading(),
   action: (
     <Button link={{ href: '/catalog' }} variant="secondary" size="sm">
-      Весь каталог
+      Смотреть каталог
     </Button>
   ),
 }

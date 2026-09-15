@@ -61,7 +61,7 @@ export const AdminLayout: FC<IAdminLayoutProps & IBasicStyling> = ({
               {title}
             </Heading>
             {summary !== undefined && (
-              <Text tone="secondary" size="sm">
+              <Text tone="secondary" size="sm" className={styles.summary}>
                 {summary}
               </Text>
             )}

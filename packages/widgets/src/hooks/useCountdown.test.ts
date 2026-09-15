@@ -27,7 +27,9 @@ describe('useCountdown', () => {
   })
 
   it('раскладывает остаток на дни, часы, минуты и секунды', () => {
-    const { result } = renderHook(() => useCountdown(inFuture(2 * DAY + 3 * HOUR + 4 * MINUTE + 5 * SECOND)))
+    const { result } = renderHook(() =>
+      useCountdown(inFuture(2 * DAY + 3 * HOUR + 4 * MINUTE + 5 * SECOND))
+    )
 
     expect(result.current).toMatchObject({
       days: 2,

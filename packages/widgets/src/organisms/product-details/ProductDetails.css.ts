@@ -122,4 +122,3 @@ export const skeletonThumb = style({
   aspectRatio: '1 / 1',
   borderRadius: vars.radius.lg,
 })
-

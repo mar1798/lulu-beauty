@@ -45,14 +45,18 @@ export const variant = styleVariants({
     color: color.text('primary'),
     boxShadow: vars.shadow.lg,
     selectors: {
-      '&:hover:not([disabled]):not([aria-disabled="true"])': { backgroundColor: color.surface('muted') },
+      '&:hover:not([disabled]):not([aria-disabled="true"])': {
+        backgroundColor: color.surface('muted'),
+      },
     },
   },
   danger: {
     backgroundColor: 'transparent',
     color: color.text('danger'),
     selectors: {
-      '&:hover:not([disabled]):not([aria-disabled="true"])': { backgroundColor: color.danger('100') },
+      '&:hover:not([disabled]):not([aria-disabled="true"])': {
+        backgroundColor: color.danger('100'),
+      },
     },
   },
   /**
@@ -76,8 +80,12 @@ export const variant = styleVariants({
     color: color.text('inverse'),
     boxShadow: vars.shadow.brand,
     selectors: {
-      '&:hover:not([disabled]):not([aria-disabled="true"])': { backgroundColor: color.brand('700') },
-      '&:active:not([disabled]):not([aria-disabled="true"])': { backgroundColor: color.brand('800') },
+      '&:hover:not([disabled]):not([aria-disabled="true"])': {
+        backgroundColor: color.brand('700'),
+      },
+      '&:active:not([disabled]):not([aria-disabled="true"])': {
+        backgroundColor: color.brand('800'),
+      },
       '&[disabled], &[aria-disabled="true"]': { boxShadow: vars.shadow.none },
     },
   },

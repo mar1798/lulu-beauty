@@ -159,9 +159,7 @@ export const Tooltip: FC<ITooltipProps & IBasicStyling> = ({
   }, [content, placement])
 
   return (
-    <span
-      className={clsx(styles.container, isBlock && styles.block, className)}
-    >
+    <span className={clsx(styles.container, isBlock && styles.block, className)}>
       {children}
 
       <span

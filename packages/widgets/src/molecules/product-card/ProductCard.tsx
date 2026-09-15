@@ -39,6 +39,7 @@ export const ProductCard: FC<IProductCardProps & IBasicStyling> = ({
   sizes = DEFAULT_SIZES,
   action,
   mediaAction,
+  isPriority,
   className,
 }) => {
   const image = primaryImage(product.images)
@@ -58,6 +59,7 @@ export const ProductCard: FC<IProductCardProps & IBasicStyling> = ({
             image={{ src: image.url, alt: image.alt ?? product.name }}
             sizes={sizes}
             fill={true}
+            priority={isPriority}
           />
         )}
 

@@ -86,9 +86,7 @@ export const NearViewportEdge: StoryFn<typeof Select> = args => {
 
   return (
     <StoryWrapper>
-      <div
-        style={{ display: 'flex', alignItems: 'flex-end', minHeight: '90vh', paddingBottom: 8 }}
-      >
+      <div style={{ display: 'flex', alignItems: 'flex-end', minHeight: '90vh', paddingBottom: 8 }}>
         <div style={{ width: 280 }}>
           <Select {...args} value={value} onChange={setValue} />
         </div>

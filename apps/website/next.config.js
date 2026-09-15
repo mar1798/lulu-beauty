@@ -42,7 +42,7 @@ const withBundleAnalyzer = require('@next/bundle-analyzer')({
  */
 const TELEGRAM_SCRIPTS = 'https://telegram.org'
 const TELEGRAM_WIDGET_FRAME = 'https://oauth.telegram.org'
-const TELEGRAM_HOSTS = "https://web.telegram.org https://*.web.telegram.org https://telegram.org"
+const TELEGRAM_HOSTS = 'https://web.telegram.org https://*.web.telegram.org https://telegram.org'
 
 /**
  * Куда браузер отправляет нарушения — своя же ручка
@@ -300,6 +300,5 @@ const nextConfig = {
     return config
   },
 }
-
 
 module.exports = withPlugins([withVanillaExtract, withBundleAnalyzer], nextConfig)

@@ -44,9 +44,7 @@ describe('AdminProductForm', () => {
     await userEvent.type(brand, 'Beauty of Joseon')
     await userEvent.click(screen.getByRole('button', { name: 'Сохранить' }))
 
-    expect(onSubmit).toHaveBeenCalledWith(
-      expect.objectContaining({ brand: 'Beauty of Joseon' })
-    )
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ brand: 'Beauty of Joseon' }))
   })
 
   it('называет предел, когда объём больше допустимого', async () => {

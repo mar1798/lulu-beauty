@@ -33,7 +33,7 @@ export const HomeSection: FC<IHomeSectionProps & IBasicStyling> = ({
       styles.density[density],
       styles.tone[tone],
       background !== undefined && styles.withDecor,
-      className,
+      className
     )}
   >
     {background !== undefined && background}

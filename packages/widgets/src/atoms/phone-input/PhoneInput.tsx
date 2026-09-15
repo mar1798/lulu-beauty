@@ -98,9 +98,7 @@ export const PhoneInput: FC<IPhoneInputProps & IBasicStyling> = ({
       placeholder="555 12 34 56"
       prefix={isNational ? <span className={styles.dialCode}>{`+${dialCode}`}</span> : undefined}
       value={isNational ? formatNational(toNationalDigits(value, dialCode)) : value}
-      onChange={next =>
-        onChange(isNational ? toE164(next, dialCode) : `+${digitsOnly(next)}`)
-      }
+      onChange={next => onChange(isNational ? toE164(next, dialCode) : `+${digitsOnly(next)}`)}
     />
   )
 }

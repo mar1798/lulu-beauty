@@ -96,10 +96,7 @@ export const DeadlineCountdown: FC<IDeadlineCountdownProps & IBasicStyling> = ({
         {/* Секунды меняются каждый тик — их незачем зачитывать вслух. */}
         <span className={styles.blocks} aria-live="off">
           {toBlocks(days, hours, minutes, seconds).map((block, index) => (
-            <span
-              key={block.unit}
-              className={clsx(styles.block, index > 0 && styles.blockDivided)}
-            >
+            <span key={block.unit} className={clsx(styles.block, index > 0 && styles.blockDivided)}>
               <span className={clsx(styles.digit, isUrgent && styles.digitUrgent)}>
                 {block.value}
               </span>

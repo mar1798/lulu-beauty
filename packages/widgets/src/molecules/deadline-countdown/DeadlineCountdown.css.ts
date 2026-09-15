@@ -17,7 +17,7 @@ export const label = style({
 export const value = style({
   font: font('16/22', 600),
   fontVariantNumeric: 'tabular-nums',
-  color: color.text('primary',),
+  color: color.text('primary'),
 })
 
 export const tone = styleVariants({

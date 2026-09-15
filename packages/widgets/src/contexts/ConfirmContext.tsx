@@ -37,19 +37,16 @@ export const ConfirmProvider: React.FC<{ children: React.ReactNode }> = ({ child
     resolve?.(confirmed)
   }, [])
 
-  const confirm = useCallback(
-    (next: IConfirmRequest): Promise<boolean> => {
-      // Второй запрос поверх первого — предыдущий отвечает «нет», иначе
-      // его `await` повис бы навсегда.
-      resolveRef.current?.(false)
-      setRequest(next)
+  const confirm = useCallback((next: IConfirmRequest): Promise<boolean> => {
+    // Второй запрос поверх первого — предыдущий отвечает «нет», иначе
+    // его `await` повис бы навсегда.
+    resolveRef.current?.(false)
+    setRequest(next)
 
-      return new Promise<boolean>(resolve => {
-        resolveRef.current = resolve
-      })
-    },
-    []
-  )
+    return new Promise<boolean>(resolve => {
+      resolveRef.current = resolve
+    })
+  }, [])
 
   const value = useMemo<IConfirmContextValue>(() => ({ confirm }), [confirm])
 

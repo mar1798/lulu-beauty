@@ -49,9 +49,7 @@ export const AdminOrdersTable: FC<IAdminOrdersTableProps & IBasicStyling> = ({
 
   const toggle = (orderId: string): void => {
     setExpanded(current =>
-      current.includes(orderId)
-        ? current.filter(id => id !== orderId)
-        : [...current, orderId]
+      current.includes(orderId) ? current.filter(id => id !== orderId) : [...current, orderId]
     )
   }
 
@@ -176,7 +174,10 @@ export const AdminOrdersTable: FC<IAdminOrdersTableProps & IBasicStyling> = ({
                         <td className={styles.detailsCell} role="cell" colSpan={columnCount}>
                           <ul className={styles.items}>
                             {order.items.map(item => (
-                              <li key={`${item.productSlug}-${item.productName}`} className={styles.item}>
+                              <li
+                                key={`${item.productSlug}-${item.productName}`}
+                                className={styles.item}
+                              >
                                 <span className={styles.itemName}>
                                   {item.productId === null ? (
                                     item.productName

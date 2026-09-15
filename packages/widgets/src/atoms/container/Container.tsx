@@ -20,12 +20,7 @@ export const Container: FC<IContainerProps & IBasicStyling> = ({
   createElement(
     as,
     {
-      className: clsx(
-        styles.container,
-        styles.width[width],
-        isPadded && styles.padded,
-        className
-      ),
+      className: clsx(styles.container, styles.width[width], isPadded && styles.padded, className),
     },
     children
   )

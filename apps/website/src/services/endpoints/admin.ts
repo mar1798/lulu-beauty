@@ -107,9 +107,7 @@ export interface IProductInput {
   inStock?: boolean
 }
 
-export const listAdminProducts = (
-  params: IAdminProductListParams = {}
-): Promise<IPage<IProduct>> =>
+export const listAdminProducts = (params: IAdminProductListParams = {}): Promise<IPage<IProduct>> =>
   api.get('/admin/products', {
     query: {
       category: params.category,
@@ -132,7 +130,8 @@ export const createProduct = (input: IProductInput): Promise<IProduct> =>
 export const updateProduct = (
   productId: string,
   input: Partial<IProductInput>
-): Promise<IProduct> => api.patch(`/admin/products/${encodeURIComponent(productId)}`, { body: input })
+): Promise<IProduct> =>
+  api.patch(`/admin/products/${encodeURIComponent(productId)}`, { body: input })
 
 export const deleteProduct = (productId: string): Promise<void> =>
   api.remove(`/admin/products/${encodeURIComponent(productId)}`)
@@ -193,10 +192,8 @@ export const listCycles = (): Promise<IOrderCycle[]> => api.get('/admin/cycles')
 export const createCycle = (input: ICycleInput): Promise<IOrderCycle> =>
   api.post('/admin/cycles', { body: input })
 
-export const updateCycle = (
-  cycleId: string,
-  input: Partial<ICycleInput>
-): Promise<IOrderCycle> => api.patch(`/admin/cycles/${encodeURIComponent(cycleId)}`, { body: input })
+export const updateCycle = (cycleId: string, input: Partial<ICycleInput>): Promise<IOrderCycle> =>
+  api.patch(`/admin/cycles/${encodeURIComponent(cycleId)}`, { body: input })
 
 /**
  * Досрочное закрытие сбора. Делает ровно то же, что дедлайн: перестаёт принимать
@@ -218,9 +215,7 @@ export interface IAdminOrderListParams {
   pageSize?: number
 }
 
-export const listAdminOrders = (
-  params: IAdminOrderListParams = {}
-): Promise<IPage<IAdminOrder>> =>
+export const listAdminOrders = (params: IAdminOrderListParams = {}): Promise<IPage<IAdminOrder>> =>
   api.get('/admin/orders', {
     query: {
       cycleId: params.cycleId,
@@ -230,10 +225,7 @@ export const listAdminOrders = (
     },
   })
 
-export const updateOrderStatus = (
-  orderId: string,
-  status: OrderStatus
-): Promise<IAdminOrder> =>
+export const updateOrderStatus = (orderId: string, status: OrderStatus): Promise<IAdminOrder> =>
   api.patch(`/admin/orders/${encodeURIComponent(orderId)}/status`, { body: { status } })
 
 /**

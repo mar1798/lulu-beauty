@@ -65,7 +65,11 @@ export const TelegramLoginWidget: React.FC = () => {
     script.async = true
     script.setAttribute('data-telegram-login', publicConfig('telegramBotUsername'))
     script.setAttribute('data-size', 'large')
-    script.setAttribute('data-radius', '12')
+    // 20 — потолок, который принимает Telegram, и при высоте кнопки в 40px это
+    // ровно «таблетка»: та же форма, что у остальных кнопок сайта. Цвет и шрифт
+    // внутри iframe нам недоступны, так что форма — единственное, чем эту кнопку
+    // можно привести к своим.
+    script.setAttribute('data-radius', '20')
     // Аватарка не нужна: человек и так знает, под каким аккаунтом сидит, а лишняя
     // картинка тянет ещё один запрос к telegram.org.
     script.setAttribute('data-userpic', 'false')

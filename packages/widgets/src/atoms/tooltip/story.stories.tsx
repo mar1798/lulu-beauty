@@ -32,9 +32,7 @@ OnUnavailableButton.parameters = {
 }
 OnUnavailableButton.args = {
   content: 'Сейчас нет открытого сбора',
-  children: (
-    <Button unavailableReason="Сейчас нет открытого сбора">В корзину</Button>
-  ),
+  children: <Button unavailableReason="Сейчас нет открытого сбора">В корзину</Button>,
 }
 
 export const Bottom = Template.bind({})

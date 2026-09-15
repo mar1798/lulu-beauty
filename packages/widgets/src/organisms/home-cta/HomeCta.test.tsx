@@ -17,9 +17,7 @@ describe('HomeCta', () => {
   it('не рисует необязательные слоты, когда их не передали', () => {
     const feed = feedHomeCta()
 
-    const { container } = renderWidget(
-      <HomeCta title={feed.title} actions={feed.actions} />,
-    )
+    const { container } = renderWidget(<HomeCta title={feed.title} actions={feed.actions} />)
 
     expect(container.textContent).toBe(`${feed.title}${String(feed.actions)}`)
   })

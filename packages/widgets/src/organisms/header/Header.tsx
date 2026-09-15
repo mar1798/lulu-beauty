@@ -84,68 +84,68 @@ export const Header: FC<IHeaderProps & IBasicStyling> = ({
         styles.container,
         isFloating && styles.floating,
         isFloating && isScrolled && styles.floatingScrolled,
-        className,
+        className
       )}
     >
       {isFloating && <ScrollThreshold onChange={setScrolled} />}
 
-    <Container as="div">
-      <div className={styles.inner}>
-        <AppLink {...logo.link} className={styles.logo}>
-          {logo.label}
-        </AppLink>
-
-        <nav className={styles.nav} aria-label="Основная навигация">
-          {navigation.map(item => (
-            <AppLink
-              key={item.link.href}
-              {...item.link}
-              className={styles.navLink}
-              aria-current={item.link.href === currentHref ? 'page' : undefined}
-            >
-              {item.label}
-            </AppLink>
-          ))}
-        </nav>
-
-        <div className={styles.actions}>
-          {user === null || user === undefined ? (
-            <AppLink {...loginLink} className={styles.account}>
-              <IconUser />
-              Войти
-            </AppLink>
-          ) : (
-            <AppLink {...user.link} className={styles.account}>
-              <IconUser />
-              {user.name}
-            </AppLink>
-          )}
-
-          <AppLink
-            {...cartLink}
-            className={styles.cart}
-            aria-label={`Корзина, товаров: ${cartCount}`}
-          >
-            <IconCart />
-            {cartCount > 0 && (
-              <span className={styles.cartCount} aria-hidden={true}>
-                {cartCount}
-              </span>
-            )}
+      <Container as="div">
+        <div className={styles.inner}>
+          <AppLink {...logo.link} className={styles.logo}>
+            {logo.label}
           </AppLink>
 
-          {onMenuClick !== undefined && (
-            <IconButton
-              className={styles.menuButton}
-              icon={<IconMenu />}
-              label="Открыть меню"
-              variant="ghost"
-              onClick={onMenuClick}
-            />
-          )}
+          <nav className={styles.nav} aria-label="Основная навигация">
+            {navigation.map(item => (
+              <AppLink
+                key={item.link.href}
+                {...item.link}
+                className={styles.navLink}
+                aria-current={item.link.href === currentHref ? 'page' : undefined}
+              >
+                {item.label}
+              </AppLink>
+            ))}
+          </nav>
+
+          <div className={styles.actions}>
+            {user === null || user === undefined ? (
+              <AppLink {...loginLink} className={styles.account}>
+                <IconUser />
+                Войти
+              </AppLink>
+            ) : (
+              <AppLink {...user.link} className={styles.account}>
+                <IconUser />
+                {user.name}
+              </AppLink>
+            )}
+
+            <AppLink
+              {...cartLink}
+              className={styles.cart}
+              aria-label={`Корзина, товаров: ${cartCount}`}
+            >
+              <IconCart />
+              {cartCount > 0 && (
+                <span className={styles.cartCount} aria-hidden={true}>
+                  {cartCount}
+                </span>
+              )}
+            </AppLink>
+
+            {onMenuClick !== undefined && (
+              <IconButton
+                className={styles.menuButton}
+                icon={<IconMenu />}
+                label="Открыть меню"
+                variant="ghost"
+                onClick={onMenuClick}
+              />
+            )}
+          </div>
         </div>
-      </div>
-    </Container>
+      </Container>
 
       {notice !== undefined && <div className={styles.notice}>{notice}</div>}
     </header>

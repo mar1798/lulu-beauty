@@ -71,11 +71,7 @@ export const CheckoutPanel: FC<ICheckoutPanelProps & IBasicStyling> = ({
               </div>
             ))
           : cart.items.map(item => (
-              <ItemRow
-                key={item.productId}
-                item={item}
-                href={buildProductHref(item.productSlug)}
-              />
+              <ItemRow key={item.productId} item={item} href={buildProductHref(item.productSlug)} />
             ))}
       </div>
 
