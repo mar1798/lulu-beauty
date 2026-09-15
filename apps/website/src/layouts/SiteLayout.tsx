@@ -8,6 +8,7 @@ import { BaseLayout } from 'widgets/templates'
 import { useAuth } from '@/contexts/AuthContext'
 import { useCart } from '@/contexts/CartContext'
 import { usePrefetchRoutes } from '@/hooks/usePrefetchRoutes'
+import { useTelegramWebview } from '@/hooks/useTelegramWebview'
 
 /**
  * Каркас публичных страниц: шапка и подвал, настроенные данными сайта.
@@ -120,6 +121,7 @@ export const SiteLayout: React.FC<ISiteLayoutProps> = ({ children, isCartCountSh
   const { user, isAdmin } = useAuth()
   const { itemCount } = useCart(isCartCountShown)
   const menu = useDisclosure()
+  const isTelegramWebview = useTelegramWebview()
 
   usePrefetchRoutes(user === null ? GUEST_PREFETCH : isAdmin ? ADMIN_PREFETCH : USER_PREFETCH)
 
@@ -155,6 +157,12 @@ export const SiteLayout: React.FC<ISiteLayoutProps> = ({ children, isCartCountSh
               нужна обычной, sticky с фоном.
             */
             isFloating={router.pathname === '/'}
+            /*
+              Во встроенном браузере Telegram шапка не прилипает: там она
+              прилипала бы с полосой чужого контента над собой (подробности —
+              в `Header.css.ts`). Заодно отменяется и режим «поверх героя».
+            */
+            isPinned={!isTelegramWebview}
           />
 
           {/*

@@ -26,6 +26,18 @@ a crash: Next 16 blocks `/_next/*` (including the HMR websocket) for any origin 
 network ranges are already allowed in `next.config.js`; a tunnel hostname goes in
 `NEXT_DEV_ORIGINS`.
 
+**Telegram's in-app browser on iOS clips `fixed` and `sticky`.** WKWebView there hands the
+page the full window height but paints fixed and sticky elements only inside the area below
+Telegram's own address pill, clipped at its edge. While that bar is expanded the two areas
+agree; once it collapses on scroll the window grows upward and the fixed area does not, so a
+stuck header ends up with a strip of scrolling page content above it. Nothing in JS reports
+the offset — `innerHeight`, `clientHeight`, `visualViewport.height` all agree, `offsetTop` is
+`0`, `getBoundingClientRect().top` is `0` — and nothing can cover the strip either: neither a
+`::before` on the header nor a separate `fixed` element is painted there. The only fix is not
+to stick at all, which is what `isPinned={false}` does (`useTelegramWebview` →
+`Header.css.ts`'s `unpinned`). The browser is recognised solely by `window.TelegramWebviewProxy`:
+its user-agent is plain Mobile Safari and `document.referrer` is empty.
+
 **A new third-party script, iframe or API host needs a CSP edit** in `next.config.js`, or it
 silently fails in the browser. `X-Frame-Options` is deliberately absent — it cannot express
 "allow Telegram only", which `frame-ancestors` does, and the site runs as a Mini App inside

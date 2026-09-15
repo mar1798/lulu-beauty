@@ -629,6 +629,12 @@ export interface IHeaderProps {
    * возвращает обычный вид. Остальные страницы режим не включают.
    */
   isFloating?: boolean
+  /**
+   * Прилипает ли шапка к верху экрана. Выключается только там, где браузер
+   * не даёт прилипнуть без изъяна, — см. `unpinned` в `Header.css.ts`.
+   * Выключенная липкость отменяет и `isFloating`.
+   */
+  isPinned?: boolean
 }
 
 export interface IMobileMenuProps {
