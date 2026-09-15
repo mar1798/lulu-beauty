@@ -10,8 +10,9 @@ logger = logging.getLogger("app.body_limit")
 # Both upload endpoints check their own, stricter limits (`MAX_IMAGE_BYTES`,
 # `MAX_IMPORT_BYTES`); this is the outer bound that has to hold before the route — and
 # therefore before `require_admin` — is reached at all. Wide enough to leave those
-# checks the ones that produce the readable errors.
-MAX_BODY_BYTES = 12 * 1024 * 1024
+# checks the ones that produce the readable errors, so it has to stay above the largest
+# of them (images, 15 MB) plus the multipart envelope around it.
+MAX_BODY_BYTES = 20 * 1024 * 1024
 
 METHODS_WITH_BODY = frozenset({"POST", "PUT", "PATCH"})
 

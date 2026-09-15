@@ -261,7 +261,7 @@ export const feedFileInput = (): IFileInputProps => ({
   label: 'Фотографии товара',
   accept: 'image/*',
   multiple: true,
-  hint: 'JPEG или PNG, до 5 МБ',
+  hint: 'JPEG или PNG, до 15 МБ',
 })
 
 export const feedContainer = (): IContainerProps => ({

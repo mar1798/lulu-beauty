@@ -1431,7 +1431,7 @@ export interface IToastViewportProps {
 
 /**
  * Drag&drop-загрузка одного файла. Ограничения задаются явно и повторяют
- * лимиты бэкенда (`apps/api/app/catalog/router.py`): картинки — 5 MB и
+ * лимиты бэкенда (`apps/api/app/catalog/router.py`): картинки — 15 MB и
  * `image/jpeg|png|webp`, файл импорта — 10 MB и `.xlsx`/`.csv`.
  */
 export interface IFileDropzoneProps {

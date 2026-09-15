@@ -31,7 +31,7 @@ uv run python -m app.scripts.seed              # upsert the SUPER_ADMIN owner
 
 1. `RateLimitMiddleware` — added **first** so it runs _inside_ CORS. A 429 without CORS
    headers reads as a network failure in the browser.
-2. `BodySizeLimitMiddleware` — outer bound `MAX_BODY_BYTES = 12 MB`, before route parsing.
+2. `BodySizeLimitMiddleware` — outer bound `MAX_BODY_BYTES = 20 MB`, before route parsing.
 3. `CORSMiddleware` — `CORS_ORIGIN`.
 
 Then every router, plus `/files` mounted as static (product images from local disk) — via
@@ -115,7 +115,42 @@ Owner-only (`ADMIN` or `SUPER_ADMIN`, checked on the API — the frontend gate i
 `POST /telegram/webhook` is mounted always but 404s unless `TELEGRAM_USE_WEBHOOK` + url +
 secret are all set. Rate-limit exempt.
 
-Upload ceilings: images 5 MB (`jpeg`/`png`/`webp`), import file 10 MB, outer body 12 MB.
+Upload ceilings: images 15 MB (`jpeg`/`png`/`webp`), import file 10 MB, outer body 20 MB.
+
+### Product photos are re-encoded on upload
+
+`POST /admin/products/{id}/images` does not store what it receives. `app/catalog/image_compression.py`
+scales the longest side down to `MAX_DIMENSION = 2000`, applies the upload's EXIF rotation to the
+pixels (and drops the rest of the EXIF with it), and re-encodes it as WebP at quality 82 — a
+15 MB PNG out of a camera lands in `uploads` as a few hundred kilobytes. The stored extension
+therefore comes from the compressor, never from the content type or the filename. The scaling
+runs **before** the rotation on purpose: it lets the decoder skip straight to a reduced image,
+so a 24 MP photo is never held at its own size. The box is square, which is what makes the order
+safe — if it ever stops being square, the two steps have to swap back.
+
+A picture that is already smaller than its own re-encode (something somebody saved as WebP
+already) is kept exactly as it arrived — but only when it is nothing but pixels. A file that
+carries EXIF, XMP, an ICC profile or a comment, or that has anything glued on past the marker
+that ends the image, is re-encoded instead. That path is the only one that would hand an
+upload's own bytes to the disk, and those bytes are where a GPS tag or an appended payload
+would ride along.
+
+Three more consequences worth remembering:
+
+- The declared content type is only a first filter. `Image.open` is given an explicit
+  `formats=["JPEG", "PNG", "WEBP"]` allowlist, so a TIFF or an ICO under a
+  `Content-Type: image/png` is refused rather than quietly converted — the parsers for the
+  formats nobody here uploads are the ones that collect the CVEs. A file that fails to decode
+  is a `400 image_unreadable`, not a 415.
+- The cost of a photo is its pixel count, not its size on the wire: a flat 40 MP PNG travels in
+  128 KB and still costs a few hundred megabytes to decode. Hence `MAX_PIXELS = 24_000_000`,
+  refused as `413 image_too_many_pixels` — a distinct code from `image_too_large`, which is
+  about bytes the owner can actually see.
+- The work is CPU- and memory-bound, so it runs in a worker thread (`anyio.to_thread`) behind
+  its own `DECODE_LIMITER` of 2. The API is one process shared with the bot and the scheduler,
+  a second spent decoding on the event loop is a second everything else waits, and the default
+  thread pool would have allowed forty simultaneous decodes on a 4 GB box that also runs
+  Postgres.
 
 ## Patterns to match
 
@@ -156,7 +191,8 @@ unsupported_image_type    user_not_found            wishlist_full
 wishlist_item_not_found
 ```
 
-(plus `image_too_large`, `import_file_too_large`, `request_body_too_large`, `rate_limited`,
+(plus `image_unreadable`, `image_too_large`, `image_too_many_pixels`, `import_file_too_large`,
+`request_body_too_large`, `rate_limited`,
 `deadline_must_be_future`, raised from routers/middleware in the same shape.)
 
 **Money** is integer `*_cents`. **Products are soft-deleted.** See [domain.md](domain.md).

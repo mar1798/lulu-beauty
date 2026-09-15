@@ -44,8 +44,8 @@ class LocalDiskStorage:
         """Deletes the file a `product_images.url` points at, if this storage owns it.
 
         Nothing used to remove these: replacing a product's photo dropped the row and
-        left the bytes, so the `uploads` volume only ever grew — up to 5 MB per re-upload,
-        with no way to tell an orphan from a live file after the fact.
+        left the bytes, so the `uploads` volume only ever grew, with no way to tell an
+        orphan from a live file after the fact.
 
         The url is not trusted as a path. Only the last segment is used, and only after
         the address has been recognised as one this storage produced: a stored value is
