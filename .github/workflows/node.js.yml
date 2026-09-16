@@ -26,13 +26,19 @@ jobs:
 
     steps:
       - name: Get repository code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v5
       - name: Install NodeJs
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v5
         with:
           node-version: ${{ matrix.node-version }}
+          # setup-node@v5 caches ~/.npm by itself as soon as package.json has a
+          # `packageManager` field, and this repository has one. That would be a
+          # second cache over the same directory as the step below, with a key
+          # this workflow does not control — off, so the explicit one stays the
+          # only owner of ~/.npm.
+          package-manager-cache: false
       - name: Cache modules
-        uses: actions/cache@v3
+        uses: actions/cache@v5
         with:
           path: ~/.npm
           key: node-modules-${{ hashFiles('**/package-lock.json') }}
