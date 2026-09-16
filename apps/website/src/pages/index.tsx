@@ -26,6 +26,7 @@ import { WishlistButton } from '@/components/WishlistButton'
 import { getActiveCycleOrNull } from '@/services/endpoints/cycles'
 import { listBrands, listCategories, listProducts } from '@/services/endpoints/catalog'
 import { activeCycleFallback, type ISwrFallback } from '@/services/swrFallback'
+import { INSTAGRAM_URL } from '@/utils/contacts'
 import { publicConfig } from '@/сonfig'
 
 /**
@@ -104,6 +105,12 @@ const FAQ_ITEMS = [
     question: 'Можно ли изменить или отменить заявку?',
     answer:
       'Пока сбор открыт и заявка ещё не подтверждена — да: в разделе «Мои заявки» можно поменять состав и отменить заявку. Отменённую, пока сбор открыт, можно вернуть обратно.',
+  },
+  {
+    question: 'Как связаться с владельцем?',
+    answer:
+      'Напишите напрямую в {link} — это единственный публичный контакт, в остальном переписку ведёт бот в Telegram.',
+    action: { label: 'Instagram магазина', link: { href: INSTAGRAM_URL, target: '_blank' } },
   },
   {
     question: 'Как войти, если у меня нет пароля?',
