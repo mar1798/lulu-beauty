@@ -221,8 +221,9 @@ of a live WordPress integration.
   The destination is resolved **at build time**: `next build` writes it into
   `.next/routes-manifest.json`, and the standalone server reads that manifest instead of
   re-running `next.config.js`. So `API_BASE_URL` has to be present during the image build —
-  `apps/website/Dockerfile` takes it as a build arg, `docker-compose.prod.yml` passes
-  `http://api:3001` there as well as in `environment:`. Miss the build arg and every photo
+  `apps/website/Dockerfile` takes it as a build arg, and the image is built in CI
+  (`.github/workflows/release-tag.yml`), which passes `http://api:3001` there — the same
+  value `docker-compose.prod.yml` sets in `environment:` at runtime. Miss the build arg and every photo
   is proxied to `http://localhost:3001` inside the website container: `/files/*` answers 500,
   and `/_next/image` turns that into 400 ("The requested resource isn't a valid image").
 - **`allowedDevOrigins`** lists private-network patterns plus anything in `NEXT_DEV_ORIGINS`.

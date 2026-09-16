@@ -75,21 +75,51 @@ presence as evidence of a live integration.
 
 `deploy/.env.prod.example` is the template. It carries the API set above plus:
 
-| Variable      | Notes                                                                     |
-| ------------- | ------------------------------------------------------------------------- |
-| `SITE_DOMAIN` | The domain Caddy issues a certificate for. Compose fails fast without it. |
-| `ACME_EMAIL`  | Where Let's Encrypt sends expiry warnings. Also required.                 |
+| Variable       | Notes                                                                                                                                                                                                                  |
+| -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `SITE_DOMAIN`  | The domain Caddy issues a certificate for. Compose fails fast without it.                                                                                                                                              |
+| `ACME_EMAIL`   | Where Let's Encrypt sends expiry warnings. Also required.                                                                                                                                                              |
+| `IMAGE_PREFIX` | Where the `api` and `website` images come from — `ghcr.io/<owner>/lulu-beauty`, all lowercase (a registry path may not carry capitals). Set once, by hand.                                                             |
+| `RELEASE_TAG`  | The release that is running. **Not set by hand** (once, on the switch-over release): `deploy/release.sh` rewrites this line on every deploy, which is what makes an ad-hoc `docker compose ps` name the right release. |
+
+Both image variables are `:?`-required in `docker-compose.prod.yml`, so an empty one stops
+compose with a message about variable interpolation rather than about a missing setup step.
+[deployment.md](deployment.md) has the one-off preparation under "Releases".
 
 Values the prod compose file sets itself, so they do **not** belong in `.env.prod`:
 `DATABASE_URL` (always the `db` service), `API_BASE_URL: http://api:3001`,
-`AUTH_COOKIE_SECURE: true`, `TRUST_PROXY_HEADERS: true`, and the website's build args
-`NEXT_PUBLIC_API_BASE_URL: https://${SITE_DOMAIN}`, `NEXT_PUBLIC_SITE_URL: https://${SITE_DOMAIN}`,
-`NEXT_PUBLIC_TELEGRAM_BOT_USERNAME`, `NEXT_PUBLIC_TELEGRAM_LOGIN_WIDGET`, `API_BASE_URL`
-(the same `http://api:3001`, passed as a build arg _and_ as a runtime variable).
+`AUTH_COOKIE_SECURE: true`, `TRUST_PROXY_HEADERS: true`.
 
-Note that `NEXT_PUBLIC_*` values, and the `/files/*` rewrite destination taken from
-`API_BASE_URL`, are baked in **at build time**: changing one requires rebuilding the
-website image, not just restarting it. Full procedure:
+### The website's build args are not in this file
+
+`NEXT_PUBLIC_*` and the `/files/*` rewrite destination taken from `API_BASE_URL` are baked
+into the bundle **at build time**, and since the image is built in CI
+(`.github/workflows/release-tag.yml`) that is where their values come from: **repository
+variables** on GitHub — `SITE_DOMAIN`, `TELEGRAM_BOT_USERNAME` and
+`NEXT_PUBLIC_TELEGRAM_LOGIN_WIDGET`. Variables and not secrets, because every one of them
+ships inside the client bundle anyway. The workflow builds
+`NEXT_PUBLIC_API_BASE_URL` and `NEXT_PUBLIC_SITE_URL` from `https://${SITE_DOMAIN}` and
+passes `API_BASE_URL=http://api:3001` — the same value the compose file sets at runtime, and
+it is needed in both places.
+
+⚠️ The first two are required and an empty one fails the release; the login-widget flag
+defaults to `false` when the variable is unset, matching `apps/website/Dockerfile`. Note that
+**`.env.prod` still carries `NEXT_PUBLIC_TELEGRAM_LOGIN_WIDGET`, and on the normal deploy path
+nothing reads it** — it only takes effect through `docker-compose.prod.build.yml`, i.e. a
+`release.sh --build` on the server. The value that reaches customers is the repository
+variable; where the two disagree, the built bundle is what the browser gets.
+
+Nothing keeps the two places in agreement, so the disagreement is **caught instead**. The
+build stamps what it compiled onto the image as labels (`sululu.build.site-url`,
+`sululu.build.telegram-bot-username`, `sululu.build.telegram-login-widget`, at the end of
+`apps/website/Dockerfile`), and `deploy/release.sh` reads them back before starting anything:
+a domain or a bot name that doesn't match `.env.prod` refuses the deploy, and the previous
+release keeps serving. The widget flag only warns — on that path nothing reads it from
+`.env.prod` to begin with. The labels are the only way to ask: the values live in minified
+JavaScript by then, not in the container's environment.
+
+Changing any of them therefore means changing the repository variable and making a release —
+a restart is not enough, and neither is editing `.env.prod`. Full procedure:
 [deployment.md](deployment.md).
 
 ## Tests

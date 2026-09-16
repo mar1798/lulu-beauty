@@ -15,12 +15,16 @@ pushed commits) unless the user asks for exactly that.
 
 Work happens on **`development`**. **`master` is what production runs** — release merges
 only, direct pushes blocked on GitHub. On `master`, don't commit: say so and offer to move
-the changes to `development`. Releases are a merge into `master`, which CI tags `vYYYY.MM.DD`
-by itself, and then `deploy/release.sh <tag>` on the server — "Releases" in
+the changes to `development`. Releases are a merge into `master`; CI checks the migrations,
+tags it `vYYYY.MM.DD` and builds both images into GHCR by itself, the owner approves the
+deploy on GitHub, and the server picks it up from cron — "Releases" in
 [docs/deployment.md](docs/deployment.md).
 A release carries **only expanding migrations** (see [docs/backend.md](docs/backend.md)):
 production never runs `alembic downgrade`, so a dropped column makes the rollback path
-a restore from backup.
+a restore from backup. The `Migration guard` job enforces that before the tag exists, so a
+refused merge is simply not a release — nothing named, nothing built. The only way past it
+is a `[contracting]` marker in the merge commit, written when the merge is made, since
+`master` isn't rewritten afterwards.
 
 Read-only git needs no asking: `git status`, `git diff`, `git log`, `git show`,
 `git blame`.
@@ -128,6 +132,10 @@ uv run alembic revision --autogenerate -m "…" / uv run alembic upgrade head
 uv run python -m app.scripts.seed          # upserts the SUPER_ADMIN owner from OWNER_* vars
 curl http://localhost:3001/health          # real DB check; 503 if the database is unreachable
 ```
+
+`.github/scripts` (the release guard) rides on the same three, with paths, from `apps/api`:
+`uv run ruff check ../../.github/scripts`, `uv run mypy --strict ../../.github/scripts`,
+`uv run pytest ../../.github/scripts`.
 
 `docker compose up --build` from the root brings up `db` + `api` (migrations run on start).
 Product image uploads live in the named `uploads` volume — don't `down -v` unless you intend
