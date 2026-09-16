@@ -1,0 +1,218 @@
+name: Release deploy
+
+# The approval gate, and the only manual step of a release. `Release tag` has
+# already checked the migrations, tagged the merge and pushed both images to
+# GHCR; this run waits on the `production` environment until a reviewer approves
+# it, and then moves one ref. Nothing here touches the server: no SSH key, no
+# deploy key, no production secret ever reaches GitHub.
+#
+# The server watches that ref (deploy/watch-release.sh, from cron) and deploys
+# what it points at. GitHub announces the pending approval by itself — email and
+# a push in GitHub Mobile — so there is nothing to poll and nothing to remember.
+#
+#   merge ──► guard ──► tag ──► images ──► ⏸ approve ──► ref ──► server pulls
+#
+# Two jobs, and the split is the point: everything that can refuse a release is
+# in `check`, which has no environment and therefore runs *before* the gate. A
+# question answered after the approval is a question asked too late — the
+# reviewer has already decided, and the failure then reads as the deploy
+# breaking rather than the release never having been deployable.
+#
+# ⚠️ A pending deployment expires after 30 days and the run then fails. Re-run
+# it, or dispatch this workflow by hand with the tag.
+on:
+  workflow_run:
+    workflows: [ "Release tag" ]
+    types: [ completed ]
+  # Rollbacks and re-deploys: the same gate, with the tag named explicitly.
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to deploy (empty — the latest one)"
+        required: false
+        type: string
+
+# Releases go live one at a time and in order: a run waiting on the approval
+# holds this group, so a second merge queues behind it rather than racing it to
+# the ref. `cancel-in-progress: false` because the thing in progress is usually
+# a human deciding.
+#
+# ⚠️ A third run while two are outstanding cancels the pending middle one —
+# GitHub keeps one pending run per group. Harmless here (the newest release
+# contains the dropped one's commits), but it is why a deployed tag can skip a
+# name.
+concurrency:
+  group: release-deploy
+  cancel-in-progress: false
+
+jobs:
+  check:
+    name: Check the release
+    # A failed `Release tag` builds nothing, so there is nothing to approve.
+    # ⚠️ Success is *not* the same as "there is something new to deploy": a
+    # re-run rebuilds and re-pushes the same release under the name it already
+    # carries, and finishes green with the ref already pointing at it. That case
+    # is caught below by the ref, not here.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      # To ask the registry whether the images are really there.
+      packages: read
+
+    outputs:
+      tag: ${{ steps.release.outputs.tag }}
+      sha: ${{ steps.release.outputs.sha }}
+      # Empty when this run has nothing to do — the deploy job is skipped then,
+      # and no approval is asked for.
+      deploy: ${{ steps.release.outputs.deploy }}
+
+    steps:
+      - name: Get repository code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Pick the release
+        id: release
+        run: |
+          set -Eeuo pipefail
+
+          tag='${{ inputs.tag }}'
+          built='${{ github.event.workflow_run.head_sha }}'
+
+          if [[ -n "$tag" ]]; then
+            : # Named by hand — a rollback, or a re-deploy after a rebuild.
+          elif [[ -n "$built" ]]; then
+            # The tag on the commit `Release tag` actually built, never "the
+            # latest one". Approval can come minutes or days after the build,
+            # and a second release merged in between would otherwise be what
+            # this run puts live — a release nobody approved, deployed under
+            # the name of one they did.
+            tag="$(git describe --exact-match --tags "$built" 2>/dev/null || true)"
+            [[ -n "$tag" ]] ||
+              { echo "the commit built by Release tag ($built) carries no tag" >&2; exit 1; }
+          else
+            # Only `Run workflow` with an empty input gets here. Sorted by
+            # version rather than lexically, the same way deploy/release.sh and
+            # the tagging workflow do it.
+            tag="$(git tag -l 'v*' --sort=-v:refname | head -n1)"
+            [[ -n "$tag" ]] || { echo "no vYYYY.MM.DD tags in the repository" >&2; exit 1; }
+          fi
+
+          git rev-parse --verify --quiet "refs/tags/$tag" >/dev/null ||
+            { echo "unknown tag: $tag" >&2; exit 1; }
+
+          sha="$(git rev-parse "$tag^{commit}")"
+
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "image=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+
+          # Automatic runs only. `Release tag` runs again for a commit that is
+          # already tagged — a re-run, or a merge of something already released
+          # — and finishes with the same release built again under the same
+          # name. Approving that would ask the owner to decide about a release
+          # that is already where the ref points, which teaches them to click
+          # through the one prompt that is supposed to mean something.
+          #
+          # Never for `Run workflow`: naming a tag by hand is the documented way
+          # to re-deploy after rebuilding the server or the images, and there the
+          # ref pointing at it already is the normal case, not a reason to stop.
+          if [[ '${{ github.event_name }}' == 'workflow_run' ]]; then
+            approved="$(git ls-remote origin refs/deploy/current | cut -f1)"
+            if [[ "$approved" == "$sha" ]]; then
+              echo "deploy=" >> "$GITHUB_OUTPUT"
+              {
+                echo "### \`$tag\` is already the approved release"
+                echo
+                echo "Nothing to do: \`refs/deploy/current\` points at it. Deploy it again"
+                echo "with **Run workflow** if that is what is wanted."
+              } >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+          fi
+
+          echo "deploy=true" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to GHCR
+        if: steps.release.outputs.deploy
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Before the gate, deliberately. The ref is a promise that the server can
+      # deploy this release without building anything; a missing image would
+      # turn that into a failed `pull` on production, found out after the
+      # approval and the backup.
+      #
+      # ⚠️ Not a substitute for the guard, which runs before the tag and so
+      # leaves no tag behind to be deployed at all. What this catches is a build
+      # that failed on its own — a registry timeout, a broken Dockerfile: the
+      # release is named, and from here nothing else can tell it apart from one
+      # that is ready. Re-run `Release tag` on that commit; it adopts the name
+      # and builds again.
+      - name: Both images are in the registry
+        if: steps.release.outputs.deploy
+        run: |
+          set -Eeuo pipefail
+          for image in api website; do
+            ref='${{ steps.release.outputs.image }}'/"$image":'${{ steps.release.outputs.tag }}'
+            docker manifest inspect "$ref" >/dev/null ||
+              { echo "not in the registry: $ref — re-run \`Release tag\` for this commit" >&2; exit 1; }
+            echo "ok: $ref"
+          done
+
+  deploy:
+    name: Deploy
+    needs: check
+    if: needs.check.outputs.deploy
+    runs-on: ubuntu-latest
+
+    # This is the gate, and by the time it is reached the release is known to be
+    # deployable. Required reviewers on the `production` environment are what
+    # makes the run pause; without them configured it deploys straight through,
+    # which is worth checking after any change to repository settings.
+    environment:
+      name: production
+      url: https://${{ vars.SITE_DOMAIN }}
+
+    permissions:
+      # To move refs/deploy/current. ⚠️ Read this as "the least GitHub offers",
+      # not as a fence: `contents: write` is write to *every* ref in the
+      # repository, and there is no finer grain. What actually stops this job
+      # from pushing code is branch protection on `master` and the fact that
+      # nothing here asks it to — so the step below stays a single `git push` of
+      # one ref, and anything more belongs in a different workflow.
+      contents: write
+
+    steps:
+      # The commit is pushed by hash, so it has to be in this clone: a shallow
+      # checkout of the default branch would not contain a tag from a week ago.
+      - name: Get repository code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      # A custom ref rather than a branch, on purpose: it is a machine pointer,
+      # not somewhere to commit or to open a pull request from. `--force`
+      # because a rollback moves it backwards.
+      - name: Approve the release for production
+        run: |
+          set -Eeuo pipefail
+          git push --force origin \
+            '${{ needs.check.outputs.sha }}':refs/deploy/current
+
+          {
+            echo "### \`${{ needs.check.outputs.tag }}\` approved for production"
+            echo
+            echo "The server deploys it within a minute (deploy/watch-release.sh)."
+            echo "What actually went live is \`~/releases.log\` on the server."
+          } >> "$GITHUB_STEP_SUMMARY"
