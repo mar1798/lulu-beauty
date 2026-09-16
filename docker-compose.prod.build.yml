@@ -1,0 +1,37 @@
+# Оверрайд к docker-compose.prod.yml: собрать продовые образы прямо на сервере.
+#
+#   ./deploy/release.sh <tag> --build
+#
+# Обычный путь другой — образы собирает CI и кладёт в GHCR (см. «Releases» в
+# docs/deployment.md). Этот файл на случай, когда так нельзя: реестр недоступен,
+# GitHub Actions лежат, или проверяется правка, которой ещё нет в теге.
+#
+# Имена образов не переопределяются: `build:` рядом с `image:` собирает и
+# помечает ровно тем же именем, под которым его ждал бы compose из реестра.
+services:
+  api:
+    build:
+      context: apps/api
+
+  website:
+    build:
+      # Контекст — корень репозитория: Next компилирует `widgets` из исходников.
+      context: .
+      dockerfile: apps/website/Dockerfile
+      args:
+        # Подставляются в клиентский бандл на этапе сборки — после правки
+        # нужен `up -d --build website`, перезапуска мало. В CI те же значения
+        # приходят из repository variables.
+        NEXT_PUBLIC_API_BASE_URL: https://${SITE_DOMAIN}
+        # Тот же адрес, но для превью ссылки (`og:image`, `og:url`).
+        NEXT_PUBLIC_SITE_URL: https://${SITE_DOMAIN}
+        NEXT_PUBLIC_TELEGRAM_BOT_USERNAME: ${TELEGRAM_BOT_USERNAME}
+        # `false`, как в apps/website/Dockerfile и docs/environment.md: виджет
+        # авторизует только на домене из `/setdomain`, поэтому по умолчанию он
+        # выключен — кнопка, которая отрисовалась и отказала, хуже отсутствующей.
+        NEXT_PUBLIC_TELEGRAM_LOGIN_WIDGET: ${NEXT_PUBLIC_TELEGRAM_LOGIN_WIDGET:-false}
+        # Тот же адрес, что и в `environment:` продового файла, и он нужен в
+        # обоих местах: рерайт `/files/*` на API запекается в манифест на этапе
+        # сборки (см. apps/website/Dockerfile), а `getStaticProps` и API-роуты
+        # читают переменную в рантайме.
+        API_BASE_URL: http://api:3001

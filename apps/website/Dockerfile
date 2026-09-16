@@ -72,6 +72,24 @@ ENV NODE_ENV=production \
     PORT=3000 \
     HOSTNAME=0.0.0.0
 
+# Чем собрали — прямо на образе. Аргументы выше запеклись в бандл и после
+# сборки не читаются ниоткуда: в контейнере их нет (это не `environment:`), а в
+# `.next` они лежат кусками минифицированного JS. Значит, единственный способ
+# узнать, на какой домен смотрит готовый образ, — спросить его самого.
+#
+# Спрашивает deploy/release.sh перед стартом: значения приходят из repository
+# variables на GitHub, а домен для сертификата — из .env.prod на сервере, и
+# разъехаться эти два места могут молча. Метка превращает «клиент стучится не
+# туда» в отказ задеплоить.
+#
+# ARG'и объявлены заново: они видны только той стадии, где объявлены.
+ARG NEXT_PUBLIC_SITE_URL
+ARG NEXT_PUBLIC_TELEGRAM_BOT_USERNAME
+ARG NEXT_PUBLIC_TELEGRAM_LOGIN_WIDGET=false
+LABEL sululu.build.site-url="$NEXT_PUBLIC_SITE_URL" \
+      sululu.build.telegram-bot-username="$NEXT_PUBLIC_TELEGRAM_BOT_USERNAME" \
+      sululu.build.telegram-login-widget="$NEXT_PUBLIC_TELEGRAM_LOGIN_WIDGET"
+
 # `outputFileTracingRoot` — корень монорепозитория, поэтому внутри standalone
 # сохраняется структура репозитория: сервер лежит в apps/website/server.js.
 COPY --from=builder --chown=node:node /repo/apps/website/.next/standalone ./
