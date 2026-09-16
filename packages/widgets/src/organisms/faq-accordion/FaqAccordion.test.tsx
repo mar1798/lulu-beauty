@@ -91,6 +91,22 @@ describe('FaqAccordion', () => {
     )
   })
 
+  /* Ссылка в ответе — единственный выход из FAQ наружу, и она внешняя. */
+  it('рендерит ссылку ответа рядом с текстом', async () => {
+    const user = userEvent.setup()
+    const feed = feedFaqAccordion()
+    const item = feed.items.filter(entry => entry.action !== undefined)[0]
+
+    renderWidget(<FaqAccordion {...feed} />)
+
+    await user.click(screen.getByRole('button', { name: item.question }))
+
+    const link = screen.getByRole('link', { name: item.action?.label })
+
+    expect(link).toHaveAttribute('href', item.action?.link.href)
+    expect(link).toHaveAttribute('target', '_blank')
+  })
+
   it('с isMultiple держит открытыми несколько', async () => {
     const user = userEvent.setup()
     const feed = feedFaqAccordion()

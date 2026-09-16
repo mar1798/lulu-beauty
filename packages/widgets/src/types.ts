@@ -837,6 +837,13 @@ export interface IBrandMarqueeProps {
 export interface IFaqItem {
   question: string
   answer: string
+  /**
+   * Ссылка внутри ответа — единственный способ вывести из FAQ наружу
+   * (контакт владельца, соцсеть). Данными, а не готовым узлом: виджет сам
+   * берёт адаптер `Link` из контекста и красит ссылку акцентом. Место в
+   * тексте отмечается `{link}`; без метки ссылка встаёт в конце ответа.
+   */
+  action?: ILinkedLabel
 }
 
 export interface IFaqAccordionProps {

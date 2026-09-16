@@ -480,6 +480,14 @@ export const feedFaqAccordion = (): IFaqAccordionProps => ({
       answer:
         'Каталог открыт всегда, но корзина работает только при открытом сборе — понравившееся сохраняйте в избранное.',
     },
+    {
+      question: 'Как связаться с владельцем?',
+      answer: 'Напишите напрямую в {link} — в остальном переписку ведёт бот.',
+      action: {
+        label: 'Instagram магазина',
+        link: { href: 'https://www.instagram.com/sululu_kg', target: '_blank' },
+      },
+    },
   ],
 })
 

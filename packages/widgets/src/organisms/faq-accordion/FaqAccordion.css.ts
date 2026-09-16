@@ -71,3 +71,21 @@ export const answer = style({
   color: color.text('secondary'),
   maxWidth: '64ch',
 })
+
+/**
+ * Ссылка внутри ответа: акцентный цвет плюс подчёркивание — на приглушённом
+ * тексте одного цвета мало, чтобы прочитаться ссылкой.
+ */
+export const answerLink = style([
+  {
+    color: color.text('brand'),
+    fontWeight: 600,
+    textDecoration: 'underline',
+    textUnderlineOffset: rem(3),
+    transition: transition('opacity'),
+    selectors: {
+      '&:hover': { opacity: 0.8 },
+    },
+  },
+  focusVisibleRing(),
+])
