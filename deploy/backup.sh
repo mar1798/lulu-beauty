@@ -25,6 +25,12 @@
 #                  another copy of the same bytes. Fourteen of those cost
 #                  fourteen times the catalogue — 700 MB of photos would fill
 #                  the free 10 GB of R2 by itself.
+#                  Where four lands: an upload is re-encoded to WebP on the way
+#                  in (compress_image), so a photo is ~500 KB and costs that
+#                  again in each archive — the free 10 GB ends at about 5 000
+#                  photographs, 2.5 GB in the volume. Past that, the answer is
+#                  `rclone sync --backup-dir` rather than a shorter window; see
+#                  "Why the two windows differ" in docs/deployment.md.
 #   BACKUP_REMOTE  rclone remote to upload to       (BACKUP_REMOTE in .env.prod)
 #                  for example: r2:lulu-backups  or  s3:my-bucket/lulu
 #                  Kept in .env.prod rather than in the cron line, so that a

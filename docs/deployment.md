@@ -485,11 +485,22 @@ mentions. What it can lack are photos deleted in between — the owner replacing
 product's picture — and those rows then point at nothing, exactly as they would
 after losing the volume.
 
-The day the photos outgrow this shape, the fix isn't a smaller window but a
+**How far away that day is, in photographs.** Every upload is re-encoded to WebP
+by `compress_image` before it is stored, which puts a product photo at roughly
+500 KB; `uploads-*.tar.gz` is gzip over WebP and gains essentially nothing, so a
+photo costs its own 500 KB in the volume and in each of the four archives. The
+free 10 GB of R2 therefore ends at about **5 000 photographs** — some 1 600
+products at three photos each — and the same figure is 2.5 GB in the `uploads`
+volume. That is the number to watch, and it is far enough away that nothing here
+needs changing for it yet.
+
+The day the photos do outgrow this shape, the fix isn't a smaller window but a
 different one: `rclone sync` of the volume instead of a nightly tar, with
 `--backup-dir` so a deletion is moved aside rather than repeated. That stores one
 copy instead of four and lifts the ceiling to the full 10 GB — at the price of
-rewriting the photo half of `restore.sh`, which is why it isn't done yet.
+rewriting the photo half of `restore.sh`, which is why it isn't done yet. The
+four-day window is what buys the delay: at fourteen, the same ceiling would
+arrive at 1 400 photographs instead.
 
 ⚠️ **Until `BACKUP_REMOTE` is set, the copies sit on the same server** — which
 doesn't help when you lose it, and the script warns about this on every run.
