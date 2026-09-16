@@ -71,7 +71,7 @@ async def _run_auth_session_cleanup() -> None:
         pruned = await AuthService(session).prune_refresh_tokens()
         await session.commit()
     if deleted:
-        logger.info("Auth cleanup removed %d expired/spent login session(s)", deleted)
+        logger.info("Auth cleanup removed %d login session(s) past retention", deleted)
     if pruned:
         logger.info("Auth cleanup pruned %d dead refresh token(s)", pruned)
 

@@ -162,12 +162,23 @@ async def handle_contact(message: Message) -> None:
             await auth.authorize(auth_session, user)
 
         await session.commit()
-        is_login = auth_session is not None
+        login = auth_session
 
     await message.answer(
-        messages.LOGIN_CONFIRMED if is_login else messages.LINKED,
+        messages.LOGIN_CONFIRMED if login is not None else messages.LINKED,
         reply_markup=keyboards.main_menu(),
     )
+
+    if login is not None:
+        # The same warning `handle_start` sends, and for the same reason: this branch is
+        # a sign-in too, just one that had to create the account on the way. Leaving it
+        # out meant the person whose very first login was opened from somebody else's
+        # forwarded link — the likeliest victim of all, since they have never seen the
+        # bot before — was the one with no way to take it back.
+        await message.answer(
+            messages.login_alert(login.authorized_at or datetime.now(UTC)),
+            reply_markup=keyboards.login_reject(login.id),
+        )
 
 
 async def _linked_user(message: Message, session: AsyncSession) -> User | None:

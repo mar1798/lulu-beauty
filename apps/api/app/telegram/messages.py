@@ -504,8 +504,16 @@ def login_alert(authorized_at: datetime) -> str:
 
 LOGIN_REJECT_BUTTON = "🚫 Это не я"
 
+# "In a few minutes" rather than "now": access tokens are stateless (`get_current_user`
+# makes no DB lookup), so revoking ends every refresh token but a tab that is already
+# open keeps working for the rest of its `JWT_ACCESS_TTL_SECONDS`. Saying "все сеансы
+# завершены" alone was a promise this design cannot keep, and a security message that
+# overstates is worse than one that admits a gap. No exact figure on purpose: the TTL is
+# configurable and the copy is not.
 LOGIN_REJECTED = (
-    "Вход отменён, все сеансы на сайте завершены.\n"
+    "Вход отменён: войти по этой ссылке больше нельзя, все сеансы на сайте завершены.\n"
+    "Если сайт уже был открыт в чужой вкладке, доступ там пропадёт в течение "
+    "нескольких минут.\n"
     "Чтобы войти самому, откройте сайт и нажмите «Войти через Telegram» — "
     "ссылку из чужого сообщения открывать не нужно."
 )

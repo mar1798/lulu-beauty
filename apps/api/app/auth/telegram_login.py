@@ -165,13 +165,28 @@ class TelegramLoginService:
         session so a tab still polling gets nothing, and the caller ends the account's
         live sessions in case the tab already claimed one.
 
-        Returns the account to end sessions for, or None when the button no longer
-        applies — a session belonging to another chat, or one already cleaned up.
+        Works on a session that is already spent or expired, which is the normal case:
+        the tab claims within a second of the tap, and the person reads the warning after
+        that. Nothing here revives it — `consumed_at` is restamped (harmlessly: every
+        check on it is a null check, so the exact moment the tab claimed is not kept) and
+        the account behind it is handed back so the caller can end its sessions.
+
+        Returns the account to end sessions for, or None. **None is two answers at once**:
+        the button no longer applies (another chat's session, or one aged out by
+        `cleanup_expired`), or it applied and there was simply no account to end sessions
+        for, because the session never got as far as naming one. The caller cannot tell
+        them apart, so `handle_login_action` treats both as "nothing to cancel" and, on
+        that branch, returns without committing — which drops the `consumed_at` written
+        below. Reachable only by a callback for a session bound to this chat that was
+        never authorized, and the reject button is only ever attached to an authorized
+        one; splitting the return value is what this needs if that ever stops holding.
         """
         auth_session = await self._session.get(TelegramAuthSession, session_id)
         if auth_session is None or auth_session.chat_id != chat_id:
             return None
-
+        # Spent even when no account was ever named: the session belongs to this chat,
+        # and the person has just said the login is not theirs, so nothing arriving later
+        # should be able to finish it — subject to the caller committing, see above.
         auth_session.consumed_at = datetime.now(UTC)
         await self._session.flush()
         return auth_session.user_id
@@ -193,12 +208,26 @@ class TelegramLoginService:
         return user
 
     async def cleanup_expired(self) -> int:
-        """Drops what can no longer be claimed. Spent rows go too — they prove nothing."""
+        """Drops rows old enough that nothing can be done with them any more.
+
+        Deliberately *not* "everything that can no longer be claimed". Spent and expired
+        sessions used to go on the next tick, which quietly took «Это не я» with them:
+        a session is spent the moment the waiting tab claims it, so within one scheduler
+        interval of an honest login the button underneath it stopped revoking anything
+        and started answering "отменять нечего" — exactly when the person who tapped a
+        forwarded link would be reading the warning. The row is kept for
+        `AUTH_SESSION_RETENTION_SECONDS` past its expiry instead; it cannot authenticate
+        anyone (`claim` checks `consumed_at` and `expires_at`, `attach_chat` checks both),
+        it only remembers whose sessions to end.
+
+        The table therefore holds a day of sign-in attempts rather than one tick's worth,
+        and this `DELETE` has no index to use (`expires_at` is not indexed). Both are
+        deliberate at this shop's traffic — a day of logins is a handful of rows — and
+        both are what to revisit first if the retention window is ever widened.
+        """
+        cutoff = datetime.now(UTC) - timedelta(seconds=settings.auth_session_retention_seconds)
         result = await self._session.execute(
-            delete(TelegramAuthSession).where(
-                (TelegramAuthSession.expires_at <= datetime.now(UTC))
-                | (TelegramAuthSession.consumed_at.is_not(None))
-            )
+            delete(TelegramAuthSession).where(TelegramAuthSession.expires_at <= cutoff)
         )
         # `rowcount` lives on the DBAPI cursor result, which `Result` only exposes for
         # DML — mypy types `execute()` as the general Result and can't know that.

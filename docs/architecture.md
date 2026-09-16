@@ -103,7 +103,7 @@ restart loses nothing:
 | ---------------------- | --------------------------------------------------------------------------------------- |
 | `reminder_sweep`       | Plans deadline nudges (24h and 3h before), sends them, _then_ stamps them.              |
 | `deadline_sweep`       | Closes cycles whose deadline passed, rescues carts into wishlists, notifies afterwards. |
-| `auth_session_cleanup` | Deletes expired/spent Telegram login sessions and dead refresh tokens.                  |
+| `auth_session_cleanup` | Deletes Telegram login sessions past `AUTH_SESSION_RETENTION_SECONDS` and dead refresh tokens. |
 
 Plan → send → stamp is the order on purpose; see [domain.md](domain.md#the-order-cycle) and
 [telegram.md](telegram.md#notifications).

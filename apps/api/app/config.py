@@ -25,6 +25,12 @@ class Settings(BaseSettings):
     # my phone" without leaving a working key lying around in a chat.
     auth_session_ttl_seconds: int = 300
 
+    # How long a dead sign-in row is kept after it stops being usable. Not a second TTL:
+    # a spent session can no longer let anybody in, but its row is what «Это не я» needs
+    # to know whose sessions to end, and that offer has to outlive the login itself.
+    # A day is the span in which somebody notices a message they did not expect.
+    auth_session_retention_seconds: int = 60 * 60 * 24
+
     # One uvicorn worker serves the shop, the bot and the scheduler off the same pool,
     # so the ceiling here is what the whole process can have open at once, not per-request
     # concurrency. Kept well under Postgres' default 100 connections.
