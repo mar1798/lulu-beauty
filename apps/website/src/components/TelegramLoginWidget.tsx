@@ -3,6 +3,7 @@ import { useToast } from 'widgets/contexts'
 import { useAuth } from '@/contexts/AuthContext'
 import { isApiError, messageForError } from '@/services/apiErrors'
 import { publicConfig } from '@/сonfig'
+import * as styles from '@/styles/login.css'
 
 /**
  * Кнопка «Log in with Telegram» — вход в один клик для тех, кто уже привязывал бота.
@@ -15,6 +16,9 @@ import { publicConfig } from '@/сonfig'
  * Рисуется скриптом Telegram, а не разметкой: кнопка обязана быть настоящим iframe с
  * telegram.org — иначе Telegram не станет по ней авторизовывать. Отсюда и `data-onauth`,
  * который умеет позвать только глобальную функцию по имени.
+ *
+ * Обёртка обрезает iframe по форме кнопки — почему, написано в
+ * `styles/login.css.ts` рядом с `telegramWidget`.
  */
 
 interface ITelegramWidgetUser {
@@ -86,5 +90,5 @@ export const TelegramLoginWidget: React.FC = () => {
     return null
   }
 
-  return <div ref={container} />
+  return <div ref={container} className={styles.telegramWidget} />
 }

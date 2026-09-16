@@ -42,9 +42,7 @@ export const thumb = style({
   width: '64px',
   aspectRatio: '4 / 5',
   overflow: 'hidden',
-  backgroundColor: color.surface('sunken'),
   borderRadius: vars.radius.lg,
-  boxShadow: vars.shadow.sm,
 })
 
 export const placeholder = style({

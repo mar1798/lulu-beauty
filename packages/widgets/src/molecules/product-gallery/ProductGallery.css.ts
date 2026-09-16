@@ -58,7 +58,6 @@ export const thumb = style([
     aspectRatio: '1 / 1',
     overflow: 'hidden',
     padding: 0,
-    backgroundColor: color.surface('sunken'),
     border: border(2, 'transparent'),
     borderRadius: vars.radius.lg,
     cursor: 'pointer',

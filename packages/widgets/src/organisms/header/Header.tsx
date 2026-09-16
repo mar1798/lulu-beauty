@@ -74,20 +74,24 @@ export const Header: FC<IHeaderProps & IBasicStyling> = ({
   notice,
   onMenuClick,
   isFloating = false,
+  isPinned = true,
   className,
 }) => {
   const [isScrolled, setScrolled] = useState(false)
+  // Без липкости режим «поверх героя» невозможен: он держится на `fixed`.
+  const isOverHero = isFloating && isPinned
 
   return (
     <header
       className={clsx(
         styles.container,
-        isFloating && styles.floating,
-        isFloating && isScrolled && styles.floatingScrolled,
+        !isPinned && styles.unpinned,
+        isOverHero && styles.floating,
+        isOverHero && isScrolled && styles.floatingScrolled,
         className
       )}
     >
-      {isFloating && <ScrollThreshold onChange={setScrolled} />}
+      {isOverHero && <ScrollThreshold onChange={setScrolled} />}
 
       <Container as="div">
         <div className={styles.inner}>

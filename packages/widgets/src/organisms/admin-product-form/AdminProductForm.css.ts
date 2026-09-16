@@ -77,7 +77,6 @@ export const thumb = style({
   position: 'relative',
   aspectRatio: '1 / 1',
   overflow: 'hidden',
-  backgroundColor: color.surface('sunken'),
   borderRadius: vars.radius.lg,
 })
 

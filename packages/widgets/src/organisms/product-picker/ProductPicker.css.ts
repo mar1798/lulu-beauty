@@ -36,7 +36,6 @@ export const thumb = style({
   width: '48px',
   aspectRatio: '4 / 5',
   overflow: 'hidden',
-  backgroundColor: color.surface('base'),
   borderRadius: vars.radius.md,
 })
 

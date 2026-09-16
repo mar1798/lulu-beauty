@@ -67,7 +67,6 @@ export const thumb = style({
   alignItems: 'center',
   justifyContent: 'center',
   overflow: 'hidden',
-  backgroundColor: color.surface('sunken'),
   borderRadius: vars.radius.md,
   color: color.text('subtle'),
   selectors: {
