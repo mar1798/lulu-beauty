@@ -36,9 +36,29 @@
 #                  healthchecks.io and compatible: success goes to <url>,
 #                  failure to <url>/fail, along with the last lines of the log.
 #                  Without it, a failed nightly backup shows up only in backup.log.
+#   DISK_WARN_PERCENT  when to call the disk full     (80)
+#                  Checked after the backup, and reported as a *failure* to the
+#                  monitor even though the backup itself succeeded — see
+#                  "The disk" below. 0 turns the check off.
+#                  Read from the environment only, not from .env.prod: like
+#                  BACKUP_PING_URL it describes the nightly run rather than the
+#                  stack, and release.sh's backup has no use for it. To change
+#                  it, put it in the cron line next to BACKUP_PING_URL:
+#                    17 3 * * * DISK_WARN_PERCENT=90 BACKUP_PING_URL=… …/backup.sh
 #
 # ⚠️ A backup sitting on the same server does not survive losing that server.
 # Until BACKUP_REMOTE is set, the script says so on every run.
+#
+# The disk. Nothing else on this server watches free space, and running out of it
+# is not a gradual failure: Postgres shares the disk with the photos, the images
+# and these archives, and the moment it cannot write, the shop stops taking
+# orders. The deploy is the likeliest trigger — `docker pull` wants room for two
+# more images — so it breaks during a release, which is also the least convenient
+# time to discover it. This script is the one job that already runs every night
+# and already has a way to reach a human, so the check lives here: past
+# DISK_WARN_PERCENT it pings <BACKUP_PING_URL>/fail with the df output in the
+# body. The backup still succeeded; the email is about the next one, and about
+# everything else on the machine.
 #
 # Restoring — deploy/restore.sh (see also "Step 9" in docs/deployment.md):
 #
@@ -64,6 +84,7 @@ KEEP_DAYS="${KEEP_DAYS:-14}"
 KEEP_DAYS_UPLOADS="${KEEP_DAYS_UPLOADS:-4}"
 ENV_FILE="${ENV_FILE:-$REPO_ROOT/.env.prod}"
 BACKUP_PING_URL="${BACKUP_PING_URL:-}"
+DISK_WARN_PERCENT="${DISK_WARN_PERCENT:-80}"
 
 COMPOSE=(docker compose --env-file "$ENV_FILE" -f "$REPO_ROOT/docker-compose.prod.yml")
 
@@ -100,6 +121,71 @@ ping_monitor() {
 # held (cron overlapping a manual run) is not an event.
 NOTIFY=0
 
+# Set by check_disk. Kept apart from the exit code on purpose: the backup did
+# work and its archives are valid, so failing the script would say the wrong
+# thing in backup.log and would delete nothing — but the monitor has to go red,
+# because a full disk is the one problem here nobody finds out about otherwise.
+DISK_ALERT=0
+
+# How full the filesystem behind a path is, as a bare number.
+#
+# `df -P` is what makes the awk safe: without it a long device name is wrapped
+# onto a line of its own and the columns shift. The trailing % is stripped here
+# rather than in the comparison, so the caller gets something it can do
+# arithmetic with.
+disk_usage_percent() { df -P "$1" | awk 'NR==2 { sub(/%$/, "", $5); print $5 }'; }
+disk_mount_point()   { df -P "$1" | awk 'NR==2 { print $6 }'; }
+
+# Both places that fill up, which on this server are usually one filesystem:
+# the archives, and everything Docker keeps (the pgdata and uploads volumes, the
+# images a deploy pulls, the container logs). Deduplicated by mount point, so the
+# usual single-disk server is reported once rather than twice.
+#
+# /var/lib/docker is root-owned and mode 0710, but `df` only needs to statfs it —
+# search permission on /var/lib is enough, and `deploy` has that. No sudo.
+check_disk() {
+  # Spelled out rather than left to `[[ -gt ]]`, which evaluates its operands
+  # arithmetically: there a stray `80%` or an empty line in the cron file is 0,
+  # and the check would turn itself off without saying so.
+  if [[ ! "$DISK_WARN_PERCENT" =~ ^[0-9]+$ ]]; then
+    log "warning: DISK_WARN_PERCENT is '$DISK_WARN_PERCENT', not a number — disk check skipped"
+    return 0
+  fi
+  [[ "$DISK_WARN_PERCENT" -gt 0 ]] || return 0
+
+  local path mount used
+  local seen=''
+
+  for path in "$BACKUP_DIR" /var/lib/docker; do
+    [[ -e "$path" ]] || continue
+
+    mount="$(disk_mount_point "$path" 2>/dev/null || true)"
+    [[ -n "$mount" ]] || { log "warning: could not read df for $path"; continue; }
+    [[ "$seen" == *"|$mount|"* ]] && continue
+    seen="$seen|$mount|"
+
+    used="$(disk_usage_percent "$path" 2>/dev/null || true)"
+    [[ "$used" =~ ^[0-9]+$ ]] || { log "warning: could not read df for $path"; continue; }
+
+    if [[ "$used" -ge "$DISK_WARN_PERCENT" ]]; then
+      DISK_ALERT=1
+      log "DISK: $mount is ${used}% full (threshold ${DISK_WARN_PERCENT}%)"
+      # The df line itself goes into the log, and therefore into the alert email:
+      # the percentage says there is a problem, the free gigabytes say how long
+      # there is to fix it.
+      log "      $(df -h "$path" | awk 'NR==2 { printf "%s used of %s, %s free", $3, $2, $4 }')"
+    else
+      log "disk: $mount is ${used}% full"
+    fi
+  done
+
+  if [[ $DISK_ALERT -eq 1 ]]; then
+    log "      what grows here: $BACKUP_DIR (KEEP_DAYS=$KEEP_DAYS,"
+    log "      KEEP_DAYS_UPLOADS=$KEEP_DAYS_UPLOADS), the uploads volume, old images"
+    log "      (docker system df; deploy/release.sh prunes those older than a week)"
+  fi
+}
+
 # Any interruption halfway leaves half-written archives — remove them, so a
 # broken file can't pass for a valid backup.
 finish() {
@@ -119,7 +205,10 @@ finish() {
     return 0
   fi
 
-  [[ $NOTIFY -eq 1 ]] && ping_monitor ''
+  if [[ $NOTIFY -eq 1 ]]; then
+    # The one case where a successful run pings /fail: see DISK_ALERT above.
+    if [[ $DISK_ALERT -eq 1 ]]; then ping_monitor /fail; else ping_monitor ''; fi
+  fi
   return 0
 }
 trap finish EXIT
@@ -217,5 +306,11 @@ rotate() {
 
 rotate "$KEEP_DAYS" 'db-*.sql.gz' 'pre-restore-*'
 rotate "$KEEP_DAYS_UPLOADS" 'uploads-*.tar.gz'
+
+# --- Free space --------------------------------------------------------------
+# Last, deliberately: by now this run's archives have been written and the
+# expired ones deleted, so the number is what the disk will actually look like
+# until tomorrow night rather than a reading taken mid-rotation.
+check_disk
 
 log "done"

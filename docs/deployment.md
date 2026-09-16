@@ -23,7 +23,7 @@ scale-to-zero don't fit, and horizontal scaling isn't needed yet.
 | `docker-compose.prod.build.yml`        | Override that builds those two images on the server instead of pulling them (`release.sh --build`)             |
 | `deploy/Caddyfile`                     | Routes and automatic TLS                                                                                       |
 | `deploy/.env.prod.example`             | Template for every production variable (copied to `.env.prod` at the root)                                     |
-| `deploy/backup.sh`                     | Backs up the database and photos, verifies the archives, rotates them, uploads via `rclone`, pings the monitor |
+| `deploy/backup.sh`                     | Backs up the database and photos, verifies and rotates the archives, uploads via `rclone`, checks free disk, pings the monitor |
 | `deploy/restore.sh`                    | Restores from those archives, keeping a safety copy of the current state                                       |
 | `deploy/health-watch.sh`               | Checks the site every 5 minutes and pings healthchecks.io (Step 10)                                            |
 | `deploy/release.sh`                    | Deploys a release by tag: backup, pull, wait for `healthy`, check `/health`, write the log (see "Releases")    |
@@ -466,6 +466,7 @@ Configured through environment variables:
 | `BACKUP_REMOTE`     | `BACKUP_REMOTE` in `.env.prod` | rclone remote to upload to, e.g. `r2:lulu-backups`              |
 | `ENV_FILE`          | `<root>/.env.prod`             | where compose reads variables from                              |
 | `BACKUP_PING_URL`   | empty                          | monitoring ping address (Step 10)                               |
+| `DISK_WARN_PERCENT` | `80`                           | how full the disk may get before the run reports a failure (in the cron line, Step 10) |
 
 **Why the two windows differ.** The database changes continuously, so fourteen
 dumps are fourteen different states worth returning to, and they cost kilobytes.
@@ -545,7 +546,9 @@ redirects a single run without editing anything.
 `BACKUP_PING_URL` stays in the cron line on purpose: it describes that scheduled
 job, not the installation. Ping from a release-time backup and healthchecks.io
 resets its timer off-schedule, which is precisely how a nightly run that stopped
-happening goes unnoticed.
+happening goes unnoticed. `DISK_WARN_PERCENT` lives in the same line for the same
+reason — the disk check belongs to the nightly run, and the backup
+`deploy/release.sh` takes has no use for it. Neither is read from `.env.prod`.
 
 **Restoring** — `deploy/restore.sh`, from the same pair of archives:
 
@@ -652,13 +655,31 @@ Create a check there with a "daily" schedule and put its address into cron:
 17 3 * * * BACKUP_PING_URL=https://hc-ping.com/<uuid> /home/deploy/lulu-beauty/deploy/backup.sh >> /home/deploy/backup.log 2>&1
 ```
 
-If `BACKUP_REMOTE` is set as well, both variables go on the same line, before
-the path to the script.
+`DISK_WARN_PERCENT` goes on that same line when the default 80 doesn't suit —
+`DISK_WARN_PERCENT=90 BACKUP_PING_URL=… …/backup.sh`. It is read from the
+environment only, so `.env.prod` is not the place for it. `BACKUP_REMOTE`, by
+contrast, does belong in `.env.prod` (see Step 9): the release-time backup has
+to upload too.
 
 The value here is precisely the **silence**: the email also arrives when the
 backup didn't run at all — the server is off, cron is broken, the disk is full.
 The ping itself can't fail the backup: three attempts, ten seconds each, and an
 unreachable monitor is only a warning in the log.
+
+**One `/fail` does not mean the backup failed.** The same run also checks free
+space — on the filesystem holding `BACKUP_DIR` and the one holding
+`/var/lib/docker`, which on this server are one and the same — and past
+`DISK_WARN_PERCENT` (80) it pings `/fail` although the archives were written and
+verified. That is deliberate: the backup is the only job here that runs nightly
+and already has a way to reach a person, and a full disk is the one failure on
+this machine that nothing else would report. It does not announce itself
+gradually — Postgres shares the disk with the photos, the images and these
+archives, and the usual way to discover it is a release dying in `docker pull`.
+
+The log tail in the email says which it was: a disk alert starts with `DISK:`
+and carries the `df` line and a list of what grows (`~/lulu-backups`, the
+`uploads` volume, old images), while a genuine failure ends at the step that
+broke. `DISK_WARN_PERCENT=0` turns the check off.
 
 ### A failed deploy — a ping
 
@@ -1181,21 +1202,32 @@ generation and photo re-encoding. It exists so that doesn't happen after every
 redeploy: the site image is built **without** access to the API (by design), so
 it contains no pre-rendered pages at all.
 
-**Disk.** Releases clean up after themselves (see "Releases"), so this is a check
-rather than a chore — but the volumes and the database grow on their own, and the
-server has no monitor for space:
+**Disk.** The nightly backup checks it — past `DISK_WARN_PERCENT` (80) it pings
+`<BACKUP_PING_URL>/fail`, so a filling disk arrives as an email rather than as a
+failed deploy. Looking by hand:
 
 ```bash
 df -h /             # the whole disk
 docker system df    # images, containers, volumes, build cache separately
 ```
 
-Two things grow without a ceiling: `~/lulu-backups`, which keeps **full** copies
-— `KEEP_DAYS` (14) of the database, `KEEP_DAYS_UPLOADS` (4) of the photos — and
-the `uploads` volume itself. The multiplier is the thing to remember: with the
-four-day window, 700 MB of product photos is some 2.8 GB of local archives and
-the same again in R2, where the free tier ends at 10 GB. See "Why the two
-windows differ" in Step 9 for what to do when that stops being enough.
+⚠️ **The photos are not what fills this disk.** The largest consumer is Docker:
+two images per release, each a few hundred megabytes, kept for a week by
+`release.sh`'s `PRUNE_OLDER_THAN` — so the disk grows with how often you release,
+not with how big the catalogue is. After that come `pgdata`, the fourteen
+database dumps, and `next_cache`, where the image optimizer stores each photo
+re-encoded to AVIF and WebP — lazily, one variant per width actually requested,
+so the ceiling is Next's eight default widths and the real figure is below it.
+Only `next_cache` may be deleted outright; it costs the next visitors one round
+of page generation and nothing else.
+
+Two things grow without a ceiling of their own: `~/lulu-backups`, which keeps
+**full** copies — `KEEP_DAYS` (14) of the database, `KEEP_DAYS_UPLOADS` (4) of
+the photos — and the `uploads` volume. At about 500 KB a photo, the four-day
+window makes a photograph cost 2.5 MB across the volume and the archives
+together, and the binding limit is R2's free 10 GB rather than this disk. See
+"Why the two windows differ" in Step 9 for where that lands and what to do about
+it.
 
 **Logs and status:**
 
