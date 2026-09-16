@@ -12,6 +12,13 @@ logger = logging.getLogger("app.body_limit")
 # therefore before `require_admin` — is reached at all. Wide enough to leave those
 # checks the ones that produce the readable errors, so it has to stay above the largest
 # of them (images, 15 MB) plus the multipart envelope around it.
+#
+# In production this is not the outermost limit: Caddy has `request_body max_size` in
+# deploy/Caddyfile, deliberately one MiB above this number. It has to stay above it —
+# Caddy refuses with a bare 413 carrying no error code, so anything it cuts reaches the
+# site as an unexplained failure instead of "the photo is over 15 MB", and at an equal
+# value that is what would happen to `request_body_too_large` below. Raise this and
+# raise the Caddyfile with it.
 MAX_BODY_BYTES = 20 * 1024 * 1024
 
 METHODS_WITH_BODY = frozenset({"POST", "PUT", "PATCH"})

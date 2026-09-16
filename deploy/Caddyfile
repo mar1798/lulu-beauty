@@ -11,10 +11,21 @@
 	# (bodyParser: false), and the API adds its own BodySizeLimitMiddleware. It is
 	# needed here specifically because FastAPI parses a multipart upload before
 	# require_admin runs — without an outer limit an anonymous POST writes to disk.
-	# The value is slightly above MAX_IMPORT_BYTES (10 MiB): room for multipart
-	# boundaries.
+	#
+	# ⚠️ This one is the outermost, so it must stay the *widest*: one MiB above
+	# MAX_BODY_BYTES (20 MiB) in app/common/body_limit.py, and never below it.
+	# Every limit below this one refuses with a machine code that
+	# apps/website/src/services/apiErrors.ts turns into a sentence naming the
+	# limit — `image_too_large` at 15 MB, `import_file_too_large` at 10 MB,
+	# `request_body_too_large` at 20 MiB from the middleware itself. Caddy alone
+	# refuses with a bare 413 carrying no code, so whatever it cuts reaches the
+	# owner as an unexplained failure. That is what a 12MB ceiling here did to
+	# every photo between 12 and 15 MB — which is an ordinary phone camera —
+	# while the form, the error text and the API all promised 15. At exactly
+	# 20 MiB the same thing would happen to `request_body_too_large`: equal
+	# limits mean Caddy gets there first, so the gap is deliberate.
 	request_body {
-		max_size 12MB
+		max_size 21MiB
 	}
 
 	# The only path that leads into the API directly: Telegram has to reach the
