@@ -141,6 +141,14 @@ Client-side fetching is [SWR](https://swr.vercel.app/), configured globally in `
   `/api/proxy` in the browser and to `serverConfig('apiBaseUrl')` (direct, **anonymous**) on
   the server, so `getStaticProps` can only fetch public data. `nextApi` hits `/api/*` and
   throws if called server-side.
+- `src/services/session.ts` — the one-signal bridge from the HTTP client to the auth state.
+  A 401 **through the proxy** (`target: 'api'`) means the session is gone for good: the proxy
+  answers that only after its own refresh-and-retry failed, and it has already cleared the
+  cookies. `notifySessionExpired()` fires there, `AuthProvider` subscribes, drops the cached
+  profile and `router.replace`s to `/login?next=<current path>` — otherwise the UI keeps
+  showing a signed-in visitor whose every next action fails. Guests are excluded (the
+  subscription only exists while a user is cached) and so is `/login` itself, and `/api/auth/*`
+  (`target: 'next'`) never signals: a 401 from `/api/auth/me` means "guest", not an expiry.
 - `src/services/endpoints/*` — one module per domain (`catalog`, `auth`, `cart`, `wishlist`,
   `orders`, `admin`, `cycles`, `export`). **All API calls go through these** — never a raw
   `fetch` in a page.
@@ -172,7 +180,9 @@ Client-side fetching is [SWR](https://swr.vercel.app/), configured globally in `
 ## State and layout
 
 - `src/contexts/` — `AuthContext`, `CartContext`, `WishlistContext`, all backed by SWR.
-  `/api/auth/me` returning 401 means "guest", not an error.
+  `/api/auth/me` returning 401 means "guest", not an error. A 401 from any **other** endpoint
+  does mean the session expired, and `AuthProvider` signs the visitor out and sends them to
+  `/login` — see `src/services/session.ts` above.
   `CartProvider`/`WishlistProvider` sit in `_app.tsx`, i.e. on every page, but **fetch only
   once something subscribes**: `useDemand` counts live consumers, and calling `useCart()` /
   `useWishlist()` is the subscription (the hook subscribes from an effect). So the wishlist is

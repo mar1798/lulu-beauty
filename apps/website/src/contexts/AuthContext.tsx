@@ -1,7 +1,9 @@
-import React, { createContext, useCallback, useContext, useMemo } from 'react'
+import React, { createContext, useCallback, useContext, useEffect, useMemo } from 'react'
+import { useRouter } from 'next/router'
 import useSWR from 'swr'
 import type { IAuthUser } from 'widgets/types'
 import { isApiError } from '@/services/apiErrors'
+import { onSessionExpired } from '@/services/session'
 import { meKey } from '@/services/swrKeys'
 import {
   getMe,
@@ -56,6 +58,8 @@ const AuthContext = createContext<IAuthContextValue | null>(null)
 
 const UNAUTHORIZED = 401
 
+const LOGIN_PATH = '/login'
+
 /** 401 от `/api/auth/me` — это «гость», а не сбой: наверх он не поднимается. */
 const loadUser = async (): Promise<IAuthUser | null> => {
   try {
@@ -70,8 +74,39 @@ const loadUser = async (): Promise<IAuthUser | null> => {
 }
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const router = useRouter()
   const { data, isLoading, mutate } = useSWR<IAuthUser | null>(meKey, loadUser)
   const user = data ?? null
+
+  /**
+   * 401 от бэкенда: токены не подошли и обновить их не вышло — cookie уже стёрты
+   * прокси, значит интерфейс обязан догнать это состояние. Иначе экран остаётся
+   * «вошедшим» и каждое следующее действие упирается в ту же ошибку.
+   *
+   * Гостя это не касается: у него 401 приходит на защищённую ручку просто
+   * потому, что он не входил, и уводить его с публичной страницы не за что.
+   *
+   * Подписка пересобирается вместе с сессией: обработчик живёт дольше рендера,
+   * и захваченный однажды `user` устарел бы к моменту сигнала.
+   */
+  useEffect(() => {
+    if (user === null) {
+      return
+    }
+
+    return onSessionExpired(() => {
+      void mutate(null, { revalidate: false })
+
+      // На самом входе редирект бессмыслен, а адресом возврата стал бы `/login`.
+      if (router.pathname === LOGIN_PATH) {
+        return
+      }
+
+      // `replace`, а не `push`: «назад» должно вести на страницу до истёкшей
+      // сессии, а не обратно в редирект.
+      void router.replace(`${LOGIN_PATH}?next=${encodeURIComponent(router.asPath)}`)
+    })
+  }, [user, mutate, router])
 
   const reload = useCallback(
     async (): Promise<IAuthUser | null> => (await mutate()) ?? null,
