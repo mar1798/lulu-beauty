@@ -229,24 +229,24 @@ limit is in force — the account name means the login took, an IP address means
 did not.
 
 **GHCR.** The `api` and `website` images are built by CI and pulled from GitHub's
-registry (see "Releases"). A new package there is private whatever the
-repository is, so the server has to log in — unless the two packages are made
-public (Packages → the package → Package settings → Change visibility), which
-costs nothing here: they are built from a public repository and carry no
-secrets, and then `docker compose pull` needs no credentials at all.
+registry (see "Releases"). **Both packages are public**, so the server pulls them
+with no credentials at all and `docker login ghcr.io` is not part of setting one
+up. They are built from a public repository and carry no secrets, so public costs
+nothing here.
 
-Public is also what keeps the packages out of the billing page: a public package
-costs neither storage nor transfer, while a private one is counted against the
-500 MB the Free plan gives — and counted per version, whole, with no credit for
-the layers two releases share. That is three or four releases. Making them public
-once is the whole answer; the alternative is watching Settings → Billing and
-lowering `min-versions-to-keep` in `.github/workflows/release-tag.yml`.
+That visibility is also what keeps them off the billing page, and it is the
+reason this project has no package bill to watch: a public package costs neither
+storage nor transfer, while a private one is counted against the 500 MB the Free
+plan gives — per version, whole, with no credit for the layers two releases
+share. Two images of this size reach that in three or four releases, which is
+why the first thing done after the first release was to flip both to public
+(the checklist under "After the first release").
 
-Neither is done here, because the packages do not exist until the first release
-has built them. Both are in the checklist under "After the first release" in
-"Releases".
-
-To log in instead:
+⚠️ A new package on GHCR is private whatever the repository is. So if the
+packages are ever recreated — a rename of the repository or the account, a
+deleted package, a second deployment under a different owner — they come back
+private and the server stops being able to pull. The fix is to make them public
+again; logging in is the workaround while that is being done:
 
 ```bash
 # as deploy, for the same reason as above
@@ -1047,9 +1047,8 @@ On GitHub, in the repository settings:
 On the server, as `deploy`:
 
 ```bash
-# unless both packages were made public in Step 1 — a new package on GHCR is
-# private whatever the repository is
-docker login ghcr.io -u <github-account>     # paste a read:packages token
+# no `docker login ghcr.io` — both packages are public (Step 1). It is needed
+# only if a package is ever recreated, since a new one is private regardless.
 
 # IMAGE_PREFIX in .env.prod, once: ghcr.io/owner/lulu-beauty
 
@@ -1070,9 +1069,11 @@ Once `Release tag` has finished for the first time, at
 `github.com/users/<owner>/packages`, for **both** `lulu-beauty/api` and
 `lulu-beauty/website`:
 
-- **Package settings → Change visibility → Public.** The server then pulls
-  without logging in, and the images stop being counted against the Free plan's
-  package storage (Step 1 explains what that costs otherwise).
+- ✅ **Package settings → Change visibility → Public.** Done — both packages are
+  public. The server pulls without logging in, and the images are counted
+  against neither storage nor transfer on the Free plan (Step 1 explains what
+  that costs otherwise). The step stays written down because a recreated package
+  comes back private.
 - **Package settings → Manage Actions access → add `lulu-beauty` with the `Write`
   role.** ⚠️ A container package belongs to the *account*, not to the repository
   that built it, and `GITHUB_TOKEN` reaches it only through this setting. The
@@ -1109,8 +1110,10 @@ stops with a message about variable interpolation rather than about a setup step
 So on the server, **before approving that one release**:
 
 ```bash
-docker login ghcr.io -u <github-account>    # a read:packages token; skip it if
-                                            # the packages were made public
+# the one moment a login IS needed: CI has just created both packages and a new
+# package is private, whatever the repository is — they are made public in the
+# checklist below, which comes after this release, not before it.
+docker login ghcr.io -u <github-account>    # paste a read:packages token
 
 # both lines in .env.prod. RELEASE_TAG is set by hand exactly this once —
 # from the next deploy onwards release.sh rewrites it itself.
