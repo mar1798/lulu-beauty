@@ -109,7 +109,16 @@ export const AdminProductsTable: FC<IAdminProductsTableProps & IBasicStyling> = 
                         </span>
 
                         <span className={styles.productText}>
-                          <AppLink href={buildEditHref(product)} className={styles.name}>
+                          {/*
+                            `title` — потому что длинное название обрезается
+                            многоточием: полный текст должен оставаться
+                            доступным хотя бы по наведению.
+                          */}
+                          <AppLink
+                            href={buildEditHref(product)}
+                            className={styles.name}
+                            title={product.name}
+                          >
                             {product.name}
                           </AppLink>
                           <span className={styles.slug}>/{product.slug}</span>

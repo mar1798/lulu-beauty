@@ -10,6 +10,8 @@ export interface ILink {
   href: string
   target?: React.HTMLAttributeAnchorTarget
   ['aria-label']?: string
+  /** Подсказка по наведению — для ссылок, чей текст обрезается многоточием. */
+  title?: string
   legacy?: boolean
   /**
    * Переход остаётся переходом — обработчик нужен тому, что должно закрыться

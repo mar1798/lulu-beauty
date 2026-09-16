@@ -14,7 +14,10 @@ coverage/
 # per-machine, not part of the project.
 .claude/
 .env
-.env.prod
+# Every copy beside it too: `deploy/release.sh` refuses to deploy a dirty
+# working tree, and a backup taken before editing production variables is
+# otherwise exactly that.
+.env.prod*
 dist
 .turbo
 

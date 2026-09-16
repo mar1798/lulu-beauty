@@ -95,6 +95,32 @@ flock -n 9 || exit 0
 
 cd "$REPO_ROOT"
 
+# Whether there is anything to fetch at all, asked separately — because a fetch
+# of a ref the remote does not have fails exactly like a remote that cannot be
+# reached. Before the first approval it does not have one, so on a freshly
+# installed watcher the two are indistinguishable, and the log fills with a
+# warning about an unreachable GitHub once a minute while the network is
+# perfectly fine. A warning that cries wolf every minute is not read on the day
+# it is true.
+#
+# --exit-code says which: 0 the ref is there, 2 the remote answered and has no
+# such ref, anything else it could not be asked.
+status=0
+git ls-remote --exit-code --quiet origin "$DEPLOY_REF" >/dev/null 2>>"$LOG_FILE" || status=$?
+
+case $status in
+  0) ;;
+  2)
+    # Before the first approval, or after the ref was deleted. Not an error, and
+    # deliberately silent: the first release approved from here creates it.
+    exit 0
+    ;;
+  *)
+    log "could not reach origin — trying again next minute"
+    exit 0
+    ;;
+esac
+
 # A custom ref namespace isn't fetched by default — it has to be named. The tags
 # come along because release.sh deploys by tag, and `git describe` below needs
 # them to turn a commit into a release name.
@@ -105,8 +131,10 @@ fi
 
 approved="$(git rev-parse --verify --quiet "$DEPLOY_REF" || true)"
 if [[ -z "$approved" ]]; then
-  # Before the first approval the ref doesn't exist yet. Not an error: the
-  # first release after this script is installed creates it.
+  # The remote had the ref a moment ago and the fetch reported success, so this
+  # is not the "no approval yet" case handled above — something is wrong with
+  # the local repository. Quiet rather than deployed: there is no commit here to
+  # act on either way.
   exit 0
 fi
 

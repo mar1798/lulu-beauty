@@ -23,7 +23,7 @@ scale-to-zero don't fit, and horizontal scaling isn't needed yet.
 | `docker-compose.prod.build.yml`        | Override that builds those two images on the server instead of pulling them (`release.sh --build`)             |
 | `deploy/Caddyfile`                     | Routes and automatic TLS                                                                                       |
 | `deploy/.env.prod.example`             | Template for every production variable (copied to `.env.prod` at the root)                                     |
-| `deploy/backup.sh`                     | Backs up the database and photos, verifies the archives, rotates them, uploads via `rclone`, pings the monitor |
+| `deploy/backup.sh`                     | Backs up the database and photos, verifies and rotates the archives, uploads via `rclone`, checks free disk, pings the monitor |
 | `deploy/restore.sh`                    | Restores from those archives, keeping a safety copy of the current state                                       |
 | `deploy/health-watch.sh`               | Checks the site every 5 minutes and pings healthchecks.io (Step 10)                                            |
 | `deploy/release.sh`                    | Deploys a release by tag: backup, pull, wait for `healthy`, check `/health`, write the log (see "Releases")    |
@@ -229,24 +229,24 @@ limit is in force — the account name means the login took, an IP address means
 did not.
 
 **GHCR.** The `api` and `website` images are built by CI and pulled from GitHub's
-registry (see "Releases"). A new package there is private whatever the
-repository is, so the server has to log in — unless the two packages are made
-public (Packages → the package → Package settings → Change visibility), which
-costs nothing here: they are built from a public repository and carry no
-secrets, and then `docker compose pull` needs no credentials at all.
+registry (see "Releases"). **Both packages are public**, so the server pulls them
+with no credentials at all and `docker login ghcr.io` is not part of setting one
+up. They are built from a public repository and carry no secrets, so public costs
+nothing here.
 
-Public is also what keeps the packages out of the billing page: a public package
-costs neither storage nor transfer, while a private one is counted against the
-500 MB the Free plan gives — and counted per version, whole, with no credit for
-the layers two releases share. That is three or four releases. Making them public
-once is the whole answer; the alternative is watching Settings → Billing and
-lowering `min-versions-to-keep` in `.github/workflows/release-tag.yml`.
+That visibility is also what keeps them off the billing page, and it is the
+reason this project has no package bill to watch: a public package costs neither
+storage nor transfer, while a private one is counted against the 500 MB the Free
+plan gives — per version, whole, with no credit for the layers two releases
+share. Two images of this size reach that in three or four releases, which is
+why the first thing done after the first release was to flip both to public
+(the checklist under "After the first release").
 
-Neither is done here, because the packages do not exist until the first release
-has built them. Both are in the checklist under "After the first release" in
-"Releases".
-
-To log in instead:
+⚠️ A new package on GHCR is private whatever the repository is. So if the
+packages are ever recreated — a rename of the repository or the account, a
+deleted package, a second deployment under a different owner — they come back
+private and the server stops being able to pull. The fix is to make them public
+again; logging in is the workaround while that is being done:
 
 ```bash
 # as deploy, for the same reason as above
@@ -466,6 +466,7 @@ Configured through environment variables:
 | `BACKUP_REMOTE`     | `BACKUP_REMOTE` in `.env.prod` | rclone remote to upload to, e.g. `r2:lulu-backups`              |
 | `ENV_FILE`          | `<root>/.env.prod`             | where compose reads variables from                              |
 | `BACKUP_PING_URL`   | empty                          | monitoring ping address (Step 10)                               |
+| `DISK_WARN_PERCENT` | `80`                           | how full the disk may get before the run reports a failure (in the cron line, Step 10) |
 
 **Why the two windows differ.** The database changes continuously, so fourteen
 dumps are fourteen different states worth returning to, and they cost kilobytes.
@@ -484,11 +485,22 @@ mentions. What it can lack are photos deleted in between — the owner replacing
 product's picture — and those rows then point at nothing, exactly as they would
 after losing the volume.
 
-The day the photos outgrow this shape, the fix isn't a smaller window but a
+**How far away that day is, in photographs.** Every upload is re-encoded to WebP
+by `compress_image` before it is stored, which puts a product photo at roughly
+500 KB; `uploads-*.tar.gz` is gzip over WebP and gains essentially nothing, so a
+photo costs its own 500 KB in the volume and in each of the four archives. The
+free 10 GB of R2 therefore ends at about **5 000 photographs** — some 1 600
+products at three photos each — and the same figure is 2.5 GB in the `uploads`
+volume. That is the number to watch, and it is far enough away that nothing here
+needs changing for it yet.
+
+The day the photos do outgrow this shape, the fix isn't a smaller window but a
 different one: `rclone sync` of the volume instead of a nightly tar, with
 `--backup-dir` so a deletion is moved aside rather than repeated. That stores one
 copy instead of four and lifts the ceiling to the full 10 GB — at the price of
-rewriting the photo half of `restore.sh`, which is why it isn't done yet.
+rewriting the photo half of `restore.sh`, which is why it isn't done yet. The
+four-day window is what buys the delay: at fourteen, the same ceiling would
+arrive at 1 400 photographs instead.
 
 ⚠️ **Until `BACKUP_REMOTE` is set, the copies sit on the same server** — which
 doesn't help when you lose it, and the script warns about this on every run.
@@ -545,7 +557,9 @@ redirects a single run without editing anything.
 `BACKUP_PING_URL` stays in the cron line on purpose: it describes that scheduled
 job, not the installation. Ping from a release-time backup and healthchecks.io
 resets its timer off-schedule, which is precisely how a nightly run that stopped
-happening goes unnoticed.
+happening goes unnoticed. `DISK_WARN_PERCENT` lives in the same line for the same
+reason — the disk check belongs to the nightly run, and the backup
+`deploy/release.sh` takes has no use for it. Neither is read from `.env.prod`.
 
 **Restoring** — `deploy/restore.sh`, from the same pair of archives:
 
@@ -652,13 +666,31 @@ Create a check there with a "daily" schedule and put its address into cron:
 17 3 * * * BACKUP_PING_URL=https://hc-ping.com/<uuid> /home/deploy/lulu-beauty/deploy/backup.sh >> /home/deploy/backup.log 2>&1
 ```
 
-If `BACKUP_REMOTE` is set as well, both variables go on the same line, before
-the path to the script.
+`DISK_WARN_PERCENT` goes on that same line when the default 80 doesn't suit —
+`DISK_WARN_PERCENT=90 BACKUP_PING_URL=… …/backup.sh`. It is read from the
+environment only, so `.env.prod` is not the place for it. `BACKUP_REMOTE`, by
+contrast, does belong in `.env.prod` (see Step 9): the release-time backup has
+to upload too.
 
 The value here is precisely the **silence**: the email also arrives when the
 backup didn't run at all — the server is off, cron is broken, the disk is full.
 The ping itself can't fail the backup: three attempts, ten seconds each, and an
 unreachable monitor is only a warning in the log.
+
+**One `/fail` does not mean the backup failed.** The same run also checks free
+space — on the filesystem holding `BACKUP_DIR` and the one holding
+`/var/lib/docker`, which on this server are one and the same — and past
+`DISK_WARN_PERCENT` (80) it pings `/fail` although the archives were written and
+verified. That is deliberate: the backup is the only job here that runs nightly
+and already has a way to reach a person, and a full disk is the one failure on
+this machine that nothing else would report. It does not announce itself
+gradually — Postgres shares the disk with the photos, the images and these
+archives, and the usual way to discover it is a release dying in `docker pull`.
+
+The log tail in the email says which it was: a disk alert starts with `DISK:`
+and carries the `df` line and a list of what grows (`~/lulu-backups`, the
+`uploads` volume, old images), while a genuine failure ends at the step that
+broke. `DISK_WARN_PERCENT=0` turns the check off.
 
 ### A failed deploy — a ping
 
@@ -1047,9 +1079,8 @@ On GitHub, in the repository settings:
 On the server, as `deploy`:
 
 ```bash
-# unless both packages were made public in Step 1 — a new package on GHCR is
-# private whatever the repository is
-docker login ghcr.io -u <github-account>     # paste a read:packages token
+# no `docker login ghcr.io` — both packages are public (Step 1). It is needed
+# only if a package is ever recreated, since a new one is private regardless.
 
 # IMAGE_PREFIX in .env.prod, once: ghcr.io/owner/lulu-beauty
 
@@ -1070,9 +1101,11 @@ Once `Release tag` has finished for the first time, at
 `github.com/users/<owner>/packages`, for **both** `lulu-beauty/api` and
 `lulu-beauty/website`:
 
-- **Package settings → Change visibility → Public.** The server then pulls
-  without logging in, and the images stop being counted against the Free plan's
-  package storage (Step 1 explains what that costs otherwise).
+- ✅ **Package settings → Change visibility → Public.** Done — both packages are
+  public. The server pulls without logging in, and the images are counted
+  against neither storage nor transfer on the Free plan (Step 1 explains what
+  that costs otherwise). The step stays written down because a recreated package
+  comes back private.
 - **Package settings → Manage Actions access → add `lulu-beauty` with the `Write`
   role.** ⚠️ A container package belongs to the *account*, not to the repository
   that built it, and `GITHUB_TOKEN` reaches it only through this setting. The
@@ -1109,8 +1142,10 @@ stops with a message about variable interpolation rather than about a setup step
 So on the server, **before approving that one release**:
 
 ```bash
-docker login ghcr.io -u <github-account>    # a read:packages token; skip it if
-                                            # the packages were made public
+# the one moment a login IS needed: CI has just created both packages and a new
+# package is private, whatever the repository is — they are made public in the
+# checklist below, which comes after this release, not before it.
+docker login ghcr.io -u <github-account>    # paste a read:packages token
 
 # both lines in .env.prod. RELEASE_TAG is set by hand exactly this once —
 # from the next deploy onwards release.sh rewrites it itself.
@@ -1178,21 +1213,32 @@ generation and photo re-encoding. It exists so that doesn't happen after every
 redeploy: the site image is built **without** access to the API (by design), so
 it contains no pre-rendered pages at all.
 
-**Disk.** Releases clean up after themselves (see "Releases"), so this is a check
-rather than a chore — but the volumes and the database grow on their own, and the
-server has no monitor for space:
+**Disk.** The nightly backup checks it — past `DISK_WARN_PERCENT` (80) it pings
+`<BACKUP_PING_URL>/fail`, so a filling disk arrives as an email rather than as a
+failed deploy. Looking by hand:
 
 ```bash
 df -h /             # the whole disk
 docker system df    # images, containers, volumes, build cache separately
 ```
 
-Two things grow without a ceiling: `~/lulu-backups`, which keeps **full** copies
-— `KEEP_DAYS` (14) of the database, `KEEP_DAYS_UPLOADS` (4) of the photos — and
-the `uploads` volume itself. The multiplier is the thing to remember: with the
-four-day window, 700 MB of product photos is some 2.8 GB of local archives and
-the same again in R2, where the free tier ends at 10 GB. See "Why the two
-windows differ" in Step 9 for what to do when that stops being enough.
+⚠️ **The photos are not what fills this disk.** The largest consumer is Docker:
+two images per release, each a few hundred megabytes, kept for a week by
+`release.sh`'s `PRUNE_OLDER_THAN` — so the disk grows with how often you release,
+not with how big the catalogue is. After that come `pgdata`, the fourteen
+database dumps, and `next_cache`, where the image optimizer stores each photo
+re-encoded to AVIF and WebP — lazily, one variant per width actually requested,
+so the ceiling is Next's eight default widths and the real figure is below it.
+Only `next_cache` may be deleted outright; it costs the next visitors one round
+of page generation and nothing else.
+
+Two things grow without a ceiling of their own: `~/lulu-backups`, which keeps
+**full** copies — `KEEP_DAYS` (14) of the database, `KEEP_DAYS_UPLOADS` (4) of
+the photos — and the `uploads` volume. At about 500 KB a photo, the four-day
+window makes a photograph cost 2.5 MB across the volume and the archives
+together, and the binding limit is R2's free 10 GB rather than this disk. See
+"Why the two windows differ" in Step 9 for where that lands and what to do about
+it.
 
 **Logs and status:**
 

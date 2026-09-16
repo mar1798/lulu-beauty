@@ -272,12 +272,16 @@ else
   # what makes them specific.
   #
   # The failures here are the ones that aren't about this server: the release
-  # wasn't built, the approval named a tag CI never saw, or this machine was
-  # never logged in to the registry. All three read the same from `pull` alone.
+  # wasn't built, the approval named a tag CI never saw, or the package stopped
+  # being readable without credentials. All three read the same from `pull`
+  # alone. The third is the surprising one and so it is spelled out: both
+  # packages are public, so no login is needed — but a package that was deleted
+  # and pushed again comes back private, and then this is the first thing that
+  # breaks.
   for image in api website; do
     log "pulling $IMAGE_PREFIX/$image:$TARGET…"
     docker pull --quiet "$IMAGE_PREFIX/$image:$TARGET" >/dev/null ||
-      die "could not pull $IMAGE_PREFIX/$image:$TARGET — is $TARGET built, and is this server logged in to the registry (docker login ghcr.io)?"
+      die "could not pull $IMAGE_PREFIX/$image:$TARGET — check that $TARGET was built by CI, and that the package is still public (a recreated one is private: make it public again, or docker login ghcr.io)"
   done
 
   # Only on this path: with --build the bundle is compiled from this very file a
