@@ -7,6 +7,7 @@ import { AdminShell } from '@/layouts/AdminShell'
 import { messageForError } from '@/services/apiErrors'
 import { createCategory, deleteCategory, updateCategory } from '@/services/endpoints/admin'
 import { listCategories } from '@/services/endpoints/catalog'
+import { SHOWCASE_PATHS, refreshPublicPages } from '@/services/endpoints/revalidate'
 import { categoriesKey } from '@/services/swrKeys'
 
 /**
@@ -39,6 +40,9 @@ const AdminCategoriesPage: React.FC = () => {
     try {
       await action()
       notify({ tone: 'success', title: success })
+      // Категориями фильтруется каталог, и они же стоят в меню на главной.
+      // Карточки товаров показывают имя категории тоже — те догонят по `revalidate`.
+      refreshPublicPages(...SHOWCASE_PATHS)
       await mutate()
     } catch (cause: unknown) {
       const message = messageForError(cause, 'admin.categories')

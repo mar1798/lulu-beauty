@@ -38,7 +38,41 @@ There is **no `getServerSideProps` anywhere in the app**. Every page is static, 
 Build-time data shared by all static pages (categories, active cycle) goes through
 `src/services/staticData.ts`, which caches for 60s — the same TTL as the pages' `revalidate`,
 so ISR can't serve anything staler than it would have without the cache. `getStaticPaths`
-prerenders up to two thousand product slugs, and without that cache each one re-fetched.
+prerenders up to two thousand product slugs, and without that cache each one re-fetched. Its
+state lives on a `Symbol.for` under `globalThis`, not in the module: the server build shares
+no module instances between entries, so a page and an API route each get their own copy, and
+a reset from one would leave the other's cache untouched.
+
+## Keeping the public pages fresh
+
+`revalidate: 60` alone makes an edit in the admin take up to a minute **and one extra
+request** to show up: the first request after the entry expires still serves the stale page
+and only kicks off the regeneration. The owner who saved a price and opened the catalog saw
+the old one and concluded it had not saved.
+
+So the admin invalidates explicitly. `pages/api/revalidate.ts` takes `{"paths": [...]}`,
+checks the caller's role through `/users/me` (the route sits on the public domain, and a
+logged-in customer is not enough), resets `staticData`, and calls `res.revalidate` on each
+path. Paths are checked against a closed list — `/`, `/catalog`, `/catalog/<slug>` — because
+revalidating costs a fetch and a render, and the slug shape matches the backend's
+`SLUG_PATTERN`. The paths are rebuilt in parallel, and a failure on one doesn't stop the rest;
+only a real one lands in `failed`, since a page that isn't in the cache yet is simply
+generated, and a deleted product's 404 counts as a successful rebuild.
+
+Rebuilds of the same path are coalesced while one is in flight — the owner editing ten
+products in a row would otherwise cost twenty full renders of the showcase. The coalescing is
+"a render is running right now", never "we rebuilt this N seconds ago": skipping by time would
+drop the very edit the call exists to deliver. A request arriving mid-render instead marks it
+stale, and the render repeats once afterwards for everyone who marked it.
+
+The caller is `src/services/endpoints/revalidate.ts`. `refreshPublicPages(...paths)` never
+throws and returns nothing on purpose — the save has already succeeded, and `revalidate: 60`
+is still there as the backstop, so a failed rebuild belongs in the console, not in a toast.
+Every admin mutation that changes what a visitor sees calls it: product create/update/delete/
+restore and its photo (plus the **previous** slug when the slug changed — old links still
+point at it), categories, cycles, and the xlsx import. The import names only `/` and
+`/catalog`: it can touch hundreds of products at once, and their pages are left to the
+60-second backstop.
 
 ## Auth and token handling
 
@@ -69,6 +103,8 @@ prerenders up to two thousand product slugs, and without that cache each one re-
   unbuffered), forwards a fixed allowlist: request `content-type`, `content-length`, `accept`,
   `accept-language`; response `content-type`, `content-disposition`, `cache-control`. It
   **404s `/auth/*`** so token pairs can't leak through it.
+- `pages/api/revalidate.ts` — on-demand ISR for the public pages, admin-only; see
+  [Keeping the public pages fresh](#keeping-the-public-pages-fresh).
 - `pages/api/csp-report.ts` — where the browser posts CSP violations (`report-uri` for
   everyone, `report-to` + the `Reporting-Endpoints` header where the site URL is known to be
   https, i.e. production). It normalizes both report formats — legacy

@@ -51,6 +51,17 @@ from `getStaticProps` does not, by itself, remove the request — it just moves 
 hydration second. Pair the prefill with `revalidateOnMount: false` (`hasFallback` in
 `services/swrFallback.ts`).
 
+**`revalidate: 60` costs a minute _and_ an extra request.** ISR serves the stale page to
+the request that finds the entry expired and regenerates in the background, so the page is
+fresh only from the next one — which reads as "the edit didn't save". Admin mutations
+therefore call `refreshPublicPages` (`services/endpoints/revalidate.ts`); a new one that
+changes the catalog has to do the same.
+
+**A server-side module is not a singleton across pages.** Next's server build gives each page
+and API route its own copy of what it imports, so a module-level cache reset from one entry
+leaves every other entry's copy alone. Shared state goes on `globalThis` under a
+`Symbol.for` — see `services/staticData.ts`.
+
 **Don't hand `onIdle` a `timeout` unless the work really has a deadline.** A bare
 `requestIdleCallback` waits for genuine idle; a timeout forces the work through while the page
 is still settling. Giving `usePrefetchRoutes` a 2 s deadline cost `/catalog` 1.8 s of LCP in
@@ -114,7 +125,7 @@ vanilla-extract. Never run `shadcn add` here.
 consequences, both of which have already bitten: a block rendered on the server with an
 `initial` of `opacity: 0` is invisible to the visitor until hydration finishes (that is why
 `Appear`, `Alert` and `HomeHero` animate in CSS), and a `prefers-reduced-motion` branch that
-renders a node *without* stating its final state leaves the server's `opacity: 0` /
+renders a node _without_ stating its final state leaves the server's `opacity: 0` /
 `transform` stuck forever — React does not reconcile attributes on an existing node, and a
 class cannot beat an inline style. Setting `style` via props doesn't help either; it is not
 applied during hydration. Either keep the motion node and use `initial={false}
@@ -137,7 +148,7 @@ itself when Postgres isn't reachable, so a green local run proves less than it l
 `DATABASE_URL`, so `apps/api/.env` wins, and the fixture `TRUNCATE`s every table per test. Use
 a dedicated `lulu_test` database — [testing.md](testing.md).
 
-**Services must not commit.** The caller owns the transaction; notifications go out *after*
+**Services must not commit.** The caller owns the transaction; notifications go out _after_
 the commit, or a rolled-back state gets announced and cannot be retracted.
 
 **More than one uvicorn worker multiplies the rate limit.** The token bucket is per-process
