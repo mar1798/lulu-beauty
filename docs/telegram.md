@@ -72,8 +72,14 @@ renders and then refuses, which is worse than not offering it.
 `throttling.py`, `webhook.py`, `client.py`, `service.py`.
 
 Menu buttons, each also a command: 🛒 Корзина (`/cart`), 📦 Мои заявки (`/orders`),
-⭐ Избранное (`/wishlist`), 📅 Текущий сбор (`/deadline`), 🌐 Сайт (`/site`),
-ℹ️ Помощь (`/help`), plus `/start`, `/menu` and unlinking.
+⭐ Избранное (`/wishlist`), 📅 Текущий сбор (`/deadline`), 🌐 Ссылки (`/links`, and
+`/site` for the older name), ℹ️ Помощь (`/help`), plus `/start`, `/menu` and unlinking.
+
+🌐 Ссылки and ℹ️ Помощь both carry an **Instagram** button — the shop's account is the only
+place the owner speaks outside the bot. Its address is hardcoded in `keyboards.INSTAGRAM_URL`
+and duplicated by hand in `apps/website/src/utils/contacts.ts` (the footer and the FAQ use it
+there); change one and change the other. Unlike every link to the site it needs no
+`_is_public_url` check, so it survives on localhost, where the site button disarms itself.
 
 **Throttling** (`throttling.py`) is an *outer* middleware registered before filters run: every
 path into the bot opens a database session on behalf of an unauthenticated sender, and a

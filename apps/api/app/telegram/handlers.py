@@ -290,22 +290,30 @@ async def handle_deadline(message: Message) -> None:
     )
 
 
-@router.message(or_f(Command("site"), F.text == messages.MENU_SITE))
-async def handle_site(message: Message) -> None:
-    """The way out to the browser — deliberately a whole reply rather than a keyboard
-    button, because a reply keyboard cannot carry a url and an inline one cannot stay.
+@router.message(or_f(Command("links"), Command("site"), F.text == messages.MENU_LINKS))
+async def handle_links(message: Message) -> None:
+    """Both ways out of the chat — the shop and the Instagram — and deliberately a whole
+    reply rather than keyboard buttons, because a reply keyboard cannot carry a url and
+    an inline one cannot stay.
+
+    `/site` still answers next to `/links`: it is what the button used to be called, it
+    is published nowhere (`BOT_COMMANDS` lists only /menu and /help), and keeping it
+    costs one filter against a chat where someone typed it once out of habit.
 
     Open to unlinked chats too: the storefront is public, and asking for a phone number
     first would be a step in front of the one action that needs no account at all.
     """
-    keyboard = keyboards.site_link()
-    if keyboard is None:
+    keyboard = keyboards.site_links()
+    if not keyboards.site_is_linkable():
         # Telegram refuses a button pointing at a non-addressable host (local dev) — and
-        # refuses the whole message, not just the button.
-        await message.answer(messages.site_unavailable(keyboards.site_url()))
+        # refuses the whole message, not just the button. The Instagram button survives
+        # that (its host is public either way), so only the shop moves into the text.
+        await message.answer(
+            messages.site_unavailable(keyboards.site_url()), reply_markup=keyboard
+        )
         return
 
-    await message.answer(messages.SITE_PROMPT, reply_markup=keyboard)
+    await message.answer(messages.LINKS_PROMPT, reply_markup=keyboard)
 
 
 @router.message(Command("unlink"))
