@@ -120,7 +120,7 @@ const OrdersPage: React.FC = () => {
 
       <AccountTemplate
         title="Мои заявки"
-        summary="Состав и цены — снимок на момент подтверждения: у подтверждённой заявки они не меняются вслед за каталогом"
+        summary="Состав и цены закрепляются в момент подтверждения — дальше они не меняются вслед за каталогом"
         navigation={ACCOUNT_NAVIGATION}
         currentHref="/orders"
       >

@@ -241,7 +241,7 @@ const AdminOrdersPage: React.FC = () => {
   return (
     <AdminShell
       title="Заявки"
-      summary="Состав и цены — снимок на момент подтверждения: у подтверждённой заявки они не меняются вслед за каталогом"
+      summary="Состав и цены закрепляются в момент подтверждения — дальше они не меняются вслед за каталогом"
       actions={
         <div className={styles.row}>
           <Switch
