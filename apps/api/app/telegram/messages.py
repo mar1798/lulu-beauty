@@ -71,6 +71,20 @@ def cycle_title(cycle: OrderCycle) -> str:
     return f"«{cycle.label}»" if cycle.label else f"от {format_deadline(cycle.deadline_at)}"
 
 
+def cycle_mention(cycle: OrderCycle) -> str:
+    """Название сбора для сообщений, которые и так называют его срок рядом.
+
+    `cycle_title` у сбора без подписи подставляет дедлайн, и в таком сообщении дата
+    оказывалась дважды: «сбор от 16.09.2026 в 22:00 закрывается 16.09.2026 в 22:00».
+    Называть тут нечего — по сроку в том же предложении сбор узнаётся и без имени.
+
+    Пробел перед кавычками — часть значения: у сбора без подписи от названия не
+    остаётся ничего, и иначе двойной пробел в «сбор  закрывается» пришлось бы
+    вычищать на каждом месте вызова.
+    """
+    return f" «{cycle.label}»" if cycle.label else ""
+
+
 def order_reference(order_id: uuid.UUID) -> str:
     """Short prefix of the UUID — enough for the owner and the customer to mean the same
     order out loud, without pasting 36 characters into a chat.
@@ -98,16 +112,21 @@ ORDER_STATUS_LABEL = {
 # ─── Outgoing notifications ──────────────────────────────────────────────────────
 
 
-def cart_reminder(title: str, deadline_at: datetime) -> str:
-    """`title` — уже готовое название сбора из `cycle_title` (у сбора может не быть
-    подписи, и тогда он называется по дедлайну; кавычки ставит `cycle_title`)."""
+def cart_reminder(cycle: OrderCycle) -> str:
+    """Срок назван прямо в предложении, поэтому сбор представляется подписью или никак
+    (см. `cycle_mention`).
+
+    Уточнение выпадает целиком, вместе с «по сбору»: без подписи оно превращалось в
+    «по сбору будут удалены», то есть в предлог без того, к чему он относится.
+    """
+    scope = f" по сбору{cycle_mention(cycle)}" if cycle.label else ""
     return (
-        f"Напоминание: товары в вашей корзине Sululu по сбору {title} "
-        f"будут удалены {format_deadline(deadline_at)}, если вы не оформите заявку"
+        f"Напоминание: товары в вашей корзине{scope} "
+        f"будут удалены {format_deadline(cycle.deadline_at)}, если вы не оформите заявку"
     )
 
 
-def cart_last_chance(title: str, deadline_at: datetime) -> str:
+def cart_last_chance(cycle: OrderCycle) -> str:
     """Второе напоминание, за несколько часов до дедлайна.
 
     Отдельный текст, а не повтор первого: сутками раньше сбор можно было отложить
@@ -119,8 +138,9 @@ def cart_last_chance(title: str, deadline_at: datetime) -> str:
     поздно начнёт врать. Точное время дедлайна отвечает на тот же вопрос честнее.
     """
     return (
-        f"⏳ Последний шанс: сбор {title} закрывается {format_deadline(deadline_at)}.\n"
-        "Товары из корзины Sululu удалятся, если до этого времени не оформить заявку."
+        f"⏳ Последний шанс: сбор{cycle_mention(cycle)} закрывается "
+        f"{format_deadline(cycle.deadline_at)}.\n"
+        "Товары из корзины удалятся, если до этого времени не оформить заявку."
     )
 
 
@@ -316,7 +336,7 @@ def order_cancelled_last_item_removed(order_id: uuid.UUID, product_name: str) ->
 
 def cycle_opened(cycle: OrderCycle) -> str:
     return (
-        f"Открыт новый сбор {cycle_title(cycle)}.\n"
+        f"Открыт новый сбор{cycle_mention(cycle)}.\n"
         f"Заявки принимаются до {format_deadline(cycle.deadline_at)}."
     )
 
@@ -332,7 +352,7 @@ def cycle_deadline_changed(cycle: OrderCycle, previous_deadline_at: datetime) ->
     moved_earlier = cycle.deadline_at < previous_deadline_at
     news = "раньше" if moved_earlier else "позже"
     lines = [
-        f"Сбор {cycle_title(cycle)} закроется {news}, чем планировалось.",
+        f"Сбор{cycle_mention(cycle)} закроется {news}, чем планировалось.",
         f"Было: {format_deadline(previous_deadline_at)}.",
         f"Стало: {format_deadline(cycle.deadline_at)}.",
     ]
@@ -628,4 +648,7 @@ def current_deadline(cycle: OrderCycle | None) -> str:
     if cycle is None:
         # Not a failure — an ordinary state of the shop between cycles.
         return "Сейчас сбор заказов закрыт. Как только откроется новый, я напишу."
+    # Без подписи от «Сбор — заявки до…» остаётся заголовок ни о чём: отвечаем прямо.
+    if not cycle.label:
+        return f"Заявки принимаются до {format_deadline(cycle.deadline_at)}"
     return f"Сбор {cycle_title(cycle)} — заявки до {format_deadline(cycle.deadline_at)}"

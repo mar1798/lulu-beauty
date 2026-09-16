@@ -311,13 +311,9 @@ async def notify_cycle_reminders(
 
             users = await recipients.get_users(session, reminder.user_ids)
             message = (
-                messages.cart_last_chance(
-                    messages.cycle_title(reminder.cycle), reminder.cycle.deadline_at
-                )
+                messages.cart_last_chance(reminder.cycle)
                 if reminder.last_chance
-                else messages.cart_reminder(
-                    messages.cycle_title(reminder.cycle), reminder.cycle.deadline_at
-                )
+                else messages.cart_reminder(reminder.cycle)
             )
             result = await notifications_service.broadcast_reminder(
                 [users[user_id] for user_id in reminder.user_ids if user_id in users], message

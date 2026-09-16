@@ -69,18 +69,19 @@ class NotificationsService:
     # ─── Point-to-point ──────────────────────────────────────────────────────────
 
     async def send_reminder(
-        self, user: User, cycle_title: str, deadline_at: datetime, *, last_chance: bool = False
+        self, user: User, cycle: OrderCycle, *, last_chance: bool = False
     ) -> None:
         message = (
-            messages.cart_last_chance(cycle_title, deadline_at)
-            if last_chance
-            else messages.cart_reminder(cycle_title, deadline_at)
+            messages.cart_last_chance(cycle) if last_chance else messages.cart_reminder(cycle)
         )
         keyboard = keyboards.checkout_link()
+        # The log names the cycle the way `cycle_title` does — by its deadline when it has
+        # no label — because an unnamed cycle in a log line identifies nothing.
+        title = messages.cycle_title(cycle)
         if await self._try_send(user.telegram_chat_id, message, reply_markup=keyboard):
-            logger.info("Sent reminder for cycle %s to %s via Telegram", cycle_title, user.phone)
+            logger.info("Sent reminder for cycle %s to %s via Telegram", title, user.phone)
             return
-        logger.warning("%s; reminder for %s not sent", self._fallback_reason(user), cycle_title)
+        logger.warning("%s; reminder for %s not sent", self._fallback_reason(user), title)
 
     async def send_new_order(
         self, owner: User, order: Order, customer: User | None, cycle: OrderCycle | None
