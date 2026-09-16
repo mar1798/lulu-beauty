@@ -2,8 +2,21 @@ name: Release tag
 
 # Every merge into master is a release (direct pushes are blocked in the branch
 # settings), so the tag that names it should not depend on someone remembering
-# to type it. The deploy stays manual on purpose — see "Left out of the MVP" in
+# to type it. Everything that can be prepared without a decision is prepared
+# here too: both images are built and pushed to GHCR. The deploy itself waits
+# for a human — .github/workflows/release-deploy.yml and "Releases" in
 # docs/deployment.md.
+#
+# The migration guard runs *first*, before the tag exists. A release it refuses
+# is then simply not a release: nothing is named, nothing is built, and `master`
+# is left exactly as the merge made it. That ordering is what keeps the refusal
+# recoverable — the baseline stays where it was, so the next release is measured
+# from the same previous tag and the same migrations are reported again rather
+# than sliding behind a tag that was spent on a release nobody can deploy.
+#
+# One workflow rather than a chain, deliberately: a tag pushed with the default
+# GITHUB_TOKEN does not trigger `on: push: tags:`, so anything keyed on the tag
+# would simply never run. Inside a single run `needs:` has no such limit.
 on:
   push:
     branches: [ "master" ]
@@ -15,14 +28,177 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  guard:
+    name: Migration guard
+    runs-on: ubuntu-latest
+
+    # Before the tag, deliberately. A release the guard refuses is then not a
+    # release at all: nothing was named, nothing was built, and `master` is left
+    # exactly as the merge made it. Which also means the baseline does not move —
+    # the next release is measured from the same previous tag, so these
+    # migrations are reported again instead of slipping behind it.
+    outputs:
+      # The release this one is measured against, and the release the tag
+      # message lists commits since. Computed once, here, so the two cannot
+      # disagree about where this release begins.
+      previous: ${{ steps.previous.outputs.previous }}
+
+    steps:
+      - name: Get repository code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: The previous release
+        id: previous
+        run: |
+          set -Eeuo pipefail
+
+          # Sorted by version rather than lexically, the same way
+          # deploy/release.sh picks the latest tag: v2026.10.01 must outrank
+          # v2026.9.30, whatever the strings look like.
+          #
+          # Normally HEAD carries no tag at this point — this job runs before the
+          # one that creates it — so the newest release name is the previous
+          # release. The exception is a re-run on an already tagged commit, where
+          # the newest one is *this* release: taking it would leave an empty
+          # range and the guard with nothing to say about the release it is
+          # checking, so the one before it is taken instead.
+          #
+          # Only for a release name (`v*`). Somebody else's tag on this commit
+          # says nothing about where the previous release is, and must not
+          # quietly narrow the range to nothing.
+          existing="$(git describe --exact-match --tags HEAD 2>/dev/null || true)"
+
+          case "$existing" in
+            v*)
+              previous="$(
+                git tag -l 'v*' --sort=-v:refname |
+                  awk -v current="$existing" 'found { print; exit } $0 == current { found = 1 }'
+              )"
+              ;;
+            *)
+              previous="$(git tag -l 'v*' --sort=-v:refname | head -n1)"
+              ;;
+          esac
+
+          echo "previous=$previous" >> "$GITHUB_OUTPUT"
+          echo "measuring this release against ${previous:-nothing — no release tags yet}"
+
+      - name: Only expanding migrations
+        run: |
+          set -Eeuo pipefail
+
+          previous='${{ steps.previous.outputs.previous }}'
+          if [[ -z "$previous" ]]; then
+            echo "no previous release to compare against"
+            exit 0
+          fi
+
+          # Production never runs `alembic downgrade` (deploy/release.sh, and
+          # "Releases" in docs/deployment.md): the api container upgrades on
+          # every start and nothing brings the schema back. A release that drops
+          # or narrows something can therefore only be undone by restoring a
+          # backup — which is exactly the thing nobody wants to discover while
+          # rolling back. So the rule is checked here rather than remembered.
+          mapfile -t files < <(
+            git diff --name-only --diff-filter=AM "$previous..HEAD" \
+              -- apps/api/migrations/versions
+          )
+
+          if [[ ${#files[@]} -eq 0 ]]; then
+            echo "no migrations in this release"
+            exit 0
+          fi
+
+          printf 'migrations in this release:\n'
+          printf '  %s\n' "${files[@]}"
+
+          # The check itself is a script rather than a grep: every autogenerated
+          # migration mirrors itself in `downgrade()`, so looking for `drop_table`
+          # in the diff flags the very migration that *creates* the table. It is
+          # also runnable by hand before the release PR — see its docstring.
+          status=0
+          python3 .github/scripts/check-migrations.py "${files[@]}" > /tmp/contracting || status=$?
+
+          # 0 nothing found, 1 something contracting, 2 a file that would not
+          # parse. Without the third case `|| true` plus an empty stdout reads
+          # exactly like a clean release, and a broken migration would sail
+          # through the one job meant to stop it.
+          if [[ $status -gt 1 ]]; then
+            echo "### ❌ The migration guard could not run" >> "$GITHUB_STEP_SUMMARY"
+            echo "the checker failed — see the log above" >&2
+            exit 1
+          fi
+
+          if [[ $status -eq 0 ]]; then
+            echo "expanding only"
+            exit 0
+          fi
+
+          # The escape hatch is a marker in the merge commit, not a flag on the
+          # workflow: the decision to ship a contracting migration is worth
+          # keeping in the history, where the next rollback will read it.
+          if git log -1 --format=%B HEAD | grep -qF '[contracting]'; then
+            {
+              echo "### ⚠️ Contracting migration, allowed explicitly"
+              echo
+              echo "Rolling this release back needs \`deploy/restore.sh\`, not \`release.sh\`."
+              echo '```'
+              cat /tmp/contracting
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "allowed by the [contracting] marker in the merge commit"
+            cat /tmp/contracting
+            exit 0
+          fi
+
+          # Deliberately not "add the marker and re-run": the marker lives in the
+          # merge commit, and that commit is already made and pushed to a branch
+          # nobody may rewrite. The answer has to be given while merging, which
+          # is where `API` puts the warning one merge earlier.
+          {
+            echo "### ❌ Contracting migration in the release"
+            echo
+            echo 'A drop, a rename or a `NOT NULL` on an existing column cannot be rolled'
+            echo 'back with the code, so this merge is not a deployable release. Nothing'
+            echo 'was tagged and no images were built — the jobs below did not run.'
+            echo
+            echo 'Two ways on, and re-running this job is neither — the `[contracting]`'
+            echo 'marker goes into a merge commit, and this one is already pushed:'
+            echo
+            echo '- revert the migration on `development` and merge again, which is the'
+            echo '  right answer unless the drop genuinely cannot wait a release;'
+            echo '- or merge into `master` again with `[contracting]` in the merge commit'
+            echo '  message. Rolling that release back then needs `deploy/restore.sh`.'
+            echo
+            echo 'Nothing is lost by taking the time: no tag moved, so the next release is'
+            echo 'measured from the same baseline and these findings come back until they'
+            echo 'are dealt with.'
+            echo '```'
+            cat /tmp/contracting
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          cat /tmp/contracting >&2
+          exit 1
+
   tag:
     name: Tag
+    needs: guard
     runs-on: ubuntu-latest
 
     # The default token is read-only in this repository; creating a tag needs
     # write. Nothing else is granted: this job must not be able to touch code.
     permissions:
       contents: write
+
+    outputs:
+      # The release this run is about — the tag it just created, or the one HEAD
+      # already carried. Every job below is keyed on it, and it is only empty
+      # when the commit is tagged with something that isn't a release name.
+      tag: ${{ steps.tag.outputs.tag }}
 
     steps:
       - name: Get repository code
@@ -35,13 +211,40 @@ jobs:
           fetch-tags: true
 
       - name: Create and push the tag
+        id: tag
         run: |
           set -Eeuo pipefail
 
           # Re-running the workflow on an already tagged commit must not invent
-          # a second name for the same release.
+          # a second name for the same release — but it must still be able to
+          # finish it. A build that failed on a registry timeout leaves the tag
+          # pushed and no images anywhere, and `Release deploy` then refuses the
+          # release for exactly that reason; if a re-run skipped its way to
+          # green, that release could never be completed at all, because a tag
+          # cannot be pushed twice and the merge commit cannot be re-made.
+          #
+          # So the existing name is adopted and the run goes on. Everything
+          # below is keyed on the tag rather than on this commit, so it rebuilds
+          # the same sources and pushes the same two names; `Release deploy`
+          # asks for no second approval when the ref already points here.
           if existing="$(git describe --exact-match --tags HEAD 2>/dev/null)"; then
-            echo "HEAD is already tagged as $existing — nothing to do"
+            echo "HEAD is already tagged as $existing — continuing with that name"
+
+            # A tag that is not a release name (`v*`) leaves the output empty and
+            # everything below skipped — deliberately not an error here, because
+            # the tagging step is not the place to decide what someone else's tag
+            # on this commit means. Building `…/website:<somebody's tag>` and
+            # offering it for approval would be that decision, made silently.
+            case "$existing" in
+              v*)
+                echo "tag=$existing" >> "$GITHUB_OUTPUT"
+                ;;
+              *)
+                echo "note: $existing is not a vYYYY.MM.DD release name — nothing is built"
+                echo "tag=" >> "$GITHUB_OUTPUT"
+                ;;
+            esac
+
             exit 0
           fi
 
@@ -62,9 +265,10 @@ jobs:
             tag="$base"
           fi
 
-          # Sorted by version rather than lexically, the same way
-          # deploy/release.sh picks the latest tag.
-          previous="$(git tag -l 'v*' --sort=-v:refname | head -n1)"
+          # The guard already worked out where this release begins, and the
+          # message has to list the same commits the migrations were checked
+          # over — two answers to that question is one too many.
+          previous='${{ needs.guard.outputs.previous }}'
 
           {
             printf 'Release %s\n\n' "$tag"
@@ -85,10 +289,217 @@ jobs:
 
           git push origin "$tag"
 
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
           echo "tagged $(git rev-parse --short HEAD) as $tag"
           echo "### Tagged \`$tag\`" >> "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"
           cat /tmp/tag-message >> "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "Deploy: \`./deploy/release.sh $tag\` on the server." >> "$GITHUB_STEP_SUMMARY"
+
+  api:
+    name: Build api
+    needs: tag
+    if: needs.tag.outputs.tag != ''
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Get repository code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.tag.outputs.tag }}
+
+      - name: Image name
+        id: image
+        # Lowercase: a registry path may not carry capitals, and an owner or a
+        # repository name freely may.
+        run: echo "name=ghcr.io/${GITHUB_REPOSITORY,,}/api" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          # apps/api is its own build context — unlike the website, the backend
+          # needs nothing from the rest of the repository.
+          context: apps/api
+          push: true
+          tags: ${{ steps.image.outputs.name }}:${{ needs.tag.outputs.tag }}
+          cache-from: type=gha,scope=api
+          cache-to: type=gha,scope=api,mode=max
+
+  website:
+    name: Build website
+    needs: tag
+    if: needs.tag.outputs.tag != ''
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Get repository code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.tag.outputs.tag }}
+
+      - name: Image name
+        id: image
+        # Lowercase: a registry path may not carry capitals, and an owner or a
+        # repository name freely may.
+        run: echo "name=ghcr.io/${GITHUB_REPOSITORY,,}/website" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # An unset variable would not fail the build — it would ship a bundle
+      # pointing at `https://`, and the first person to notice would be a
+      # customer. The values themselves are checked by Step 8's verification;
+      # this only catches the empty ones.
+      #
+      # NEXT_PUBLIC_TELEGRAM_LOGIN_WIDGET is deliberately not in the list: unset
+      # means `false` there (apps/website/Dockerfile, docs/environment.md), and
+      # `false` is the safe end of that flag — the Login Widget only authorizes
+      # on the domain given to BotFather, so a missing button beats one that
+      # renders and refuses. Required here, it would block a release over a
+      # variable whose absence is a correct answer.
+      - name: The build-time variables are set
+        run: |
+          set -Eeuo pipefail
+          missing=()
+          if [[ -z '${{ vars.SITE_DOMAIN }}' ]]; then missing+=(SITE_DOMAIN); fi
+          if [[ -z '${{ vars.TELEGRAM_BOT_USERNAME }}' ]]; then missing+=(TELEGRAM_BOT_USERNAME); fi
+
+          if [[ ${#missing[@]} -gt 0 ]]; then
+            echo "missing repository variables: ${missing[*]}" >&2
+            echo "Settings → Secrets and variables → Actions → Variables ('Releases' in docs/deployment.md)" >&2
+            exit 1
+          fi
+
+      # `NEXT_PUBLIC_*` and the `/files/*` rewrite are baked into the bundle by
+      # `next build` (apps/website/Dockerfile explains each one), so the image is
+      # tied to the domain it was built for. These live in repository variables
+      # rather than secrets on purpose: every one of them is visible in the
+      # client bundle anyway, and a secret would only hide them from the person
+      # who has to check them. The same values are in .env.prod on the server —
+      # if they ever disagree, the built bundle is what the browser gets.
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          # The repository root: Next compiles `widgets` from source, and `npm
+          # ci` needs the root package-lock.json.
+          context: .
+          file: apps/website/Dockerfile
+          push: true
+          tags: ${{ steps.image.outputs.name }}:${{ needs.tag.outputs.tag }}
+          build-args: |
+            NEXT_PUBLIC_API_BASE_URL=https://${{ vars.SITE_DOMAIN }}
+            NEXT_PUBLIC_SITE_URL=https://${{ vars.SITE_DOMAIN }}
+            NEXT_PUBLIC_TELEGRAM_BOT_USERNAME=${{ vars.TELEGRAM_BOT_USERNAME }}
+            NEXT_PUBLIC_TELEGRAM_LOGIN_WIDGET=${{ vars.NEXT_PUBLIC_TELEGRAM_LOGIN_WIDGET || 'false' }}
+            API_BASE_URL=http://api:3001
+          cache-from: type=gha,scope=website
+          cache-to: type=gha,scope=website,mode=max
+
+  prune:
+    name: Prune old images
+    needs: [ tag, api, website ]
+    if: needs.tag.outputs.tag != ''
+    runs-on: ubuntu-latest
+
+    # Housekeeping is no reason for a release to go red: the images are already
+    # pushed and the approval is already waiting by the time this runs, and a
+    # registry that failed to delete something is a problem for next month.
+    #
+    # ⚠️ Which also means this job fails quietly, and there is one setting it
+    # fails on every time until somebody changes it: a container package belongs
+    # to the account rather than to the repository that built it, so GITHUB_TOKEN
+    # reaches it only once the repository is given Write under the package's
+    # Manage Actions access. Pushing works without that — it authenticates as the
+    # actor — so nothing before this point notices. See "After the first release"
+    # in docs/deployment.md.
+    continue-on-error: true
+
+    permissions:
+      packages: write
+
+    steps:
+      # Nothing else removes them. The server prunes its own disk on every
+      # deploy (deploy/release.sh), but every release adds two versions here and
+      # they stay for good — which is a storage bill on a private package and
+      # a list nobody can read on a public one.
+      #
+      # Twenty releases kept, not five: a version deleted here cannot be pulled
+      # back, and an old release with no image is not a slow rollback but an
+      # impossible one. Twenty is months of releases, and long past the point
+      # where restoring a backup is the honest answer anyway. The server keeps
+      # its local copies for a week (PRUNE_OLDER_THAN), so a rollback inside
+      # that week doesn't reach the registry at all.
+      #
+      # ⚠️ Untagged versions are *not* deleted separately: each release pushes
+      # exactly one tagged version per image and nothing here overwrites a name,
+      # so the count is the releases themselves.
+      - name: Package names
+        id: names
+        # Lowercase, the way the images were pushed: a registry path may not
+        # carry capitals, and a repository name freely may — and the package is
+        # named after the path, so the two have to be spelled the same.
+        run: |
+          name="${GITHUB_REPOSITORY#*/}"
+          echo "api=${name,,}/api" >> "$GITHUB_OUTPUT"
+          echo "website=${name,,}/website" >> "$GITHUB_OUTPUT"
+
+      - name: Keep the last twenty api images
+        uses: actions/delete-package-versions@v5
+        with:
+          owner: ${{ github.repository_owner }}
+          package-name: ${{ steps.names.outputs.api }}
+          package-type: container
+          min-versions-to-keep: 20
+
+      - name: Keep the last twenty website images
+        uses: actions/delete-package-versions@v5
+        with:
+          owner: ${{ github.repository_owner }}
+          package-name: ${{ steps.names.outputs.website }}
+          package-type: container
+          min-versions-to-keep: 20
+
+  ready:
+    name: Ready to deploy
+    needs: [ tag, api, website ]
+    if: needs.tag.outputs.tag != ''
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Say what is waiting
+        run: |
+          {
+            echo "### \`${{ needs.tag.outputs.tag }}\` is built and waiting for approval"
+            echo
+            echo "Both images are in GHCR. Approve the pending deployment in the"
+            echo "**Release deploy** run to put it live; the server picks it up within a minute."
+            echo
+            echo "A re-run of a release that is already live asks for nothing — that run"
+            echo "says so in its own summary instead of waiting for an approval."
+          } >> "$GITHUB_STEP_SUMMARY"

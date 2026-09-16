@@ -1,7 +1,10 @@
 # Продовый стек: Caddy (TLS) → website (Next) → api (FastAPI) → db (Postgres).
 #
 #   cp deploy/.env.prod.example .env.prod   # и заполнить
-#   docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --build
+#   ./deploy/release.sh                     # он и поднимает стек
+#
+# Образы `api` и `website` собираются в CI и приходят из GHCR; руками их здесь
+# никто не собирает — см. docker-compose.prod.build.yml, если всё-таки надо.
 #
 # Наружу смотрит только Caddy. `db`, `api` и `website` портов не публикуют:
 # API доступен браузеру исключительно через прокси Next (`/api/proxy/*`),
@@ -34,8 +37,16 @@ services:
       retries: 10
 
   api:
-    build:
-      context: apps/api
+    # Образ собран в CI и лежит в GHCR — на сервере ничего не собирается
+    # (см. «Releases» в docs/deployment.md). Обе переменные приходят из
+    # .env.prod, причём RELEASE_TAG туда записывает deploy/release.sh: любая
+    # команда compose, набранная руками, после этого говорит про ровно тот
+    # релиз, который сейчас запущен.
+    #
+    # Собрать на сервере (реестр недоступен, срочная правка) — оверрайдом:
+    #   docker compose --env-file .env.prod \
+    #     -f docker-compose.prod.yml -f docker-compose.prod.build.yml up -d --build
+    image: ${IMAGE_PREFIX:?нужен IMAGE_PREFIX в .env.prod}/api:${RELEASE_TAG:?нужен RELEASE_TAG в .env.prod}
     restart: unless-stopped
     logging: *default-logging
     env_file:
@@ -64,23 +75,11 @@ services:
       start_period: 30s
 
   website:
-    build:
-      # Контекст — корень репозитория: Next компилирует `widgets` из исходников.
-      context: .
-      dockerfile: apps/website/Dockerfile
-      args:
-        # Подставляются в клиентский бандл на этапе сборки — после правки
-        # нужен `up -d --build website`, перезапуска мало.
-        NEXT_PUBLIC_API_BASE_URL: https://${SITE_DOMAIN}
-        # Тот же адрес, но для превью ссылки (`og:image`, `og:url`).
-        NEXT_PUBLIC_SITE_URL: https://${SITE_DOMAIN}
-        NEXT_PUBLIC_TELEGRAM_BOT_USERNAME: ${TELEGRAM_BOT_USERNAME}
-        NEXT_PUBLIC_TELEGRAM_LOGIN_WIDGET: ${NEXT_PUBLIC_TELEGRAM_LOGIN_WIDGET:-true}
-        # Тот же адрес, что и в `environment:` ниже, и он нужен в обоих местах:
-        # рерайт `/files/*` на API запекается в манифест на этапе сборки (см.
-        # apps/website/Dockerfile), а `getStaticProps` и API-роуты читают
-        # переменную в рантайме.
-        API_BASE_URL: http://api:3001
+    # Как и api: готовый образ из GHCR. `NEXT_PUBLIC_*` и рерайт `/files/*`
+    # запекаются в бандл на этапе сборки, поэтому образ привязан к домену — те
+    # же значения лежат в repository variables на GitHub, откуда их берёт
+    # .github/workflows/release-tag.yml.
+    image: ${IMAGE_PREFIX:?нужен IMAGE_PREFIX в .env.prod}/website:${RELEASE_TAG:?нужен RELEASE_TAG в .env.prod}
     restart: unless-stopped
     logging: *default-logging
     environment:

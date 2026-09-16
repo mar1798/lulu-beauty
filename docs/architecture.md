@@ -12,10 +12,11 @@ lulu-beauty/                  Turborepo monorepo (npm workspaces)
 ├── apps/website              Next.js 16 (Pages Router) — the site + the owner's admin
 ├── apps/api                  FastAPI + PostgreSQL — all data, the bot, the scheduler
 ├── packages/widgets          React component library (vanilla-extract) + Storybook
-├── deploy/                   Caddyfile, prod env template, backup/restore scripts
+├── deploy/                   Caddyfile, prod env template, backup/restore/release scripts
 ├── docs/                     this documentation
 ├── docker-compose.yml        dev stack: db + api
-└── docker-compose.prod.yml   prod stack: db + api + website + caddy
+├── docker-compose.prod.yml   prod stack: db + api + website + caddy (images from GHCR)
+└── docker-compose.prod.build.yml  override: build those images on the server instead
 ```
 
 `apps/website` and `packages/widgets` are npm workspaces on **npm 10.9.0 / Node 22.23.1**.

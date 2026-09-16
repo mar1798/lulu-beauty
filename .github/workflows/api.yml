@@ -52,6 +52,10 @@ jobs:
     steps:
       - name: Get repository code
         uses: actions/checkout@v3
+        with:
+          # The migration check below compares this branch against `master`, and
+          # a shallow clone has no merge base to compare against.
+          fetch-depth: 0
       - name: Install uv
         uses: astral-sh/setup-uv@v4
         with:
@@ -64,6 +68,93 @@ jobs:
         run: uv run ruff check .
       - name: Type check
         run: uv run mypy app
+      # .github/scripts is checked with the same ruff and mypy settings as the
+      # backend — the paths are relative because that is what puts apps/api's
+      # pyproject.toml in charge. The release guard is the one piece of code here
+      # whose failure mode is a restore from backup, so it is not the place for
+      # an unchecked script.
+      - name: Lint and type check the release scripts
+        run: |
+          uv run ruff check ../../.github/scripts
+          uv run mypy --strict ../../.github/scripts
+      - name: Test the release scripts
+        run: uv run pytest ../../.github/scripts
+      # The release guard, one merge early. `Release tag` runs the same script on
+      # every merge into `master` — but by then the tag is pushed and the name is
+      # spent, so a contracting migration surfaces at the worst possible moment.
+      # Here it surfaces while it can still be moved to the next release.
+      #
+      # A warning and not a failure, deliberately. The escape hatch for a
+      # migration that really has to ship is a `[contracting]` marker in the
+      # merge commit (see "Releases" in docs/deployment.md), and that commit does
+      # not exist yet on `development` — failing here would leave the branch red
+      # with no way to say "yes, on purpose". The gate stays where that answer
+      # can be given; this is the notice that comes early enough to act on.
+      #
+      # Before the tests rather than after them: a failing test run would
+      # otherwise swallow the notice, and the two say different things — a red
+      # test is fixed on the branch, a contracting migration decides how the
+      # release is rolled back.
+      - name: Only expanding migrations
+        working-directory: .
+        run: |
+          set -Eeuo pipefail
+
+          git fetch --no-tags --quiet origin master
+
+          # `...` and not `..`: what this branch adds since it and master last
+          # agreed, rather than everything master is missing.
+          mapfile -t files < <(
+            git diff --name-only --diff-filter=AM origin/master...HEAD \
+              -- apps/api/migrations/versions
+          )
+
+          if [[ ${#files[@]} -eq 0 ]]; then
+            echo "no migrations ahead of master"
+            exit 0
+          fi
+
+          printf 'migrations ahead of master:\n'
+          printf '  %s\n' "${files[@]}"
+
+          status=0
+          python3 .github/scripts/check-migrations.py "${files[@]}" > /tmp/contracting || status=$?
+
+          # Exit 2 is "the checker itself broke", and that does fail the job even
+          # here: the guard on the release would fail on it too, and a release
+          # that cannot be checked is not one to find out about after the merge.
+          if [[ $status -gt 1 ]]; then
+            echo "the checker failed — see the log above" >&2
+            exit 1
+          fi
+
+          if [[ $status -eq 0 ]]; then
+            echo "expanding only"
+            exit 0
+          fi
+
+          # `path:line: operation` becomes an annotation on that line, so the
+          # finding shows up on the file rather than only in the log.
+          while read -r finding; do
+            path="${finding%%:*}"
+            rest="${finding#*:}"
+            line="${rest%%:*}"
+            echo "::warning file=$path,line=$line::${finding##*: } — contracting, see docs/deployment.md"
+          done < /tmp/contracting
+
+          {
+            echo "### ⚠️ Contracting migration ahead of \`master\`"
+            echo
+            echo 'Rolling the release back would need `deploy/restore.sh`, not `release.sh`.'
+            echo 'Move it to the next release, or put `[contracting]` in the merge commit'
+            echo 'when the release PR is merged — `Migration guard` will refuse it otherwise.'
+            echo '```'
+            cat /tmp/contracting
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          cat /tmp/contracting
+
       - name: Apply database migrations
         run: uv run alembic upgrade head
       - name: Test

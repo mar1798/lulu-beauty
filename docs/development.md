@@ -112,8 +112,19 @@ tagged `vYYYY.MM.DD` on the merge commit and deployed by tag.
 
 - `.github/workflows/node.js.yml`, job **`Website and widgets`** — `npm ci` →
   `npm run check` → `npm test`.
-- `.github/workflows/api.yml`, job **`API`** — `ruff` → `mypy` → `alembic upgrade head` →
-  `pytest` against a real Postgres service.
+- `.github/workflows/api.yml`, job **`API`** — `ruff` → `mypy` → the same two over
+  `.github/scripts` plus its tests → `alembic upgrade head` → `pytest` against a real
+  Postgres service → a **warning** if the branch adds a contracting migration.
+
+The last step is the release guard, one merge early: it runs
+`.github/scripts/check-migrations.py` over the migrations this branch adds on top of
+`master` and annotates each finding on its line. It warns rather than fails on purpose —
+the escape hatch for a migration that really has to ship is a `[contracting]` marker in
+the **merge commit**, which does not exist yet on `development`, so failing here would
+leave the branch red with no way to say "yes, on purpose". The gate that does refuse is
+`Migration guard` in `.github/workflows/release-tag.yml`, which runs before the release is
+tagged — so a refusal there costs nothing but the merge; see "Releases" in
+[deployment.md](deployment.md). A checker that is itself broken (exit 2) does fail the job.
 
 Both run on pushes to `development` and `staging`, and on nothing else. A
 `pull_request` trigger is deliberately absent: work lands by pushing straight to
@@ -128,6 +139,7 @@ stays pending forever and blocks every merge.
 ## Deployment
 
 See [deployment.md](deployment.md): Caddy + Docker Compose on a single VPS, with
-backup, restore and release scripts under `deploy/`. Production is deployed by tag with
-`deploy/release.sh`; the migration rule that keeps rollback safe is in
-[backend.md](backend.md#migrations).
+backup, restore and release scripts under `deploy/`. A merge into `master` tags the release, checks the
+migrations and builds both images into GHCR; the deploy itself waits for an approval on
+GitHub, and `deploy/watch-release.sh` on the server acts on it. The migration rule that
+keeps rollback safe is in [backend.md](backend.md#migrations).
