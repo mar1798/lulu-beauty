@@ -9,6 +9,7 @@ import { formatDate } from 'widgets/utils'
 import { IconDownload } from 'widgets/svg'
 import { AdminShell } from '@/layouts/AdminShell'
 import { useActiveCycle } from '@/hooks/useActiveCycle'
+import { saveBlob } from '@/services/api'
 import { messageForError } from '@/services/apiErrors'
 import {
   deleteOrder,
@@ -198,21 +199,13 @@ const AdminOrdersPage: React.FC = () => {
     setActionError(null)
 
     try {
-      const { blob, filename } = await downloadOrdersExport({
+      const download = await downloadOrdersExport({
         cycleId: cycleFilter,
         status: status === ALL ? undefined : (status as OrderStatus),
         includePrices,
       })
-      const url = URL.createObjectURL(blob)
-      const link = document.createElement('a')
 
-      link.href = url
-      link.download = filename ?? 'orders.xlsx'
-      document.body.append(link)
-      link.click()
-      link.remove()
-      // Отзываем сразу: браузер уже забрал содержимое, а ссылка держала бы blob в памяти.
-      URL.revokeObjectURL(url)
+      saveBlob(download, 'orders.xlsx')
     } catch (cause: unknown) {
       const message = messageForError(cause, 'admin.export')
 
