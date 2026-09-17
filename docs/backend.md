@@ -5,7 +5,7 @@ managed with **`uv`** (`pyproject.toml` + committed `uv.lock`). It is not an npm
 `npm run check` / `npm test` do not cover it.
 
 Comments and docstrings here are **English**; only user-facing strings are Russian
-(`telegram/messages.py`, `export/service.py`, `catalog/import_service.py`,
+(`telegram/messages.py`, `export/service.py`, `export/products.py`, `catalog/import_service.py`,
 `orders/service.py`). See [conventions.md](conventions.md#language).
 
 ## Commands
@@ -64,7 +64,7 @@ Each domain module under `app/` is roughly `router.py` / `service.py` / `schemas
 | `orders/`   | Checkout, customer edit/cancel/restore, admin status changes, repricing.                                                                     |
 | `cycles/`   | Cycle CRUD, `reminders.py` (stage definitions), `scheduler_service.py` (sweeps).                                                             |
 | `wishlist/` | Saved products, cycle-independent.                                                                                                           |
-| `export/`   | xlsx purchase list.                                                                                                                          |
+| `export/`   | xlsx purchase list (`service.py`) and the catalogue export (`products.py`).                                                                  |
 | `telegram/` | Bot, handlers, keyboards, Russian messages, notifications, throttling, webhook.                                                              |
 | `storage/`  | Local disk file storage for images.                                                                                                          |
 | `common/`   | `CamelModel`, `PageResponse`, phone normalization, model mixins, limits, rate limit, body limit.                                             |
@@ -107,7 +107,7 @@ Owner-only (`ADMIN` or `SUPER_ADMIN`, checked on the API — the frontend gate i
 
 | Method   | Path                                                                                                                                                                        |
 | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GET`    | `/admin/users`, `/admin/brands`, `/admin/products`, `/admin/products/{id}`, `/admin/orders`, `/admin/cycles`, `/admin/export/orders`                                        |
+| `GET`    | `/admin/users`, `/admin/brands`, `/admin/products`, `/admin/products/{id}`, `/admin/orders`, `/admin/cycles`, `/admin/export/orders`, `/admin/export/products`              |
 | `PATCH`  | `/admin/users/{id}/role`, `/admin/categories/{id}`, `/admin/products/{id}`, `/admin/cycles/{id}`, `/admin/orders/{id}/status`                                               |
 | `POST`   | `/admin/categories`, `/admin/products`, `/admin/products/{id}/restore`, `/admin/products/{id}/images`, `/admin/catalog/import`, `/admin/cycles`, `/admin/cycles/{id}/close` |
 | `DELETE` | `/admin/categories/{id}`, `/admin/products/{id}` (soft), `/admin/products/{id}/images/{image_id}`, `/admin/cycles/{id}`, `/admin/orders/{id}`                               |

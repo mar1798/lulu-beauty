@@ -55,7 +55,11 @@ export type ErrorScope =
   | 'admin.import'
   | 'admin.orders'
   | 'admin.users'
+  // Две разные выгрузки: заявки и каталог. Скоуп у каждой свой — запасной текст
+  // называет то, что не выгрузилось, а на странице каталога «заявки» звучали бы
+  // как чужая ошибка.
   | 'admin.export'
+  | 'admin.export.catalog'
 
 /**
  * Машинный код → текст по умолчанию. Коды взяты из `raise HTTPException(...)`
@@ -344,6 +348,7 @@ const SCOPE_FALLBACKS: Record<ErrorScope, string> = {
   'admin.orders': 'Не удалось загрузить заявки',
   'admin.users': 'Не удалось загрузить аккаунты',
   'admin.export': 'Не удалось выгрузить заявки',
+  'admin.export.catalog': 'Не удалось выгрузить каталог',
 }
 
 const FALLBACK_MESSAGE = 'Что-то пошло не так. Попробуйте ещё раз.'

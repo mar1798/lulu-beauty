@@ -149,9 +149,27 @@ every PENDING order and cancels (as `CANCELLED_BY_OWNER`) any order left with no
 
 ### Export
 
+Two sheets, and they are opposites. Cell values starting with `=` are forced to text in
+both — a product name from an import must not become a formula.
+
 `GET /admin/export/orders` builds an xlsx purchase list: one row per product summed across
-every order in the cycle, Russian headers, optional price columns. Cell values starting with
-`=` are forced to text — a product name from an import must not become a formula.
+every order in the cycle, **Russian headers**, optional price columns. It is read by a
+person (or handed to a supplier) and never uploaded back.
+
+`GET /admin/export/products` dumps the live catalogue, and exists for the round trip:
+export → edit prices and stock in Excel → upload the same file back through
+`POST /admin/catalog/import`. So its headers are the **import's own column names**
+(`name`, `slug`, `brand`, `category`, `price`, `volume`, `inStock`), not Russian captions —
+a caption would break the file on the way back in. `inStock` is written `да`/`нет`, which
+the import reads as a boolean, and `category` carries the slug, which is the category's
+identity.
+
+Two columns are deliberately absent, and their absence is the safety property: the import
+treats a column it does not see as **"leave this field alone"**, so re-uploading the sheet
+keeps every `description` and every photo the catalogue already has. Both are edited on the
+product page instead. Soft-deleted products are left out too — the import matches on slug
+and knows nothing about `deleted_at`, so a deleted row coming back would resurrect the
+product.
 
 ## Money
 

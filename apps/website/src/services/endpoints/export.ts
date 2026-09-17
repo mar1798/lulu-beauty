@@ -34,3 +34,14 @@ export const ordersExportUrl = (filters: IOrdersExportFilters = {}): string =>
  */
 export const downloadOrdersExport = (filters: IOrdersExportFilters = {}): Promise<IDownload> =>
   download(PATH, { ...filters })
+
+const CATALOG_PATH = '/admin/export/products'
+
+/**
+ * Выгрузка каталога в xlsx. Колонки — те же, что читает импорт (`name`, `slug`,
+ * `price`, …), поэтому файл возвращается обратно через ту же страницу без
+ * правки заголовков. `description` и фотографии в лист не попадают намеренно:
+ * импорт считает отсутствующую колонку за «не трогать», так что и описания, и
+ * снимки переживают круг целыми.
+ */
+export const downloadCatalogExport = (): Promise<IDownload> => download(CATALOG_PATH)

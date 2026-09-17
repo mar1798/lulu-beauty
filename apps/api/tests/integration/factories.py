@@ -38,11 +38,13 @@ async def make_product(
     volume_ml: int | None = None,
     category_id: uuid.UUID | None = None,
     deleted_at: datetime | None = None,
+    description: str | None = None,
 ) -> Product:
     product = Product(
         name=name,
         slug=slug or f"test-product-{uuid.uuid4().hex[:12]}",
         brand=brand,
+        description=description,
         volume_ml=volume_ml,
         category_id=category_id,
         price_cents=price_cents,

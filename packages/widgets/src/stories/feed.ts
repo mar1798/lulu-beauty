@@ -969,6 +969,7 @@ export const feedAdminCategoriesPanel = (): IAdminCategoriesPanelProps => ({
 
 export const feedAdminImportPanel = (): IAdminImportPanelProps => ({
   onImport: noop,
+  onExport: noop,
   summary: {
     created: 12,
     updated: 3,

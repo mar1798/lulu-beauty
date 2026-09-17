@@ -1602,6 +1602,14 @@ export interface IAdminImportPanelProps {
   summary?: IImportSummary | null
   /** Ошибка запроса. Ошибки строк приходят внутри `summary.errors`. */
   error?: string | null
+  /**
+   * Выгрузка каталога в тот же формат, который читает импорт. Не обязательна:
+   * панель без неё показывает только импорт.
+   */
+  onExport?: () => void
+  isExporting?: boolean
+  /** Ошибка выгрузки. Отдельная от `error`: это разные запросы. */
+  exportError?: string | null
 }
 
 /** Черновик сбора в календарных величинах магазина (таймзона `Asia/Bishkek`). */
