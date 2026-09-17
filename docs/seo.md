@@ -95,7 +95,7 @@ What each page carries:
 
 | Page                | Nodes                                                                     |
 | ------------------- | ------------------------------------------------------------------------- |
-| every page (`_app`) | `OnlineStore`, with `sameAs` pointing at the shop's Instagram and the bot |
+| every page (`_app`) | `OnlineStore`: `logo`/`image`, and `sameAs` to the Instagram and the bot |
 | `/`                 | `FAQPage`, built from the same `FAQ_ITEMS` array that renders the section |
 | `/catalog`          | `ItemList` of the products currently on screen                            |
 | `/catalog/[slug]`   | `Product` + `Offer`, `BreadcrumbList`                                     |
@@ -120,6 +120,10 @@ Details that are decisions, not accidents:
   of repeating the organisation — one seller entity across the whole site.
 - **The `Product` description** is the owner's text when it exists, otherwise the same string
   `<meta name="description">` gets: brand, name, price. Nothing is invented either way.
+- **`logo` is not the favicon.** The `OnlineStore` node points at `/logo.png` (180×180, over
+  Google's 112px floor), which feeds the organisation's card — not the small icon beside a
+  result. That one Google fetches from `favicon.ico` when it crawls the home page, and no
+  markup can hand it over; a stale index simply keeps the grey globe until the next crawl.
 - **The primary photo is sorted first** in `image[]`, so the crawler's preferred image is the
   one the catalogue and `og:image` already show.
 

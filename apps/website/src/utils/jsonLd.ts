@@ -35,6 +35,9 @@ const CURRENCY = 'KGS'
 
 const CENTS_IN_UNIT = 100
 
+/** Знак марки квадратом, 180×180 — `public/logo.png`. */
+const LOGO_PATH = '/logo.png'
+
 /**
  * Постоянный адрес магазина как сущности. Ссылаться на него из `Offer`
  * дешевле, чем повторять организацию целиком: поисковик склеивает узлы по
@@ -54,6 +57,11 @@ function priceUnits(priceCents: number): string {
  * и помогает отличить `sululu.store` от чужих похожих имён. Пустой адрес бота
  * (локальная сборка без переменной окружения) в список не попадает — ссылка в
  * никуда хуже её отсутствия.
+ *
+ * `logo` — тот же знак марки, что в значке вкладки, но отдельным файлом и
+ * размером, который поисковик берёт в карточку организации (у Google порог —
+ * 112×112). Значок рядом со ссылкой в выдаче он не заменяет: тот берётся из
+ * `favicon.ico` при обходе главной, и разметка на него не влияет.
  */
 export function storeLd(): IJsonLdNode {
   const botUsername = publicConfig('telegramBotUsername')
@@ -69,6 +77,8 @@ export function storeLd(): IJsonLdNode {
     name: SITE_NAME,
     url: absoluteUrl('/'),
     description: SITE_DESCRIPTION,
+    logo: absoluteUrl(LOGO_PATH),
+    image: absoluteUrl(LOGO_PATH),
     areaServed: COUNTRY,
     currenciesAccepted: CURRENCY,
     sameAs,

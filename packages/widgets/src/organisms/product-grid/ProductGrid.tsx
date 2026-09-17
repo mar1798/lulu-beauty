@@ -19,6 +19,10 @@ import * as styles from './ProductGrid.css'
  * подборке на главной, где сетка приезжает в кадр на скролле. В каталоге
  * выключена: там состав меняется от фильтров, и лесенка на каждой подмене
  * читалась бы как перерисовка.
+ *
+ * `priorityCount` снимает ленивую загрузку с первых карточек. По умолчанию ноль:
+ * сетка обычно стоит ниже первого экрана, и приоритет там только мешает. Каталогу
+ * он нужен — см. `IProductGridProps['priorityCount']`.
  */
 
 const DEFAULT_SKELETON_COUNT = 8
@@ -33,6 +37,7 @@ export const ProductGrid: FC<IProductGridProps & IBasicStyling> = ({
   renderAction,
   renderMediaAction,
   isStaggered = false,
+  priorityCount = 0,
   className,
 }) => {
   if (isLoading) {
@@ -82,6 +87,7 @@ export const ProductGrid: FC<IProductGridProps & IBasicStyling> = ({
               }
               action={renderAction?.(product)}
               mediaAction={renderMediaAction?.(product)}
+              isPriority={index < priorityCount}
             />
           )
 

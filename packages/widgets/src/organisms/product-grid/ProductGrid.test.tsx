@@ -33,6 +33,40 @@ describe('ProductGrid', () => {
     }
   })
 
+  /*
+    Ленивая загрузка на первом экране — то, из-за чего LCP каталога ждал
+    полторы секунды до начала загрузки картинки. `priorityCount` снимает её
+    ровно с первых карточек и ни с одной больше.
+
+    Фикстура удобна тем, что у последнего товара картинок нет вовсе: он
+    рисует заглушку, поэтому `img` в сетке на один меньше, чем карточек.
+  */
+  it('снимает ленивую загрузку ровно с первых priorityCount карточек', () => {
+    const feed = feedProductGrid()
+
+    const { container } = renderWidget(<ProductGrid {...feed} priorityCount={2} />)
+    const images = container.querySelectorAll('img')
+
+    expect([...images].map(image => image.getAttribute('loading'))).toEqual([
+      'eager',
+      'eager',
+      'lazy',
+    ])
+  })
+
+  it('без priorityCount оставляет ленивыми все карточки', () => {
+    const feed = feedProductGrid()
+
+    const { container } = renderWidget(<ProductGrid {...feed} />)
+    const images = container.querySelectorAll('img')
+
+    expect(images.length).toBeGreaterThan(0)
+
+    for (const image of images) {
+      expect(image.getAttribute('loading')).toBe('lazy')
+    }
+  })
+
   it('с лесенкой оборачивает каждую карточку, не теряя ни одной', () => {
     const feed = feedProductGrid()
 

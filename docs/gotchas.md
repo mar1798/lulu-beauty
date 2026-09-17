@@ -158,6 +158,16 @@ itself when Postgres isn't reachable, so a green local run proves less than it l
 `DATABASE_URL`, so `apps/api/.env` wins, and the fixture `TRUNCATE`s every table per test. Use
 a dedicated `lulu_test` database — [testing.md](testing.md).
 
+**Reading a column with a SQL-side `onupdate` after a flush is a 500, not a lazy load.**
+`TimestampMixin.updated_at` is set by `onupdate=func.now()`, so the new value exists only
+inside the UPDATE statement; SQLAlchemy leaves the attribute expired afterwards, and the
+implicit reload that follows the next read of it raises `MissingGreenlet` on an async
+session. Anything serializing a row it has just written hits this — it took `POST
+/admin/products/{id}/restore` and `PATCH /admin/products/{id}` down once `ProductResponse`
+grew an `updated_at` for the sitemap. The mixin now carries
+`__mapper_args__ = {"eager_defaults": True}`, which makes the flush add RETURNING to the
+same statement; a new model with a server-side `onupdate` outside that mixin needs its own.
+
 **Services must not commit.** The caller owns the transaction; notifications go out _after_
 the commit, or a rolled-back state gets announced and cannot be retracted.
 

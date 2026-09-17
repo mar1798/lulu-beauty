@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.cart.service import CartService
 from app.catalog.import_service import CatalogImportService
 from app.catalog.models import Category, Product, ProductImage
+from app.catalog.serializers import product_response
 from app.catalog.service import ProductNotFoundError, ProductService
 from app.orders.service import OrdersService
 from tests.integration.factories import (
@@ -217,6 +218,25 @@ async def test_restore_undoes_a_soft_delete(db_session: AsyncSession) -> None:
 
     assert restored.deleted_at is None
     assert (await service.get_by_id(product.id)).id == product.id
+
+
+async def test_a_changed_product_can_still_be_serialized(db_session: AsyncSession) -> None:
+    """`updated_at` has to come back from the flush, not be fetched on attribute access.
+
+    It is set by `onupdate=func.now()`, a SQL expression, so a flush that changes the row
+    leaves the attribute expired — and reading an expired attribute on an async session
+    is a `MissingGreenlet`, not a lazy load. Every admin endpoint that answers with the
+    product it just wrote (`PATCH /admin/products/{id}`, `.../restore`) reads it, and
+    each was a 500 until `TimestampMixin` asked for eager defaults.
+    """
+    product = await make_product(db_session, price_cents=1000, deleted_at=datetime.now(UTC))
+    service = ProductService(db_session)
+
+    restored = await service.restore(product.id)
+    assert product_response(restored).updated_at is not None
+
+    updated = await service.update(product.id, {"price_cents": 2000})
+    assert product_response(updated).price_cents == 2000
 
 
 async def test_import_upserts_by_slug_against_the_existing_catalogue(

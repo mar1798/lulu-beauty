@@ -19,7 +19,13 @@ const Document = (): React.ReactElement => (
         `apple-touch-icon.png` — плитка «на экран «Домой»» в iOS, там же без
         рамки: iOS скругляет углы сама.
       */}
-      <link rel="icon" href="/favicon.ico" sizes="32x32" />
+      {/*
+        `sizes` перечисляет всё, что лежит в контейнере, и это не формальность:
+        Google берёт значок в выдачу, только если находит квадрат кратный 48 —
+        объявленные «32x32» при живом 48-м внутри файла означают, что рядом со
+        ссылкой останется серый глобус.
+      */}
+      <link rel="icon" href="/favicon.ico" sizes="16x16 32x32 48x48" />
       <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
       <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
       {/* Цвет холста: им браузер красит адресную строку и подложку под страницей. */}

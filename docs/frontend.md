@@ -258,7 +258,11 @@ Absolute URLs come from `publicConfig('siteUrl')` (`NEXT_PUBLIC_SITE_URL`), not 
 
 Static files in `public/` that go with this: `favicon.ico` (16/32/48 in one container, for the
 request browsers make on their own), `favicon.svg`, `apple-touch-icon.png` (no rounding — iOS
-adds its own), `og-image.png` (1200×630) and `robots.txt`. All of them carry the same mark —
+adds its own), `logo.png` (180×180, the mark on its own tile, referenced by the `OnlineStore`
+node's `logo`), `og-image.png` (1200×630) and `robots.txt`. The `.ico` link in `_document`
+declares `sizes="16x16 32x32 48x48"`, all three that the container actually holds: Google puts
+a favicon next to a result only when it finds a square that is a multiple of 48, and a link
+claiming `32x32` hides the 48 that is in there. All of them carry the same mark —
 the `SL` monogram in Inter SemiBold, converted to outlines, since neither an icon file nor a
 rasterised preview can reference a webfont. The preview repeats the home page's own scene
 (canvas, two decor bottles with their pastel halos) so the link and the landing match.
