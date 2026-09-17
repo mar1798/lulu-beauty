@@ -31,9 +31,11 @@ vanilla-extract plugin wired in here is the webpack one. **Don't drop that flag.
 | Auth         | `login` — **this is the registration too**                                                                                          | Static                             |
 | Owner-only   | `admin/index`, `admin/products/{index,add,[id]}`, `admin/categories`, `admin/import`, `admin/cycles`, `admin/orders`, `admin/users` | Static, gated on the client        |
 | Errors       | `404`, `500`                                                                                                                        | Static                             |
+| Crawlers     | `sitemap.xml`                                                                                                                       | `getServerSideProps`, per request  |
 
-There is **no `getServerSideProps` anywhere in the app**. Every page is static, which is why
-`next build` reports `/admin/*` as `○ (Static)`.
+Every page a person can open is static, which is why `next build` reports `/admin/*` as
+`○ (Static)`. The one `getServerSideProps` in the app is `sitemap.xml`, which nobody visits:
+it writes XML straight into `res` and renders nothing. See [seo.md](seo.md).
 
 Build-time data shared by all static pages (categories, active cycle) goes through
 `src/services/staticData.ts`, which caches for 60s — the same TTL as the pages' `revalidate`,
@@ -232,10 +234,19 @@ Client-side fetching is [SWR](https://swr.vercel.app/), configured globally in `
 - **`SiteMeta`** — the constant part (`og:site_name`, `og:type`, `og:locale`, the site's own
   title/description/image, `twitter:card`). Rendered once in `_app`, so every page has a
   preview, private ones included.
-- **`PageMeta`** — the page's own `<title>`, `<meta name="description">`, `og:title`,
+- **`PageMeta`** — the page's own `<title>`, description, canonical link, `og:title`,
   `og:description`, `og:url` and optionally `og:image`. Used by the three public pages;
   `catalog/[slug]` passes the product's primary photo, whose URL the API already stores
   absolute (`PUBLIC_FILES_BASE_URL`).
+
+Structured data is a separate layer next to this one: `_app` renders the `OnlineStore` node
+beside `SiteMeta`, and the public pages add their own (`src/components/JsonLd.tsx`,
+`src/utils/jsonLd.ts`) — see [seo.md](seo.md#structured-data-json-ld).
+
+`canonical` and `og:url` are both built from the `path` prop, so they cannot drift apart, and
+`path` never carries query parameters — see [seo.md](seo.md#metadata) for why that is the
+right canonical for the catalogue, and for where the title and description copy comes from
+(`src/utils/seo.ts`, not the pages).
 
 The override works **only because every tag carries a `key`**: `next/head` deduplicates by
 `name`/`http-equiv`/`charSet` or an explicit key, and `property` — which is what every `og:*`
@@ -250,8 +261,10 @@ request browsers make on their own), `favicon.svg`, `apple-touch-icon.png` (no r
 adds its own), `og-image.png` (1200×630) and `robots.txt`. All of them carry the same mark —
 the `SL` monogram in Inter SemiBold, converted to outlines, since neither an icon file nor a
 rasterised preview can reference a webfont. The preview repeats the home page's own scene
-(canvas, two decor bottles with their pastel halos) so the link and the landing match. There
-is no `sitemap.xml` yet, which is why `robots.txt` declares no `Sitemap:` line.
+(canvas, two decor bottles with their pastel halos) so the link and the landing match.
+`robots.txt` also declares the `Sitemap:` line, with the production URL written out: the file
+is static, so there is no environment variable to interpolate. The map itself is generated —
+`pages/sitemap.xml.ts`, described in [seo.md](seo.md).
 
 ## Configuration
 

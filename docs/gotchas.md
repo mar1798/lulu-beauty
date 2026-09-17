@@ -85,8 +85,10 @@ status-based placeholder instead of an explanation.
 **Admin chunks are publicly fetchable.** The `/admin/*` gate is a client-side redirect for UX;
 authorization is on the API. Never put a secret in the admin UI.
 
-**`getServerSideProps` exists nowhere in the app**, deliberately. Adding one changes what
-`next build` produces and what the deployment has to run.
+**No page a person opens uses `getServerSideProps`**, deliberately. The single exception is
+`sitemap.xml`, which is not a page and renders nothing — it writes XML into `res` for
+crawlers. Adding one to a real page changes what `next build` produces and what the
+deployment has to run.
 
 ## `packages/widgets`
 

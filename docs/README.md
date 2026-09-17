@@ -15,6 +15,7 @@ unlike the user-facing copy — see [conventions.md](conventions.md#language) fo
 | [frontend.md](frontend.md)         | You work in `apps/website`: pages, auth cookies, the proxy, SWR data layer, security headers.                      |
 | [widgets.md](widgets.md)           | You work in `packages/widgets`: atomic design tiers, vanilla-extract, theme tokens, barrels, Storybook.            |
 | [telegram.md](telegram.md)         | You touch sign-in, the bot, or any notification.                                                                   |
+| [seo.md](seo.md)                   | You touch robots.txt, the sitemap, page metadata or structured data.                                               |
 | [conventions.md](conventions.md)   | Before writing any code: language rule, naming, lint rules, how new UI is allowed to be built.                     |
 | [development.md](development.md)   | Setting the repo up, or you forgot which command starts what.                                                      |
 | [environment.md](environment.md)   | You add, rename or debug an environment variable.                                                                  |
