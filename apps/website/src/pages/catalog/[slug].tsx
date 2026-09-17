@@ -1,10 +1,9 @@
 import React from 'react'
-import { useRouter } from 'next/router'
 import type { GetStaticPaths, GetStaticProps } from 'next'
 import type { IProduct } from 'widgets/types'
 import { Text } from 'widgets/atoms'
 import { Breadcrumbs } from 'widgets/molecules'
-import { ProductDetails, ProductDetailsSkeleton } from 'widgets/organisms'
+import { ProductDetails } from 'widgets/organisms'
 import { ProductTemplate } from 'widgets/templates'
 import { SiteLayout } from '@/layouts/SiteLayout'
 import { AddToCartButton } from '@/components/AddToCartButton'
@@ -19,15 +18,28 @@ import { activeCycleFallback, type ISwrFallback } from '@/services/swrFallback'
 /**
  * Страница товара.
  *
- * `fallback: true`, а не `'blocking'`: переход должен открывать страницу
- * сразу, а не держать покупателя на каталоге, пока сервер ходит за товаром.
- * Пока данных нет, на месте карточки стоит каркас той же раскладки, поэтому
- * подстановка товара ничего не двигает.
+ * `fallback: 'blocking'`, а не `true`: холодный адрес рендерится на сервере и
+ * приезжает готовым — либо товаром, либо честным 404. Каркас в HTML не
+ * попадает вовсе.
  *
- * Чтобы поисковик почти никогда не попадал на этот каркас, на сборке
- * пререндерится весь каталог (см. `getStaticPaths`): холодным остаётся только
- * товар, добавленный импортом уже после сборки, — и тот перестаёт быть
- * холодным после первого же захода, когда ISR его сгенерирует.
+ * Раньше здесь стоял `fallback: true` с расчётом на то, что каркас — редкость:
+ * `getStaticPaths` пререндерит весь каталог, и холодным остаётся только товар,
+ * добавленный импортом после сборки. **В проде этого расчёта не существует.**
+ * Образ собирается без доступа к API (так задумано, см. `apps/website/Dockerfile`),
+ * `getStaticPaths` уходит в свой `catch` и отдаёт пустой список — то есть
+ * холодная генерация на проде не исключение, а единственный способ, которым
+ * вообще появляется страница товара.
+ *
+ * А на холодном пути `fallback: true` на проде **зависал**: несуществующий
+ * слаг не отдавал ни 404, ни каркас — соединение висело минутами (проверено на
+ * `sululu.store`, 09.2026). Краулеру, впрочем, везло: для бота Next и так
+ * рендерит блокирующе, и Googlebot получал свой 404 за 0,3 с — то есть рабочим
+ * на проде был ровно тот путь, на который эта страница теперь переведена
+ * целиком.
+ *
+ * Цена — ожидание сервера у первого посетителя холодного товара (сотни
+ * миллисекунд). Дальше страница живёт в кеше ISR, а протухшую версию
+ * `revalidate` отдаёт сразу и обновляет в фоне.
  */
 
 const REVALIDATE_SECONDS = 60
@@ -73,11 +85,11 @@ export const getStaticPaths: GetStaticPaths = async () => {
   try {
     return {
       paths: (await collectSlugs()).map(slug => ({ params: { slug } })),
-      fallback: true,
+      fallback: 'blocking',
     }
   } catch {
     // API недоступен на сборке — все страницы соберутся по первому обращению.
-    return { paths: [], fallback: true }
+    return { paths: [], fallback: 'blocking' }
   }
 }
 
@@ -133,80 +145,56 @@ const DESCRIPTION_LIMIT = 160
  * API как есть: там он уже абсолютный (`PUBLIC_FILES_BASE_URL`), а `og:image`
  * другого и не принимает.
  */
-function previewImage(product: IProduct | undefined): { url: string; alt: string } | undefined {
-  if (product === undefined) {
-    return undefined
-  }
-
+function previewImage(product: IProduct): { url: string; alt: string } | undefined {
   const image = product.images.find(candidate => candidate.isPrimary) ?? product.images[0]
 
   return image === undefined ? undefined : { url: image.url, alt: image.alt ?? product.name }
 }
 
 /*
-  Пропсы неполные не по недосмотру: при `fallback: true` первый рендер
-  приходит вообще без них — товар доезжает следующим кадром.
+  Пропсы всегда полные: `fallback: 'blocking'` не отдаёт кадр без данных —
+  страница либо отрендерена с товаром, либо это уже 404.
 */
-const ProductPage: React.FC<Partial<IProductPageProps>> = ({ product, categoryName = null }) => {
-  const router = useRouter()
+const ProductPage: React.FC<IProductPageProps> = ({ product, categoryName }) => (
+  <SiteLayout>
+    <PageMeta
+      title={`${product.name} — Sululu`}
+      description={
+        product.description == null || product.description === ''
+          ? undefined
+          : product.description.slice(0, DESCRIPTION_LIMIT)
+      }
+      path={`/catalog/${product.slug}`}
+      image={previewImage(product)}
+    />
 
-  // `isFallback` снимается вместе с приездом пропсов, но проверяем и товар:
-  // при переходе с прогретого маршрута каркаса не будет вовсе.
-  const isPending = router.isFallback || product === undefined
+    <ProductTemplate
+      breadcrumbs={
+        <Breadcrumbs
+          items={[
+            { label: 'Главная', link: { href: '/' } },
+            { label: 'Каталог', link: { href: '/catalog' } },
+          ]}
+          current={product.name}
+        />
+      }
+    >
+      <ClosedCycleNotice />
 
-  // Адрес страницы для `og:url` знает роутер: пропсов в каркасе ещё нет.
-  const { slug } = router.query
-
-  return (
-    <SiteLayout>
-      <PageMeta
-        title={isPending ? 'Товар — Sululu' : `${product.name} — Sululu`}
-        description={
-          product?.description == null || product.description === ''
-            ? undefined
-            : product.description.slice(0, DESCRIPTION_LIMIT)
+      <ProductDetails
+        product={product}
+        categoryName={categoryName}
+        action={
+          product.inStock ? (
+            <AddToCartButton productId={product.id} size="lg" />
+          ) : (
+            <Text tone="muted">Товара сейчас нет в наличии — загляните в следующий сбор.</Text>
+          )
         }
-        path={typeof slug === 'string' ? `/catalog/${slug}` : '/catalog'}
-        image={previewImage(product)}
+        secondaryAction={<WishlistButton productId={product.id} withLabel={true} size="lg" />}
       />
-
-      <ProductTemplate
-        breadcrumbs={
-          <Breadcrumbs
-            items={[
-              { label: 'Главная', link: { href: '/' } },
-              { label: 'Каталог', link: { href: '/catalog' } },
-            ]}
-            /*
-              Пока имени нет — нейтральное «Товар», а не пустая строка:
-              последняя крошка не оформляется ссылкой, и пустой она оставила
-              бы висеть разделитель в конце цепочки.
-            */
-            current={product?.name ?? 'Товар'}
-          />
-        }
-      >
-        <ClosedCycleNotice />
-
-        {isPending ? (
-          <ProductDetailsSkeleton />
-        ) : (
-          <ProductDetails
-            product={product}
-            categoryName={categoryName}
-            action={
-              product.inStock ? (
-                <AddToCartButton productId={product.id} size="lg" />
-              ) : (
-                <Text tone="muted">Товара сейчас нет в наличии — загляните в следующий сбор.</Text>
-              )
-            }
-            secondaryAction={<WishlistButton productId={product.id} withLabel={true} size="lg" />}
-          />
-        )}
-      </ProductTemplate>
-    </SiteLayout>
-  )
-}
+    </ProductTemplate>
+  </SiteLayout>
+)
 
 export default ProductPage

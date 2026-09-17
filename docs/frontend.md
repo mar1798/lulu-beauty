@@ -43,6 +43,15 @@ state lives on a `Symbol.for` under `globalThis`, not in the module: the server 
 no module instances between entries, so a page and an API route each get their own copy, and
 a reset from one would leave the other's cache untouched.
 
+`catalog/[slug]` uses **`fallback: 'blocking'`**, so a cold URL is rendered on the server and
+arrives finished — a product or a real 404, never a skeleton. In production that is the only
+path a product page ever takes: the image is built with no access to the API (on purpose, see
+`apps/website/Dockerfile`), `getStaticPaths` falls into its `catch` and returns no paths at
+all, so every page is generated on first request. `fallback: true` was what stood here, and
+on that same cold path production **hung**: a slug that does not exist returned neither a 404
+nor a skeleton, and the connection sat open for minutes. A crawler was the one visitor it
+worked for — Next renders blocking for bots regardless, and Googlebot got its 404 in 0.3s.
+
 ## Keeping the public pages fresh
 
 `revalidate: 60` alone makes an edit in the admin take up to a minute **and one extra
