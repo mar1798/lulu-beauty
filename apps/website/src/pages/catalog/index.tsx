@@ -44,6 +44,21 @@ import * as styles from '@/styles/catalog.css'
 
 const PAGE_SIZE = 24
 
+/**
+ * Сколько карточек грузят фотографию сразу.
+ *
+ * Сетка каталога — это и есть первый экран, и её первая карточка оказывается
+ * LCP-элементом страницы. Ленивой браузер узнаёт о ней только после раскладки:
+ * на мобильном замере это стоило 1,5 с задержки до начала загрузки при том,
+ * что сама картинка весит 12 КиБ и качается за треть секунды.
+ *
+ * Четыре — ширина самого широкого ряда сетки (`md` и выше); на узком экране
+ * колонок две, то есть предзагружается ещё и второй ряд, который там наполовину
+ * в кадре. Больше ставить нельзя: приоритет у всей страницы отбирает канал сам
+ * у себя и отодвигает ровно ту картинку, ради которой затевался.
+ */
+const PRIORITY_CARDS = 4
+
 /** Каталог меняется импортом xlsx, минута устаревания приемлема. */
 const REVALIDATE_SECONDS = 60
 
@@ -259,6 +274,7 @@ const CatalogPage: React.FC<ICatalogPageProps> = ({ categories, brands, initial 
             isLoading={isFirstLoad}
             buildHref={product => `/catalog/${product.slug}`}
             categoryNames={categoryNames}
+            priorityCount={PRIORITY_CARDS}
             renderAction={product =>
               product.inStock ? <AddToCartButton productId={product.id} isCompact={true} /> : null
             }
