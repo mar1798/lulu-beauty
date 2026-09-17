@@ -77,6 +77,10 @@ class ProductResponse(CamelModel):
     # always None there; the admin listing with includeDeleted=true needs it to tell
     # a deleted row from a live one (there is no other signal in the payload).
     deleted_at: datetime | None
+    # When the row last changed. The sitemap writes it as <lastmod>, which is the one
+    # tag a search engine holds against the whole file if it turns out to be invented —
+    # so it is the database's value or nothing.
+    updated_at: datetime
 
 
 class ProductCreateRequest(CamelModel):

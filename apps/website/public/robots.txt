@@ -6,8 +6,9 @@
 # проверкой роли, но ссылка на него стоит в шапке у владельца и в выдачу
 # попадать не должна.
 #
-# Sitemap не объявлен намеренно: файла пока нет. Появится — строка `Sitemap:`
-# добавляется сюда абсолютным адресом.
+# `Sitemap:` — абсолютным адресом прода, а не текущего хоста: robots.txt
+# статический, подставить сюда переменную окружения неоткуда. Саму карту
+# собирает `pages/sitemap.xml.ts` из живого каталога.
 
 User-agent: *
 Disallow: /admin
@@ -18,3 +19,5 @@ Disallow: /checkout
 Disallow: /account
 Disallow: /orders
 Disallow: /wishlist
+
+Sitemap: https://sululu.store/sitemap.xml
