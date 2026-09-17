@@ -11,8 +11,10 @@ import { CartProvider } from '@/contexts/CartContext'
 import { WishlistProvider } from '@/contexts/WishlistContext'
 import { Link } from '@/components/Link'
 import { Image } from '@/components/Image'
+import { JsonLd } from '@/components/JsonLd'
 import { SiteMeta } from '@/components/PageMeta'
 import { TelegramMiniAppSession } from '@/components/TelegramMiniAppSession'
+import { storeLd } from '@/utils/jsonLd'
 import { shell } from '@/styles/shell.css'
 
 /**
@@ -68,6 +70,13 @@ const App: React.FC<AppProps> = ({ Component, pageProps }) => {
           публичные перекрывают заголовок и описание своим `PageMeta`.
         */}
       <SiteMeta />
+
+      {/*
+          Магазин как сущность — на каждой странице: `sameAs` связывает домен с
+          аккаунтами магазина, и связка нужна поисковику везде, где он встретит
+          сайт, а не только на главной.
+        */}
+      <JsonLd data={storeLd()} />
 
       <ServicesContext.Provider initialState={services}>
         {/*

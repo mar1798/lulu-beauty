@@ -9,6 +9,7 @@ import { CatalogTemplate } from 'widgets/templates'
 import { SiteLayout } from '@/layouts/SiteLayout'
 import { AddToCartButton } from '@/components/AddToCartButton'
 import { ClosedCycleNotice } from '@/components/ClosedCycleNotice'
+import { JsonLd } from '@/components/JsonLd'
 import { PageMeta } from '@/components/PageMeta'
 import { WishlistButton } from '@/components/WishlistButton'
 import {
@@ -22,6 +23,8 @@ import { messageForError } from '@/services/apiErrors'
 import { listBrands, listCategories, listProducts } from '@/services/endpoints/catalog'
 import { getActiveCycleOrNull } from '@/services/endpoints/cycles'
 import { activeCycleFallback, type ISwrFallback } from '@/services/swrFallback'
+import { productListLd } from '@/utils/jsonLd'
+import { CATALOG_DESCRIPTION, CATALOG_TITLE } from '@/utils/seo'
 import * as styles from '@/styles/catalog.css'
 
 /**
@@ -189,11 +192,24 @@ const CatalogPage: React.FC<ICatalogPageProps> = ({ categories, brands, initial 
 
   return (
     <SiteLayout>
-      <PageMeta
-        title="Каталог — Sululu"
-        description="Косметика и уход: соберите заявку до закрытия ближайшего сбора"
-        path="/catalog"
-      />
+      {/*
+        `path` без query-параметров намеренно: категория, бренд, поиск и номер
+        страницы живут в них, но HTML под всеми ими один и тот же — фильтрация
+        клиентская. Канонический адрес у такой выборки общий, сам `/catalog`.
+      */}
+      <PageMeta title={CATALOG_TITLE} description={CATALOG_DESCRIPTION} path="/catalog" />
+
+      {/*
+        Список ровно тот, что сейчас на экране, а не статическая первая
+        страница: фильтры клиентские, и разметка, застрявшая на исходной
+        выборке, начала бы расходиться с видимой сеткой. Краулер приходит на
+        канонический `/catalog` без параметров — там это одно и то же.
+
+        Крошек у каталога нет ни в разметке, ни на экране: рисовать
+        `BreadcrumbList` там, где цепочки не видно, значит обещать поисковику
+        то, чего на странице нет.
+      */}
+      {products.length > 0 && <JsonLd data={productListLd(products)} />}
 
       <CatalogTemplate
         title="Каталог"

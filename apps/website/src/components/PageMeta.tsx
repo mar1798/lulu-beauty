@@ -1,6 +1,6 @@
 import Head from 'next/head'
 import React from 'react'
-import { publicConfig } from '@/сonfig'
+import { absoluteUrl, SITE_DESCRIPTION, SITE_NAME, SITE_TITLE } from '@/utils/seo'
 
 /**
  * Превью ссылки: `og:*` и то, что к ним прилагается.
@@ -16,13 +16,6 @@ import { publicConfig } from '@/сonfig'
  * работает, только по `name`/`http-equiv`/`charSet` и явному ключу.
  */
 
-export const SITE_NAME = 'Sululu'
-
-export const SITE_TITLE = 'Sululu — самые низкие цены на косметику и уход'
-
-export const SITE_DESCRIPTION =
-  'Косметика и уход по самым низким ценам: берём напрямую и общим заказом. Соберите заявку до закрытия сбора — владелец подтвердит её в Telegram.'
-
 /**
  * Витрина сайта для превью: та же сцена, что на главной, с подписью марки.
  * Лежит в `public`; размеры нигде не объявляются — страница товара подменяет
@@ -33,11 +26,6 @@ const SITE_IMAGE = {
   path: '/og-image.png',
   alt: 'Sululu — косметика и уход по самым низким ценам',
 } as const
-
-/** Адрес сайта, каким его увидит скрапер: `og:*` относительных путей не понимает. */
-function absoluteUrl(path: string): string {
-  return `${publicConfig('siteUrl')}${path}`
-}
 
 /** Постоянная часть превью. Только для `_app`. */
 export const SiteMeta: React.FC = () => (
@@ -59,7 +47,12 @@ interface IPageMetaProps {
   title: string
   /** Без него страница наследует описание сайта — это лучше пустого превью. */
   description?: string
-  /** Путь страницы со слэша (`/catalog`); отсюда собирается абсолютный `og:url`. */
+  /**
+   * Путь страницы со слэша (`/catalog`); отсюда собираются абсолютные `og:url`
+   * и `canonical`. Именно **путь**, без query-параметров: у каталога вид
+   * задаётся ими (`?category=`, `?page=`), но статика под всеми ними одна и та
+   * же, и канонический адрес у них общий — сам `/catalog`.
+   */
   path: string
   /** Абсолютный адрес своей картинки — фотография товара вместо общей витрины. */
   image?: { url: string; alt: string }
@@ -69,6 +62,7 @@ interface IPageMetaProps {
 export const PageMeta: React.FC<IPageMetaProps> = ({ title, description, path, image }) => (
   <Head>
     <title>{title}</title>
+    <link key="canonical" rel="canonical" href={absoluteUrl(path)} />
     <meta key="og:title" property="og:title" content={title} />
     <meta key="og:url" property="og:url" content={absoluteUrl(path)} />
 
