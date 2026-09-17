@@ -643,6 +643,26 @@ declaring a failure it retries once after 10 seconds — a one-off network hiccu
 shouldn't wake anyone. Only failures are written to the log
 (`$HOME/health-watch.log`), otherwise it accumulates 288 lines of nothing a day.
 
+**A deploy is not an outage.** Replacing the `api` and `website` containers takes
+longer than that 10-second retry, and in the middle of it Next is up while the
+API behind it is not — the proxy answers `503 upstream_unavailable`, and a cron
+tick landing there used to send a failure ping and an email about a release
+going exactly as intended. So `deploy/release.sh` raises `$HOME/.release-in-progress`
+for the length of the deploy (a trap removes it however the script ends,
+**including a failed release** — that is when the alarm has to work), and this
+check skips a tick while the file is there. It skips silently rather than
+pinging success: the site may or may not be up, but this check isn't the one to
+say so. One or two missed ticks are invisible against the 15-minute grace time.
+A flag older than `RELEASE_MAX_AGE` (600s) is ignored and logged — a release
+killed mid-swap never runs its trap, and a forgotten file would mute monitoring
+for good.
+
+⚠️ **A failure body of `code 500: Internal Server Error`** is what this check
+reported before that 503 existed: an uncaught `fetch failed` inside the Next
+proxy, i.e. the API unreachable, dressed as Next's own error page. Seeing it
+again means the site is running a release older than this one — nothing
+diagnoses itself from that line, so go to `docker compose … logs api`.
+
 The script takes the domain from `SITE_DOMAIN` in `.env.prod` — the same
 variable Caddy issues the certificate for, so the checked address can't drift
 from the working one. Finding no domain, it exits with code `2` and **does not
@@ -979,6 +999,30 @@ tag into `.env.prod` as `RELEASE_TAG`, waits for `db`, `api` and
 drops unused images older than a week, and appends a line to `~/releases.log`. On
 failure it prints a ready-made rollback command. Flags: `--yes`, `--no-backup`,
 `--no-wait`, `--no-prune`, `--build`.
+
+For the length of all that it holds `$HOME/.release-in-progress` (`RELEASE_FLAG`),
+which is how `deploy/health-watch.sh` knows not to report the swap as an outage —
+see "Site and database" in Step 10.
+
+**A release is deployed by the previous release's script.** `watch-release.sh`
+runs `deploy/release.sh` out of the working tree, and the working tree is still
+on the deployed tag at that moment; the `checkout --detach` inside happens with
+the script already running. So a change to `release.sh` takes effect one release
+*later* than the one that ships it — the flag above, for instance, starts muting
+false alarms on the release after the one that introduced it.
+
+That is safe rather than merely lucky, and the reason is worth writing down
+because it looks like it shouldn't be. Bash reads a script in chunks as it runs,
+by byte offset, so a file that changes underneath a running shell is a genuine
+way to execute garbage — replace this file in place mid-run (`cat > "$0"`) with a
+version whose later half sits at different offsets, and bash resumes at the old
+offset inside the new content and dies on half a line. `git checkout` doesn't do
+that: it unlinks the file and creates a new one, so the inode changes and the
+running shell keeps reading the old one through its open descriptor, to the end.
+Verified on bash 5.2 / git 2.39 — the same experiment fails with `cat` and passes
+with `checkout`, three runs for three. What it means in practice: the deploy runs
+*entirely* the old script, never a mix of the two, and the lag is the whole of
+the consequence.
 
 The pull comes before the checkout on purpose: the images depend on the tag and
 not on what is checked out, so a release that never reached the registry leaves

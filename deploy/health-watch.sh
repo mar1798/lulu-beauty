@@ -15,6 +15,10 @@
 #   HEALTH_URL       what to request    (https://<SITE_DOMAIN>/api/proxy/health)
 #   ENV_FILE         where to read the domain from  (<repo root>/.env.prod)
 #   LOG_FILE         where failures are written        ($HOME/health-watch.log)
+#   RELEASE_FLAG     deploy/release.sh raises it for the length of a deploy;
+#                    while it is there this check keeps quiet
+#                                                    ($HOME/.release-in-progress)
+#   RELEASE_MAX_AGE  how long that flag is believed, in seconds          (600)
 #
 # Silence in the log means everything is fine: successes are not written, or 288
 # lines of nothing would pile up every day. Only failures are.
@@ -37,7 +41,36 @@ HEALTH_URL="${HEALTH_URL:-https://$SITE_DOMAIN/api/proxy/health}"
 HEALTH_PING_URL="${HEALTH_PING_URL:-}"
 LOG_FILE="${LOG_FILE:-$HOME/health-watch.log}"
 
+RELEASE_FLAG="${RELEASE_FLAG:-$HOME/.release-in-progress}"
+RELEASE_MAX_AGE="${RELEASE_MAX_AGE:-600}"
+
 log() { printf '%s  %s\n' "$(date '+%F %T')" "$*" >> "$LOG_FILE"; }
+
+# A deploy replaces the `api` and `website` containers, and for a few seconds in
+# the middle the site answers with what a stranger would call an outage: Next is
+# already up, the API behind it is not yet, and the proxy returns a 503. A cron
+# tick landing in that window used to send a failure ping and an email about a
+# release going exactly as intended — the kind of alarm that teaches people to
+# ignore this check.
+#
+# deploy/release.sh raises the flag for the length of the deploy and removes it
+# on the way out, whatever the outcome; here it means "skip this tick". Silence
+# and not a success ping, deliberately: we do not know the site is up, we only
+# know that we are not the ones to judge it right now. Missing one or two ticks
+# is invisible against the 15-minute grace time (see docs/deployment.md).
+#
+# The age limit is what keeps a forgotten flag from muting monitoring forever —
+# a release killed mid-swap (SIGKILL, a rebooted server) never runs its trap.
+# Past RELEASE_MAX_AGE the flag is ignored and the failure, if any, is reported.
+if [[ -f "$RELEASE_FLAG" ]]; then
+  FLAG_AGE=$(( $(date +%s) - $(stat -c %Y "$RELEASE_FLAG" 2>/dev/null || echo 0) ))
+
+  if [[ $FLAG_AGE -lt $RELEASE_MAX_AGE ]]; then
+    exit 0
+  fi
+
+  log "warning: $RELEASE_FLAG is ${FLAG_AGE}s old — ignoring it; if no deploy is running, delete it"
+fi
 
 # With no domain there is nothing to check, and silently pinging "all good" is
 # the worst thing a monitor can do: silence in healthchecks would mean the site

@@ -42,6 +42,8 @@
 #   RELEASE_LOG       log of deployments             ($HOME/releases.log)
 #   WAIT_SECONDS      how long to wait for healthy   (240)
 #   PRUNE_OLDER_THAN  age of unused images to drop   (168h)
+#   RELEASE_FLAG      the file that tells deploy/health-watch.sh a deploy is
+#                     under way                      ($HOME/.release-in-progress)
 #
 # ⚠️ Rolling the code back does **not** roll back the database schema: the `api`
 # container runs `alembic upgrade head` on every start, and migrations never go
@@ -60,6 +62,7 @@ ENV_FILE="${ENV_FILE:-$REPO_ROOT/.env.prod}"
 RELEASE_LOG="${RELEASE_LOG:-$HOME/releases.log}"
 WAIT_SECONDS="${WAIT_SECONDS:-240}"
 PRUNE_OLDER_THAN="${PRUNE_OLDER_THAN:-168h}"
+RELEASE_FLAG="${RELEASE_FLAG:-$HOME/.release-in-progress}"
 
 ASSUME_YES=0
 DO_BACKUP=1
@@ -251,6 +254,23 @@ verify_image_matches_env() {
   [[ "$built_widget" == "$widget" ]] ||
     log "warning: the login widget is $built_widget in the image and $widget in $ENV_FILE — the image wins; see docs/environment.md"
 }
+
+# deploy/health-watch.sh polls /health from cron every five minutes and knows
+# nothing about releases. A tick landing inside the swap finds `website` already
+# up and `api` not yet there, and pings a failure — an alarm about a deploy going
+# exactly as intended. That is the expensive kind of false alarm: it teaches
+# whoever gets the email that this check cries wolf.
+#
+# So the swap announces itself with a file, and health-watch.sh keeps quiet while
+# it is there (silence, not a success ping: we do not know that the site is up).
+# The trap removes it however this script ends — including a failed release,
+# which is precisely when the alarm has to work again. A killed shell skips the
+# trap, and the flag going stale is health-watch.sh's own business.
+release_flag_clear() { rm -f "$RELEASE_FLAG"; }
+trap release_flag_clear EXIT
+
+: > "$RELEASE_FLAG" ||
+  log "warning: could not create $RELEASE_FLAG — a health-watch tick may report this deploy as an outage"
 
 if [[ $DO_BUILD -eq 1 ]]; then
   log "checkout $TARGET"
