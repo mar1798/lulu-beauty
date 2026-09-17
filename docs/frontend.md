@@ -98,6 +98,13 @@ point at it), categories, cycles, and the xlsx import. The import names only `/`
   **proactively** by decoding the access token's `exp` (30s skew) before sending, falling back
   to one refresh-and-retry on a 401. Streamed bodies are `retryable: false` (a stream reads
   once), so the proactive refresh is what covers uploads.
+  Every call to the API goes through `callApi`, whose one job is to turn undici's
+  `TypeError: fetch failed` into `UpstreamUnavailableError` — the same type a 5xx or a 429
+  raises. Both mean "the backend didn't answer, the session is fine", and both come out of the
+  routes as `503 upstream_unavailable`; a 401 would sign the visitor out over someone else's
+  outage. Uncaught, that `TypeError` used to leave the route as Next's own
+  `500 Internal Server Error`, which is what the external `/health` check reported while the
+  `api` container was being replaced mid-release — an alarm that named no cause.
 - `pages/api/proxy/[...path].ts` — the only route through which the browser reaches the API.
   Transparent, `bodyParser: false` (image uploads and catalog import stream through
   unbuffered), forwards a fixed allowlist: request `content-type`, `content-length`, `accept`,

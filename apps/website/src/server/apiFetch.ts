@@ -42,17 +42,19 @@ export class UnauthenticatedError extends Error {
 }
 
 /**
- * API ответил, но не «не пущу»: 429 из лимитера, 500 из самого API, 502/503 от
- * Caddy. Отдельный тип, потому что реакция противоположная — cookie не трогаем.
+ * Бэкенд не дал внятного ответа: 429 из лимитера, 500 из самого API, 502/503 от
+ * Caddy — или запрос вовсе не дошёл. Отдельный тип, потому что реакция
+ * противоположная разлогину — cookie не трогаем.
  * Раньше `rotateTokens` схлопывал все статусы в `UnauthenticatedError`, и любой
  * такой ответ на `/auth/refresh` стирал живую сессию: достаточно было соседа за
  * тем же NAT, выжегшего строгий бюджет `/auth/` своим входом.
  */
 export class UpstreamUnavailableError extends Error {
+  /** Статус ответа бэкенда; `503`, когда ответа не было вообще (см. `callApi`). */
   readonly status: number
 
-  constructor(status: number) {
-    super(`upstream_unavailable_${status}`)
+  constructor(status: number, options?: ErrorOptions) {
+    super(`upstream_unavailable_${status}`, options)
     this.name = 'UpstreamUnavailableError'
     this.status = status
   }
@@ -60,6 +62,7 @@ export class UpstreamUnavailableError extends Error {
 
 const UNAUTHORIZED = 401
 const FORBIDDEN = 403
+const SERVICE_UNAVAILABLE = 503
 const EXPIRY_SKEW_SECONDS = 30
 const MILLISECONDS = 1000
 
@@ -91,6 +94,24 @@ const isExpired = (token: string): boolean => {
   return exp === null || exp - EXPIRY_SKEW_SECONDS <= Date.now() / MILLISECONDS
 }
 
+/**
+ * Любой поход к бэкенду. Сетевой сбой undici (`TypeError: fetch failed` —
+ * контейнер перезапускается, соединение отбито, не разрешилось имя) становится
+ * тем же `UpstreamUnavailableError`, что и невнятный ответ.
+ *
+ * Иначе он вылетал из ручки необёрнутым, и Next отдавал свою страницу ошибки:
+ * голый `500 Internal Server Error`, по которому не отличить упавший API от
+ * ошибки в самом Next. Ровно это видела внешняя проверка `/health` в минуту
+ * подмены контейнеров на релизе — письмо о падении без единого слова о причине.
+ */
+const callApi = async (url: string, init: RequestInit): Promise<Response> => {
+  try {
+    return await fetch(url, init)
+  } catch (error) {
+    throw new UpstreamUnavailableError(SERVICE_UNAVAILABLE, { cause: error })
+  }
+}
+
 const sendApi = async (
   path: string,
   search: string,
@@ -117,7 +138,7 @@ const sendApi = async (
     ;(init as RequestInit & { duplex: string }).duplex = 'half'
   }
 
-  return fetch(apiUrl(path, search), init)
+  return callApi(apiUrl(path, search), init)
 }
 
 /**
@@ -146,7 +167,7 @@ const rotateTokens = async (
   refreshToken: string,
   client: IClientRequest | undefined
 ): Promise<IAuthTokens> => {
-  const response = await fetch(apiUrl('/auth/refresh'), {
+  const response = await callApi(apiUrl('/auth/refresh'), {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
