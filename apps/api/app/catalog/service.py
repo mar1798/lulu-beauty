@@ -248,11 +248,21 @@ class ProductService:
         )
         return result.scalar_one_or_none() or brand
 
-    async def get_by_slug(self, slug: str) -> Product | None:
+    async def get_by_slug(self, slug: str, include_deleted: bool = False) -> Product | None:
+        """The product at this address, optionally including a withdrawn one.
+
+        `include_deleted` exists for the public product page: a slug that was never in
+        the catalogue and a slug whose product the owner withdrew need different answers
+        (404 against 410), and telling them apart takes looking past the soft-delete
+        filter. Every other caller wants the filtered view, which is why it is off by
+        default — the withdrawn product must not leak into a listing or a cart.
+        """
+        conditions = [Product.slug == slug]
+        if not include_deleted:
+            conditions.append(Product.deleted_at.is_(None))
+
         result = await self._session.execute(
-            select(Product)
-            .where(Product.slug == slug, Product.deleted_at.is_(None))
-            .options(selectinload(Product.images))
+            select(Product).where(*conditions).options(selectinload(Product.images))
         )
         return result.scalar_one_or_none()
 

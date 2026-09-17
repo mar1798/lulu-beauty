@@ -161,9 +161,21 @@ async def list_products(
 
 @router.get("/products/{slug}", response_model=ProductResponse)
 async def get_product(slug: str, session: AsyncSession = Depends(get_session)) -> ProductResponse:
-    product = await ProductService(session).get_by_slug(slug)
+    """A live product, or the reason this address has none.
+
+    The two failures are answered apart on purpose. A slug the catalogue never had is a
+    404 — there is nothing at this address and never was. A slug whose product the owner
+    withdrew is a 410: the address is known, the product is not on sale, and the site
+    turns that into a redirect instead of a dead end, because a URL that collected search
+    signals is worth more than the row behind it (`docs/seo.md`). Withdrawal is *not*
+    permanent here — the xlsx import revives a product it meets again — so the redirect
+    the site sends is temporary, whatever 410 usually implies.
+    """
+    product = await ProductService(session).get_by_slug(slug, include_deleted=True)
     if product is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "product_not_found")
+    if product.deleted_at is not None:
+        raise HTTPException(status.HTTP_410_GONE, "product_gone")
     return product_response(product)
 
 

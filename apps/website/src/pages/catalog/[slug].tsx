@@ -8,12 +8,15 @@ import { ProductTemplate } from 'widgets/templates'
 import { SiteLayout } from '@/layouts/SiteLayout'
 import { AddToCartButton } from '@/components/AddToCartButton'
 import { ClosedCycleNotice } from '@/components/ClosedCycleNotice'
+import { JsonLd } from '@/components/JsonLd'
 import { PageMeta } from '@/components/PageMeta'
 import { WishlistButton } from '@/components/WishlistButton'
 import { isApiError } from '@/services/apiErrors'
 import { getProduct, listProducts } from '@/services/endpoints/catalog'
 import { sharedActiveCycle, sharedCategories } from '@/services/staticData'
 import { activeCycleFallback, type ISwrFallback } from '@/services/swrFallback'
+import { breadcrumbsLd, productLd } from '@/utils/jsonLd'
+import { productDescription, productTitle } from '@/utils/seo'
 
 /**
  * Страница товара.
@@ -55,6 +58,13 @@ const PATHS_PAGE_SIZE = 100
 const MAX_PREBUILT_PAGES = 20
 
 const NOT_FOUND = 404
+
+/**
+ * Товар снят с продажи. Отдельный код от 404 не для красоты: адрес каталогу
+ * знаком, и отвечать на него «ничего нет» — значит выбросить всё, что этот
+ * URL успел накопить в поиске.
+ */
+const GONE = 410
 
 interface IProductPageProps {
   product: IProduct
@@ -127,7 +137,30 @@ export const getStaticProps: GetStaticProps<IProductPageProps, { slug: string }>
       revalidate: REVALIDATE_SECONDS,
     }
   } catch (error) {
-    // Удалённый товар должен отдавать 404, а не 500.
+    /*
+      Снятый товар уводит в каталог, а не упирается в 404: страница у него была,
+      на неё ссылались, и обрывать эти ссылки незачем (`SEO_PLAN.md`, задача 2.4).
+
+      Переадресация **временная**, вопреки букве плана с его 301. Снятие товара
+      здесь обратимо по устройству: импорт xlsx оживляет позицию, которую встретил
+      снова (`apps/api/app/catalog/import_service.py`), и админка умеет
+      восстанавливать вручную. Постоянную переадресацию браузер запоминает
+      надолго — вернувшийся в следующем сборе товар открывался бы каталогом у
+      всех, кто застал его снятым.
+
+      Цель у 301 в плане — категория или бренд товара. Таких маршрутов пока нет
+      (фаза 3), а выбирать между `?brand=` и `?category=` не из чего: тела у 410
+      нет, и это намеренно — цену и наличие снятого товара наружу отдавать
+      нечего. Когда маршруты появятся, адресом станет страница категории.
+    */
+    if (isApiError(error) && error.status === GONE) {
+      return {
+        redirect: { destination: '/catalog', permanent: false },
+        revalidate: REVALIDATE_SECONDS,
+      }
+    }
+
+    // Слага не было вовсе — честный 404, как и раньше.
     if (isApiError(error) && error.status === NOT_FOUND) {
       return { notFound: true, revalidate: REVALIDATE_SECONDS }
     }
@@ -135,9 +168,6 @@ export const getStaticProps: GetStaticProps<IProductPageProps, { slug: string }>
     throw error
   }
 }
-
-/** Длина `<meta name="description">`, дальше поисковик всё равно обрезает. */
-const DESCRIPTION_LIMIT = 160
 
 /**
  * Картинка превью — главная фотография товара, как её выбирает и карточка
@@ -155,46 +185,76 @@ function previewImage(product: IProduct): { url: string; alt: string } | undefin
   Пропсы всегда полные: `fallback: 'blocking'` не отдаёт кадр без данных —
   страница либо отрендерена с товаром, либо это уже 404.
 */
-const ProductPage: React.FC<IProductPageProps> = ({ product, categoryName }) => (
-  <SiteLayout>
-    <PageMeta
-      title={`${product.name} — Sululu`}
-      description={
-        product.description == null || product.description === ''
-          ? undefined
-          : product.description.slice(0, DESCRIPTION_LIMIT)
-      }
-      path={`/catalog/${product.slug}`}
-      image={previewImage(product)}
-    />
+const ProductPage: React.FC<IProductPageProps> = ({ product, categoryName }) => {
+  const path = `/catalog/${product.slug}`
 
-    <ProductTemplate
-      breadcrumbs={
-        <Breadcrumbs
-          items={[
-            { label: 'Главная', link: { href: '/' } },
-            { label: 'Каталог', link: { href: '/catalog' } },
-          ]}
-          current={product.name}
-        />
-      }
-    >
-      <ClosedCycleNotice />
+  /*
+    Одна цепочка на видимые крошки и на разметку: список в `BreadcrumbList`
+    обязан совпадать с нарисованным звено в звено, а два отдельных массива
+    рано или поздно разъезжаются. Уровня категории тут пока нет — своей
+    страницы у неё тоже нет (задача 3.1 плана).
+  */
+  const breadcrumbs = [
+    { name: 'Главная', path: '/' },
+    { name: 'Каталог', path: '/catalog' },
+    { name: product.name, path },
+  ]
 
-      <ProductDetails
-        product={product}
-        categoryName={categoryName}
-        action={
-          product.inStock ? (
-            <AddToCartButton productId={product.id} size="lg" />
-          ) : (
-            <Text tone="muted">Товара сейчас нет в наличии — загляните в следующий сбор.</Text>
-          )
-        }
-        secondaryAction={<WishlistButton productId={product.id} withLabel={true} size="lg" />}
+  return (
+    <SiteLayout>
+      <PageMeta
+        title={productTitle(product)}
+        description={productDescription(product)}
+        path={path}
+        image={previewImage(product)}
       />
-    </ProductTemplate>
-  </SiteLayout>
-)
+
+      <JsonLd data={productLd(product, categoryName)} />
+      <JsonLd data={breadcrumbsLd(breadcrumbs)} />
+
+      <ProductTemplate
+        breadcrumbs={
+          <Breadcrumbs
+            items={breadcrumbs.slice(0, -1).map(item => ({
+              label: item.name,
+              link: { href: item.path },
+            }))}
+            current={product.name}
+          />
+        }
+      >
+        <ClosedCycleNotice />
+
+        <ProductDetails
+          product={product}
+          categoryName={categoryName}
+          action={
+            product.inStock ? (
+              <AddToCartButton productId={product.id} size="lg" />
+            ) : (
+              /*
+                Не «нет в наличии», а «нет в сборе»: товар не кончился на складе,
+                его просто нет в текущем заказе — так устроен магазин, и человеку
+                честнее сказать это словами модели.
+
+                Вторая фраза — не обещание, а описание того, что и так работает:
+                открытие сбора бот объявляет всем, кто с ним связан
+                (`notify_cycle_opened`), а избранное к этому моменту ждёт рядом.
+                Отдельной кнопки «сообщить, когда появится» из плана нет
+                намеренно: подписки на товар в бэкенде не существует, и рисовать
+                кнопку под несуществующее уведомление — врать интерфейсом.
+              */
+              <Text tone="muted">
+                Сейчас товара нет в сборе. Добавьте в избранное — бот напишет, когда откроется
+                следующий.
+              </Text>
+            )
+          }
+          secondaryAction={<WishlistButton productId={product.id} withLabel={true} size="lg" />}
+        />
+      </ProductTemplate>
+    </SiteLayout>
+  )
+}
 
 export default ProductPage

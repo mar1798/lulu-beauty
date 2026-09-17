@@ -36,6 +36,26 @@ async def test_list_public_hides_soft_deleted_but_admin_can_include_them(
     assert total == 2
 
 
+async def test_get_by_slug_sees_a_withdrawn_product_only_when_asked(
+    db_session: AsyncSession,
+) -> None:
+    """The public product page needs 404 and 410 told apart; nothing else does.
+
+    Every other caller (cart, wishlist, listings) must keep seeing a withdrawn product as
+    absent, so the wider view is opt-in.
+    """
+    await make_product(db_session, name="Gone Product", slug="gone", deleted_at=datetime.now(UTC))
+    service = ProductService(db_session)
+
+    assert await service.get_by_slug("gone") is None
+
+    withdrawn = await service.get_by_slug("gone", include_deleted=True)
+    assert withdrawn is not None
+    assert withdrawn.deleted_at is not None
+
+    assert await service.get_by_slug("never-existed", include_deleted=True) is None
+
+
 async def test_search_matches_name_case_insensitively(db_session: AsyncSession) -> None:
     await make_product(db_session, name="Rose Serum")
     await make_product(db_session, name="Lipstick")
