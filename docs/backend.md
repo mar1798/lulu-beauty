@@ -184,7 +184,8 @@ order_item_not_found      order_not_editable        order_not_found
 order_not_restorable      order_status_not_assignable
 order_status_transition_invalid                     super_admin_immutable
 super_admin_not_assignable                          super_admin_only
-product_image_not_found   product_not_found         slug_already_exists
+product_gone              product_image_not_found   product_not_found
+slug_already_exists
 telegram_account_not_linked                         telegram_auth_expired
 telegram_auth_invalid     telegram_webhook_forbidden
 unsupported_image_type    user_not_found            wishlist_full
@@ -194,6 +195,14 @@ wishlist_item_not_found
 (plus `image_unreadable`, `image_too_large`, `image_too_many_pixels`, `import_file_too_large`,
 `request_body_too_large`, `rate_limited`,
 `deadline_must_be_future`, raised from routers/middleware in the same shape.)
+
+`product_gone` is the odd one out: it is the only code whose status is **410**, raised by
+public `GET /products/{slug}` when the slug belongs to a product the owner withdrew. A slug
+the catalogue never had is still a 404. The site needs the two apart — it redirects the first
+and 404s the second, so a withdrawn product's URL keeps whatever search signals it collected
+([seo.md](seo.md#urls-that-survive-a-buying-round)). The redirect is temporary, because
+withdrawal here is not: the xlsx import revives a product it meets again, and the admin can
+restore one by hand.
 
 **Money** is integer `*_cents`. **Products are soft-deleted.** See [domain.md](domain.md).
 

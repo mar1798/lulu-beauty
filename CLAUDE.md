@@ -39,6 +39,7 @@ Read-only git needs no asking: `git status`, `git diff`, `git log`, `git show`,
 | [docs/frontend.md](docs/frontend.md)         | Working in `apps/website`: pages, auth cookies, the proxy, SWR, security headers.      |
 | [docs/widgets.md](docs/widgets.md)           | Working in `packages/widgets`: tiers, vanilla-extract, tokens, barrels, Storybook.     |
 | [docs/telegram.md](docs/telegram.md)         | Touching sign-in, the bot, or any notification.                                        |
+| [docs/seo.md](docs/seo.md)                   | robots.txt, the sitemap, page metadata or structured data.                             |
 | [docs/conventions.md](docs/conventions.md)   | Writing any code — language rule, naming, lint, how new UI may be built.               |
 | [docs/recipes.md](docs/recipes.md)           | Any change that crosses packages ("new endpoint", "new error code", "new widget").     |
 | [docs/gotchas.md](docs/gotchas.md)           | Something behaves impossibly.                                                          |

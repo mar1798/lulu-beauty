@@ -530,6 +530,7 @@ export const feedProduct = (overrides: Partial<IProduct> = {}): IProduct => ({
   inStock: true,
   images: [feedProductImageDto(true, 0), feedProductImageDto(false, 1)],
   deletedAt: null,
+  updatedAt: faker.date.recent({ days: 30 }).toISOString(),
   ...overrides,
 })
 

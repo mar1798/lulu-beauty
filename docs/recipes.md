@@ -65,8 +65,9 @@ Without step 2 the user gets a status-based placeholder that explains nothing.
 
 ## Add a page to the website
 
-1. Create it under `src/pages`. Public pages get `getStaticProps` with `revalidate`; there is
-   no `getServerSideProps` in this app and adding one changes the deployment shape.
+1. Create it under `src/pages`. Public pages get `getStaticProps` with `revalidate`; no page
+   in this app uses `getServerSideProps` (only `sitemap.xml` does, and it is not a page), and
+   adding one changes the deployment shape.
 2. Shared build-time data (categories, active cycle) comes from `src/services/staticData.ts`,
    and reaches components through `props.fallback` + `swrFallback.ts` — fallback keys must go
    through `unstable_serialize`, or the entry silently never matches.

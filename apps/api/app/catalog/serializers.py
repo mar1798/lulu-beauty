@@ -27,6 +27,7 @@ def product_response(product: Product) -> ProductResponse:
         category_id=product.category_id,
         in_stock=product.in_stock,
         deleted_at=product.deleted_at,
+        updated_at=product.updated_at,
         images=[
             ProductImageResponse(
                 id=image.id,

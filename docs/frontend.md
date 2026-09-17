@@ -31,9 +31,11 @@ vanilla-extract plugin wired in here is the webpack one. **Don't drop that flag.
 | Auth         | `login` — **this is the registration too**                                                                                          | Static                             |
 | Owner-only   | `admin/index`, `admin/products/{index,add,[id]}`, `admin/categories`, `admin/import`, `admin/cycles`, `admin/orders`, `admin/users` | Static, gated on the client        |
 | Errors       | `404`, `500`                                                                                                                        | Static                             |
+| Crawlers     | `sitemap.xml`                                                                                                                       | `getServerSideProps`, per request  |
 
-There is **no `getServerSideProps` anywhere in the app**. Every page is static, which is why
-`next build` reports `/admin/*` as `○ (Static)`.
+Every page a person can open is static, which is why `next build` reports `/admin/*` as
+`○ (Static)`. The one `getServerSideProps` in the app is `sitemap.xml`, which nobody visits:
+it writes XML straight into `res` and renders nothing. See [seo.md](seo.md).
 
 Build-time data shared by all static pages (categories, active cycle) goes through
 `src/services/staticData.ts`, which caches for 60s — the same TTL as the pages' `revalidate`,
@@ -42,6 +44,15 @@ prerenders up to two thousand product slugs, and without that cache each one re-
 state lives on a `Symbol.for` under `globalThis`, not in the module: the server build shares
 no module instances between entries, so a page and an API route each get their own copy, and
 a reset from one would leave the other's cache untouched.
+
+`catalog/[slug]` uses **`fallback: 'blocking'`**, so a cold URL is rendered on the server and
+arrives finished — a product or a real 404, never a skeleton. In production that is the only
+path a product page ever takes: the image is built with no access to the API (on purpose, see
+`apps/website/Dockerfile`), `getStaticPaths` falls into its `catch` and returns no paths at
+all, so every page is generated on first request. `fallback: true` was what stood here, and
+on that same cold path production **hung**: a slug that does not exist returned neither a 404
+nor a skeleton, and the connection sat open for minutes. A crawler was the one visitor it
+worked for — Next renders blocking for bots regardless, and Googlebot got its 404 in 0.3s.
 
 ## Keeping the public pages fresh
 
@@ -98,6 +109,13 @@ point at it), categories, cycles, and the xlsx import. The import names only `/`
   **proactively** by decoding the access token's `exp` (30s skew) before sending, falling back
   to one refresh-and-retry on a 401. Streamed bodies are `retryable: false` (a stream reads
   once), so the proactive refresh is what covers uploads.
+  Every call to the API goes through `callApi`, whose one job is to turn undici's
+  `TypeError: fetch failed` into `UpstreamUnavailableError` — the same type a 5xx or a 429
+  raises. Both mean "the backend didn't answer, the session is fine", and both come out of the
+  routes as `503 upstream_unavailable`; a 401 would sign the visitor out over someone else's
+  outage. Uncaught, that `TypeError` used to leave the route as Next's own
+  `500 Internal Server Error`, which is what the external `/health` check reported while the
+  `api` container was being replaced mid-release — an alarm that named no cause.
 - `pages/api/proxy/[...path].ts` — the only route through which the browser reaches the API.
   Transparent, `bodyParser: false` (image uploads and catalog import stream through
   unbuffered), forwards a fixed allowlist: request `content-type`, `content-length`, `accept`,
@@ -216,10 +234,19 @@ Client-side fetching is [SWR](https://swr.vercel.app/), configured globally in `
 - **`SiteMeta`** — the constant part (`og:site_name`, `og:type`, `og:locale`, the site's own
   title/description/image, `twitter:card`). Rendered once in `_app`, so every page has a
   preview, private ones included.
-- **`PageMeta`** — the page's own `<title>`, `<meta name="description">`, `og:title`,
+- **`PageMeta`** — the page's own `<title>`, description, canonical link, `og:title`,
   `og:description`, `og:url` and optionally `og:image`. Used by the three public pages;
   `catalog/[slug]` passes the product's primary photo, whose URL the API already stores
   absolute (`PUBLIC_FILES_BASE_URL`).
+
+Structured data is a separate layer next to this one: `_app` renders the `OnlineStore` node
+beside `SiteMeta`, and the public pages add their own (`src/components/JsonLd.tsx`,
+`src/utils/jsonLd.ts`) — see [seo.md](seo.md#structured-data-json-ld).
+
+`canonical` and `og:url` are both built from the `path` prop, so they cannot drift apart, and
+`path` never carries query parameters — see [seo.md](seo.md#metadata) for why that is the
+right canonical for the catalogue, and for where the title and description copy comes from
+(`src/utils/seo.ts`, not the pages).
 
 The override works **only because every tag carries a `key`**: `next/head` deduplicates by
 `name`/`http-equiv`/`charSet` or an explicit key, and `property` — which is what every `og:*`
@@ -234,8 +261,10 @@ request browsers make on their own), `favicon.svg`, `apple-touch-icon.png` (no r
 adds its own), `og-image.png` (1200×630) and `robots.txt`. All of them carry the same mark —
 the `SL` monogram in Inter SemiBold, converted to outlines, since neither an icon file nor a
 rasterised preview can reference a webfont. The preview repeats the home page's own scene
-(canvas, two decor bottles with their pastel halos) so the link and the landing match. There
-is no `sitemap.xml` yet, which is why `robots.txt` declares no `Sitemap:` line.
+(canvas, two decor bottles with their pastel halos) so the link and the landing match.
+`robots.txt` also declares the `Sitemap:` line, with the production URL written out: the file
+is static, so there is no environment variable to interpolate. The map itself is generated —
+`pages/sitemap.xml.ts`, described in [seo.md](seo.md).
 
 ## Configuration
 

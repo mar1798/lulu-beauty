@@ -326,6 +326,7 @@ def _wishlist(names: list[str]) -> WishlistResponse:
                     in_stock=True,
                     images=[],
                     deleted_at=None,
+                    updated_at=datetime(2030, 5, 1, tzinfo=UTC),
                 ),
                 added_at=datetime(2030, 6, 1, tzinfo=UTC),
             )

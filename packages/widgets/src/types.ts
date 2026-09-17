@@ -142,6 +142,8 @@ export interface IProduct {
    * это единственный способ отличить удалённую строку от живой.
    */
   deletedAt: string | null
+  /** Время последней правки строки, ISO-8601. Карта сайта пишет его как `<lastmod>`. */
+  updatedAt: string
 }
 
 /**

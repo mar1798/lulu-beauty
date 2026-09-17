@@ -104,7 +104,7 @@ cd packages/widgets && npx vitest run src/atoms/button/Button.test.tsx
 
 ## Website app
 
-Next.js 16 on the Pages Router, consuming `widgets` as TypeScript source (`transpilePackages`). Every page is static (SSG/ISR) — there is no `getServerSideProps` anywhere in the app.
+Next.js 16 on the Pages Router, consuming `widgets` as TypeScript source (`transpilePackages`). Every page is static (SSG/ISR) — the only `getServerSideProps` belongs to `sitemap.xml`, which is generated per request for crawlers and renders no page.
 
 ```bash
 npm run dev:web              # http://localhost:3000

@@ -21,12 +21,15 @@ import { HomeTemplate } from 'widgets/templates'
 import { pluralize, staggerDelay } from 'widgets/utils'
 import { SiteLayout } from '@/layouts/SiteLayout'
 import { AddToCartButton } from '@/components/AddToCartButton'
-import { PageMeta, SITE_DESCRIPTION, SITE_TITLE } from '@/components/PageMeta'
+import { JsonLd } from '@/components/JsonLd'
+import { PageMeta } from '@/components/PageMeta'
 import { WishlistButton } from '@/components/WishlistButton'
 import { getActiveCycleOrNull } from '@/services/endpoints/cycles'
 import { listBrands, listCategories, listProducts } from '@/services/endpoints/catalog'
 import { activeCycleFallback, type ISwrFallback } from '@/services/swrFallback'
 import { INSTAGRAM_URL } from '@/utils/contacts'
+import { faqLd } from '@/utils/jsonLd'
+import { SITE_DESCRIPTION, SITE_TITLE } from '@/utils/seo'
 import { publicConfig } from '@/сonfig'
 
 /**
@@ -475,6 +478,9 @@ const HomePage: React.FC<IHomePageProps> = ({
   return (
     <SiteLayout>
       <PageMeta title={SITE_TITLE} description={SITE_DESCRIPTION} path="/" />
+
+      {/* Разметка секции «Что обычно спрашивают» — из того же массива, что и сама секция. */}
+      <JsonLd data={faqLd(FAQ_ITEMS)} />
 
       <HomeTemplate
         hero={

@@ -51,6 +51,14 @@ from `getStaticProps` does not, by itself, remove the request — it just moves 
 hydration second. Pair the prefill with `revalidateOnMount: false` (`hasFallback` in
 `services/swrFallback.ts`).
 
+**`fallback: true` on `catalog/[slug]` hung production.** A slug with no product answered
+nothing at all — no 404, no skeleton, the connection just sat open — while the very same URL
+answered `404` in 0.3s to a bot user-agent, because Next renders blocking for bots whatever
+`fallback` says. It is `fallback: 'blocking'` now, which is that working path for everyone;
+don't move it back. Worth remembering when reading the page: in production the prerendered
+paths are always empty (the image builds with no API), so *every* product page takes the cold
+path, and whatever that path does is what visitors get.
+
 **`revalidate: 60` costs a minute _and_ an extra request.** ISR serves the stale page to
 the request that finds the entry expired and regenerates in the background, so the page is
 fresh only from the next one — which reads as "the edit didn't save". Admin mutations
@@ -77,8 +85,10 @@ status-based placeholder instead of an explanation.
 **Admin chunks are publicly fetchable.** The `/admin/*` gate is a client-side redirect for UX;
 authorization is on the API. Never put a secret in the admin UI.
 
-**`getServerSideProps` exists nowhere in the app**, deliberately. Adding one changes what
-`next build` produces and what the deployment has to run.
+**No page a person opens uses `getServerSideProps`**, deliberately. The single exception is
+`sitemap.xml`, which is not a page and renders nothing — it writes XML into `res` for
+crawlers. Adding one to a real page changes what `next build` produces and what the
+deployment has to run.
 
 ## `packages/widgets`
 
