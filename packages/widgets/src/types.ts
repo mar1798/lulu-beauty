@@ -291,14 +291,7 @@ export interface IImportSummary {
 /** Размерная шкала, общая для кнопок и полей. */
 export type IControlSize = 'sm' | 'md' | 'lg'
 
-export type ITone =
-  | 'primary'
-  | 'secondary'
-  | 'muted'
-  | 'inverse'
-  | 'brand'
-  | 'danger'
-  | 'success'
+export type ITone = 'primary' | 'secondary' | 'muted' | 'inverse' | 'brand' | 'danger' | 'success'
 
 export interface IButtonProps {
   children: ReactNode
@@ -388,8 +381,10 @@ export interface IInputProps {
 }
 
 /** Префикс занят кодом страны, тип — `tel`. */
-export interface IPhoneInputProps
-  extends Omit<IInputProps, 'type' | 'prefix' | 'suffix' | 'inputMode' | 'autoComplete'> {
+export interface IPhoneInputProps extends Omit<
+  IInputProps,
+  'type' | 'prefix' | 'suffix' | 'inputMode' | 'autoComplete'
+> {
   /** Код страны без `+`. Значение наружу всегда уходит в E.164. */
   dialCode?: string
 }
@@ -837,6 +832,13 @@ export interface IBrandMarqueeProps {
 export interface IFaqItem {
   question: string
   answer: string
+  /**
+   * Ссылка внутри ответа — единственный способ вывести из FAQ наружу
+   * (контакт владельца, соцсеть). Данными, а не готовым узлом: виджет сам
+   * берёт адаптер `Link` из контекста и красит ссылку акцентом. Место в
+   * тексте отмечается `{link}`; без метки ссылка встаёт в конце ответа.
+   */
+  action?: ILinkedLabel
 }
 
 export interface IFaqAccordionProps {
@@ -996,7 +998,11 @@ export interface ICategoryFilterProps {
 
 export interface IEmptyStateProps {
   title: string
-  description?: string
+  /**
+   * Не только строка: подсказка иногда показывает то, на что предлагает нажать,
+   * — например иконку сердца прямо в строке про избранное.
+   */
+  description?: ReactNode
   icon?: ReactNode
   action?: ReactNode
   /** Уровень заголовка. По умолчанию 2 — блок обычно стоит прямо под `h1` страницы. */

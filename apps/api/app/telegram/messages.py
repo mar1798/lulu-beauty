@@ -71,6 +71,20 @@ def cycle_title(cycle: OrderCycle) -> str:
     return f"«{cycle.label}»" if cycle.label else f"от {format_deadline(cycle.deadline_at)}"
 
 
+def cycle_mention(cycle: OrderCycle) -> str:
+    """Название сбора для сообщений, которые и так называют его срок рядом.
+
+    `cycle_title` у сбора без подписи подставляет дедлайн, и в таком сообщении дата
+    оказывалась дважды: «сбор от 16.09.2026 в 22:00 закрывается 16.09.2026 в 22:00».
+    Называть тут нечего — по сроку в том же предложении сбор узнаётся и без имени.
+
+    Пробел перед кавычками — часть значения: у сбора без подписи от названия не
+    остаётся ничего, и иначе двойной пробел в «сбор  закрывается» пришлось бы
+    вычищать на каждом месте вызова.
+    """
+    return f" «{cycle.label}»" if cycle.label else ""
+
+
 def order_reference(order_id: uuid.UUID) -> str:
     """Short prefix of the UUID — enough for the owner and the customer to mean the same
     order out loud, without pasting 36 characters into a chat.
@@ -98,16 +112,21 @@ ORDER_STATUS_LABEL = {
 # ─── Outgoing notifications ──────────────────────────────────────────────────────
 
 
-def cart_reminder(title: str, deadline_at: datetime) -> str:
-    """`title` — уже готовое название сбора из `cycle_title` (у сбора может не быть
-    подписи, и тогда он называется по дедлайну; кавычки ставит `cycle_title`)."""
+def cart_reminder(cycle: OrderCycle) -> str:
+    """Срок назван прямо в предложении, поэтому сбор представляется подписью или никак
+    (см. `cycle_mention`).
+
+    Уточнение выпадает целиком, вместе с «по сбору»: без подписи оно превращалось в
+    «по сбору будут удалены», то есть в предлог без того, к чему он относится.
+    """
+    scope = f" по сбору{cycle_mention(cycle)}" if cycle.label else ""
     return (
-        f"Напоминание: товары в вашей корзине Sululu по сбору {title} "
-        f"будут удалены {format_deadline(deadline_at)}, если вы не оформите заявку"
+        f"Напоминание: товары в вашей корзине{scope} "
+        f"будут удалены {format_deadline(cycle.deadline_at)}, если вы не оформите заявку"
     )
 
 
-def cart_last_chance(title: str, deadline_at: datetime) -> str:
+def cart_last_chance(cycle: OrderCycle) -> str:
     """Второе напоминание, за несколько часов до дедлайна.
 
     Отдельный текст, а не повтор первого: сутками раньше сбор можно было отложить
@@ -119,8 +138,9 @@ def cart_last_chance(title: str, deadline_at: datetime) -> str:
     поздно начнёт врать. Точное время дедлайна отвечает на тот же вопрос честнее.
     """
     return (
-        f"⏳ Последний шанс: сбор {title} закрывается {format_deadline(deadline_at)}.\n"
-        "Товары из корзины Sululu удалятся, если до этого времени не оформить заявку."
+        f"⏳ Последний шанс: сбор{cycle_mention(cycle)} закрывается "
+        f"{format_deadline(cycle.deadline_at)}.\n"
+        "Товары из корзины удалятся, если до этого времени не оформить заявку."
     )
 
 
@@ -316,7 +336,7 @@ def order_cancelled_last_item_removed(order_id: uuid.UUID, product_name: str) ->
 
 def cycle_opened(cycle: OrderCycle) -> str:
     return (
-        f"Открыт новый сбор {cycle_title(cycle)}.\n"
+        f"Открыт новый сбор{cycle_mention(cycle)}.\n"
         f"Заявки принимаются до {format_deadline(cycle.deadline_at)}."
     )
 
@@ -332,7 +352,7 @@ def cycle_deadline_changed(cycle: OrderCycle, previous_deadline_at: datetime) ->
     moved_earlier = cycle.deadline_at < previous_deadline_at
     news = "раньше" if moved_earlier else "позже"
     lines = [
-        f"Сбор {cycle_title(cycle)} закроется {news}, чем планировалось.",
+        f"Сбор{cycle_mention(cycle)} закроется {news}, чем планировалось.",
         f"Было: {format_deadline(previous_deadline_at)}.",
         f"Стало: {format_deadline(cycle.deadline_at)}.",
     ]
@@ -400,7 +420,9 @@ MENU_CART = "🛒 Корзина"
 MENU_ORDERS = "📦 Мои заявки"
 MENU_WISHLIST = "⭐ Избранное"
 MENU_DEADLINE = "📅 Текущий сбор"
-MENU_SITE = "🌐 Сайт"
+# Не «Сайт»: ответ ведёт и в магазин, и в Instagram, а подпись, обещающая одно
+# место из двух, врёт ровно тому, кто ищет второе.
+MENU_LINKS = "🌐 Ссылки"
 MENU_HELP = "ℹ️ Помощь"
 
 # Sent with the keyboard itself, when there is nothing else to say — after linking, or
@@ -416,6 +438,9 @@ WISHLIST_BUTTON = "Посмотреть избранное"
 CATALOG_BUTTON = "Открыть каталог"
 ORDERS_BUTTON = "Все заявки на сайте"
 SITE_BUTTON = "Открыть сайт"
+# Дословно как на сайте (подвал и FAQ): человек видит одну и ту же подпись
+# в браузере и в чате, и это одна и та же ссылка.
+INSTAGRAM_BUTTON = "Instagram магазина"
 ADMIN_ORDERS_BUTTON = "Заявки в админке"
 
 # Подпись кнопки слева от поля ввода (`set_chat_menu_button`), открывающей Mini App.
@@ -479,8 +504,16 @@ def login_alert(authorized_at: datetime) -> str:
 
 LOGIN_REJECT_BUTTON = "🚫 Это не я"
 
+# "In a few minutes" rather than "now": access tokens are stateless (`get_current_user`
+# makes no DB lookup), so revoking ends every refresh token but a tab that is already
+# open keeps working for the rest of its `JWT_ACCESS_TTL_SECONDS`. Saying "все сеансы
+# завершены" alone was a promise this design cannot keep, and a security message that
+# overstates is worse than one that admits a gap. No exact figure on purpose: the TTL is
+# configurable and the copy is not.
 LOGIN_REJECTED = (
-    "Вход отменён, все сеансы на сайте завершены.\n"
+    "Вход отменён: войти по этой ссылке больше нельзя, все сеансы на сайте завершены.\n"
+    "Если сайт уже был открыт в чужой вкладке, доступ там пропадёт в течение "
+    "нескольких минут.\n"
     "Чтобы войти самому, откройте сайт и нажмите «Войти через Telegram» — "
     "ссылку из чужого сообщения открывать не нужно."
 )
@@ -510,7 +543,7 @@ HELP = (
     f"{MENU_ORDERS} — ваши заявки и их статусы\n"
     f"{MENU_WISHLIST} — сохранённые товары; они переживают закрытие сбора\n"
     f"{MENU_DEADLINE} — когда закрывается текущий сбор\n"
-    f"{MENU_SITE} — открыть магазин в браузере\n"
+    f"{MENU_LINKS} — сайт магазина и наш Instagram\n"
     f"{MENU_HELP} — этот экран; отсюда же можно отвязать чат\n\n"
     "Сам напишу, когда откроется новый сбор, когда до дедлайна останутся сутки "
     "и когда изменится статус вашей заявки.\n\n"
@@ -522,15 +555,23 @@ HELP = (
 # словами, — и тогда ответ должен не объяснять, а вернуть кнопки.
 FALLBACK = "Не понял вас. Выберите кнопку ниже 👇"
 
-# Ответ кнопки «Сайт». Сама ссылка приходит кнопкой под сообщением — в тексте её
+# Ответ кнопки «Ссылки». Обе ссылки приходят кнопками под сообщением — в тексте их
 # дублировать незачем; а если сайт по конфигурации не адресуем из Telegram (локальная
-# разработка), кнопки не будет, и тогда сообщение обязано назвать адрес словами.
-SITE_PROMPT = "Магазин, корзина и заявки — на сайте:"
+# разработка), его кнопки не будет, и тогда сообщение обязано назвать адрес словами.
+# Instagram кнопкой остаётся в любом случае, поэтому его адрес текст не повторяет.
+LINKS_PROMPT = "Магазин, корзина и заявки — на сайте. Новинки и анонсы — в Instagram:"
 
 
 def site_unavailable(url: str) -> str:
-    """Кнопку Telegram не примет — остаётся адрес текстом."""
-    return f"{SITE_PROMPT}\n{url}"
+    """Кнопку на сайт Telegram не примет — остаётся адрес текстом.
+
+    Со своим текстом, а не `LINKS_PROMPT` плюс адрес: там одно предложение вводит обе
+    кнопки сразу, и стоит приписать к нему адрес, как он достаётся ближайшему —
+    «Новинки и анонсы — в Instagram: http://localhost:3000». Здесь адрес сайта стоит
+    вплотную к своему предложению, а двоеточие в конце вводит кнопку Instagram,
+    которая приходит под сообщением и на локальном хосте.
+    """
+    return f"Магазин, корзина и заявки — на сайте:\n{url}\n\nНовинки и анонсы — в Instagram:"
 
 
 UNLINKED = "Чат отвязан. Подтверждения заявок и напоминания сюда больше не придут."
@@ -615,4 +656,7 @@ def current_deadline(cycle: OrderCycle | None) -> str:
     if cycle is None:
         # Not a failure — an ordinary state of the shop between cycles.
         return "Сейчас сбор заказов закрыт. Как только откроется новый, я напишу."
+    # Без подписи от «Сбор — заявки до…» остаётся заголовок ни о чём: отвечаем прямо.
+    if not cycle.label:
+        return f"Заявки принимаются до {format_deadline(cycle.deadline_at)}"
     return f"Сбор {cycle_title(cycle)} — заявки до {format_deadline(cycle.deadline_at)}"

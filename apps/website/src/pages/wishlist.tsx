@@ -2,9 +2,10 @@ import React, { useMemo } from 'react'
 import Head from 'next/head'
 import useSWR from 'swr'
 import type { ICategory } from 'widgets/types'
-import { Alert, Button } from 'widgets/atoms'
+import { Alert, Button, VisuallyHidden } from 'widgets/atoms'
 import { EmptyState } from 'widgets/molecules'
 import { ProductGrid } from 'widgets/organisms'
+import { IconHeart } from 'widgets/svg'
 import { CatalogTemplate } from 'widgets/templates'
 import { SiteLayout } from '@/layouts/SiteLayout'
 import { AddToCartButton } from '@/components/AddToCartButton'
@@ -93,7 +94,20 @@ const WishlistPage: React.FC = () => {
           emptyState={
             <EmptyState
               title="Пока пусто"
-              description="Нажмите на сердце у товара в каталоге — он сохранится здесь до следующего сбора"
+              description={
+                <>
+                  {/*
+                    Само сердце вместо слова «сердце»: подсказка показывает ту же
+                    кнопку, что стоит в углу фотографии в каталоге. Иконка скрыта
+                    от скринридера (`aria-hidden` у всего набора), поэтому слово
+                    рядом с ней остаётся — иначе фраза читалась бы «нажмите на на
+                    товаре».
+                  */}
+                  Нажмите на <IconHeart className={styles.inlineIcon} />
+                  <VisuallyHidden>сердце</VisuallyHidden> на товаре в каталоге — он сохранится здесь
+                  до следующего сбора
+                </>
+              }
               action={
                 <Button link={{ href: '/catalog' }} isFullWidth="mobile">
                   В каталог

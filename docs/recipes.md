@@ -105,6 +105,19 @@ removes its line from every PENDING order and cancels any order left empty. Conf
 later orders keep their snapshots. Copy must therefore say "snapshot as of confirmation", not
 "as of checkout". See [domain.md](domain.md#price-snapshots).
 
+## Add an admin action that changes the catalog
+
+1. The endpoint goes in `src/services/endpoints/admin.ts`, the SWR keys it invalidates in
+   `src/services/swrKeys.ts` — as usual.
+2. If a visitor can see the result, call `refreshPublicPages(...)` from
+   `src/services/endpoints/revalidate.ts` right after the success toast: the public pages are
+   static, and without it the change waits out `revalidate: 60` plus one request. Name
+   `SHOWCASE_PATHS` (`/` and `/catalog`) and `productPath(slug)` for the products involved —
+   including the slug the product had **before** the edit, if it changed.
+3. A path shape that isn't `/`, `/catalog` or `/catalog/<slug>` also needs adding to the
+   allowlist in `pages/api/revalidate.ts`, or the route refuses it.
+4. See [frontend.md](frontend.md#keeping-the-public-pages-fresh).
+
 ## Before you finish
 
 Re-read [conventions.md](conventions.md#before-finishing-a-change) — and update the document

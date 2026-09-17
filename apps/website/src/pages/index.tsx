@@ -26,6 +26,7 @@ import { WishlistButton } from '@/components/WishlistButton'
 import { getActiveCycleOrNull } from '@/services/endpoints/cycles'
 import { listBrands, listCategories, listProducts } from '@/services/endpoints/catalog'
 import { activeCycleFallback, type ISwrFallback } from '@/services/swrFallback'
+import { INSTAGRAM_URL } from '@/utils/contacts'
 import { publicConfig } from '@/сonfig'
 
 /**
@@ -94,6 +95,11 @@ const FAQ_ITEMS = [
       'Пока заявка ждёт подтверждения, цена в ней идёт вслед за каталогом — если товар подорожает или подешевеет, бот пришлёт об этом уведомление. После подтверждения владельцем цены в заявке уже не меняются.',
   },
   {
+    question: 'Что влияет на ценообразование?',
+    answer:
+      'На цену влияет несколько факторов: стоимость продукта на момент сбора и логистика товара. Поэтому одна и та же позиция в разных сборах может стоить по-разному.',
+  },
+  {
     question: 'Как я узнаю, что заявку подтвердили?',
     answer:
       'Уведомление придёт в Telegram от бота. Звонить вам никто не будет: подтверждение приходит в чат, а о выдаче договариваются уже после него.',
@@ -104,6 +110,12 @@ const FAQ_ITEMS = [
     question: 'Можно ли изменить или отменить заявку?',
     answer:
       'Пока сбор открыт и заявка ещё не подтверждена — да: в разделе «Мои заявки» можно поменять состав и отменить заявку. Отменённую, пока сбор открыт, можно вернуть обратно.',
+  },
+  {
+    question: 'Как связаться с владельцем?',
+    answer:
+      'Напишите напрямую в {link} — это единственный публичный контакт, в остальном переписку ведёт бот в Telegram.',
+    action: { label: 'Instagram магазина', link: { href: INSTAGRAM_URL, target: '_blank' } },
   },
   {
     question: 'Как войти, если у меня нет пароля?',

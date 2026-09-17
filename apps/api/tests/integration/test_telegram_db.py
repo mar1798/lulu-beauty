@@ -9,13 +9,15 @@ from aiogram.types import Message, ReplyKeyboardRemove
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth.models import Role, User
+from app.auth.models import RefreshToken, Role, User
+from app.auth.service import AuthService
 from app.auth.telegram_login import AuthSessionPendingError, TelegramLoginService
 from app.orders.models import Order, OrderStatus
 from app.orders.service import OrderPriceChange
 from app.telegram import messages, recipients
 from app.telegram.handlers import (
     handle_contact,
+    handle_login_action,
     handle_menu_action,
     handle_order_action,
     handle_orders,
@@ -23,7 +25,7 @@ from app.telegram.handlers import (
     handle_unlink,
     handle_wishlist,
 )
-from app.telegram.keyboards import MenuAction, OrderAction
+from app.telegram.keyboards import LoginAction, MenuAction, OrderAction
 from app.telegram.notify import notify_orders_repriced
 from app.telegram.service import BroadcastResult
 from app.wishlist.models import WishlistItem
@@ -179,6 +181,124 @@ async def test_start_then_contact_registers_and_signs_in(bot_session: AsyncSessi
     claimed = await service.claim(str(started.session.id), started.poll_secret)
     assert claimed.phone == "+996700333444"
     assert claimed.telegram_chat_id == 555
+
+
+def _login_query(chat_id: int) -> MagicMock:
+    query = MagicMock()
+    query.from_user.id = chat_id
+    query.answer = AsyncMock()
+    query.message = MagicMock(spec=Message)
+    query.message.edit_text = AsyncMock()
+    return query
+
+
+def _reject_button(message: MagicMock) -> LoginAction:
+    """The callback packed into the warning the bot sent after confirming a login."""
+    markup = message.answer.await_args.kwargs["reply_markup"]
+    return LoginAction.unpack(markup.inline_keyboard[0][0].callback_data)
+
+
+async def test_a_sign_up_login_also_offers_the_reject_button(bot_session: AsyncSession) -> None:
+    """The first-ever login is the one most likely to come from a forwarded link — the
+    person has never seen the bot before — and it used to be the one with no way back."""
+    service = TelegramLoginService(bot_session)
+    started = await service.start()
+    await bot_session.commit()
+
+    await handle_start(
+        _command_message(555), CommandObject(command="start", args=started.link_payload)
+    )
+    contact = _contact_message(555, "+996700333444")
+    await handle_contact(contact)
+
+    assert _reject_button(contact).session_id == started.session.id
+
+
+async def test_rejecting_ends_the_sessions_the_tab_already_claimed(
+    bot_session: AsyncSession,
+) -> None:
+    """The whole point: the tab is let in on the tap, so «Это не я» arrives afterwards."""
+    user = await make_user(bot_session, phone="+996700111222", telegram_chat_id=555)
+    service = TelegramLoginService(bot_session)
+    started = await service.start()
+    await bot_session.commit()
+
+    message = _command_message(555)
+    await handle_start(message, CommandObject(command="start", args=started.link_payload))
+    claimed = await service.claim(str(started.session.id), started.poll_secret)
+    await AuthService(bot_session).issue_tokens(claimed)
+    await bot_session.commit()
+
+    query = _login_query(555)
+    await handle_login_action(query, _reject_button(message))
+
+    live = (
+        await bot_session.execute(
+            select(RefreshToken).where(
+                RefreshToken.user_id == user.id, RefreshToken.revoked_at.is_(None)
+            )
+        )
+    ).scalars().all()
+    assert live == []
+    query.message.edit_text.assert_awaited_once()
+
+
+async def test_rejecting_survives_a_cleanup_tick(bot_session: AsyncSession) -> None:
+    """The bug this came from: the sweep dropped the row seconds after an honest login,
+    and the button under the warning silently stopped revoking anything."""
+    user = await make_user(bot_session, phone="+996700111222", telegram_chat_id=555)
+    service = TelegramLoginService(bot_session)
+    started = await service.start()
+    await bot_session.commit()
+
+    message = _command_message(555)
+    await handle_start(message, CommandObject(command="start", args=started.link_payload))
+    claimed = await service.claim(str(started.session.id), started.poll_secret)
+    await AuthService(bot_session).issue_tokens(claimed)
+    await service.cleanup_expired()
+    await bot_session.commit()
+
+    query = _login_query(555)
+    await handle_login_action(query, _reject_button(message))
+
+    live = (
+        await bot_session.execute(
+            select(RefreshToken).where(
+                RefreshToken.user_id == user.id, RefreshToken.revoked_at.is_(None)
+            )
+        )
+    ).scalars().all()
+    assert live == []
+
+
+async def test_a_reject_from_another_chat_ends_nobodys_sessions(
+    bot_session: AsyncSession,
+) -> None:
+    """A session id is 32 hex in a callback — replayable by anyone who can reach the bot."""
+    user = await make_user(bot_session, phone="+996700111222", telegram_chat_id=555)
+    await make_user(bot_session, phone="+996700555666", telegram_chat_id=777)
+    service = TelegramLoginService(bot_session)
+    started = await service.start()
+    await bot_session.commit()
+
+    message = _command_message(555)
+    await handle_start(message, CommandObject(command="start", args=started.link_payload))
+    claimed = await service.claim(str(started.session.id), started.poll_secret)
+    await AuthService(bot_session).issue_tokens(claimed)
+    await bot_session.commit()
+
+    query = _login_query(777)
+    await handle_login_action(query, _reject_button(message))
+
+    live = (
+        await bot_session.execute(
+            select(RefreshToken).where(
+                RefreshToken.user_id == user.id, RefreshToken.revoked_at.is_(None)
+            )
+        )
+    ).scalars().all()
+    assert len(live) == 1
+    assert query.answer.await_args.kwargs["show_alert"] is True
 
 
 async def test_start_without_a_payload_leaves_the_login_untouched(

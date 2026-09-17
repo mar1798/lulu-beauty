@@ -18,6 +18,7 @@ import {
   uploadProductImage,
 } from '@/services/endpoints/admin'
 import { listCategories } from '@/services/endpoints/catalog'
+import { SHOWCASE_PATHS, productPath, refreshPublicPages } from '@/services/endpoints/revalidate'
 import {
   adminBrandsKey,
   adminProductKey,
@@ -86,8 +87,12 @@ const AdminProductPage: React.FC = () => {
     setIsSubmitting(true)
     setFormError(null)
 
+    // Slug редактируемый: если его поменяли, устаревшей осталась и прежняя
+    // страница — по ней ещё ходят ссылки из поиска и из чатов.
+    const previousSlug = product?.slug
+
     try {
-      await updateProduct(productId, {
+      const saved = await updateProduct(productId, {
         name: values.name,
         slug: values.slug,
         description: values.description === '' ? null : values.description,
@@ -99,6 +104,11 @@ const AdminProductPage: React.FC = () => {
       })
 
       notify({ tone: 'success', title: 'Товар сохранён' })
+      refreshPublicPages(
+        ...SHOWCASE_PATHS,
+        productPath(saved.slug),
+        previousSlug === undefined || previousSlug === saved.slug ? null : productPath(previousSlug)
+      )
       await mutate()
       // Вписанный бренд обязан оказаться в подсказках и в фильтре списка.
       void globalMutate(isAdminBrandsKey)
@@ -120,6 +130,12 @@ const AdminProductPage: React.FC = () => {
     try {
       await action()
       notify({ tone: 'success', title: success })
+      // Адрес фотографии в статике запечён: карточку и витрину надо пересобрать,
+      // иначе покупатель ещё минуту видит прежний снимок (а удалённый — битым).
+      refreshPublicPages(
+        ...SHOWCASE_PATHS,
+        product === undefined ? null : productPath(product.slug)
+      )
       await mutate()
       setSaveVersion(current => current + 1)
     } catch (cause: unknown) {
@@ -178,6 +194,7 @@ const AdminProductPage: React.FC = () => {
     try {
       await deleteProduct(product.id)
       notify({ tone: 'success', title: 'Товар удалён' })
+      refreshPublicPages(...SHOWCASE_PATHS, productPath(product.slug))
       // Список товаров ещё не смонтирован — инвалидируем все его варианты фильтров разом.
       void globalMutate(isAdminProductsKey)
       await router.push('/admin/products')
@@ -194,6 +211,7 @@ const AdminProductPage: React.FC = () => {
     try {
       await restoreProduct(product.id)
       notify({ tone: 'success', title: 'Товар восстановлен' })
+      refreshPublicPages(...SHOWCASE_PATHS, productPath(product.slug))
       await mutate()
       // Восстановленный товар возвращается в список — как и при удалении, сбросить
       // надо все варианты фильтров, а не только текущую карточку.

@@ -72,6 +72,19 @@ def test_cycle_title_falls_back_to_the_deadline_when_unlabelled() -> None:
     assert "2030" in messages.cycle_title(unlabelled)
 
 
+def test_cycle_mention_says_nothing_about_an_unlabelled_cycle() -> None:
+    """Дедлайн у этих сообщений стоит рядом, и подстановка его же вместо названия
+    давала «сбор от 12.06.2030 в 20:00 закрывается 12.06.2030 в 20:00»."""
+    labelled = OrderCycle(deadline_at=datetime(2030, 6, 12, 14, tzinfo=UTC), label="Июнь")
+    unlabelled = OrderCycle(deadline_at=datetime(2030, 6, 12, 14, tzinfo=UTC), label=None)
+
+    assert messages.cycle_mention(labelled) == " «Июнь»"
+    assert messages.cycle_mention(unlabelled) == ""
+    # Дата в сообщении ровно одна — та, что названа сроком.
+    text = messages.cart_last_chance(unlabelled)
+    assert text.count(messages.format_deadline(unlabelled.deadline_at)) == 1
+
+
 def test_order_status_changed_says_nothing_about_pending() -> None:
     """PENDING is the owner undoing a cancellation — news to nobody."""
     assert messages.order_status_changed(_order(status=OrderStatus.PENDING)) is None
@@ -202,9 +215,10 @@ def test_order_item_removed_is_not_the_cancellation_text() -> None:
 
 def test_cart_last_chance_is_not_the_day_ahead_reminder_again() -> None:
     deadline = datetime(2030, 6, 12, 14, tzinfo=UTC)
+    cycle = OrderCycle(deadline_at=deadline, label="Июнь")
 
-    first = messages.cart_reminder("«Июнь»", deadline)
-    last = messages.cart_last_chance("«Июнь»", deadline)
+    first = messages.cart_reminder(cycle)
+    last = messages.cart_last_chance(cycle)
 
     assert first != last
     assert "Последний шанс" in last

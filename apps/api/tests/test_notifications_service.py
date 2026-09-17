@@ -41,7 +41,7 @@ async def test_send_reminder_uses_telegram_when_bound() -> None:
     bot = AsyncMock()
     service = NotificationsService(bot)
 
-    await service.send_reminder(_user(telegram_chat_id=42), "Cycle 1", datetime.now(UTC))
+    await service.send_reminder(_user(telegram_chat_id=42), _cycle())
 
     bot.send_message.assert_awaited_once()
 
@@ -83,7 +83,7 @@ async def test_send_reminder_links_to_checkout_when_the_site_is_public(
     bot = AsyncMock()
     service = NotificationsService(bot)
 
-    await service.send_reminder(_user(telegram_chat_id=42), "Cycle 1", datetime.now(UTC))
+    await service.send_reminder(_user(telegram_chat_id=42), _cycle())
 
     markup = bot.send_message.await_args.kwargs["reply_markup"]
     assert markup.inline_keyboard[0][0].url == "https://lulu.example.com/checkout"
@@ -96,7 +96,7 @@ async def test_send_reminder_still_goes_out_without_a_linkable_site(
     bot = AsyncMock()
     service = NotificationsService(bot)
 
-    await service.send_reminder(_user(telegram_chat_id=42), "Cycle 1", datetime.now(UTC))
+    await service.send_reminder(_user(telegram_chat_id=42), _cycle())
 
     bot.send_message.assert_awaited_once()
     assert bot.send_message.await_args.kwargs["reply_markup"] is None
@@ -106,11 +106,9 @@ async def test_send_reminder_switches_text_on_the_last_chance_stage() -> None:
     bot = AsyncMock()
     service = NotificationsService(bot)
 
-    await service.send_reminder(_user(telegram_chat_id=42), "Cycle 1", datetime.now(UTC))
+    await service.send_reminder(_user(telegram_chat_id=42), _cycle())
     first = bot.send_message.await_args.args[1]
-    await service.send_reminder(
-        _user(telegram_chat_id=42), "Cycle 1", datetime.now(UTC), last_chance=True
-    )
+    await service.send_reminder(_user(telegram_chat_id=42), _cycle(), last_chance=True)
     last = bot.send_message.await_args.args[1]
 
     assert "Последний шанс" in last
@@ -222,7 +220,7 @@ async def test_delivery_retries_once_after_a_flood_wait() -> None:
     ]
     service = NotificationsService(bot)
 
-    await service.send_reminder(_user(telegram_chat_id=42), "Cycle 1", datetime.now(UTC))
+    await service.send_reminder(_user(telegram_chat_id=42), _cycle())
 
     assert bot.send_message.await_count == 2
 
@@ -235,6 +233,6 @@ async def test_delivery_gives_up_after_a_second_flood_wait() -> None:
     service = NotificationsService(bot)
 
     # Must not recurse forever, and must not raise into the caller.
-    await service.send_reminder(_user(telegram_chat_id=42), "Cycle 1", datetime.now(UTC))
+    await service.send_reminder(_user(telegram_chat_id=42), _cycle())
 
     assert bot.send_message.await_count == 2

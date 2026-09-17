@@ -46,7 +46,21 @@ browser                 next (/api/auth/*)            api                 telegr
   distinguishing them would let a caller probe which sessions exist.
 - After authorizing, the bot sends a second message with a **reject** button, because the tab
   being let in is whichever one produced the link, not necessarily the one in front of the
-  person tapping.
+  person tapping. Both authorizing paths send it: `/start` in a chat that is already bound,
+  and the shared contact that creates the account.
+- «Это не я» spends the session and revokes every refresh token of that account. It stays
+  pressable until the row is cleaned up, `AUTH_SESSION_RETENTION_SECONDS` (1 day) after the
+  session expires — the row is kept precisely for this, since the session itself is spent a
+  second after the tap. An access token already issued is **not** revocable (stateless, no DB
+  lookup in `get_current_user`), so a tab that was let in keeps working for up to
+  `JWT_ACCESS_TTL_SECONDS` (15 min) and then cannot refresh. The copy says so rather than
+  claiming every session is gone at once — an overstated security message is worse than
+  one that admits a gap.
+- `TelegramLoginService.reject` answers None both for "this button no longer applies" and
+  for "it applied, but the login never named an account", and the handler shows the same
+  «отменять нечего» for both. The second case needs a callback for an unauthorized session
+  bound to the presser's own chat, and the button is only ever attached after authorizing,
+  so it is unreachable today — but it is why the two are not told apart.
 
 ### 2. Signature paths (skip the wait)
 
@@ -72,8 +86,14 @@ renders and then refuses, which is worse than not offering it.
 `throttling.py`, `webhook.py`, `client.py`, `service.py`.
 
 Menu buttons, each also a command: 🛒 Корзина (`/cart`), 📦 Мои заявки (`/orders`),
-⭐ Избранное (`/wishlist`), 📅 Текущий сбор (`/deadline`), 🌐 Сайт (`/site`),
-ℹ️ Помощь (`/help`), plus `/start`, `/menu` and unlinking.
+⭐ Избранное (`/wishlist`), 📅 Текущий сбор (`/deadline`), 🌐 Ссылки (`/links`, and
+`/site` for the older name), ℹ️ Помощь (`/help`), plus `/start`, `/menu` and unlinking.
+
+🌐 Ссылки and ℹ️ Помощь both carry an **Instagram** button — the shop's account is the only
+place the owner speaks outside the bot. Its address is hardcoded in `keyboards.INSTAGRAM_URL`
+and duplicated by hand in `apps/website/src/utils/contacts.ts` (the footer and the FAQ use it
+there); change one and change the other. Unlike every link to the site it needs no
+`_is_public_url` check, so it survives on localhost, where the site button disarms itself.
 
 **Throttling** (`throttling.py`) is an *outer* middleware registered before filters run: every
 path into the bot opens a database session on behalf of an unauthenticated sender, and a

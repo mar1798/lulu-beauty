@@ -14,6 +14,7 @@ import {
   updateCycle,
 } from '@/services/endpoints/admin'
 import { getActiveCycleOrNull } from '@/services/endpoints/cycles'
+import { SHOWCASE_PATHS, refreshPublicPages } from '@/services/endpoints/revalidate'
 import { activeCycleKey, cyclesKey } from '@/services/swrKeys'
 
 /**
@@ -71,6 +72,9 @@ const AdminCyclesPage: React.FC = () => {
     try {
       await action()
       notify({ tone: 'success', title: success })
+      // Открытый сбор и его дедлайн стоят на главной и в каталоге, а закрытый
+      // сбор ещё и прячет кнопки «в корзину» — статика обязана это догнать.
+      refreshPublicPages(...SHOWCASE_PATHS)
       await mutateCycles()
       void globalMutate(activeCycleKey)
     } catch (cause: unknown) {

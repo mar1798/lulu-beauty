@@ -43,12 +43,15 @@ def test_unlink_is_confirmed_before_it_happens() -> None:
     assert [action.action for action in actions] == ["unlink_cancel", "unlink_confirm"]
 
 
-def test_help_offers_unlink_and_the_site(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_help_offers_unlink_the_site_and_the_instagram(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("app.config.settings.website_base_url", "https://lulu.example.com")
 
     buttons = [b for row in keyboards.help_actions().inline_keyboard for b in row]
 
-    assert [button.url for button in buttons if button.url] == ["https://lulu.example.com"]
+    assert [button.url for button in buttons if button.url] == [
+        "https://lulu.example.com",
+        keyboards.INSTAGRAM_URL,
+    ]
     assert MenuAction.unpack(buttons[-1].callback_data or "").action == "unlink"
 
 
@@ -61,8 +64,8 @@ def test_help_keeps_the_unlink_button_when_the_site_is_not_linkable(
 
     buttons = [b for row in keyboards.help_actions().inline_keyboard for b in row]
 
-    assert len(buttons) == 1
-    assert MenuAction.unpack(buttons[0].callback_data or "").action == "unlink"
+    assert [button.url for button in buttons if button.url] == [keyboards.INSTAGRAM_URL]
+    assert MenuAction.unpack(buttons[-1].callback_data or "").action == "unlink"
 
 
 def test_order_action_round_trips_through_callback_data() -> None:
@@ -179,7 +182,33 @@ def test_site_link_disarms_itself_on_a_non_public_host(monkeypatch: pytest.Monke
     monkeypatch.setattr("app.config.settings.website_base_url", "http://localhost:3000")
 
     assert keyboards.site_link() is None
+    assert keyboards.site_is_linkable() is False
     assert keyboards.site_url() == "http://localhost:3000"
+
+
+def test_site_links_keep_the_instagram_when_the_site_is_not_linkable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Instagram не зависит от WEBSITE_BASE_URL: его адрес публичен всегда, поэтому
+    ответ «Сайт» не остаётся совсем без кнопок даже на localhost."""
+    monkeypatch.setattr("app.config.settings.website_base_url", "http://localhost:3000")
+
+    rows = keyboards.site_links().inline_keyboard
+
+    assert [[b.url for b in row] for row in rows] == [[keyboards.INSTAGRAM_URL]]
+
+
+def test_site_links_put_the_shop_above_the_instagram(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Разными строками, а не двумя кнопками в ряд: это разные места, и пара
+    одинаковых пилюль читалась бы как выбор между половинами одного."""
+    monkeypatch.setattr("app.config.settings.website_base_url", "https://lulu.example.com/")
+
+    rows = keyboards.site_links().inline_keyboard
+
+    assert [[b.url for b in row] for row in rows] == [
+        ["https://lulu.example.com"],
+        [keyboards.INSTAGRAM_URL],
+    ]
 
 
 def test_order_actions_add_the_admin_link_when_the_site_is_addressable(

@@ -23,6 +23,7 @@ import {
   restoreProduct,
 } from '@/services/endpoints/admin'
 import { listCategories } from '@/services/endpoints/catalog'
+import { SHOWCASE_PATHS, productPath, refreshPublicPages } from '@/services/endpoints/revalidate'
 import { adminBrandsKey, adminProductsKey, categoriesKey } from '@/services/swrKeys'
 import * as styles from '@/styles/admin.css'
 
@@ -152,6 +153,8 @@ const AdminProductsPage: React.FC = () => {
     try {
       await action()
       notify({ tone: 'success', title: success, description: product.name })
+      // Удаление и восстановление меняют и витрину, и саму карточку товара.
+      refreshPublicPages(...SHOWCASE_PATHS, productPath(product.slug))
       await mutate()
     } catch (cause: unknown) {
       const message = messageForError(cause, scope)
@@ -166,7 +169,7 @@ const AdminProductsPage: React.FC = () => {
   const handleDelete = async (product: IProduct): Promise<void> => {
     const confirmed = await confirm({
       title: 'Удалить товар?',
-      description: `«${product.name}» пропадёт из каталога. В уже оформленных заявках он останется — там хранится снимок на момент заказа.`,
+      description: `«${product.name}» пропадёт из каталога. В уже оформленных заявках он останется — там состав и цены закреплены на момент заказа.`,
       confirmLabel: 'Удалить',
     })
 

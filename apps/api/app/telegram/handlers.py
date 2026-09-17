@@ -162,12 +162,23 @@ async def handle_contact(message: Message) -> None:
             await auth.authorize(auth_session, user)
 
         await session.commit()
-        is_login = auth_session is not None
+        login = auth_session
 
     await message.answer(
-        messages.LOGIN_CONFIRMED if is_login else messages.LINKED,
+        messages.LOGIN_CONFIRMED if login is not None else messages.LINKED,
         reply_markup=keyboards.main_menu(),
     )
+
+    if login is not None:
+        # The same warning `handle_start` sends, and for the same reason: this branch is
+        # a sign-in too, just one that had to create the account on the way. Leaving it
+        # out meant the person whose very first login was opened from somebody else's
+        # forwarded link — the likeliest victim of all, since they have never seen the
+        # bot before — was the one with no way to take it back.
+        await message.answer(
+            messages.login_alert(login.authorized_at or datetime.now(UTC)),
+            reply_markup=keyboards.login_reject(login.id),
+        )
 
 
 async def _linked_user(message: Message, session: AsyncSession) -> User | None:
@@ -290,22 +301,30 @@ async def handle_deadline(message: Message) -> None:
     )
 
 
-@router.message(or_f(Command("site"), F.text == messages.MENU_SITE))
-async def handle_site(message: Message) -> None:
-    """The way out to the browser — deliberately a whole reply rather than a keyboard
-    button, because a reply keyboard cannot carry a url and an inline one cannot stay.
+@router.message(or_f(Command("links"), Command("site"), F.text == messages.MENU_LINKS))
+async def handle_links(message: Message) -> None:
+    """Both ways out of the chat — the shop and the Instagram — and deliberately a whole
+    reply rather than keyboard buttons, because a reply keyboard cannot carry a url and
+    an inline one cannot stay.
+
+    `/site` still answers next to `/links`: it is what the button used to be called, it
+    is published nowhere (`BOT_COMMANDS` lists only /menu and /help), and keeping it
+    costs one filter against a chat where someone typed it once out of habit.
 
     Open to unlinked chats too: the storefront is public, and asking for a phone number
     first would be a step in front of the one action that needs no account at all.
     """
-    keyboard = keyboards.site_link()
-    if keyboard is None:
+    keyboard = keyboards.site_links()
+    if not keyboards.site_is_linkable():
         # Telegram refuses a button pointing at a non-addressable host (local dev) — and
-        # refuses the whole message, not just the button.
-        await message.answer(messages.site_unavailable(keyboards.site_url()))
+        # refuses the whole message, not just the button. The Instagram button survives
+        # that (its host is public either way), so only the shop moves into the text.
+        await message.answer(
+            messages.site_unavailable(keyboards.site_url()), reply_markup=keyboard
+        )
         return
 
-    await message.answer(messages.SITE_PROMPT, reply_markup=keyboard)
+    await message.answer(messages.LINKS_PROMPT, reply_markup=keyboard)
 
 
 @router.message(Command("unlink"))

@@ -57,10 +57,10 @@ def main_menu() -> ReplyKeyboardMarkup:
                 KeyboardButton(text=messages.MENU_DEADLINE),
             ],
             # Next to help rather than first in the list: the bot answers everything
-            # people come here for on its own, and leaving for a browser is the last
-            # option, not the first. A reply-keyboard button cannot be a url, so the
-            # address itself arrives as an inline button in the answer (`handle_site`).
-            [KeyboardButton(text=messages.MENU_SITE), KeyboardButton(text=messages.MENU_HELP)],
+            # people come here for on its own, and leaving for the browser is the last
+            # option, not the first. A reply-keyboard button cannot be a url, so both
+            # addresses arrive as inline buttons in the answer (`handle_links`).
+            [KeyboardButton(text=messages.MENU_LINKS), KeyboardButton(text=messages.MENU_HELP)],
         ],
         resize_keyboard=True,
         is_persistent=True,
@@ -171,6 +171,12 @@ class MenuAction(CallbackData, prefix="menu"):
     action: MenuActionName
 
 
+# The shop's Instagram: the only place the owner speaks outside this bot, and the one
+# address here that is public by construction — no `_is_public_url` dance, it links from
+# local development too. Kept in step by hand with the same constant on the site
+# (`apps/website/src/utils/contacts.ts`), which feeds the footer and the FAQ.
+INSTAGRAM_URL = "https://www.instagram.com/sululu_kg"
+
 CHECKOUT_PATH = "/checkout"
 WISHLIST_PATH = "/wishlist"
 CATALOG_PATH = "/catalog"
@@ -178,11 +184,18 @@ ORDERS_PATH = "/orders"
 ADMIN_ORDERS_PATH = "/admin/orders"
 
 
+def instagram_button() -> InlineKeyboardButton:
+    """The shop's Instagram, and unlike `_site_button` it is never None: the address is
+    a public one whatever `WEBSITE_BASE_URL` happens to be pointing at."""
+    return InlineKeyboardButton(text=messages.INSTAGRAM_BUTTON, url=INSTAGRAM_URL)
+
+
 def help_actions() -> InlineKeyboardMarkup:
-    """Under the help text: the site, and the way out of the binding.
+    """Under the help text: the site, the Instagram, and the way out of the binding.
 
     Unlink lives here rather than in the menu on purpose — it is used once, if ever,
-    and a permanent button for it would sit next to «Корзина» being mistyped.
+    and a permanent button for it would sit next to «Корзина» being mistyped. Instagram
+    sits above it and below the site, in the order the three are actually wanted.
     """
     rows = [
         [
@@ -192,6 +205,7 @@ def help_actions() -> InlineKeyboardMarkup:
             )
         ]
     ]
+    rows.insert(0, [instagram_button()])
     site = _site_button(path="", text=messages.SITE_BUTTON)
     if site is not None:
         rows.insert(0, [site])
@@ -228,9 +242,30 @@ def orders_link() -> InlineKeyboardMarkup | None:
 
 
 def site_link() -> InlineKeyboardMarkup | None:
-    """The site itself — under the «Сайт» reply, and wherever there is nowhere more
-    specific to point."""
+    """The site itself — wherever there is nowhere more specific to point."""
     return _site_link("", messages.SITE_BUTTON)
+
+
+def site_links() -> InlineKeyboardMarkup:
+    """Both ways out of the chat, under the «Сайт» reply: the shop and the Instagram.
+
+    Two rows, not two buttons side by side — they are different places, and a pair of
+    equal pills reads as a choice between halves of one thing. The markup is never
+    empty, so this one returns a keyboard rather than `None`: on a non-addressable host
+    the shop button drops out (`_site_button`) and Instagram is still there.
+    """
+    rows = []
+    site = _site_button(path="", text=messages.SITE_BUTTON)
+    if site is not None:
+        rows.append([site])
+    rows.append([instagram_button()])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def site_is_linkable() -> bool:
+    """Whether the «Сайт» reply gets to point at the shop with a button, or has to
+    spell the address out in words (`messages.site_unavailable`)."""
+    return _site_button(path="", text=messages.SITE_BUTTON) is not None
 
 
 def site_url() -> str:

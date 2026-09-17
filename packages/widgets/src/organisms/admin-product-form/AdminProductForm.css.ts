@@ -1,5 +1,5 @@
 import { style } from '@vanilla-extract/css'
-import { color, rem } from '../../styling/lib'
+import { border, color, rem } from '../../styling/lib'
 import { media } from '../../styling/lib/media'
 import { flexColumn, flexRow, panel } from '../../styling/mixin'
 import { vars } from '../../styling/themes/contract.css'
@@ -77,6 +77,7 @@ export const thumb = style({
   position: 'relative',
   aspectRatio: '1 / 1',
   overflow: 'hidden',
+  border: border(1, color.border('subtle')),
   borderRadius: vars.radius.lg,
 })
 

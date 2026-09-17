@@ -1,5 +1,6 @@
 import { serverConfig } from '@/сonfig'
 import { ApiError, toApiError } from './apiErrors'
+import { notifySessionExpired } from './session'
 
 /**
  * Тонкий HTTP-клиент над `fetch`. Ничего не знает про конкретные ручки —
@@ -94,6 +95,21 @@ const send = async (url: string, init: RequestInit): Promise<Response> => {
 
 const NO_CONTENT = 204
 
+const UNAUTHORIZED = 401
+
+/**
+ * 401 с бэкенда — это «сессии больше нет»: прокси отвечает так, только когда и
+ * обновление пары токенов отвергнуто, и cookie уже стёрты.
+ *
+ * Ручки `/api/auth/*` (`target: 'next'`) сюда не попадают намеренно: для них
+ * 401 — обычный ответ гостю (`/api/auth/me`), а не потеря сессии.
+ */
+const checkSession = (target: Target, status: number): void => {
+  if (target === 'api' && status === UNAUTHORIZED) {
+    notifySessionExpired()
+  }
+}
+
 const request = async <T>(
   target: Target,
   method: string,
@@ -103,6 +119,8 @@ const request = async <T>(
   const response = await send(buildUrl(target, path, options.query), buildInit(method, options))
 
   if (!response.ok) {
+    checkSession(target, response.status)
+
     throw await toApiError(response)
   }
 
@@ -171,6 +189,8 @@ export const download = async (
   })
 
   if (!response.ok) {
+    checkSession('api', response.status)
+
     throw await toApiError(response)
   }
 

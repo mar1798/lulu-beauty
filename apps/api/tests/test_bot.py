@@ -13,7 +13,7 @@ from app.telegram.bot import BOT_COMMANDS, dispatcher
 from app.telegram.handlers import (
     handle_fallback,
     handle_help,
-    handle_site,
+    handle_links,
     handle_start,
     router,
 )
@@ -248,32 +248,35 @@ async def test_a_webhook_telegram_refuses_falls_back_to_polling_instead_of_crash
     instance.delete_webhook.assert_not_awaited()
 
 
-async def test_handle_site_sends_a_button_when_the_site_is_addressable(
+async def test_handle_links_sends_both_buttons_when_the_site_is_addressable(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Кнопка «Сайт» — единственный ответ бота, который существует ради ухода из чата."""
+    """Кнопка «Ссылки» — единственный ответ бота, который существует ради ухода из чата."""
     monkeypatch.setattr("app.config.settings.website_base_url", "https://lulu.example.com")
     message = MagicMock()
     message.answer = AsyncMock()
 
-    await handle_site(message)
+    await handle_links(message)
 
     text, kwargs = message.answer.await_args[0], message.answer.await_args[1]
-    assert text[0] == messages.SITE_PROMPT
-    assert kwargs["reply_markup"].inline_keyboard[0][0].url == "https://lulu.example.com"
+    assert text[0] == messages.LINKS_PROMPT
+    urls = [b.url for row in kwargs["reply_markup"].inline_keyboard for b in row]
+    assert urls == ["https://lulu.example.com", keyboards.INSTAGRAM_URL]
 
 
-async def test_handle_site_falls_back_to_the_address_in_words(
+async def test_handle_links_falls_back_to_the_address_in_words(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """На локальном хосте кнопки нет — Telegram отверг бы всё сообщение целиком, — и
-    тогда адрес обязан быть в тексте, иначе ответ не отвечает ни на что."""
+    """На локальном хосте кнопки на сайт нет — Telegram отверг бы всё сообщение
+    целиком, — и тогда адрес обязан быть в тексте, иначе ответ не отвечает ни на что.
+    Instagram при этом остаётся кнопкой: его хост публичен при любой конфигурации."""
     monkeypatch.setattr("app.config.settings.website_base_url", "http://localhost:3000")
     message = MagicMock()
     message.answer = AsyncMock()
 
-    await handle_site(message)
+    await handle_links(message)
 
     text, kwargs = message.answer.await_args[0], message.answer.await_args[1]
     assert "http://localhost:3000" in text[0]
-    assert "reply_markup" not in kwargs
+    urls = [b.url for row in kwargs["reply_markup"].inline_keyboard for b in row]
+    assert urls == [keyboards.INSTAGRAM_URL]

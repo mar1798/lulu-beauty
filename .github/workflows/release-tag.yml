@@ -45,7 +45,7 @@ jobs:
 
     steps:
       - name: Get repository code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
           fetch-tags: true
@@ -202,7 +202,7 @@ jobs:
 
     steps:
       - name: Get repository code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           # The whole history and every tag: the name of the next tag is derived
           # from the existing ones, and the message lists commits since the
@@ -309,7 +309,7 @@ jobs:
 
     steps:
       - name: Get repository code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: ${{ needs.tag.outputs.tag }}
 
@@ -320,17 +320,17 @@ jobs:
         run: echo "name=ghcr.io/${GITHUB_REPOSITORY,,}/api" >> "$GITHUB_OUTPUT"
 
       - name: Set up Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Log in to GHCR
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           # apps/api is its own build context — unlike the website, the backend
           # needs nothing from the rest of the repository.
@@ -352,7 +352,7 @@ jobs:
 
     steps:
       - name: Get repository code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: ${{ needs.tag.outputs.tag }}
 
@@ -363,10 +363,10 @@ jobs:
         run: echo "name=ghcr.io/${GITHUB_REPOSITORY,,}/website" >> "$GITHUB_OUTPUT"
 
       - name: Set up Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Log in to GHCR
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -404,7 +404,7 @@ jobs:
       # who has to check them. The same values are in .env.prod on the server —
       # if they ever disagree, the built bundle is what the browser gets.
       - name: Build and push
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           # The repository root: Next compiles `widgets` from source, and `npm
           # ci` needs the root package-lock.json.

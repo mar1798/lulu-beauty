@@ -6,6 +6,7 @@ import { useToast } from 'widgets/contexts'
 import { AdminShell } from '@/layouts/AdminShell'
 import { messageForError } from '@/services/apiErrors'
 import { importCatalog } from '@/services/endpoints/admin'
+import { SHOWCASE_PATHS, refreshPublicPages } from '@/services/endpoints/revalidate'
 import { categoriesKey, isAdminBrandsKey, isAdminProductsKey } from '@/services/swrKeys'
 
 /**
@@ -34,6 +35,12 @@ const AdminImportPage: React.FC = () => {
       const result = await importCatalog(file)
 
       setSummary(result)
+      /*
+        Только витрина: импорт меняет разом сотни товаров, и перечислять их
+        страницы значило бы пересобрать весь каталог одним запросом. Карточки
+        догонят сами — `revalidate: 60` для того и остался.
+      */
+      refreshPublicPages(...SHOWCASE_PATHS)
       // Импорт может завести категории и поменять любой товар разом — точечно не угадать.
       void globalMutate(categoriesKey)
       void globalMutate(isAdminProductsKey)

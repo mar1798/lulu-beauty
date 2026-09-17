@@ -8,6 +8,7 @@ import { AdminShell } from '@/layouts/AdminShell'
 import { messageForError } from '@/services/apiErrors'
 import { createProduct, listAdminBrands, uploadProductImage } from '@/services/endpoints/admin'
 import { listCategories } from '@/services/endpoints/catalog'
+import { SHOWCASE_PATHS, productPath, refreshPublicPages } from '@/services/endpoints/revalidate'
 import {
   adminBrandsKey,
   categoriesKey,
@@ -82,6 +83,12 @@ const AdminProductCreatePage: React.FC = () => {
       }
 
       notify({ tone: 'success', title: 'Товар создан', description: values.name })
+      /*
+        После загрузки фотографии, а не сразу после создания: пересобирать
+        каталог дважды незачем, а между двумя запросами товар стоял бы в витрине
+        без снимка — и таким бы и застыл до следующей правки.
+      */
+      refreshPublicPages(...SHOWCASE_PATHS, productPath(product.slug))
       // Список товаров ещё не смонтирован — инвалидируем все его варианты фильтров разом.
       void globalMutate(isAdminProductsKey)
       // Вписанный бренд обязан оказаться в подсказках следующего товара.

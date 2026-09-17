@@ -1,11 +1,43 @@
 import clsx from 'clsx'
-import { useId, useState, type FC } from 'react'
+import { useId, useState, type FC, type ReactNode } from 'react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
-import type { IBasicStyling, IFaqAccordionProps } from '../../types'
+import type { IBasicStyling, IFaqAccordionProps, IFaqItem } from '../../types'
 import { IconChevronDown } from '../../svg/icons'
 import { Reveal } from '../../atoms/reveal'
+import { AppLink } from '../../atoms/app-link'
 import { FAQ_TRANSITION, staggerDelay } from '../../utils/motion'
 import * as styles from './FaqAccordion.css'
+
+/**
+ * Метка места ссылки в тексте ответа: подпись `action.label` встаёт вместо
+ * неё. Так ссылка попадает в середину фразы, оставаясь данными, — иначе
+ * пришлось бы принимать готовый узел, а вместе с ним и чужую вёрстку.
+ */
+const LINK_SLOT = '{link}'
+
+/**
+ * Ответ строкой плюс ссылка в месте `{link}`. Без метки ссылка встаёт в
+ * конце абзаца — отдельной строкой она читалась бы кнопкой.
+ */
+const renderAnswer = (item: IFaqItem): ReactNode => {
+  if (item.action === undefined) {
+    return item.answer
+  }
+
+  const [before, after] = item.answer.includes(LINK_SLOT)
+    ? item.answer.split(LINK_SLOT)
+    : [`${item.answer} `, '']
+
+  return (
+    <>
+      {before}
+      <AppLink className={styles.answerLink} {...item.action.link}>
+        {item.action.label}
+      </AppLink>
+      {after}
+    </>
+  )
+}
 
 /**
  * FAQ-аккордеон: строки с волосяными границами, раскрытие по кнопке.
@@ -52,7 +84,7 @@ export const FaqAccordion: FC<IFaqAccordionProps & IBasicStyling> = ({
 
         const answer = (
           <div className={styles.panelBody}>
-            <p className={styles.answer}>{item.answer}</p>
+            <p className={styles.answer}>{renderAnswer(item)}</p>
           </div>
         )
 

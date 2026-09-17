@@ -9,6 +9,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import { useCart } from '@/contexts/CartContext'
 import { usePrefetchRoutes } from '@/hooks/usePrefetchRoutes'
 import { useTelegramWebview } from '@/hooks/useTelegramWebview'
+import { INSTAGRAM_URL } from '@/utils/contacts'
 
 /**
  * Каркас публичных страниц: шапка и подвал, настроенные данными сайта.
@@ -46,7 +47,7 @@ const CONTACTS_COLUMN: IFooterColumn = {
     {
       label: 'Instagram',
       icon: <IconInstagram />,
-      link: { href: 'https://www.instagram.com/sululu_kg', target: '_blank' },
+      link: { href: INSTAGRAM_URL, target: '_blank' },
     },
   ],
 }

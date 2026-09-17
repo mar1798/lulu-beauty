@@ -162,7 +162,7 @@ export const head = style({
       ...flexRow(16),
       alignItems: 'flex-end',
       justifyContent: 'space-between',
-      flexWrap: 'wrap',
+      flexWrap: 'nowrap',
     },
   }),
 })
@@ -179,6 +179,7 @@ export const summary = style({
 export const actions = style({
   ...flexRow(8),
   flexWrap: 'wrap',
+  flexShrink: 0,
 })
 
 /** Содержимое раздела. Отдельный блок от `head` — им нужен разный `order`. */
