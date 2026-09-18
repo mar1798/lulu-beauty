@@ -66,7 +66,7 @@ class CycleClosure:
 
 
 class CycleSchedulerService:
-    """DB sweeps for cycle lifecycle: reminders, deadline close + cart cleanup.
+    """DB sweeps for cycle lifecycle: announcements, reminders, deadline close + cart cleanup.
 
     Deliberately re-reads state from the DB on every sweep rather than scheduling
     per-cycle timers, so a restart never loses a pending reminder/close.
@@ -74,6 +74,28 @@ class CycleSchedulerService:
 
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
+
+    async def unannounced_cycles(self) -> list[uuid.UUID]:
+        """Cycles that are collecting orders but whose opening broadcast never finished.
+
+        Normally empty: `notify_cycle_opened` stamps `announced_at` itself the moment its
+        fan-out is through. This fills only when a process died partway through one — the
+        announcement runs outside the request that created the cycle, so without a sweep
+        to pick it back up, nothing would ever retry it and the customers it had not
+        reached yet would simply never hear that the shop is open.
+
+        Closed and expired cycles are left out: "Открыт новый сбор ... до вчера" is worse
+        than silence, and there is nothing left to order in them either way.
+        """
+        now = datetime.now(UTC)
+        result = await self._session.execute(
+            select(OrderCycle.id).where(
+                OrderCycle.announced_at.is_(None),
+                OrderCycle.deadline_at > now,
+                OrderCycle.status != CycleStatus.CLOSED,
+            )
+        )
+        return list(result.scalars().all())
 
     async def plan_reminders(self) -> list[CycleReminder]:
         """Works out who is due a nudge. Writes nothing and sends nothing.

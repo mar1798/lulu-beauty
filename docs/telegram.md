@@ -137,7 +137,7 @@ with admin rights — `ADMIN` and `SUPER_ADMIN` alike (`recipients.get_owners`).
 | Cycle closed: cart rescued into wishlist | Each cart holder |
 | Cycle closed | Customers with orders in it |
 
-**Two rules that the code is shaped around:**
+**Three rules that the code is shaped around:**
 
 1. **Notify after the commit, never inside the transaction.** A message about a state that
    then rolls back is a lie the system cannot retract — the owner sent shopping against a
@@ -147,6 +147,20 @@ with admin rights — `ADMIN` and `SUPER_ADMIN` alike (`recipients.get_owners`).
    held open across a Telegram round-trip per recipient, and the stamp follows the send so a
    crash mid-sweep re-sends rather than silently swallowing. A duplicate nudge is a nuisance;
    a missed one is a lost order. Only what actually went out is stamped.
+3. **The opening announcement is stamped the same way**, in `order_cycles.announced_at`. It
+   fans out over every linked customer and runs outside the request that created the cycle, so
+   a restart partway through it used to leave everyone past that point permanently unaware the
+   shop was open, with nothing recording that they had been missed. `cycle_notice_sweep` picks
+   up any still-collecting cycle the stamp is missing from and re-runs `notify_cycle_opened`,
+   which repeats itself to the customers it did reach — the same trade as a duplicate nudge.
+   A cycle already closed or past its deadline is left alone: announcing it invites people to
+   order in something that no longer takes orders.
+
+   While a broadcast is in flight the cycle is claimed in memory (`notify._announcing`), so a
+   tick landing mid-fan-out does not start a second copy of it. In memory and not in the row
+   on purpose — a claim that survived the process would leave a cycle killed mid-announcement
+   claimed for good, which is the failure this exists to repair. It rests on the scheduler
+   living in the one API process, as every sweep here already does.
 
 Message copy lives in `messages.py` and is Russian. The bot omits link buttons pointing at
 `localhost` — Telegram rejects those — so those buttons simply don't appear in local dev.

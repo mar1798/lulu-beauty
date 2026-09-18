@@ -52,6 +52,15 @@ carts stayed attached to the first one.
 can close a cycle early, and a cycle whose carts have already been emptied must not keep
 accepting new ones just because its date hasn't arrived.
 
+### Opening a cycle is announced once
+
+Creating a cycle broadcasts "Открыт новый сбор" to every linked customer. The broadcast runs
+outside the request and stamps `announced_at` when it is through; the `cycle_notice_sweep` job
+re-runs it for any still-collecting cycle the stamp is missing from, so an announcement cut
+short by a restart reaches the rest of the shop instead of being lost. Same trade as the
+reminders: a repeat to the people already reached beats a cycle nobody heard about. Details in
+[telegram.md](telegram.md#notifications).
+
 ### What closing does
 
 `close_now` (owner presses close) and the `deadline_sweep` job do exactly the same thing, and

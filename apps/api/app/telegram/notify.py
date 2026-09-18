@@ -16,7 +16,7 @@ has nothing useful to do with the failure beyond what these logs already record.
 import logging
 import uuid
 from collections.abc import Sequence
-from datetime import datetime
+from datetime import UTC, datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -33,6 +33,21 @@ from app.telegram.client import notifications_service
 from app.telegram.service import CartRescueNotice
 
 logger = logging.getLogger("app.telegram.notify")
+
+# Cycles whose opening broadcast is in flight right now.
+#
+# The announcement is retried from the sweep for any cycle `announced_at` is missing
+# from, and a fan-out over every customer in the shop easily outlives a sweep tick —
+# so without this, a tick landing mid-broadcast would start a second copy of the same
+# announcement and tell everyone it had already reached a second time.
+#
+# In memory rather than in the row, because what has to survive a restart is precisely
+# the *absence* of a stamp: a claim written to the database would outlive the process
+# that took it and leave a cycle killed mid-announcement claimed for good, which is the
+# very failure this is here to repair. It holds because the scheduler runs inside the
+# one API process (docs/deployment.md) — the same assumption every sweep here already
+# rests on, since a second process would double every reminder and every closing too.
+_announcing: set[uuid.UUID] = set()
 
 
 async def notify_new_order(order_id: uuid.UUID) -> None:
@@ -214,22 +229,45 @@ async def _load_order(session: AsyncSession, order_id: uuid.UUID) -> Order | Non
     return result.scalar_one_or_none()
 
 
-async def notify_cycle_opened(cycle_id: uuid.UUID) -> None:
-    """Announces a new cycle to every linked customer.
+async def notify_cycle_opened(cycle_id: uuid.UUID) -> bool:
+    """Announces a new cycle to every linked customer, once.
 
     Opens its own session because it runs as a background task, after the request's
     session is closed — and it has to: a throttled fan-out takes seconds, and holding
     the owner's POST open for the whole broadcast would be a bug of its own.
+
+    Which is also why it stamps `announced_at` when it is through, and why it is safe to
+    call again: running outside the request means a restart mid-broadcast used to leave
+    every customer past the point it got to permanently unaware that the shop was open,
+    with nothing anywhere recording that they had been missed. The sweep now re-runs this
+    for any cycle the stamp is missing from.
+
+    The price is that a resumed announcement repeats itself to everyone it did reach —
+    the same trade the reminders make, for the same reason: a duplicate is a nuisance, a
+    cycle nobody heard about is a lost cycle.
+
+    Returns whether this call is the one that got the announcement out. A claim already
+    held, a stamp already in place, a deleted cycle and a failed fan-out all read False —
+    which is what lets the sweep report a resumed announcement only when it resumed one.
     """
+    if cycle_id in _announcing:
+        return False
+    _announcing.add(cycle_id)
     try:
         async with async_session() as session:
             cycle = await session.get(OrderCycle, cycle_id)
             if cycle is None:  # deleted between the commit and this task running
-                return
+                return False
+            if cycle.announced_at is not None:  # a previous call already saw it through
+                return False
 
             audience = await recipients.get_broadcast_audience(session)
             result = await notifications_service.send_cycle_opened(audience, cycle)
 
+            # Stamped after the fan-out, never before it: a stamp that landed first would
+            # turn a crash mid-broadcast into a cycle nobody is ever told about, which is
+            # the whole failure this stamp exists to catch.
+            cycle.announced_at = datetime.now(UTC)
             cleared = await recipients.clear_stale_bindings(session, result.blocked_chat_ids)
             await session.commit()
 
@@ -240,8 +278,12 @@ async def notify_cycle_opened(cycle_id: uuid.UUID) -> None:
                 len(audience),
                 cleared,
             )
+            return True
     except Exception:  # noqa: BLE001 - the cycle is already committed; see module docstring
         logger.exception("Failed to announce cycle %s", cycle_id)
+        return False
+    finally:
+        _announcing.discard(cycle_id)
 
 
 async def notify_cycle_deadline_changed(
