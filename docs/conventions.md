@@ -14,14 +14,14 @@ Read-only git needs no asking: `git status`, `git diff`, `git log`, `git show`,
 
 This is the rule most easily broken, because no single file states it:
 
-| Where                                                                                                                                 | Language                                              |
-| ------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------- |
-| All user-facing copy — UI strings, Telegram bot messages, xlsx export headers, import error text                                      | **Russian**                                           |
-| Comments and docstrings in `apps/website` and `packages/widgets`                                                                      | **Russian**                                           |
-| Comments and docstrings in `apps/api`                                                                                                 | **English**                                           |
-| User-facing strings inside `apps/api` (`telegram/messages.py`, `export/service.py`, `catalog/import_service.py`, `orders/service.py`) | **Russian**                                           |
-| Documentation under `docs/`, `CLAUDE.md`, `README.md`                                                                                 | **English**                                           |
-| `docs/deployment.md`                                                                                                                  | **Russian** (written for the person doing the deploy) |
+| Where                                                                                                                                                       | Language                                              |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------- |
+| All user-facing copy — UI strings, Telegram bot messages, xlsx export headers, import error text                                                            | **Russian**                                           |
+| Comments and docstrings in `apps/website` and `packages/widgets`                                                                                            | **Russian**                                           |
+| Comments and docstrings in `apps/api`                                                                                                                       | **English**                                           |
+| User-facing strings inside `apps/api` (`telegram/messages.py`, `export/service.py`, `export/products.py`, `catalog/import_service.py`, `orders/service.py`) | **Russian**                                           |
+| Documentation under `docs/`, `CLAUDE.md`, `README.md`                                                                                                       | **English**                                           |
+| `docs/deployment.md`                                                                                                                                        | **Russian** (written for the person doing the deploy) |
 
 Match the surrounding file. Essentially every file in `website`/`widgets` is commented in
 Russian; a lone English comment there reads as an outsider's patch.

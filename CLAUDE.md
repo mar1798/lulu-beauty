@@ -75,7 +75,7 @@ Not obvious from any single file, and easy to break:
 - Comments and docstrings in `apps/website` and `packages/widgets` are **Russian** (essentially
   every file). Match that when editing those packages.
 - Comments and docstrings in `apps/api` are **English**; only user-facing strings there are
-  Russian (`telegram/messages.py`, `export/service.py`, `catalog/import_service.py`,
+  Russian (`telegram/messages.py`, `export/service.py`, `export/products.py`, `catalog/import_service.py`,
   `orders/service.py`).
 - `docs/`, this file and `README.md` are **English** — all of them, `docs/deployment.md`
   included (it used to be the one Russian document).

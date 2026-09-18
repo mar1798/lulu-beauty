@@ -58,3 +58,26 @@ export const getMe = (): Promise<IAuthUser> => nextApi.get('/auth/me')
 
 export const updateProfile = (name: string): Promise<IAuthUser> =>
   api.patch('/users/me', { body: { name } })
+
+/**
+ * Что мешает удалить аккаунт прямо сейчас. Правило считает бэкенд
+ * (`UsersService.deletion_blockers`), страница только рисует ответ: иначе
+ * кнопка и ручка однажды разойдутся во мнениях о том, можно ли удаляться.
+ */
+export interface IAccountDeletion {
+  isDeletable: boolean
+  /** Заявки, из-за которых нельзя: подтверждённые и готовые к выдаче. Пусто, когда можно. */
+  blockingOrders: string[]
+}
+
+export const getAccountDeletion = (): Promise<IAccountDeletion> => api.get('/users/me/deletion')
+
+/**
+ * Удаление аккаунта. Идёт через прокси, как и профиль, — это обычная
+ * авторизованная ручка бэка, отвечающая 204 без тела.
+ *
+ * Cookie она снять не может (их ставит Next, а не бэкенд), поэтому вызывать её
+ * в одиночку нельзя: после успеха обязателен `logout`, иначе в браузере
+ * остаётся сессия удалённого аккаунта. Связка живёт в `AuthContext`.
+ */
+export const deleteAccount = (): Promise<void> => api.remove('/users/me')

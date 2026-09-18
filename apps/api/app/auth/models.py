@@ -46,6 +46,12 @@ class User(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     shares their contact with the bot, and Telegram fills that contact in itself
     (`handle_contact` additionally checks the card belongs to the sender). An unverified
     phone is therefore not a state this table can be in.
+
+    `deleted_at` is erasure, not a soft delete of the product kind: the row survives only
+    so the orders hanging off it survive (they cascade), and by the time it is stamped
+    the personal data is already gone — `phone` overwritten with a placeholder, `name`
+    replaced, `telegram_chat_id` cleared. Nothing here can be restored, and nothing about
+    the person can be read back out of it. See `UsersService.delete_account`.
     """
 
     __tablename__ = "users"
@@ -54,6 +60,9 @@ class User(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     name: Mapped[str] = mapped_column(String(255))
     role: Mapped[Role] = mapped_column(SAEnum(Role, name="role"), default=Role.CUSTOMER)
     telegram_chat_id: Mapped[int | None] = mapped_column(BigInteger, unique=True)
+    #: When the person asked to be forgotten. NULL for every live account, which is what
+    #: every listing and lookup filters on.
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     refresh_tokens: Mapped[list["RefreshToken"]] = relationship(back_populates="user")
 

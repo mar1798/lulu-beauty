@@ -18,6 +18,19 @@ const MINUTE = 60
 const HOUR = 60 * MINUTE
 const DAY = 24 * HOUR
 
+/**
+ * Опрос чаще секунды — намеренно.
+ *
+ * `setInterval` считает от монтирования, а не от границы секунды, и при дрейфе
+ * таймера видимое число задерживалось бы на два тика или перескакивало через
+ * значение. Пока показывались только минуты, этого не было видно; секунды
+ * видны всегда. Снимок — целое число секунд, поэтому лишние опросы не доходят
+ * до рендера: `useSyncExternalStore` сравнивает значения и перерисовывает
+ * по-прежнему раз в секунду, а расхождение с реальной секундой падает до
+ * четверти.
+ */
+const POLL = 250
+
 export interface ICountdown {
   days: number
   hours: number
@@ -29,11 +42,48 @@ export interface ICountdown {
   isReady: boolean
 }
 
-const subscribe = (onChange: () => void): (() => void) => {
-  const timer = setInterval(onChange, SECOND)
+/**
+ * Интервал — один на все таймеры сразу, а не по одному на компонент.
+ *
+ * Время у них общее, и на корзине или чекауте, где счётчиков больше одного,
+ * каждый будил бы браузер по своему расписанию четыре раза в секунду. Здесь
+ * первый подписчик заводит интервал, последний отписавшийся его гасит.
+ */
+const listeners = new Set<() => void>()
+let poller: ReturnType<typeof setInterval> | null = null
 
-  return () => clearInterval(timer)
+const notify = (): void => {
+  for (const listener of listeners) {
+    listener()
+  }
 }
+
+const subscribe = (onChange: () => void): (() => void) => {
+  listeners.add(onChange)
+
+  if (poller === null) {
+    poller = setInterval(notify, POLL)
+  }
+
+  return () => {
+    listeners.delete(onChange)
+
+    if (listeners.size === 0 && poller !== null) {
+      clearInterval(poller)
+      poller = null
+    }
+  }
+}
+
+/**
+ * Подписка для случая, когда считать нечего: сбора нет или дедлайн уже прошёл.
+ *
+ * Значение таймера в этом состоянии не изменится никогда, а интервал жил бы,
+ * пока открыта вкладка. Переключение происходит само: тик, на котором дедлайн
+ * проходит, перерисовывает компонент, `subscribe` приезжает другой, и React
+ * отписывается от опроса.
+ */
+const subscribeIdle = (): (() => void) => () => {}
 
 /** Снимок в секундах — число, поэтому сравнение по значению стабильно. */
 const getSnapshot = (): number => Math.floor(Date.now() / SECOND)
@@ -50,17 +100,18 @@ const EXPIRED: ICountdown = {
 }
 
 export const useCountdown = (deadlineAt: string | null): ICountdown => {
-  const nowSeconds = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot)
+  const deadline = deadlineAt === null ? Number.NaN : Date.parse(deadlineAt)
+  const isCounting = !Number.isNaN(deadline) && deadline > Date.now()
+
+  const nowSeconds = useSyncExternalStore(
+    isCounting ? subscribe : subscribeIdle,
+    getSnapshot,
+    getServerSnapshot
+  )
 
   if (nowSeconds === 0) {
     return { ...EXPIRED, isExpired: false, isReady: false }
   }
-
-  if (deadlineAt === null) {
-    return EXPIRED
-  }
-
-  const deadline = Date.parse(deadlineAt)
 
   if (Number.isNaN(deadline)) {
     return EXPIRED

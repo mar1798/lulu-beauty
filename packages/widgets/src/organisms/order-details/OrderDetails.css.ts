@@ -1,6 +1,6 @@
 import { style } from '@vanilla-extract/css'
-import { border, color, media } from '../../styling/lib'
-import { flexColumn, flexRow } from '../../styling/mixin'
+import { border, color, media, rem, transition } from '../../styling/lib'
+import { flexColumn, flexRow, focusVisibleRing } from '../../styling/mixin'
 import { vars } from '../../styling/themes/contract.css'
 
 export const container = style({
@@ -80,3 +80,21 @@ export const skeletonLines = style({
   flex: 1,
   minWidth: 0,
 })
+
+/**
+ * Адрес магазина внутри подписи: тем же приглушённым текстом ссылка не
+ * прочиталась бы, поэтому акцентный цвет плюс подчёркивание.
+ */
+export const contactLink = style([
+  {
+    color: color.text('brand'),
+    fontWeight: 600,
+    textDecoration: 'underline',
+    textUnderlineOffset: rem(3),
+    transition: transition('opacity'),
+    selectors: {
+      '&:hover': { opacity: 0.8 },
+    },
+  },
+  focusVisibleRing(),
+])

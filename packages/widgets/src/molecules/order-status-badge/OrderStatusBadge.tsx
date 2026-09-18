@@ -50,8 +50,10 @@ export const ORDER_STATUSES: OrderStatus[] = [
  * покупателю уведомление о заявке, которую тот отозвал.
  *
  * Отмена доступна из любого живого статуса — «не смогла достать» случается
- * вплоть до выдачи. Из терминальных не ведёт ничего: вернуть заявку может
- * только сам покупатель, и она возвращается в «Ожидает».
+ * вплоть до выдачи. Отменённое возвращает тот, кто отменил, и только он:
+ * свою отмену владелец снимает здесь («Отменена владельцем» → «Ожидает»), а
+ * «Отменена покупателем» ему недоступна — из неё покупатель выходит сам,
+ * кнопкой «Вернуть заявку» на своей странице. «Выдана» не ведёт никуда.
  */
 export const ORDER_STATUS_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
   PENDING: ['CONFIRMED', 'CANCELLED_BY_OWNER'],
@@ -59,7 +61,7 @@ export const ORDER_STATUS_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
   READY: ['COMPLETED', 'CANCELLED_BY_OWNER'],
   COMPLETED: [],
   CANCELLED_BY_CUSTOMER: [],
-  CANCELLED_BY_OWNER: [],
+  CANCELLED_BY_OWNER: ['PENDING'],
 }
 
 export const orderStatusLabel = (status: OrderStatus): string => VIEWS[status].label

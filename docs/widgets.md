@@ -29,7 +29,7 @@ populated.
 | `src/atoms` | `Button`, `Input`, `Price`, `Badge`, `Chip`, `Select`, `Combobox`, `Tooltip`, `Skeleton`, `Appear`, `Reveal`, `Parallax`, `AppLink`, `AppImage` |
 | `src/molecules` | `ProductCard`, `QuantityStepper`, `SearchField`, `Pagination`, `OrderCard`, `OrderStatusBadge`, `DeadlineCountdown`, `Toast`, `EmptyState`, `FileDropzone` |
 | `src/organisms` | `Header`, `Footer`, `CartPanel`, `CheckoutForm`, `ProductGrid`, `ProductDetails`, `OrderDetails`, `Modal`, `ConfirmDialog`, `ToastViewport`, `MobileMenu`, `TelegramLoginPanel`, `AdminOrdersTable`, `AdminProductsTable`, `AdminProductForm`, `AdminCycleCalendar`, `AdminUsersTable`, `AdminImportPanel`, `AdminCategoriesPanel`, `ProductPicker` |
-| `src/templates` | `BaseLayout`, `AdminLayout`, `HomeTemplate`, `CatalogTemplate`, `ProductTemplate`, `CartTemplate`, `AccountTemplate`, `AuthTemplate`, `ErrorTemplate` |
+| `src/templates` | `BaseLayout`, `AdminLayout`, `HomeTemplate`, `CatalogTemplate`, `ProductTemplate`, `CartTemplate`, `AccountTemplate`, `AuthTemplate`, `LegalTemplate`, `ErrorTemplate` |
 
 Supporting directories:
 

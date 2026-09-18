@@ -16,6 +16,19 @@ describe('ProductGrid', () => {
   })
 
   /*
+    Ожидание новой выдачи — не загрузка: товары остаются на экране и остаются
+    кликабельными, помечается только занятость сетки.
+  */
+  it('в ожидании новой выдачи оставляет карточки и помечает сетку занятой', () => {
+    const feed = feedProductGrid()
+
+    const { container } = renderWidget(<ProductGrid {...feed} isBusy={true} />)
+
+    expect(container.querySelectorAll('article')).toHaveLength(feed.products.length)
+    expect(container.querySelector('[aria-busy="true"]')).not.toBeNull()
+  })
+
+  /*
     Лесенка появления (главная) добавляет по обёртке на карточку. В каталоге
     её нет — там сетка меняется от фильтров, и лишний узел ни к чему.
   */

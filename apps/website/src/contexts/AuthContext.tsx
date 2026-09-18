@@ -6,6 +6,7 @@ import { isApiError } from '@/services/apiErrors'
 import { onSessionExpired } from '@/services/session'
 import { meKey } from '@/services/swrKeys'
 import {
+  deleteAccount as deleteAccountRequest,
   getMe,
   logout as logoutRequest,
   pollTelegramLogin as pollTelegramLoginRequest,
@@ -50,6 +51,11 @@ export interface IAuthContextValue {
   signInWithTelegramWidget: (payload: Record<string, unknown>) => Promise<IAuthUser | null>
   updateProfile: (name: string) => Promise<IAuthUser>
   logout: () => Promise<void>
+  /**
+   * Удаляет аккаунт и тут же завершает сессию: ручка бэка снять cookie не может,
+   * их ставит Next. Успех означает, что возвращаться уже некуда.
+   */
+  deleteAccount: () => Promise<void>
   /** Перечитывает сессию и отдаёт её результат — ждать лишнего рендера не нужно. */
   reload: () => Promise<IAuthUser | null>
 }
@@ -188,6 +194,30 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     await mutate(null, { revalidate: false })
   }, [mutate])
 
+  const deleteAccount = useCallback(async (): Promise<void> => {
+    await deleteAccountRequest()
+
+    /*
+      Выход — часть удаления, а не отдельное действие: аккаунта уже нет, а cookie
+      всё ещё стоят, и без этого шага интерфейс остаётся «вошедшим» до тех пор,
+      пока access-токен не истечёт сам (15 минут) и `/api/auth/me` не ответит 401.
+
+      Ошибка выхода намеренно гасится — в отличие от обычного `logout`, где она
+      обязана долететь до человека. Там она означает «вы не вышли»; здесь выходить
+      уже неоткуда, аккаунт удалён и отменить это нечем, а показанная ошибка
+      сказала бы ровно обратное тому, что произошло. Сессия в любом случае
+      мертва: cookie ручка снимает даже при недоступном бэкенде
+      (`pages/api/auth/logout.ts`), а токены отозваны удалением.
+    */
+    try {
+      await logoutRequest()
+    } catch {
+      // Нечего делать и не о чем сообщать: см. выше.
+    }
+
+    await mutate(null, { revalidate: false })
+  }, [mutate])
+
   const value = useMemo<IAuthContextValue>(
     () => ({
       user,
@@ -200,6 +230,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       signInWithTelegramWidget,
       updateProfile,
       logout,
+      deleteAccount,
       reload,
     }),
     [
@@ -211,6 +242,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       signInWithTelegramWidget,
       updateProfile,
       logout,
+      deleteAccount,
       reload,
     ]
   )

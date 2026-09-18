@@ -170,8 +170,9 @@ def cart_moved_to_wishlist(title: str, saved: int, dropped: int) -> str:
 def new_order_for_owner(order: Order, customer: User | None, cycle: OrderCycle | None) -> str:
     lines = [
         f"🆕 Новая заявка {order_reference(order.id)}",
-        # A deleted customer cascades their orders away, so the fallback is defensive
-        # only — same reasoning as _admin_order_response in orders/router.py.
+        # `None` is the erased account, not a rarity: `notify._load_customer` hands it
+        # over as None precisely so its placeholder name and phone are never read back
+        # out into a message. Same rule as _admin_order_response in orders/router.py.
         f"Покупатель: {customer.name}, {customer.phone}" if customer else "Покупатель: —",
         f"Сбор: {cycle_title(cycle)}" if cycle else "Сбор: —",
         f"Позиций: {len(order.items)}",
@@ -182,21 +183,71 @@ def new_order_for_owner(order: Order, customer: User | None, cycle: OrderCycle |
     return "\n".join(lines)
 
 
+def customer_cancellation_for_owner(order: Order, customer: User | None, *, restored: bool) -> str:
+    """Что покупатель сделал со своей заявкой, пока владелец в неё не смотрел.
+
+    Обе новости одной функцией: восстановление — это отмена наоборот, и владельцу важна
+    та же строка (кто, сколько, на что). Сумму видно здесь, чтобы решение «идёт ли ещё
+    эта заявка в закупку» не требовало открывать админку.
+    """
+    if restored:
+        headline = f"↩️ Заявка {order_reference(order.id)} возвращена покупателем"
+    else:
+        headline = f"❌ Заявка {order_reference(order.id)} отменена покупателем"
+    return "\n".join(
+        [
+            headline,
+            # Как и в `new_order_for_owner`: `None` — это стёртый аккаунт, и подставлять
+            # вместо него плейсхолдер из `users` нельзя, его для того и стирали.
+            f"Покупатель: {customer.name}, {customer.phone}" if customer else "Покупатель: —",
+            f"Позиций: {len(order.items)}",
+            f"Сумма: {format_price(order.total_cents)}",
+        ]
+    )
+
+
+def account_deleted_for_owner(order_ids: Sequence[uuid.UUID]) -> str:
+    """Человек удалил аккаунт, и его незакрытые заявки ушли из закупки вместе с ним.
+
+    Одно сообщение на все заявки, а не по одному на каждую: это одно событие, и рассылка
+    из пяти «отменена покупателем» подряд читается как пять разных решений.
+
+    Имени и телефона тут нет и быть не может — их только что стёрли. Владельцу остаются
+    номера заявок: по ним заявка находится в админке, а больше о человеке сказать нечего
+    и не следует.
+    """
+    count = len(order_ids)
+    listed = ", ".join(order_reference(order_id) for order_id in order_ids)
+    return "\n".join(
+        [
+            "🗑 Покупатель удалил аккаунт",
+            f"{plural(count, 'Отменена заявка', 'Отменены заявки', 'Отменены заявки')}: {listed}",
+            "Эти позиции больше не нужно закупать.",
+        ]
+    )
+
+
 _ORDER_STATUS_NEWS = {
+    # Владелец отменил заявку и передумал: покупатель уже получил «отменена владельцем»,
+    # и без этой строки заявка воскресала бы у него молча.
+    OrderStatus.PENDING: "снова ждёт подтверждения — владелец вернул её в работу",
     OrderStatus.CONFIRMED: "подтверждена — владелец начал закупку",
     OrderStatus.READY: "готова к выдаче. О получении договоритесь лично.",
     OrderStatus.COMPLETED: "выдана. Спасибо за заказ!",
-    OrderStatus.CANCELLED_BY_OWNER: "отменена владельцем. Если это ошибка — напишите ему.",
+    OrderStatus.CANCELLED_BY_OWNER: (
+        "отменена владельцем. Если это ошибка — напишите в Instagram магазина."
+    ),
     # Про свою же отмену покупателю сообщать нечего: он её и сделал, а уведомление
     # выглядело бы так, будто её сделал кто-то другой.
 }
 
 
 def order_status_changed(order: Order) -> str | None:
-    """None means "say nothing".
+    """None means "say nothing" — currently only about the customer's own cancellation.
 
-    PENDING is the owner undoing a cancellation, which the customer either asked for or
-    never knew about — announcing it would be noise either way.
+    Sent for the owner's status changes only: the customer's own restore goes through
+    `OrdersService.restore`, whose router queues no notification at all, so PENDING here
+    always means the owner walked their cancellation back.
     """
     news = _ORDER_STATUS_NEWS.get(order.status)
     if news is None:
@@ -221,7 +272,7 @@ def order_deleted(order_id: uuid.UUID, status: OrderStatus) -> str | None:
         return None
     return (
         f"Заявка {order_reference(order_id)} удалена владельцем. "
-        "Если это ошибка — напишите ему."
+        "Если это ошибка — напишите в Instagram магазина."
     )
 
 
@@ -399,13 +450,38 @@ def cycle_closed_for_owner(cycle: OrderCycle, orders_count: int, total_cents: in
 
 # ─── Replies to commands ─────────────────────────────────────────────────────────
 
+SHARE_CONTACT_BUTTON = "Поделиться номером телефона"
+
 START = (
     "Добро пожаловать в Sululu! Поделитесь номером телефона, чтобы привязать "
     "этот чат к вашему аккаунту: сюда придут вход на сайт, подтверждение заявки "
     "и напоминания о дедлайне."
 )
 
-SHARE_CONTACT_BUTTON = "Поделиться номером телефона"
+#: Фиксация согласия, вторым сообщением сразу за `START`.
+#:
+#: Отдельным сообщением, а не абзацем в `START`, из-за одного ограничения Telegram:
+#: у сообщения ровно один `reply_markup`, и приветствие занимает его reply-клавиатурой
+#: с «Поделиться номером». Inline-кнопка с политикой не поместилась бы туда же, а
+#: адрес строкой в тексте — это `http://localhost:3000/privacy` на деве и лишний
+#: нечитаемый хвост на проде.
+#:
+#: Порядок именно такой: приветствие с кнопкой уходит первым, согласие — вторым, то
+#: есть последним перед полем ввода, прямо над той кнопкой, о которой говорит. Аккаунт
+#: заводится ровно в момент нажатия, так что сказать, что при этом сохранится, нужно
+#: до него.
+#:
+#: Перечислено то, что действительно попадает в `users`: номер, имя из профиля Telegram
+#: и сам чат. Ничего другого бот не сохраняет — подпись Telegram проверяется и
+#: выбрасывается (`auth/telegram_identity.py`). Разойдётся список с таблицей — согласие
+#: станет обещанием, которого магазин не держит.
+CONSENT = (
+    f"Нажимая «{SHARE_CONTACT_BUTTON}», вы соглашаетесь на обработку персональных "
+    "данных: магазин сохранит ваш номер, имя из профиля Telegram и этот чат — чтобы "
+    "принимать заявки и писать вам о них. Аккаунт можно удалить в любой момент, "
+    "и тогда эти данные стираются."
+)
+
 
 # ─── Main menu ───────────────────────────────────────────────────────────────────
 #
@@ -442,6 +518,9 @@ SITE_BUTTON = "Открыть сайт"
 # в браузере и в чате, и это одна и та же ссылка.
 INSTAGRAM_BUTTON = "Instagram магазина"
 ADMIN_ORDERS_BUTTON = "Заявки в админке"
+# Дословно как заголовок страницы и как ссылка в подвале сайта — это один документ,
+# и называться он должен одинаково, где бы человек на него ни наткнулся.
+PRIVACY_BUTTON = "Политика обработки данных"
 
 # Подпись кнопки слева от поля ввода (`set_chat_menu_button`), открывающей Mini App.
 # «Каталог», а не «Открыть сайт»: это не ссылка наружу, а магазин внутри Telegram,
@@ -490,6 +569,7 @@ LOGIN_CONFIRMED = (
     "Вход подтверждён. Вернитесь на вкладку с сайтом — она уже впустила вас.\n"
     "Кнопки ниже — всё, что я умею."
 )
+
 
 # Второе сообщение сразу после входа — единственное место, где человек может узнать,
 # что вход был не его. Ссылка `t.me/…?start=` — обычный текст в чате: её можно переслать,

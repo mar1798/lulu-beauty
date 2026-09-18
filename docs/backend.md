@@ -5,7 +5,7 @@ managed with **`uv`** (`pyproject.toml` + committed `uv.lock`). It is not an npm
 `npm run check` / `npm test` do not cover it.
 
 Comments and docstrings here are **English**; only user-facing strings are Russian
-(`telegram/messages.py`, `export/service.py`, `catalog/import_service.py`,
+(`telegram/messages.py`, `export/service.py`, `export/products.py`, `catalog/import_service.py`,
 `orders/service.py`). See [conventions.md](conventions.md#language).
 
 ## Commands
@@ -64,7 +64,7 @@ Each domain module under `app/` is roughly `router.py` / `service.py` / `schemas
 | `orders/`   | Checkout, customer edit/cancel/restore, admin status changes, repricing.                                                                     |
 | `cycles/`   | Cycle CRUD, `reminders.py` (stage definitions), `scheduler_service.py` (sweeps).                                                             |
 | `wishlist/` | Saved products, cycle-independent.                                                                                                           |
-| `export/`   | xlsx purchase list.                                                                                                                          |
+| `export/`   | xlsx purchase list (`service.py`) and the catalogue export (`products.py`).                                                                  |
 | `telegram/` | Bot, handlers, keyboards, Russian messages, notifications, throttling, webhook.                                                              |
 | `storage/`  | Local disk file storage for images.                                                                                                          |
 | `common/`   | `CamelModel`, `PageResponse`, phone normalization, model mixins, limits, rate limit, body limit.                                             |
@@ -93,7 +93,8 @@ Public and customer-facing:
 | `GET`                         | `/products`                                   | Paged. Query params **snake_case**: `in_stock`, `page_size`. |
 | `GET`                         | `/products/{slug}`                            |                                                              |
 | `GET`                         | `/cycles/active`                              |                                                              |
-| `GET`/`PATCH`                 | `/users/me`                                   |                                                              |
+| `GET`/`PATCH`/`DELETE`        | `/users/me`                                   | `DELETE` erases the account — see "Erasing an account".      |
+| `GET`                         | `/users/me/deletion`                          | Whether the caller may erase, and what blocks it.            |
 | `GET`/`POST`/`PATCH`/`DELETE` | `/cart`, `/cart/items[/{product_id}]`         | 409 `no_active_cycle` without an open cycle.                 |
 | `GET`/`POST`/`DELETE`         | `/wishlist`, `/wishlist/items[/{product_id}]` | Cycle-independent.                                           |
 | `POST`                        | `/orders/checkout`                            |                                                              |
@@ -107,7 +108,7 @@ Owner-only (`ADMIN` or `SUPER_ADMIN`, checked on the API — the frontend gate i
 
 | Method   | Path                                                                                                                                                                        |
 | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GET`    | `/admin/users`, `/admin/brands`, `/admin/products`, `/admin/products/{id}`, `/admin/orders`, `/admin/cycles`, `/admin/export/orders`                                        |
+| `GET`    | `/admin/users`, `/admin/brands`, `/admin/products`, `/admin/products/{id}`, `/admin/orders`, `/admin/cycles`, `/admin/export/orders`, `/admin/export/products`              |
 | `PATCH`  | `/admin/users/{id}/role`, `/admin/categories/{id}`, `/admin/products/{id}`, `/admin/cycles/{id}`, `/admin/orders/{id}/status`                                               |
 | `POST`   | `/admin/categories`, `/admin/products`, `/admin/products/{id}/restore`, `/admin/products/{id}/images`, `/admin/catalog/import`, `/admin/cycles`, `/admin/cycles/{id}/close` |
 | `DELETE` | `/admin/categories/{id}`, `/admin/products/{id}` (soft), `/admin/products/{id}/images/{image_id}`, `/admin/cycles/{id}`, `/admin/orders/{id}`                               |
@@ -116,6 +117,31 @@ Owner-only (`ADMIN` or `SUPER_ADMIN`, checked on the API — the frontend gate i
 secret are all set. Rate-limit exempt.
 
 Upload ceilings: images 15 MB (`jpeg`/`png`/`webp`), import file 10 MB, outer body 20 MB.
+
+### Erasing an account
+
+`DELETE /users/me` answers `204` and erases the caller's own account — never one named in
+the request. It refuses with `403 account_not_deletable` for any account with admin rights
+(either role — it is demoted first), `404 user_not_found` for a row already erased, and
+`409 account_has_unfinished_orders` while the caller has a `CONFIRMED` or `READY` order.
+When it withdrew pending orders, the owner is told after the commit
+(`notify_account_deleted`), as every other notification is.
+
+`GET /users/me/deletion` answers the same rule in advance (`isDeletable`, `blockingOrders`)
+so the account page can disable the button and name the orders instead of letting the
+person confirm an erasure that then fails. Both go through one query,
+`UsersService.deletion_blockers` — the check and the answer must not be able to disagree.
+
+`UsersService.delete_account` overwrites the identifying columns and stamps `deleted_at`
+rather than deleting the row, because orders cascade off it. The whole rule — what is
+overwritten, what is deleted outright, what happens to orders, and who may not be erased —
+is in [domain.md](domain.md#erasing-an-account). Anything that reads a profile must treat
+`deleted_at IS NOT NULL` as "no such user", and it belongs in the query rather than at the
+point the answer is drawn — a filter the next reader has to remember is a filter that will
+be forgotten. `UsersService.get`, `list_page`, `OrdersService.load_customers`,
+`recipients.get_users` and `notify._load_customer` all do it, which is what keeps the
+placeholder name and the filled-in phone out of the admin order list and out of a message
+to the owner.
 
 ### Product photos are re-encoded on upload
 

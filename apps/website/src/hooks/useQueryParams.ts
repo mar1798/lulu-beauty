@@ -78,6 +78,13 @@ interface INavigateOptions {
    * «назад» пришлось бы жать по разу на букву.
    */
   replace?: boolean
+  /**
+   * Отдать прокрутку после перехода вызывающей стороне. Next по умолчанию сам
+   * дёргает страницу к началу — мгновенно и уже после того, как переход
+   * завершился, то есть поверх любой своей плавной прокрутки. Тому, кто хочет
+   * прокрутить по-своему, нужен `false`.
+   */
+  scroll?: boolean
 }
 
 type ISetQueryParams<TValues> = (patch: Partial<TValues>, options?: INavigateOptions) => void
@@ -129,10 +136,12 @@ export const useQueryParams = <TValues extends Record<string, unknown>>(spec: {
 
       const target = { pathname: router.pathname, query }
 
+      const navigation = { shallow: true, scroll: options?.scroll }
+
       if (options?.replace === true) {
-        void router.replace(target, undefined, { shallow: true })
+        void router.replace(target, undefined, navigation)
       } else {
-        void router.push(target, undefined, { shallow: true })
+        void router.push(target, undefined, navigation)
       }
     },
     [router]

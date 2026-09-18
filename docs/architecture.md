@@ -101,9 +101,17 @@ restart loses nothing:
 
 | Job                    | What it does                                                                            |
 | ---------------------- | --------------------------------------------------------------------------------------- |
-| `reminder_sweep`       | Plans deadline nudges (24h and 3h before), sends them, _then_ stamps them.              |
+| `cycle_notice_sweep`   | Re-announces any cycle missing `announced_at`, then plans deadline nudges (24h and 3h before), sends them, _then_ stamps them. |
 | `deadline_sweep`       | Closes cycles whose deadline passed, rescues carts into wishlists, notifies afterwards. |
 | `auth_session_cleanup` | Deletes Telegram login sessions past `AUTH_SESSION_RETENTION_SECONDS` and dead refresh tokens. |
+
+Announcements and reminders share one job rather than getting one each, for the order: on the
+tick where both have work, a cycle whose opening was lost must not have its "last chance"
+arrive before anyone has been told it exists, and two jobs on the same interval guarantee
+nothing about which runs first. It keeps those two fan-outs off each other's pacing as well —
+but only those two: `deadline_sweep` runs alongside on the same interval with broadcasts of
+its own, and that overlap is absorbed per-chat (one wait on Telegram's `retry_after`) rather
+than prevented.
 
 Plan → send → stamp is the order on purpose; see [domain.md](domain.md#the-order-cycle) and
 [telegram.md](telegram.md#notifications).

@@ -1,5 +1,6 @@
 import { style } from '@vanilla-extract/css'
-import { color, rem } from 'widgets/styling/lib'
+import { color, rem, transition } from 'widgets/styling/lib'
+import { focusVisibleRing } from 'widgets/styling/mixin'
 import { vars } from 'widgets/styling/theme'
 
 /**
@@ -51,3 +52,25 @@ export const telegramWidget = style({
   borderRadius: rem(20),
   overflow: 'hidden',
 })
+
+/**
+ * Ссылка внутри подписи под карточкой.
+ *
+ * Тем же приглушённым текстом она не читается ссылкой вовсе — на неё
+ * нечему указать, кроме подчёркивания. Та же тройка, что у ссылок в
+ * ответах FAQ и в подписи к заявке (`FaqAccordion`, `OrderDetails`):
+ * акцентный цвет, полужирное начертание, подчёркивание с отступом.
+ */
+export const inlineLink = style([
+  {
+    color: color.text('brand'),
+    fontWeight: 600,
+    textDecoration: 'underline',
+    textUnderlineOffset: rem(3),
+    transition: transition('opacity'),
+    selectors: {
+      '&:hover': { opacity: 0.8 },
+    },
+  },
+  focusVisibleRing(),
+])

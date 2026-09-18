@@ -178,7 +178,7 @@ export const filenameFromDisposition = (disposition: string | null): string | nu
   return FILENAME_PLAIN.exec(disposition)?.[1] ?? null
 }
 
-/** Скачивание бинарника (выгрузка заказов в xlsx) — тоже через прокси, с cookie. */
+/** Скачивание бинарника (выгрузки в xlsx) — тоже через прокси, с cookie. */
 export const download = async (
   path: string,
   query?: Record<string, QueryValue>
@@ -198,4 +198,24 @@ export const download = async (
     blob: await response.blob(),
     filename: filenameFromDisposition(response.headers.get('content-disposition')),
   }
+}
+
+/**
+ * Отдаёт уже скачанный блоб браузеру под именем из `Content-Disposition`.
+ *
+ * Вторая половина любой выгрузки: `download` приносит байты, чтобы ошибку
+ * (403, 500) можно было показать в UI, а не отдать браузеру пустой файл, —
+ * а сохранить их всё равно приходится через `<a download>`.
+ */
+export const saveBlob = ({ blob, filename }: IDownload, fallbackName: string): void => {
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+
+  link.href = url
+  link.download = filename ?? fallbackName
+  document.body.append(link)
+  link.click()
+  link.remove()
+  // Отзываем сразу: браузер уже забрал содержимое, а ссылка держала бы blob в памяти.
+  URL.revokeObjectURL(url)
 }

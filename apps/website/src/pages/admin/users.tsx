@@ -11,6 +11,7 @@ import { pageParam, textParam, useQueryParams, useQueryTextInput } from '@/hooks
 import { messageForError } from '@/services/apiErrors'
 import { listAdminUsers, updateUserRole } from '@/services/endpoints/admin'
 import { adminUsersKey, isAdminUsersKey } from '@/services/swrKeys'
+import { scrollToTop } from '@/utils/scroll'
 import * as styles from '@/styles/admin.css'
 
 /**
@@ -49,15 +50,62 @@ const AdminUsersPage: React.FC = () => {
 
   const [search, setSearch] = useQueryTextInput(query, commitSearch, SEARCH_DELAY_MS)
 
+  /*
+    Пагинация внизу таблицы: без прокрутки следующая страница начинается за
+    верхним краем экрана, и владелец остаётся у кнопок, глядя на её хвост.
+    Прокрутка своя, а не встроенная в переход (`scroll: false`), — иначе Next
+    дёрнул бы страницу к началу мгновенно.
+  */
+  const goToPage = useCallback(
+    (next: number) => {
+      setParams({ page: next }, { scroll: false })
+      scrollToTop()
+    },
+    [setParams]
+  )
+
   const [busyId, setBusyId] = useState<string | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
 
-  const { data, error: fetchError } = useSWR(
+  /*
+    Запрос, по которому пришли строки, лежащие сейчас в `data`. `keepPreviousData`
+    намеренно держит прошлую выдачу на экране при смене любого параметра, так что
+    «данных по текущему ключу нет» (`isLoading`) не отличает поиск от перехода на
+    другую страницу — а скелетон нужен только на поиске. Как в списке товаров.
+  */
+  const [loadedQuery, setLoadedQuery] = useState(query)
+
+  const {
+    data,
+    error: fetchError,
+    isLoading,
+  } = useSWR(
     adminUsersKey(query, page),
     () => listAdminUsers({ q: query === '' ? undefined : query, page, pageSize: PAGE_SIZE }),
     // Смена страницы или запроса не должна ронять таблицу в скелетон.
     { keepPreviousData: true }
   )
+
+  /*
+    `isLoading` ложно ровно тогда, когда на экране выдача по текущему ключу.
+    Правка состояния прямо в рендере — тот самый случай, ради которого React её
+    допускает: значение целиком выводится из состояния загрузчика, и перерисовка
+    случается сразу, до кадра, то есть скелетон не успевает мигнуть.
+  */
+  if (!isLoading && loadedQuery !== query) {
+    setLoadedQuery(query)
+  }
+
+  /*
+    Поиск идёт с первой буквы, а не с ухода запроса: дебаунс `useQueryTextInput`
+    длится те же доли секунды, и всё это время в таблице лежит выдача по прошлому
+    слову — а «Никого не нашлось» под недобранным именем читается как ответ.
+    Отсюда две половины: `search !== query` — набранное ещё не доехало до адреса,
+    `isLoading` при разошедшемся `loadedQuery` — запрос по новому слову в пути.
+    Повтор того же слова SWR берёт из кеша, там `isLoading` ложно, и мигания не
+    будет; смену страницы это тоже не задевает — `loadedQuery` уже совпадает.
+  */
+  const isSearching = search !== query || (isLoading && loadedQuery !== query)
 
   const error = fetchError === undefined ? null : messageForError(fetchError, 'admin.users')
 
@@ -105,10 +153,15 @@ const AdminUsersPage: React.FC = () => {
       }
     >
       <div className={styles.stack}>
+        {/*
+          Спиннер на месте лупы — занятость видна там, куда человек печатает,
+          ещё до того как таблица ниже встанет скелетоном.
+        */}
         <SearchField
           value={search}
           onChange={setSearch}
           placeholder="Поиск по имени или телефону"
+          isBusy={isSearching}
         />
       </div>
 
@@ -127,9 +180,13 @@ const AdminUsersPage: React.FC = () => {
       <AdminUsersTable
         users={data?.items ?? []}
         canManageRoles={isSuperAdmin}
-        // Скелетон — только пока показывать нечего: `isLoading` из SWR становится
-        // истинным и на смене запроса, и таблица мигала бы на каждую букву.
-        isLoading={data === undefined && error === null}
+        /*
+          Скелетон — пока показывать нечего (первая загрузка) и на поиске: прошлые
+          строки под новым словом читались бы как ответ на него. Голый `isLoading`
+          из SWR сюда не годится — он истинен и на смене страницы, где
+          `keepPreviousData` намеренно оставляет таблицу на экране.
+        */
+        isLoading={(data === undefined && error === null) || isSearching}
         busyId={busyId}
         onRoleChange={(target, role) => {
           void handleRoleChange(target, role)
@@ -147,9 +204,7 @@ const AdminUsersPage: React.FC = () => {
           page={page}
           total={data.total}
           pageSize={PAGE_SIZE}
-          onChange={next => {
-            setParams({ page: next })
-          }}
+          onChange={goToPage}
         />
       )}
     </AdminShell>

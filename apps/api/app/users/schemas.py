@@ -38,3 +38,19 @@ class AdminUserResponse(UserResponse):
 
 class UserRoleUpdateRequest(CamelModel):
     role: Role
+
+
+class AccountDeletionResponse(CamelModel):
+    """Whether this account can be erased right now, and what is holding it up.
+
+    Asked by the account page before it draws the delete button: the rule lives on the
+    server (`UsersService.deletion_blockers`), and a site that guessed at it would either
+    disable a button that works or offer one that answers 409.
+
+    `blocking_orders` carries ids rather than a count so the page can name them the way
+    the rest of the shop does (`#1a2b3c4d`) and the person can find them in their own
+    list. Empty whenever `is_deletable` is true.
+    """
+
+    is_deletable: bool
+    blocking_orders: list[uuid.UUID]

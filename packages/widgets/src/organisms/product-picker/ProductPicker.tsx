@@ -28,7 +28,12 @@ import * as styles from './ProductPicker.css'
 
 const IMAGE_SIZES = { fb: '48px' } as const
 
-const SKELETON_ROWS = 2
+/**
+ * Строк в скелетоне. Три, а не две: столько результатов помещается в поле
+ * зрения без прокрутки, и блок поиска реже меняет высоту, когда скелетон
+ * сменяется выдачей.
+ */
+const SKELETON_ROWS = 3
 
 /** Уже добавленный товар сольётся со своей строкой — подпись говорит об этом. */
 const addLabel = (isAdded: boolean): string => (isAdded ? 'Ещё одну' : 'Добавить')
@@ -88,25 +93,56 @@ export const ProductPicker: FC<IProductPickerProps & IBasicStyling> = ({
     }
 
     /*
-      Скелетон только на первом поиске: пока на экране есть прошлые результаты,
-      подменять их полосками — значит мигать списком на каждую букву.
+      Скелетон на любом поиске, а не только на первом, и раньше самого запроса:
+      `isSearching` страница считает от набранного, а не от сетевого ответа
+      (`useProductSearch`), поэтому полоски встают сразу после первой буквы и
+      стоят весь дебаунс. Без этого блок на полсекунды оставался пустым —
+      подсказка уже ушла, выдачи ещё нет, — и скелетон успевал мигнуть на
+      считанные кадры, когда ответ уже в пути.
     */
-    if (products === null) {
-      return isSearching ? (
+    if (isSearching) {
+      return (
         <div className={styles.list} aria-busy={true}>
           {Array.from({ length: SKELETON_ROWS }, (_, index) => (
             // eslint-disable-next-line react/no-array-index-key
             <div key={index} className={styles.row}>
-              <Skeleton shape="block" className={styles.skeletonThumb} />
+              {/*
+                Тон марки, как в скелетоне сетки каталога: розовый пульс на
+                белой строке читается как ожидание, а не как серое полотно на
+                месте выдачи.
+
+                Ширина — пропом, а не классом: `Skeleton` кладёт её в инлайновый
+                стиль, и `width` по умолчанию (100%) перебивал бы любой класс.
+                Вместе с `aspect-ratio` это растягивало миниатюру во всю строку.
+              */}
+              <Skeleton shape="block" tone="brand" width={48} className={styles.skeletonThumb} />
 
               <div className={styles.skeletonLines}>
-                <Skeleton width="60%" />
-                <Skeleton width="25%" height={14} />
+                <Skeleton width="65%" tone="brand" />
+                <Skeleton width="30%" height={16} tone="brand" />
               </div>
+
+              {/*
+                Кнопка добавления держит за собой место в обеих формах — теми же
+                подложками, что и настоящая, иначе строка на подмене менялась бы
+                шириной текстовой части.
+              */}
+              <span className={styles.addCompact}>
+                <Skeleton shape="circle" tone="brand" width={40} height={40} />
+              </span>
+
+              <span className={styles.addWide}>
+                <Skeleton shape="block" tone="brand" width={96} height={36} />
+              </span>
             </div>
           ))}
         </div>
-      ) : null
+      )
+    }
+
+    // Запрос есть, ответа ещё нет и поиск не идёт — рисовать нечего.
+    if (products === null) {
+      return null
     }
 
     if (products.length === 0) {
@@ -201,11 +237,16 @@ export const ProductPicker: FC<IProductPickerProps & IBasicStyling> = ({
 
   return (
     <div className={clsx(styles.container, className)}>
+      {/*
+        Спиннер на месте лупы — как в поиске каталога: занятость видна там, куда
+        человек печатает, ещё до того как ниже встанет скелетон.
+      */}
       <SearchField
         value={query}
         onChange={onQueryChange}
         label={label}
         placeholder="Название товара"
+        isBusy={isSearching}
       />
 
       {results()}

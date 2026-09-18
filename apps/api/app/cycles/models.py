@@ -28,4 +28,10 @@ class OrderCycle(UUIDPrimaryKeyMixin, Base):
     # which one a cycle has already had (see cycles/scheduler_service.REMINDER_STAGES).
     reminder_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     final_reminder_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Stamped once the "cycle opened" broadcast has actually finished. The fan-out runs
+    # outside the request that created the cycle, so nothing else records that it got
+    # through — and without that record a restart partway through it leaves the customers
+    # it had not reached yet permanently unaware of the cycle
+    # (see telegram/notify.notify_cycle_opened).
+    announced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

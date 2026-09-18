@@ -2,10 +2,12 @@ import clsx from 'clsx'
 import { type FC } from 'react'
 import type { IAdminImportPanelProps, IBasicStyling } from '../../types'
 import { Alert } from '../../atoms/alert'
+import { Button } from '../../atoms/button'
 import { Heading } from '../../atoms/heading'
 import { Spinner } from '../../atoms/spinner'
 import { Text } from '../../atoms/text'
 import { FileDropzone } from '../../molecules/file-dropzone'
+import { IconDownload } from '../../svg/icons'
 import { plural } from '../../utils/plural'
 import * as styles from './AdminImportPanel.css'
 
@@ -18,6 +20,10 @@ import * as styles from './AdminImportPanel.css'
  * Ошибка всего файла (не UTF-8, битый xlsx, чужое расширение) приходит там
  * же, но с номером строки `0` — она про файл целиком, и подписывать её
  * «строка 0» нельзя. Ошибка запроса (413, 500) приходит пропсом `error`.
+ *
+ * Выгрузка живёт здесь же, а не на отдельной странице, потому что это один
+ * круг: выгрузить каталог, поправить цены в Excel, залить файл обратно —
+ * колонки у листа ровно те, что перечислены выше.
  */
 
 const WHOLE_FILE_ROW = 0
@@ -30,6 +36,9 @@ export const AdminImportPanel: FC<IAdminImportPanelProps & IBasicStyling> = ({
   isImporting = false,
   summary,
   error,
+  onExport,
+  isExporting = false,
+  exportError,
   className,
 }) => {
   const fileErrors = (summary?.errors ?? []).filter(item => item.row === WHOLE_FILE_ROW)
@@ -74,6 +83,36 @@ export const AdminImportPanel: FC<IAdminImportPanelProps & IBasicStyling> = ({
           </Alert>
         )}
       </section>
+
+      {onExport !== undefined && (
+        <section className={styles.panel}>
+          <Heading level={2} size="sm">
+            Выгрузка каталога
+          </Heading>
+
+          <Text tone="secondary" size="sm">
+            Все товары в xlsx с теми же колонками, что читает импорт, — файл можно поправить в Excel
+            и залить обратно сюда же. Колонок <code className={styles.code}>description</code> и
+            фотографий в листе нет: и описания, и снимки при обратной загрузке останутся как есть —
+            они правятся в карточке товара.
+          </Text>
+
+          <Button
+            variant="secondary"
+            iconStart={<IconDownload />}
+            isLoading={isExporting}
+            onClick={onExport}
+          >
+            Выгрузить в Excel
+          </Button>
+
+          {exportError !== undefined && exportError !== null && (
+            <Alert tone="danger" title="Выгрузка не выполнена">
+              {exportError}
+            </Alert>
+          )}
+        </section>
+      )}
 
       {summary != null && (
         <section className={styles.panel} aria-live="polite">

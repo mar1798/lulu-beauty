@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react'
+import React, { useCallback, useMemo, useState } from 'react'
 import useSWR, { mutate as globalMutate } from 'swr'
 import type { IAdminOrder, IOrderCycle, ISelectOption, OrderStatus } from 'widgets/types'
 import { Alert, Button, Select, Switch } from 'widgets/atoms'
@@ -9,6 +9,7 @@ import { formatDate } from 'widgets/utils'
 import { IconDownload } from 'widgets/svg'
 import { AdminShell } from '@/layouts/AdminShell'
 import { useActiveCycle } from '@/hooks/useActiveCycle'
+import { saveBlob } from '@/services/api'
 import { messageForError } from '@/services/apiErrors'
 import {
   deleteOrder,
@@ -18,6 +19,7 @@ import {
 } from '@/services/endpoints/admin'
 import { downloadOrdersExport } from '@/services/endpoints/export'
 import { adminOrdersKey, cyclesKey, isAdminOverviewKey } from '@/services/swrKeys'
+import { scrollToTop } from '@/utils/scroll'
 import * as styles from '@/styles/admin.css'
 
 /**
@@ -91,6 +93,15 @@ const AdminOrdersPage: React.FC = () => {
     ключ SWR от него не зависит, перезапрашивать нечего.
   */
   const [includePrices, setIncludePrices] = useState(true)
+
+  /*
+    Пагинация внизу таблицы: без прокрутки следующая страница начинается за
+    верхним краем экрана, и владелец остаётся у кнопок, глядя на её хвост.
+  */
+  const goToPage = useCallback((next: number) => {
+    setPage(next)
+    scrollToTop()
+  }, [])
 
   // Общий ключ со «Сборами» (`/admin/cycles`): список в фильтре не отстаёт от календаря.
   const { data: cycles } = useSWR(cyclesKey, () => listCycles())
@@ -198,21 +209,13 @@ const AdminOrdersPage: React.FC = () => {
     setActionError(null)
 
     try {
-      const { blob, filename } = await downloadOrdersExport({
+      const download = await downloadOrdersExport({
         cycleId: cycleFilter,
         status: status === ALL ? undefined : (status as OrderStatus),
         includePrices,
       })
-      const url = URL.createObjectURL(blob)
-      const link = document.createElement('a')
 
-      link.href = url
-      link.download = filename ?? 'orders.xlsx'
-      document.body.append(link)
-      link.click()
-      link.remove()
-      // Отзываем сразу: браузер уже забрал содержимое, а ссылка держала бы blob в памяти.
-      URL.revokeObjectURL(url)
+      saveBlob(download, 'orders.xlsx')
     } catch (cause: unknown) {
       const message = messageForError(cause, 'admin.export')
 
@@ -317,7 +320,7 @@ const AdminOrdersPage: React.FC = () => {
           page={data.page}
           pageSize={data.pageSize}
           total={data.total}
-          onChange={setPage}
+          onChange={goToPage}
         />
       )}
     </AdminShell>

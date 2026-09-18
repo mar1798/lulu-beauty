@@ -92,6 +92,60 @@ describe('AdminCycleCalendar', () => {
   })
 
   /*
+    Владелец приходит сюда за сегодняшним днём чаще, чем за любым другим, —
+    и до правки ему приходилось начинать с клика по нему же.
+  */
+  it('открывается на сегодняшнем дне со сбором, который на нём стоит', () => {
+    const props = feedAdminCycleCalendar()
+    const { rerender } = renderWidget(
+      <AdminCycleCalendar
+        {...props}
+        month="2026-03"
+        today="2026-03-10"
+        cycles={[]}
+        activeCycleId={null}
+        isLoading={true}
+      />
+    )
+
+    expect(screen.getByRole('heading', { name: /10 марта/ })).toBeInTheDocument()
+
+    /* Сборы приезжают позже монтирования — черновик обязан их догнать. */
+    rerender(
+      <AdminCycleCalendar
+        {...props}
+        month="2026-03"
+        today="2026-03-10"
+        activeCycleId="active"
+        cycles={[
+          {
+            id: 'active',
+            /* 18:30 по магазину (`Asia/Bishkek`, UTC+6) 10 марта. */
+            deadlineAt: '2026-03-10T12:30:00.000Z',
+            label: 'Сбор на март',
+            status: 'ACTIVE',
+            reminderSentAt: null,
+            finalReminderSentAt: null,
+            closedAt: null,
+          },
+        ]}
+      />
+    )
+
+    expect(screen.getByLabelText('Время закрытия')).toHaveValue('18:30')
+    expect(screen.getByLabelText('Подпись')).toHaveValue('Сбор на март')
+  })
+
+  /* В другом месяце «сегодня» не показано — подставлять его в редактор нечего. */
+  it('не подставляет сегодняшний день, когда листается другой месяц', () => {
+    const props = feedAdminCycleCalendar()
+
+    renderWidget(<AdminCycleCalendar {...props} month="2026-05" today="2026-03-10" cycles={[]} />)
+
+    expect(screen.getByText(/Выберите день в календаре/)).toBeInTheDocument()
+  })
+
+  /*
     Второй открытый сбор бэкенд не заведёт (`active_cycle_exists`), а на экране это
     выглядело бы как «нажал и ничего»: причина должна стоять рядом с кнопкой.
   */

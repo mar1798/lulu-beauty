@@ -20,12 +20,25 @@ Default.parameters = {
 }
 Default.args = feedOrderDetails()
 
-/** Отменённая заявка при открытом сборе: отмена обратима, а не окончательна. */
+/** Своя отмена при открытом сборе: она обратима, а не окончательна. */
 export const Cancelled = Template.bind({})
 Cancelled.parameters = { layout: 'centered' }
 Cancelled.args = {
   ...feedOrderDetails(),
   order: feedOrder({ status: 'CANCELLED_BY_CUSTOMER', isEditable: false, isRestorable: true }),
+  onRestore: () => undefined,
+}
+
+/**
+ * Отмена владельца: возвращает её он сам, поэтому кнопки нет — вместо неё
+ * объяснение, к кому идти. Пустая карточка тут читалась бы как поломка.
+ */
+export const CancelledByOwner = Template.bind({})
+CancelledByOwner.parameters = { layout: 'centered' }
+CancelledByOwner.args = {
+  ...feedOrderDetails(),
+  order: feedOrder({ status: 'CANCELLED_BY_OWNER', isEditable: false, isRestorable: false }),
+  isCurrentCycle: true,
   onRestore: () => undefined,
 }
 

@@ -230,9 +230,11 @@ export interface IOrder {
    */
   isEditable: boolean
   /**
-   * Обратная сторона того же дедлайна: заявка отменена (любой из двух), но сбор
-   * ещё открыт — отмену можно отозвать. Вместе с `isEditable` истинным не
-   * бывает: заявка либо в работе, либо отменена.
+   * Обратная сторона того же дедлайна: покупатель отменил заявку сам, но сбор
+   * ещё открыт — свою отмену он вправе отозвать. Отмена владельца сюда не
+   * попадает: «не смогла достать» — его решение, и снимает его он же, из
+   * админки. Вместе с `isEditable` истинным не бывает: заявка либо в работе,
+   * либо отменена.
    */
   isRestorable: boolean
 }
@@ -506,7 +508,7 @@ export interface ISkeletonProps {
   width?: number | string
   height?: number | string
   shape?: 'text' | 'block' | 'circle'
-  /** `brand` — розовый пульс для витринных мест (сетка каталога). */
+  /** `brand` — розовый пульс для витринных мест (сетка каталога, подборщик). */
   tone?: 'neutral' | 'brand'
 }
 
@@ -1018,6 +1020,12 @@ export interface ISearchFieldProps {
   onChange: (value: string) => void
   label?: string
   placeholder?: string
+  /**
+   * Идёт поиск: лупа подменяется спиннером. Особенно нужен там, где выдача
+   * остаётся на экране прежней (каталог), — иначе о том, что запрос ушёл,
+   * сказать нечем.
+   */
+  isBusy?: boolean
 }
 
 export interface IProductGalleryProps {
@@ -1039,6 +1047,12 @@ export interface IProductGridProps {
   categoryNames?: Record<string, string>
   isLoading?: boolean
   skeletonCount?: number
+  /**
+   * Выдача устарела: ждём новую, а на экране пока прошлая. Отличается от
+   * `isLoading` тем, что показывать есть что, — сетка приглушается, а не
+   * подменяется скелетоном (см. `keepPreviousData` на странице каталога).
+   */
+  isBusy?: boolean
   /** Что показать, когда ничего не нашлось. */
   emptyState?: ReactNode
   renderAction?: (product: IProduct) => ReactNode
@@ -1077,6 +1091,8 @@ export interface IProductDetailsProps {
 export interface ICatalogTemplateProps {
   title: string
   summary?: string
+  /** Правый край шапки: таймер сбора и прочее, что относится ко всей витрине. */
+  aside?: ReactNode
   search?: ReactNode
   filter?: ReactNode
   children: ReactNode
@@ -1310,6 +1326,12 @@ export interface IOrderDetailsProps {
   /** Заявка относится к ещё открытому сбору — состав можно обсудить с владельцем. */
   isCurrentCycle?: boolean
   /**
+   * Куда писать, если отмена владельца — ошибка: его отмену покупатель не
+   * отзывает, а бот односторонний, и без адреса «напишите» никуда не ведёт.
+   * Без ссылки подпись остаётся текстом — адрес знает сайт, не карточка.
+   */
+  contactLink?: ILink
+  /**
    * Правка состава. Показывается, только когда переданы обработчики **и**
    * `order.isEditable`: одного флага мало (в админке правки нет), одних
    * обработчиков — тоже (после дедлайна бэкенд откажет).
@@ -1346,11 +1368,13 @@ export interface IOrderDetailsProps {
 export interface IProductPickerProps {
   query: string
   onQueryChange: (query: string) => void
-  /**
-   * Найденные товары. `null` — результатов ещё нет: либо не искали, либо идёт
-   * первый запрос (вместе с `isSearching` рисуется скелетон).
-   */
+  /** Найденные товары. `null` — результатов ещё нет: либо не искали, либо ищем. */
   products: IProduct[] | null
+  /**
+   * Идёт поиск: рисуется скелетон, что бы ни лежало в `products`. Считается от
+   * набранного в поле, а не от сетевого запроса, — иначе между последней буквой
+   * и уходом запроса (дебаунс) показывать нечего.
+   */
   isSearching?: boolean
   /** Товары, которые уже есть в заявке: добавление сольётся с их строкой. */
   addedProductIds?: string[]
@@ -1391,6 +1415,29 @@ export interface IAccountTemplateProps {
   /** Текущий путь — для `aria-current` в навигации раздела. */
   currentHref?: string
   children: ReactNode
+}
+
+/**
+ * Раздел правового документа.
+ *
+ * `body` — смесь абзацев и списков: строка рисуется абзацем, массив строк —
+ * маркированным списком. Разделять их на два поля значило бы задавать порядок
+ * («сначала все абзацы, потом все списки»), которого у документа нет.
+ */
+export interface ILegalSection {
+  title: string
+  body: (string | string[])[]
+}
+
+export interface ILegalTemplateProps {
+  title: string
+  /** Дата редакции в виде, пригодном и для `datetime`, и для чтения: `ДД.ММ.ГГГГ` не подойдёт. */
+  updatedAt: string
+  /** Вводный абзац над разделами — о чём документ и к кому относится. */
+  summary?: string
+  sections: ILegalSection[]
+  /** Слот под контакты: куда писать по поводу написанного выше. */
+  footer?: ReactNode
 }
 
 export interface IErrorTemplateProps {
@@ -1488,6 +1535,12 @@ export interface IStatusSelectProps {
   label?: string
   /** Подпись остаётся для скринридера, но не занимает место в строке таблицы. */
   isLabelHidden?: boolean
+  /**
+   * В заявке не осталось позиций: её последний товар ушёл из каталога, и она
+   * отменена от имени владельца. Возвращать в закупку нечего, бэкенд такой
+   * переход отклоняет — значит, и предлагать его не надо.
+   */
+  isEmpty?: boolean
   disabled?: boolean
 }
 
@@ -1602,6 +1655,14 @@ export interface IAdminImportPanelProps {
   summary?: IImportSummary | null
   /** Ошибка запроса. Ошибки строк приходят внутри `summary.errors`. */
   error?: string | null
+  /**
+   * Выгрузка каталога в тот же формат, который читает импорт. Не обязательна:
+   * панель без неё показывает только импорт.
+   */
+  onExport?: () => void
+  isExporting?: boolean
+  /** Ошибка выгрузки. Отдельная от `error`: это разные запросы. */
+  exportError?: string | null
 }
 
 /** Черновик сбора в календарных величинах магазина (таймзона `Asia/Bishkek`). */

@@ -85,10 +85,16 @@ def test_cycle_mention_says_nothing_about_an_unlabelled_cycle() -> None:
     assert text.count(messages.format_deadline(unlabelled.deadline_at)) == 1
 
 
-def test_order_status_changed_says_nothing_about_pending() -> None:
-    """PENDING is the owner undoing a cancellation — news to nobody."""
-    assert messages.order_status_changed(_order(status=OrderStatus.PENDING)) is None
+def test_order_status_changed_says_nothing_about_the_customers_own_cancellation() -> None:
+    """Про свою же отмену покупателю сообщать нечего — он её и сделал."""
+    assert messages.order_status_changed(_order(status=OrderStatus.CANCELLED_BY_CUSTOMER)) is None
     assert messages.order_status_changed(_order(status=OrderStatus.READY)) is not None
+
+
+def test_order_status_changed_announces_the_owner_taking_a_cancellation_back() -> None:
+    """PENDING приходит только от владельца: покупатель уже получил «отменена
+    владельцем», и без этой строки заявка воскресала бы у него молча."""
+    assert messages.order_status_changed(_order(status=OrderStatus.PENDING)) is not None
 
 
 def test_order_deleted_stays_silent_on_what_was_already_finished() -> None:
@@ -395,3 +401,67 @@ def test_cycle_closed_for_customer_says_the_order_can_no_longer_be_changed() -> 
 
     assert "«Июнь»" in text
     assert "нельзя" in text
+
+
+def test_customer_cancellation_for_owner_tells_the_two_events_apart() -> None:
+    """Отмена и возврат приходят одной цепочкой в один чат: если они читаются одинаково,
+    владелец видит два сообщения об одной заявке и не знает, чем дело кончилось."""
+    order = _order(status=OrderStatus.CANCELLED_BY_CUSTOMER)
+    customer = User(name="Айгуль", phone="+996700112233")
+
+    cancelled = messages.customer_cancellation_for_owner(order, customer, restored=False)
+    restored = messages.customer_cancellation_for_owner(order, customer, restored=True)
+
+    assert "отменена покупателем" in cancelled
+    assert "возвращена покупателем" in restored
+    assert "Айгуль" in cancelled and "+996700112233" in cancelled
+
+
+def test_customer_cancellation_for_owner_survives_a_deleted_customer() -> None:
+    """Как и `new_order_for_owner`: строка без покупателя лучше, чем упавшая задача."""
+    text = messages.customer_cancellation_for_owner(
+        _order(status=OrderStatus.CANCELLED_BY_CUSTOMER), None, restored=False
+    )
+
+    assert "Покупатель: —" in text
+
+
+def test_consent_names_the_button_it_is_about() -> None:
+    """Согласие фиксируется до нажатия, а не в ответ на него: аккаунт заводится ровно
+    в тот момент, когда человек делится номером, — поэтому текст называет ту самую
+    кнопку, о которой говорит.
+
+    Проверяется и состав перечисленного: текст обещает ровно то, что действительно
+    сохраняется в `users` — номер, имя и чат, — и врать этому списку нельзя.
+    """
+    assert messages.SHARE_CONTACT_BUTTON in messages.CONSENT
+    assert "персональных данных" in messages.CONSENT
+    assert all(word in messages.CONSENT for word in ("номер", "имя", "чат"))
+
+
+def test_consent_carries_no_address_of_its_own() -> None:
+    """Ссылка на политику — кнопка (`keyboards.privacy_link`), и адресом в тексте она
+    быть не должна: на деве это `http://localhost:3000/privacy`, а на проде — хвост,
+    который нельзя нажать."""
+    assert "http" not in messages.CONSENT
+
+
+def test_account_deleted_for_owner_names_the_orders_and_nobody_else() -> None:
+    """Владельцу нужны номера заявок, чтобы найти их в админке. Имени и телефона в этом
+    сообщении быть не может — их только что стёрли, в этом всё событие."""
+    first = uuid.UUID("a1b2c3d4-0000-0000-0000-000000000000")
+    second = uuid.UUID("b2c3d4e5-0000-0000-0000-000000000000")
+
+    text = messages.account_deleted_for_owner([first, second])
+
+    assert "удалил аккаунт" in text
+    assert messages.order_reference(first) in text
+    assert messages.order_reference(second) in text
+
+
+def test_account_deleted_for_owner_agrees_with_itself_about_one_order() -> None:
+    """Одна заявка — «Отменена заявка», не «Отменены заявки»: множественное число в
+    сообщении об одной строке читается как потеря нескольких."""
+    text = messages.account_deleted_for_owner([uuid.uuid4()])
+
+    assert "Отменена заявка" in text

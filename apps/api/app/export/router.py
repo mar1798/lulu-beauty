@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import CurrentUser, require_admin
 from app.db import get_session
+from app.export.products import CatalogExportService
 from app.export.service import ExportService, content_disposition
 from app.orders.models import OrderStatus
 
@@ -30,6 +31,19 @@ async def export_orders(
     content, filename = await ExportService(session).export_orders(
         cycle_id, order_status, include_prices=include_prices
     )
+    return Response(
+        content=content,
+        media_type=XLSX_MEDIA_TYPE,
+        headers={"Content-Disposition": content_disposition(filename)},
+    )
+
+
+@router.get("/admin/export/products")
+async def export_products(
+    session: AsyncSession = Depends(get_session),
+    _admin: CurrentUser = Depends(require_admin),
+) -> Response:
+    content, filename = await CatalogExportService(session).export_products()
     return Response(
         content=content,
         media_type=XLSX_MEDIA_TYPE,

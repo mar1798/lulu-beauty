@@ -1,6 +1,6 @@
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import (
@@ -12,13 +12,17 @@ from app.auth.dependencies import (
 from app.auth.models import User
 from app.common.schemas import PageResponse
 from app.db import get_session
+from app.telegram.notify import notify_account_deleted
 from app.users.schemas import (
+    AccountDeletionResponse,
     AdminUserResponse,
     UserResponse,
     UserRoleUpdateRequest,
     UserUpdateRequest,
 )
 from app.users.service import (
+    AccountHasUnfinishedOrdersError,
+    AccountNotDeletableError,
     SuperAdminImmutableError,
     SuperAdminNotAssignableError,
     UserNotFoundError,
@@ -75,6 +79,75 @@ async def update_me(
 
     await session.commit()
     return _user_response(user)
+
+
+@router.get("/users/me/deletion", response_model=AccountDeletionResponse)
+async def get_my_deletion_state(
+    session: AsyncSession = Depends(get_session),
+    current_user: CurrentUser = Depends(get_current_user),
+) -> AccountDeletionResponse:
+    """Whether the caller can erase their account right now.
+
+    The account page asks before it draws the button, so that "you cannot do this yet"
+    arrives as a disabled button with a reason instead of as a 409 after the confirmation
+    dialog. Same rule and same query as the `DELETE` below — `deletion_blockers`.
+
+    An admin account is not deletable at all, but that is not answered here: the site
+    knows the role it is signed in as and hides the button entirely, and "hand your role
+    back first" is not a thing this endpoint could put in `blockingOrders`.
+    """
+    service = UsersService(session)
+    try:
+        await service.get(current_user.id)
+    except UserNotFoundError as error:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "user_not_found") from error
+
+    blocking = await service.deletion_blockers(current_user.id)
+    return AccountDeletionResponse(is_deletable=not blocking, blocking_orders=blocking)
+
+
+@router.delete("/users/me", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_me(
+    background_tasks: BackgroundTasks,
+    session: AsyncSession = Depends(get_session),
+    current_user: CurrentUser = Depends(get_current_user),
+) -> None:
+    """Erases the caller's account at their own request.
+
+    204 rather than a body: there is no profile left to answer with. The site drops its
+    cookies right after (`/api/auth/logout`), and the access token it was holding stops
+    finding an account here the moment this commits — `UsersService.get` treats an erased
+    row as missing, so `/users/me` answers `user_not_found` for whatever is left of the
+    token's lifetime.
+
+    The owner is told only if something was actually taken off their purchase list; a
+    person leaving between cycles is not news. After the commit, like every other
+    notification — the account is erased whether or not Telegram answers.
+
+    `409 account_has_unfinished_orders` is the refusal that resolves on its own: an order
+    that is confirmed or ready is goods already bought and still theirs to collect. The
+    page knows about it in advance (`GET /users/me/deletion`) and keeps the button
+    disabled, so this answer is the backstop, not the way it is normally learned. Only the
+    owner can move such an order off those statuses, which is what the site says to ask
+    for — a customer's own cancellation stops at PENDING (`OrdersService.customer_flags`).
+
+    `403 account_not_deletable` is the one that does not: an account with admin rights is
+    not erased by its holder, it is demoted first (`AccountNotDeletableError`).
+    """
+    service = UsersService(session)
+    try:
+        withdrawn = await service.delete_account(current_user.id)
+    except UserNotFoundError as error:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "user_not_found") from error
+    except AccountNotDeletableError as error:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "account_not_deletable") from error
+    except AccountHasUnfinishedOrdersError as error:
+        raise HTTPException(status.HTTP_409_CONFLICT, "account_has_unfinished_orders") from error
+
+    await session.commit()
+
+    if withdrawn:
+        background_tasks.add_task(notify_account_deleted, withdrawn)
 
 
 @router.get("/admin/users", response_model=PageResponse[AdminUserResponse])

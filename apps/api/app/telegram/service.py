@@ -95,15 +95,46 @@ class NotificationsService:
             return
         logger.warning("%s; new order %s not announced", self._fallback_reason(owner), order.id)
 
+    async def send_customer_cancellation(
+        self, owner: User, order: Order, customer: User | None, *, restored: bool
+    ) -> None:
+        """The other direction from `send_order_status`: what the customer did, to the owner.
+
+        Without buttons to act on, unlike a new order — there is nothing for the owner to
+        confirm here, and a cancelled order is precisely the one whose «Подтвердить» must
+        not be one tap away. The admin list is the only thing to offer.
+        """
+        message = messages.customer_cancellation_for_owner(order, customer, restored=restored)
+        if await self._try_send(
+            owner.telegram_chat_id, message, reply_markup=keyboards.admin_orders_link()
+        ):
+            logger.info(
+                "Notified owner %s that order %s was %s by its customer",
+                owner.phone,
+                order.id,
+                "restored" if restored else "cancelled",
+            )
+            return
+        logger.warning(
+            "%s; the customer's own change to order %s not announced",
+            self._fallback_reason(owner),
+            order.id,
+        )
+
     async def send_order_status(self, user: User, order: Order) -> None:
         message = messages.order_status_changed(order)
         if message is None:
             return
         # With the link: a status change is precisely the reason to open the list, and
-        # without a button that means going to find the site by hand.
-        if await self._try_send(
-            user.telegram_chat_id, message, reply_markup=keyboards.orders_link()
-        ):
+        # without a button that means going to find the site by hand. The owner's own
+        # cancellation also asks the customer to write if it is a mistake, so that one
+        # carries the address the text promises.
+        keyboard = (
+            keyboards.owner_contact_actions()
+            if order.status is OrderStatus.CANCELLED_BY_OWNER
+            else keyboards.orders_link()
+        )
+        if await self._try_send(user.telegram_chat_id, message, reply_markup=keyboard):
             logger.info("Notified %s about order %s → %s", user.phone, order.id, order.status)
             return
         logger.warning(
@@ -120,13 +151,39 @@ class NotificationsService:
         message = messages.order_deleted(order_id, status)
         if message is None:
             return
+        # Not `orders_link` like a status change: the message asks the customer to write
+        # to the owner, and Instagram is the only place they can. The keyboard carries
+        # both — the list, and the address the text promises.
         if await self._try_send(
-            user.telegram_chat_id, message, reply_markup=keyboards.orders_link()
+            user.telegram_chat_id, message, reply_markup=keyboards.owner_contact_actions()
         ):
             logger.info("Notified %s that order %s was deleted", user.phone, order_id)
             return
         logger.warning(
             "%s; deletion of order %s not announced", self._fallback_reason(user), order_id
+        )
+
+    async def send_account_deleted(self, owner: User, order_ids: Sequence[uuid.UUID]) -> None:
+        """A customer erased their account; these orders left the purchase list with them.
+
+        The admin link, like every other piece of news about orders the owner has to act
+        on — here it is the only thing offered, since there is no customer left to contact
+        about it.
+        """
+        message = messages.account_deleted_for_owner(order_ids)
+        if await self._try_send(
+            owner.telegram_chat_id, message, reply_markup=keyboards.admin_orders_link()
+        ):
+            logger.info(
+                "Notified owner %s that an erased account withdrew %d orders",
+                owner.phone,
+                len(order_ids),
+            )
+            return
+        logger.warning(
+            "%s; an erased account's %d withdrawn orders not announced",
+            self._fallback_reason(owner),
+            len(order_ids),
         )
 
     async def send_cycle_closed(

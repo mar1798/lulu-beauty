@@ -21,6 +21,10 @@ import * as styles from './StatusSelect.css'
  *
  * Подписи берутся из `orderStatusLabel`, то есть ровно те же, что в бейдже
  * заявки у покупателя.
+ *
+ * Одного правила таблица не знает, потому что оно не про статусы: у заявки,
+ * которую опустошил уход товара из каталога, возврат в «Ожидает подтверждения»
+ * бэкенд отклоняет — брать в закупку нечего. Это и есть `isEmpty`.
  */
 
 const option = (status: OrderStatus): ISelectOption => ({
@@ -28,21 +32,25 @@ const option = (status: OrderStatus): ISelectOption => ({
   label: orderStatusLabel(status),
 })
 
-const optionsFor = (value: OrderStatus): ISelectOption[] =>
-  [value, ...ORDER_STATUS_TRANSITIONS[value]].map(option)
+const optionsFor = (value: OrderStatus, isEmpty: boolean): ISelectOption[] => {
+  const targets = ORDER_STATUS_TRANSITIONS[value].filter(status => !isEmpty || status !== 'PENDING')
+
+  return [value, ...targets].map(option)
+}
 
 export const StatusSelect: FC<IStatusSelectProps & IBasicStyling> = ({
   value,
   onChange,
   label = 'Статус заявки',
   isLabelHidden = false,
+  isEmpty = false,
   disabled = false,
   className,
 }) => (
   <Select
     className={clsx(styles.container, className)}
     value={value}
-    options={optionsFor(value)}
+    options={optionsFor(value, isEmpty)}
     label={isLabelHidden ? undefined : label}
     // Скрытая подпись не исчезает совсем — она уходит в `aria-label` поля.
     ariaLabel={isLabelHidden ? label : undefined}

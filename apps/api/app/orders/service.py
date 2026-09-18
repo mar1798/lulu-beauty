@@ -15,7 +15,6 @@ from app.cycles.models import CycleStatus, OrderCycle
 from app.cycles.service import CyclesService
 from app.orders.models import (
     ALLOWED_TRANSITIONS,
-    CANCELLED_STATUSES,
     Order,
     OrderItem,
     OrderStatus,
@@ -62,8 +61,9 @@ class ProductNotFoundError(Exception):
 class OrderNotRestorableError(Exception):
     """Nothing to undo, or the window to undo it in has closed.
 
-    Either the order isn't cancelled at all, or the cycle deadline has passed and the
-    owner is already buying against the list this order is no longer on.
+    The order isn't cancelled by the customer themselves — the owner's cancellation is
+    the owner's to undo — or the cycle deadline has passed and the owner is already
+    buying against the list this order is no longer on.
     """
 
 
@@ -326,10 +326,15 @@ class OrdersService:
         return {
             order.id: OrderFlags(
                 is_editable=order.status == OrderStatus.PENDING and order.cycle_id in open_cycles,
+                # Their own cancellation only: an order the owner took off is the owner's
+                # to put back (CANCELLED_BY_OWNER → PENDING in `ALLOWED_TRANSITIONS`).
+                # Letting the customer undo it would walk an order the owner has already
+                # decided against straight back into the purchase list, silently.
+                #
                 # `order.items` too: an order cancelled because its last product left the
                 # catalog (see `drop_product`) has nothing to come back to, and offering
                 # the button would only earn a 409.
-                is_restorable=order.status in CANCELLED_STATUSES
+                is_restorable=order.status == OrderStatus.CANCELLED_BY_CUSTOMER
                 and order.cycle_id in open_cycles
                 and bool(order.items),
             )
@@ -448,9 +453,10 @@ class OrdersService:
         as the deadline hasn't passed. The order returns to PENDING exactly as it was:
         cancelling never touched the lines or their snapshot prices.
 
-        An owner-side cancellation is restorable too, even though the order now records
-        who ended it. That's deliberate: the owner's way of making an order stay gone is
-        deleting it, not leaving it in a status the customer can walk out of.
+        Their own cancellation only. `CANCELLED_BY_OWNER` means the owner decided against
+        this order — usually "не смогла достать" — and the customer quietly putting it
+        back would return it to the tally and the purchase sheet with nobody told. That
+        one is undone the same way it was made, from the owner's panel.
         """
         order = await self.get_for_user(user_id, order_id)
         if not (await self._flags_for(order)).is_restorable:
@@ -674,12 +680,22 @@ class OrdersService:
         return list(result.scalars().all()), total
 
     async def load_customers(self, orders: list[Order]) -> dict[uuid.UUID, User]:
-        """Batch-load the users behind a set of orders (one query, not one per order)."""
+        """Batch-load the users behind a set of orders (one query, not one per order).
+
+        An erased account is not among them, like everywhere a profile is read
+        (`UsersService.get`, `recipients.get_users`): an order outlives the person who
+        placed it, and the row left behind holds a placeholder name and a filled-in phone
+        that exist precisely so nobody reads them back. The map simply has no entry for
+        that order's `user_id`, and the caller draws a dash — which is the same thing it
+        already does for an id it cannot find.
+        """
         user_ids = {order.user_id for order in orders}
         if not user_ids:
             return {}
 
-        result = await self._session.execute(select(User).where(User.id.in_(user_ids)))
+        result = await self._session.execute(
+            select(User).where(User.id.in_(user_ids), User.deleted_at.is_(None))
+        )
         return {user.id: user for user in result.scalars().all()}
 
     async def update_status(
@@ -705,6 +721,13 @@ class OrdersService:
         # shows it next to the assignable ones, and refusing it would turn a harmless
         # tap into an error message.
         if new_status is not order.status and new_status not in ALLOWED_TRANSITIONS[order.status]:
+            raise StatusTransitionError
+
+        # The owner undoing their cancellation on an order that `drop_product` emptied:
+        # every line's product left the catalog, so there is nothing to bring back and an
+        # empty PENDING order is a state neither the site nor the purchase sheet can do
+        # anything with. Same refusal the customer's own restore gives, for the same reason.
+        if new_status is OrderStatus.PENDING and not order.items:
             raise StatusTransitionError
 
         changed = order.status != new_status

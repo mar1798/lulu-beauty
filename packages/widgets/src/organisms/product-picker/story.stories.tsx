@@ -25,10 +25,14 @@ export const Idle = Template.bind({})
 Idle.parameters = { layout: 'padded' }
 Idle.args = { ...feedProductPicker(), query: '', products: null }
 
-/** Скелетон только на первом запросе — прошлые результаты не мигают. */
+/** Идёт поиск: полоски закрывают выдачу, пока она не про набранное. */
 export const Searching = Template.bind({})
 Searching.parameters = { layout: 'padded' }
-Searching.args = { ...feedProductPicker(), products: null, isSearching: true }
+/*
+  С прошлой выдачей в пропсах намеренно: скелетон закрывает её на любом поиске,
+  а не только на первом, — страница считает поиск начатым с первой буквы.
+*/
+Searching.args = { ...feedProductPicker(), isSearching: true }
 
 export const Empty = Template.bind({})
 Empty.parameters = { layout: 'padded' }

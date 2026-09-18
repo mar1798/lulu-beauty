@@ -12,6 +12,13 @@
 
 export const meKey = ['me'] as const
 
+/**
+ * Можно ли прямо сейчас удалить свой аккаунт. С `userId`, как корзина: ответ
+ * про конкретного человека, и после смены аккаунта в одной вкладке он не должен
+ * достаться следующему из кеша.
+ */
+export const accountDeletionKey = (userId: string) => ['account-deletion', userId] as const
+
 export const cartKey = (userId: string) => ['cart', userId] as const
 
 /** С `userId`, как и корзина: чужое избранное не должно достаться из кеша после смены аккаунта. */

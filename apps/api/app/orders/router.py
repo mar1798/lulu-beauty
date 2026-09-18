@@ -34,7 +34,12 @@ from app.orders.service import (
     StatusNotAssignableError,
     StatusTransitionError,
 )
-from app.telegram.notify import notify_new_order, notify_order_deleted, notify_order_status
+from app.telegram.notify import (
+    notify_new_order,
+    notify_order_cancelled_by_customer,
+    notify_order_deleted,
+    notify_order_status,
+)
 
 router = APIRouter(tags=["orders"])
 
@@ -102,6 +107,10 @@ async def _one_order_response(service: OrdersService, order: Order) -> OrderResp
 def _admin_order_response(
     order: Order, customer: User | None, tags: Mapping[uuid.UUID, ProductTags]
 ) -> AdminOrderResponse:
+    # `None` is the erased account, not a rarity: `load_customers` leaves it out of the map
+    # so its placeholder name and filled-in phone are never read back, and the dash this
+    # response already had for a missing row is exactly the right answer. The order itself
+    # is unchanged — what the owner bought is still on it.
     return AdminOrderResponse(
         id=order.id,
         cycle_id=order.cycle_id,
@@ -110,7 +119,6 @@ def _admin_order_response(
         note=order.note,
         created_at=order.created_at,
         items=_order_items(order, tags),
-        # A deleted user cascades its orders away, so this is defensive only.
         customer_name=customer.name if customer is not None else "—",
         customer_phone=customer.phone if customer is not None else "—",
     )
@@ -277,9 +285,11 @@ async def remove_my_order_item(
 @router.post("/orders/{order_id}/cancel", response_model=OrderResponse)
 async def cancel_my_order(
     order_id: uuid.UUID,
+    background_tasks: BackgroundTasks,
     session: AsyncSession = Depends(get_session),
     current_user: CurrentUser = Depends(get_current_user),
 ) -> OrderResponse:
+    """The customer withdraws their own order; the owner is told it left the shopping list."""
     service = OrdersService(session)
     try:
         order = await service.cancel(current_user.id, order_id)
@@ -288,12 +298,14 @@ async def cancel_my_order(
 
     response = await _one_order_response(service, order)
     await session.commit()
+    background_tasks.add_task(notify_order_cancelled_by_customer, order.id, restored=False)
     return response
 
 
 @router.post("/orders/{order_id}/restore", response_model=OrderResponse)
 async def restore_my_order(
     order_id: uuid.UUID,
+    background_tasks: BackgroundTasks,
     session: AsyncSession = Depends(get_session),
     current_user: CurrentUser = Depends(get_current_user),
 ) -> OrderResponse:
@@ -302,6 +314,9 @@ async def restore_my_order(
     Cancelling by mistake used to be final — the only way back was placing the whole
     request again. Nothing is bought against a cancelled order, so before the deadline
     there's nothing to undo but a status.
+
+    Announced to the owner like the cancellation itself: they were told the order was
+    off, and without this the shopping list grows back without a word.
     """
     service = OrdersService(session)
     try:
@@ -311,6 +326,7 @@ async def restore_my_order(
 
     response = await _one_order_response(service, order)
     await session.commit()
+    background_tasks.add_task(notify_order_cancelled_by_customer, order.id, restored=True)
     return response
 
 

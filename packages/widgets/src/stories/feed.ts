@@ -14,6 +14,7 @@ import {
   IAlertProps,
   IAppearProps,
   IAuthTemplateProps,
+  ILegalTemplateProps,
   IAuthUser,
   ICart,
   ICartItem,
@@ -638,6 +639,7 @@ export const feedProductDetails = (): IProductDetailsProps => ({
 export const feedCatalogTemplate = (): ICatalogTemplateProps => ({
   title: 'Каталог',
   summary: 'Заявки принимаются до ближайшего дедлайна.',
+  aside: 'Сюда встаёт таймер сбора',
   children: 'Сюда встаёт сетка товаров',
 })
 
@@ -651,6 +653,25 @@ export const feedAuthTemplate = (): IAuthTemplateProps => ({
   title: 'Вход',
   subtitle: 'Введите телефон и пароль — код придёт в Telegram.',
   children: 'Сюда встаёт форма',
+})
+
+export const feedLegalTemplate = (): ILegalTemplateProps => ({
+  title: 'Политика обработки персональных данных',
+  updatedAt: '2026-09-18',
+  summary: 'Короткая выжимка того, что магазин сохраняет и зачем.',
+  sections: [
+    {
+      title: 'Какие данные мы собираем',
+      body: [
+        'Только то, без чего нельзя принять заявку и сообщить о ней:',
+        ['номер телефона', 'имя из профиля Telegram', 'идентификатор чата с ботом'],
+      ],
+    },
+    {
+      title: 'Как удалить аккаунт',
+      body: ['Кнопка «Удалить аккаунт» в профиле стирает эти данные без обращения к владельцу.'],
+    },
+  ],
 })
 
 export const feedTelegramLoginPanel = (): ITelegramLoginPanelProps => ({
@@ -818,6 +839,7 @@ export const feedOrderDetails = (): IOrderDetailsProps => ({
   order: feedOrder({ note: 'Позвоните после 18:00, пожалуйста.' }),
   buildProductHref: slug => `/catalog/${slug}`,
   isCurrentCycle: true,
+  contactLink: { href: 'https://www.instagram.com/sululu_kg', target: '_blank' },
 })
 
 export const feedProductPicker = (): IProductPickerProps => ({
@@ -969,6 +991,7 @@ export const feedAdminCategoriesPanel = (): IAdminCategoriesPanelProps => ({
 
 export const feedAdminImportPanel = (): IAdminImportPanelProps => ({
   onImport: noop,
+  onExport: noop,
   summary: {
     created: 12,
     updated: 3,

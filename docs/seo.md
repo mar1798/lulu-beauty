@@ -8,8 +8,12 @@ planned.
 ## robots.txt
 
 `apps/website/public/robots.txt`, static. Public: the home page, the catalogue, product
-pages. Everything behind sign-in is disallowed (`/cart`, `/checkout`, `/account`, `/orders`,
-`/wishlist`, `/login`), and so are `/admin` and `/api/`.
+pages and `/privacy`. Everything behind sign-in is disallowed (`/cart`, `/checkout`,
+`/account`, `/orders`, `/wishlist`, `/login`), and so are `/admin` and `/api/`.
+
+`/privacy` is deliberately **not** disallowed. The bot links it in its first message and
+people look for it by name; a policy hidden from search is a policy that cannot do the one
+job it has.
 
 The `Sitemap:` line spells out `https://sululu.store/sitemap.xml`. A static file cannot
 interpolate `NEXT_PUBLIC_SITE_URL`, and robots.txt is only ever read on the production host,
@@ -22,7 +26,7 @@ route.
 XML into `res` and closes the response; the default export is a component that renders `null`
 and is never reached.
 
-It lists the home page, `/catalog`, and one URL per product, walking `GET /products` in pages
+It lists the home page, `/catalog`, `/privacy`, and one URL per product, walking `GET /products` in pages
 of 100 (the endpoint's ceiling) until `total` is reached, with a 50-page stop so a bad `total`
 cannot spin forever. Cached for an hour at the edge (`s-maxage=3600`), the same staleness the
 catalogue's ISR already accepts.
@@ -33,7 +37,8 @@ Two decisions worth keeping:
   the public product response now carries; a build date or "today" would be a fabrication, and
   Google stops trusting `lastmod` across the whole file once it catches one. The home page and
   the catalogue have no honest modification date of their own — both are assembled out of the
-  whole catalogue — so they carry no tag. `<changefreq>` and `<priority>` are never written:
+  whole catalogue — so they carry no tag. `/privacy` carries none either: its revision date is
+  written into the page itself, and a static file has no machine-readable one. `<changefreq>` and `<priority>` are never written:
   Google has ignored them since 2023.
 - **API failure answers `503`, not a short sitemap.** A map missing half the catalogue reads
   as "those URLs are gone". A `503` with `Retry-After` is re-fetched; a truncated list is

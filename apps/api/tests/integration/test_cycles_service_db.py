@@ -52,7 +52,9 @@ async def test_reopening_a_closed_cycle_puts_the_whole_row_back(db_session: Asyn
     `get_active_cycle()` goes by the deadline alone, so the cycle started collecting orders
     again — while `sweep_deadlines` skips anything already CLOSED and would therefore never
     close it a second time, and both reminder stamps stayed set so the new deadline would
-    pass unannounced.
+    pass unannounced. `announced_at` is the same kind of leftover: kept, it describes an
+    announcement about a cycle that has since ended and closes the only door through which
+    the shop hears the reopening.
     """
     now = datetime.now(UTC)
     cycle = await make_cycle(
@@ -61,6 +63,7 @@ async def test_reopening_a_closed_cycle_puts_the_whole_row_back(db_session: Asyn
     cycle.closed_at = now - timedelta(days=1)
     cycle.reminder_sent_at = now - timedelta(days=2)
     cycle.final_reminder_sent_at = now - timedelta(days=2)
+    cycle.announced_at = now - timedelta(days=5)
     await db_session.flush()
 
     updated = await CyclesService(db_session).update(
@@ -71,6 +74,7 @@ async def test_reopening_a_closed_cycle_puts_the_whole_row_back(db_session: Asyn
     assert updated.closed_at is None
     assert updated.reminder_sent_at is None
     assert updated.final_reminder_sent_at is None
+    assert updated.announced_at is None
     assert await CyclesService(db_session).get_active_cycle() is not None
 
 
@@ -82,6 +86,7 @@ async def test_renaming_a_finished_cycle_leaves_it_closed(db_session: AsyncSessi
         db_session, deadline_at=now - timedelta(days=1), status=CycleStatus.CLOSED
     )
     cycle.closed_at = now - timedelta(days=1)
+    cycle.announced_at = now - timedelta(days=5)
     await db_session.flush()
 
     updated = await CyclesService(db_session).update(
@@ -91,6 +96,8 @@ async def test_renaming_a_finished_cycle_leaves_it_closed(db_session: AsyncSessi
     assert updated.status is CycleStatus.CLOSED
     assert updated.closed_at is not None
     assert updated.label == "Ноябрьский сбор"
+    # And its announcement stands: nothing was reopened, so there is nothing to announce.
+    assert updated.announced_at is not None
 
 
 """Открытый сбор ровно один.

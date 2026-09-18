@@ -25,6 +25,7 @@ import {
 import { listCategories } from '@/services/endpoints/catalog'
 import { SHOWCASE_PATHS, productPath, refreshPublicPages } from '@/services/endpoints/revalidate'
 import { adminBrandsKey, adminProductsKey, categoriesKey } from '@/services/swrKeys'
+import { scrollToTop } from '@/utils/scroll'
 import * as styles from '@/styles/admin.css'
 
 /**
@@ -76,12 +77,35 @@ const AdminProductsPage: React.FC = () => {
 
   const [search, setSearch] = useQueryTextInput(query, commitSearch, SEARCH_DELAY_MS)
 
+  /*
+    Пагинация внизу таблицы: без прокрутки следующая страница начинается за
+    верхним краем экрана, и владелец остаётся у кнопок, глядя на её хвост.
+    Прокрутка своя, а не встроенная в переход (`scroll: false`), — иначе Next
+    дёрнул бы страницу к началу мгновенно.
+  */
+  const goToPage = useCallback(
+    (next: number) => {
+      setParams({ page: next }, { scroll: false })
+      scrollToTop()
+    },
+    [setParams]
+  )
+
   const [busyId, setBusyId] = useState<string | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
+
+  /*
+    Запрос, по которому пришли строки, лежащие сейчас в `data`. `keepPreviousData`
+    намеренно держит прошлую выдачу на экране при смене любого параметра, так что
+    «данных по текущему ключу нет» (`isLoading`) не отличает поиск от клика по
+    категории — а скелетон нужен только на поиске.
+  */
+  const [loadedQuery, setLoadedQuery] = useState(query)
 
   const {
     data,
     error: fetchError,
+    isLoading,
     mutate,
   } = useSWR(
     adminProductsKey(query, categorySlug ?? '', brand ?? '', includeDeleted, page),
@@ -99,6 +123,16 @@ const AdminProductsPage: React.FC = () => {
   )
 
   /*
+    `isLoading` ложно ровно тогда, когда на экране выдача по текущему ключу.
+    Правка состояния прямо в рендере — тот самый случай, ради которого React её
+    допускает: значение целиком выводится из пропсов загрузчика, и перерисовка
+    случается сразу, до кадра, то есть скелетон не успевает мигнуть.
+  */
+  if (!isLoading && loadedQuery !== query) {
+    setLoadedQuery(query)
+  }
+
+  /*
     Скелетон — только пока показывать нечего. `isLoading` из SWR считается по
     текущему ключу и на смене фильтра становится `true` даже с
     `keepPreviousData`, из-за чего таблица мигала скелетоном на каждый клик.
@@ -107,6 +141,24 @@ const AdminProductsPage: React.FC = () => {
     условия под сообщением «Не получилось» крутилась вечная загрузка.
   */
   const isFirstLoad = data === undefined && fetchError === undefined
+
+  /*
+    Поиск считается идущим с первой буквы, а не с ухода запроса, — как в
+    подборщике товара (`useProductSearch`): дебаунс `useQueryTextInput` длится
+    те же доли секунды, и всё это время в таблице лежит выдача по прошлому слову.
+    Отсюда две половины: `search !== query` — набранное ещё не доехало до адреса,
+    `isLoading` при разошедшемся `loadedQuery` — запрос по новому слову в пути.
+
+    Второе слагаемое молчит там, где ответ уже есть: повтор того же слова SWR
+    берёт из кеша, `isLoading` при этом ложно, и мигания скелетоном на готовой
+    выдаче не будет. Смену категории, бренда или страницы оно тоже не задевает —
+    там `loadedQuery` уже совпадает с `query`.
+
+    Сравнение дословное, без `trim`: в адрес уезжает ровно набранное, пробелы
+    включительно (`textParam`), и подрезанная копия никогда бы с ним не совпала —
+    поиск остался бы «занят» навсегда.
+  */
+  const isSearching = search !== query || (isLoading && loadedQuery !== query)
 
   // Общий ключ с «Категориями» (`/admin/categories`): правка там видна тут без перезагрузки.
   const { data: categories } = useSWR(categoriesKey, () => listCategories())
@@ -204,8 +256,12 @@ const AdminProductsPage: React.FC = () => {
         чипов во всю ширину колонки.
       */}
       <div className={styles.filters}>
-        {/* Без подписи: placeholder у поля — тот же «Поиск по названию». */}
-        <SearchField value={search} onChange={setSearch} />
+        {/*
+          Без подписи: placeholder у поля — тот же «Поиск по названию».
+          Спиннер на месте лупы — занятость видна там, куда человек печатает,
+          ещё до того как таблица ниже встанет скелетоном.
+        */}
+        <SearchField value={search} onChange={setSearch} isBusy={isSearching} />
 
         <CategoryFilter
           categories={categories ?? []}
@@ -237,7 +293,12 @@ const AdminProductsPage: React.FC = () => {
         products={data?.items ?? []}
         categoryNames={categoryNames}
         buildEditHref={product => `/admin/products/${product.id}`}
-        isLoading={isFirstLoad}
+        /*
+          Скелетон и на поиске, а не только на первой загрузке: прошлая выдача
+          под новым словом читалась бы как ответ на него, а «Товаров не нашлось»
+          на полсекунды — как ответ по недобранному слову.
+        */
+        isLoading={isFirstLoad || isSearching}
         busyId={busyId}
         onDelete={product => {
           void handleDelete(product)
@@ -268,7 +329,7 @@ const AdminProductsPage: React.FC = () => {
           page={data.page}
           pageSize={data.pageSize}
           total={data.total}
-          onChange={next => setParams({ page: next })}
+          onChange={goToPage}
         />
       )}
     </AdminShell>

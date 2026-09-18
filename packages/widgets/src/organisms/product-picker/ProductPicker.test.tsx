@@ -30,6 +30,29 @@ describe('ProductPicker', () => {
     expect(screen.getByText(/Ничего не нашлось/)).toBeInTheDocument()
   })
 
+  it('на время поиска подменяет прошлые результаты скелетоном', () => {
+    const product = feedProduct({ name: 'Сыворотка с ниацинамидом' })
+
+    const { container } = renderWidget(
+      <ProductPicker {...feedProductPicker()} products={[product]} isSearching={true} />
+    )
+
+    // Прошлая выдача другой длины прыгала бы на месте новой — её не показываем.
+    expect(screen.queryByText('Сыворотка с ниацинамидом')).not.toBeInTheDocument()
+
+    const busy = container.querySelector('[aria-busy="true"]')
+
+    expect(busy).not.toBeNull()
+
+    /*
+      Миниатюра скелетона держит ширину строки выдачи. Проверяется инлайновый
+      стиль, а не раскладка: ширина у `Skeleton` приходит пропом, и стоит её
+      забыть, как значение по умолчанию (100%) вместе с `aspect-ratio`
+      растягивает полоску в блок на весь подборщик.
+    */
+    expect(busy?.querySelector('span[style*="width: 48px"]')).not.toBeNull()
+  })
+
   it('отдаёт наружу идентификатор товара', async () => {
     const onAdd = vi.fn()
     const user = userEvent.setup()

@@ -1,3 +1,5 @@
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock
@@ -12,7 +14,11 @@ from app.cycles.models import CycleStatus
 from app.cycles.scheduler_service import CartRescue, CycleSchedulerService
 from app.cycles.service import CycleAlreadyClosedError, CyclesService
 from app.orders.service import OrdersService
-from app.telegram.notify import notify_carts_rescued, notify_cycle_reminders
+from app.telegram.notify import (
+    notify_carts_rescued,
+    notify_cycle_opened,
+    notify_cycle_reminders,
+)
 from app.telegram.service import BroadcastResult
 from app.wishlist.models import WishlistItem
 from app.wishlist.service import WishlistService
@@ -433,3 +439,112 @@ async def test_close_now_does_everything_the_deadline_would_have(
 
     with pytest.raises(CycleAlreadyClosedError):
         await service.close_now(cycle.id)
+
+
+@pytest.fixture
+def announcement_session(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> AsyncSession:
+    """`notify_cycle_opened` opens its own session (it runs outside any request); point
+    that at the test's session so the stamp it writes is visible to the assertions."""
+
+    @asynccontextmanager
+    async def factory() -> AsyncIterator[AsyncSession]:
+        yield db_session
+
+    monkeypatch.setattr("app.telegram.notify.async_session", factory)
+    return db_session
+
+
+async def test_unannounced_cycles_finds_only_the_open_ones_without_a_stamp(
+    db_session: AsyncSession,
+) -> None:
+    service = CycleSchedulerService(db_session)
+    open_cycle = await make_cycle(db_session, deadline_at=datetime.now(UTC) + timedelta(days=1))
+
+    assert await service.unannounced_cycles() == [open_cycle.id]
+
+    # A cycle past its deadline, and one closed early, are past announcing too: the text
+    # invites people to order in something that no longer takes orders.
+    await make_cycle(db_session, deadline_at=datetime.now(UTC) - timedelta(days=1))
+    await make_cycle(
+        db_session,
+        deadline_at=datetime.now(UTC) + timedelta(days=2),
+        status=CycleStatus.CLOSED,
+    )
+    assert await service.unannounced_cycles() == [open_cycle.id]
+
+    open_cycle.announced_at = datetime.now(UTC)
+    await db_session.flush()
+    assert await service.unannounced_cycles() == []
+
+
+async def test_announcing_a_cycle_stamps_it_and_does_not_say_it_twice(
+    announcement_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    db_session = announcement_session
+    await make_user(db_session, telegram_chat_id=777)
+    cycle = await make_cycle(db_session, deadline_at=datetime.now(UTC) + timedelta(days=1))
+    send = AsyncMock(return_value=BroadcastResult(sent=1, blocked_chat_ids=[]))
+    monkeypatch.setattr("app.telegram.notify.notifications_service.send_cycle_opened", send)
+
+    await notify_cycle_opened(cycle.id)
+
+    send.assert_awaited_once()
+    await db_session.refresh(cycle)
+    assert cycle.announced_at is not None
+    assert await CycleSchedulerService(db_session).unannounced_cycles() == []
+
+    # The sweep is free to call this again; the stamp is what keeps it quiet.
+    send.reset_mock()
+    await notify_cycle_opened(cycle.id)
+    send.assert_not_awaited()
+
+
+async def test_an_announcement_that_never_went_out_is_swept_up_and_sent_again(
+    announcement_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The failure the stamp exists for: the fan-out dies partway through, and without a
+    retry every customer it had not reached stays unaware the cycle was ever opened."""
+    db_session = announcement_session
+    await make_user(db_session, telegram_chat_id=778)
+    cycle = await make_cycle(db_session, deadline_at=datetime.now(UTC) + timedelta(days=1))
+    send = AsyncMock(side_effect=RuntimeError("Telegram is unreachable"))
+    monkeypatch.setattr("app.telegram.notify.notifications_service.send_cycle_opened", send)
+
+    await notify_cycle_opened(cycle.id)  # swallowed and logged, like everything in notify
+
+    await db_session.refresh(cycle)
+    assert cycle.announced_at is None
+    assert await CycleSchedulerService(db_session).unannounced_cycles() == [cycle.id]
+
+    send.side_effect = None
+    send.return_value = BroadcastResult(sent=1, blocked_chat_ids=[])
+    await notify_cycle_opened(cycle.id)
+
+    await db_session.refresh(cycle)
+    assert cycle.announced_at is not None
+
+
+async def test_a_sweep_landing_mid_broadcast_does_not_start_a_second_one(
+    announcement_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A fan-out over the whole shop outlives a sweep tick, and the stamp only lands at
+    the end of it — so a tick arriving in the middle must find the cycle already claimed,
+    or everyone reached so far hears about the same cycle twice."""
+    db_session = announcement_session
+    await make_user(db_session, telegram_chat_id=779)
+    cycle = await make_cycle(db_session, deadline_at=datetime.now(UTC) + timedelta(days=1))
+    calls = 0
+
+    async def send(*args: object, **kwargs: object) -> BroadcastResult:
+        nonlocal calls
+        calls += 1
+        await notify_cycle_opened(cycle.id)  # the sweep, ticking mid-broadcast
+        return BroadcastResult(sent=1, blocked_chat_ids=[])
+
+    monkeypatch.setattr("app.telegram.notify.notifications_service.send_cycle_opened", send)
+
+    await notify_cycle_opened(cycle.id)
+
+    assert calls == 1

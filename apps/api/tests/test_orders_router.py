@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from app.auth.dependencies import CurrentUser, require_admin
+from app.auth.dependencies import CurrentUser, get_current_user, require_admin
 from app.auth.models import Role
 from app.db import get_session
 from app.main import app
@@ -157,3 +157,58 @@ async def test_delete_hands_the_notification_what_the_row_no_longer_holds(
 
     assert response.status_code == 204
     notify.assert_awaited_once_with(order.user_id, order.id, OrderStatus.CONFIRMED)
+
+
+@pytest.fixture
+def customer_client() -> Iterator[AsyncClient]:
+    """For the customer's own routes: they commit, so they need a session too."""
+    app.dependency_overrides[get_session] = lambda: AsyncMock()
+    app.dependency_overrides[get_current_user] = lambda: CurrentUser(
+        id=uuid.uuid4(), role=Role.CUSTOMER
+    )
+    try:
+        yield AsyncClient(transport=ASGITransport(app=app), base_url="http://test")
+    finally:
+        app.dependency_overrides.clear()
+
+
+async def _post_own_order_action(
+    client: AsyncClient, order: Order, action: str
+) -> tuple[AsyncMock, uuid.UUID]:
+    with (
+        patch("app.orders.router.OrdersService") as mock_service_cls,
+        patch(
+            "app.orders.router.notify_order_cancelled_by_customer", new_callable=AsyncMock
+        ) as notify,
+    ):
+        service = mock_service_cls.return_value
+        service.cancel = AsyncMock(return_value=order)
+        service.restore = AsyncMock(return_value=order)
+        service.customer_flags = AsyncMock(return_value={})
+        service.load_item_tags = AsyncMock(return_value={})
+        async with client as c:
+            response = await c.post(f"/orders/{order.id}/{action}")
+
+    assert response.status_code == 200
+    return notify, order.id
+
+
+async def test_own_cancellation_reaches_the_owner(customer_client: AsyncClient) -> None:
+    """The one post-checkout change the customer can make to the shopping list — before
+    this it only showed up the next time the owner reopened the admin table."""
+    notify, order_id = await _post_own_order_action(
+        customer_client, _order(OrderStatus.CANCELLED_BY_CUSTOMER), "cancel"
+    )
+
+    notify.assert_awaited_once_with(order_id, restored=False)
+
+
+async def test_taking_a_cancellation_back_reaches_the_owner_too(
+    customer_client: AsyncClient,
+) -> None:
+    """The owner was told the order was off; a silent restore would leave that standing."""
+    notify, order_id = await _post_own_order_action(
+        customer_client, _order(OrderStatus.PENDING), "restore"
+    )
+
+    notify.assert_awaited_once_with(order_id, restored=True)

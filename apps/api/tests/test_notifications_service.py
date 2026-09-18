@@ -8,6 +8,7 @@ from aiogram.exceptions import TelegramForbiddenError, TelegramRetryAfter
 from app.auth.models import User
 from app.cycles.models import OrderCycle
 from app.orders.models import Order, OrderStatus
+from app.telegram import keyboards
 from app.telegram.keyboards import OrderAction
 from app.telegram.service import CartRescueNotice, NotificationsService
 
@@ -136,14 +137,35 @@ async def test_send_order_deleted_tells_a_customer_still_waiting() -> None:
     chat_id, message = bot.send_message.await_args.args
     assert chat_id == 42
     assert str(order_id)[:8] in message
+    # The text sends them to the owner, so the keyboard has to carry the only address
+    # the owner answers at.
+    markup = bot.send_message.await_args.kwargs["reply_markup"]
+    urls = [button.url for row in markup.inline_keyboard for button in row]
+    assert keyboards.INSTAGRAM_URL in urls
 
 
-async def test_send_order_status_stays_silent_on_pending() -> None:
-    """The owner restoring an order they cancelled is not news the customer needs."""
+async def test_send_order_status_offers_the_instagram_on_the_owners_cancellation() -> None:
+    """«Если это ошибка — напишите»: без кнопки это значит искать аккаунт руками."""
     bot = AsyncMock()
     service = NotificationsService(bot)
 
-    await service.send_order_status(_user(telegram_chat_id=42), _order(OrderStatus.PENDING))
+    await service.send_order_status(
+        _user(telegram_chat_id=42), _order(status=OrderStatus.CANCELLED_BY_OWNER)
+    )
+
+    markup = bot.send_message.await_args.kwargs["reply_markup"]
+    urls = [button.url for row in markup.inline_keyboard for button in row]
+    assert keyboards.INSTAGRAM_URL in urls
+
+
+async def test_send_order_status_stays_silent_on_the_customers_own_cancellation() -> None:
+    """Telling someone what they just did themselves reads as if someone else did it."""
+    bot = AsyncMock()
+    service = NotificationsService(bot)
+
+    await service.send_order_status(
+        _user(telegram_chat_id=42), _order(OrderStatus.CANCELLED_BY_CUSTOMER)
+    )
 
     bot.send_message.assert_not_awaited()
 
@@ -236,3 +258,37 @@ async def test_delivery_gives_up_after_a_second_flood_wait() -> None:
     await service.send_reminder(_user(telegram_chat_id=42), _cycle())
 
     assert bot.send_message.await_count == 2
+
+
+async def test_send_customer_cancellation_reaches_the_owner_without_order_buttons(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """«Подтвердить» под отменённой заявкой — это подтверждение того, чего уже нет;
+    владельцу здесь нечего нажимать, кроме дороги в админку."""
+    monkeypatch.setattr("app.config.settings.website_base_url", "https://lulu.example.com")
+    bot = AsyncMock()
+    service = NotificationsService(bot)
+    order = _order(status=OrderStatus.CANCELLED_BY_CUSTOMER)
+
+    await service.send_customer_cancellation(
+        _user(telegram_chat_id=42), order, _user(telegram_chat_id=7), restored=False
+    )
+
+    chat_id, message = bot.send_message.await_args.args
+    assert chat_id == 42
+    assert "отменена покупателем" in message
+    markup = bot.send_message.await_args.kwargs["reply_markup"]
+    buttons = [button for row in markup.inline_keyboard for button in row]
+    assert [button.url for button in buttons] == ["https://lulu.example.com/admin/orders"]
+
+
+async def test_send_customer_cancellation_stays_quiet_on_a_dead_binding() -> None:
+    """Владелец заблокировал бота: событие уже произошло, ронять фоновую задачу нечем."""
+    bot = AsyncMock()
+    service = NotificationsService(bot)
+
+    await service.send_customer_cancellation(
+        _user(telegram_chat_id=None), _order(), None, restored=True
+    )
+
+    bot.send_message.assert_not_awaited()

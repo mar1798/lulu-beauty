@@ -114,6 +114,11 @@ async def handle_start(message: Message, command: CommandObject) -> None:
         return
 
     await message.answer(messages.START, reply_markup=keyboards.share_contact())
+    # Split for the same reason as the login warning above: one markup per message, and
+    # the greeting spends it on the reply keyboard with «Поделиться номером». The consent
+    # goes second on purpose — last before the input field, right over the button it is
+    # about, and still before the tap that creates the account.
+    await message.answer(messages.CONSENT, reply_markup=keyboards.privacy_link())
 
 
 @router.message(F.contact)

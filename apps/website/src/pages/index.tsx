@@ -24,6 +24,7 @@ import { AddToCartButton } from '@/components/AddToCartButton'
 import { JsonLd } from '@/components/JsonLd'
 import { PageMeta } from '@/components/PageMeta'
 import { WishlistButton } from '@/components/WishlistButton'
+import { useCycleExpiryRefresh } from '@/hooks/useCycleExpiryRefresh'
 import { getActiveCycleOrNull } from '@/services/endpoints/cycles'
 import { listBrands, listCategories, listProducts } from '@/services/endpoints/catalog'
 import { activeCycleFallback, type ISwrFallback } from '@/services/swrFallback'
@@ -365,6 +366,14 @@ const HeroCycle: React.FC<{
   showcaseMore?: React.ReactNode
 }> = ({ cycle, note, background, showcase, showcaseMore }) => {
   const { days, hours, isExpired, isReady } = useCountdown(cycle?.deadlineAt ?? null)
+
+  /*
+    Приведение ниже чинит только героя, а витрина подборки с кнопками «в
+    корзину» осталась бы при устаревшем сборе. Поэтому на нуле таймера сбор
+    ещё и перепроверяется — тогда страница целиком узнаёт о закрытии, а не
+    один блок на ней.
+  */
+  useCycleExpiryRefresh(cycle?.deadlineAt ?? null)
 
   /*
     Истёкший дедлайн приводится к «сбора нет»: страница статическая с

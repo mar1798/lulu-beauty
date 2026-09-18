@@ -4,8 +4,10 @@ import type { IImportSummary } from 'widgets/types'
 import { AdminImportPanel } from 'widgets/organisms'
 import { useToast } from 'widgets/contexts'
 import { AdminShell } from '@/layouts/AdminShell'
+import { saveBlob } from '@/services/api'
 import { messageForError } from '@/services/apiErrors'
 import { importCatalog } from '@/services/endpoints/admin'
+import { downloadCatalogExport } from '@/services/endpoints/export'
 import { SHOWCASE_PATHS, refreshPublicPages } from '@/services/endpoints/revalidate'
 import { categoriesKey, isAdminBrandsKey, isAdminProductsKey } from '@/services/swrKeys'
 
@@ -16,6 +18,10 @@ import { categoriesKey, isAdminBrandsKey, isAdminProductsKey } from '@/services/
  * частичный, и разбор ошибок — часть нормального результата. Поэтому здесь
  * нет ветки «успех/провал»: есть итог и есть ошибка запроса, и панель
  * показывает то, что пришло.
+ *
+ * Выгрузка каталога живёт на этой же странице: лист у неё в том же формате,
+ * который читает импорт, так что «выгрузить — поправить в Excel — залить
+ * обратно» проходит целиком здесь, не уводя владельца никуда ещё.
  */
 
 /** Номер строки `0` в `errors` означает отказ по всему файлу, а не по строке. */
@@ -25,6 +31,8 @@ const AdminImportPage: React.FC = () => {
   const [isImporting, setIsImporting] = useState(false)
   const [summary, setSummary] = useState<IImportSummary | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [isExporting, setIsExporting] = useState(false)
+  const [exportError, setExportError] = useState<string | null>(null)
 
   const handleImport = async (file: File): Promise<void> => {
     setIsImporting(true)
@@ -78,9 +86,25 @@ const AdminImportPage: React.FC = () => {
     }
   }
 
+  const handleExport = async (): Promise<void> => {
+    setIsExporting(true)
+    setExportError(null)
+
+    try {
+      saveBlob(await downloadCatalogExport(), 'catalog.xlsx')
+    } catch (cause: unknown) {
+      const message = messageForError(cause, 'admin.export.catalog')
+
+      setExportError(message)
+      notify({ tone: 'danger', title: 'Выгрузка не выполнена', description: message })
+    } finally {
+      setIsExporting(false)
+    }
+  }
+
   return (
     <AdminShell
-      title="Импорт каталога"
+      title="Импорт и выгрузка каталога"
       summary="Товары сопоставляются по slug: знакомый обновляется, новый создаётся"
     >
       <AdminImportPanel
@@ -89,6 +113,11 @@ const AdminImportPage: React.FC = () => {
         error={error}
         onImport={file => {
           void handleImport(file)
+        }}
+        isExporting={isExporting}
+        exportError={exportError}
+        onExport={() => {
+          void handleExport()
         }}
       />
     </AdminShell>

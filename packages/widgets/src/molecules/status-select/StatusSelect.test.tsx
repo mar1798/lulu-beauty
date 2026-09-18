@@ -36,4 +36,31 @@ describe('StatusSelect', () => {
 
     expect(screen.getByRole('option', { name: 'Отменена покупателем' })).toBeTruthy()
   })
+
+  /*
+    Отменённое возвращает тот, кто отменил. Свою отмену владелец снимает здесь;
+    из отмены покупателя выхода в списке нет — оттуда выходит сам покупатель.
+  */
+  it('даёт снять свою отмену и не даёт снять чужую', async () => {
+    const { unmount } = renderWidget(
+      <StatusSelect {...feedStatusSelect()} value="CANCELLED_BY_OWNER" />
+    )
+    await userEvent.click(screen.getByRole('combobox'))
+    expect(screen.getByRole('option', { name: 'Ожидает подтверждения' })).toBeTruthy()
+    unmount()
+
+    renderWidget(<StatusSelect {...feedStatusSelect()} value="CANCELLED_BY_CUSTOMER" />)
+    await userEvent.click(screen.getByRole('combobox'))
+    expect(screen.queryByRole('option', { name: 'Ожидает подтверждения' })).toBeNull()
+  })
+
+  /* Опустевшую заявку возвращать некуда: товаров в ней не осталось. */
+  it('не предлагает вернуть в работу заявку без позиций', async () => {
+    renderWidget(<StatusSelect {...feedStatusSelect()} value="CANCELLED_BY_OWNER" isEmpty={true} />)
+
+    await userEvent.click(screen.getByRole('combobox'))
+
+    expect(screen.queryByRole('option', { name: 'Ожидает подтверждения' })).toBeNull()
+    expect(screen.getByRole('option', { name: 'Отменена владельцем' })).toBeTruthy()
+  })
 })

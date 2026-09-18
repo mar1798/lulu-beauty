@@ -182,6 +182,7 @@ WISHLIST_PATH = "/wishlist"
 CATALOG_PATH = "/catalog"
 ORDERS_PATH = "/orders"
 ADMIN_ORDERS_PATH = "/admin/orders"
+PRIVACY_PATH = "/privacy"
 
 
 def instagram_button() -> InlineKeyboardButton:
@@ -239,6 +240,40 @@ def catalog_link() -> InlineKeyboardMarkup | None:
 def orders_link() -> InlineKeyboardMarkup | None:
     """Under the order list, which the bot deliberately truncates to five."""
     return _site_link(ORDERS_PATH, messages.ORDERS_BUTTON)
+
+
+def owner_contact_actions() -> InlineKeyboardMarkup:
+    """Under the two messages that send the customer to the owner — a deleted order and
+    one the owner cancelled: the list, and the way to ask about it.
+
+    Instagram is the point of this keyboard — both texts tell the customer to write if
+    it is a mistake, and the bot is one-way, so without the button «напишите» means
+    finding the shop's account by hand. Never `None` for the same reason as
+    `site_links`: on a non-addressable host the orders row drops out and Instagram
+    still stands.
+    """
+    rows = []
+    orders = _site_button(ORDERS_PATH, messages.ORDERS_BUTTON)
+    if orders is not None:
+        rows.append([orders])
+    rows.append([instagram_button()])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def privacy_link() -> InlineKeyboardMarkup | None:
+    """Under the consent message the bot sends before anyone shares a number.
+
+    A button rather than the address written out, and that is the whole reason this
+    message is separate from the greeting: `share_contact()` takes the greeting's single
+    `reply_markup` slot, so the policy could only have travelled as text — which reads as
+    `http://localhost:3000/privacy` in development and as an unclickable tail in
+    production.
+
+    `None` on a host Telegram won't link to (`_site_button`), like every other link here.
+    The consent still sends; it simply loses its way to the document, which is the same
+    trade the cart reminder and the order list already make on localhost.
+    """
+    return _site_link(PRIVACY_PATH, messages.PRIVACY_BUTTON)
 
 
 def site_link() -> InlineKeyboardMarkup | None:

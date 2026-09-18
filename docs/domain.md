@@ -38,6 +38,54 @@ registration endpoint, no password column and no OTP — see [telegram.md](teleg
 - Anything addressed to "the owner" goes to **every** admin of either role
   (`telegram/recipients.get_owners`).
 
+### Erasing an account
+
+A customer may erase their own account from `/account` (`DELETE /users/me`,
+`UsersService.delete_account`). It is the only way to withdraw the consent given in the
+bot, so it is deliberately not something the owner has to be asked for.
+
+It is **not** `DELETE FROM users`. Every order points at that row with `ON DELETE
+CASCADE`, so removing it would take the shop's record of goods it bought and handed over
+with it — including cycles that closed months ago. What goes is the data about the
+person; what stays is a nameless row and the order history hanging off it:
+
+- `phone` is overwritten with a per-row placeholder (the column is UNIQUE and NOT NULL, so
+  erasing it means filling it), `name` becomes "Удалённый аккаунт", `telegram_chat_id` is
+  cleared and `deleted_at` is stamped.
+- Cart, wishlist, refresh tokens and any waiting login session are deleted outright.
+- **`CONFIRMED` and `READY` orders refuse the erasure** (`409
+account_has_unfinished_orders`, `DELETION_BLOCKING_STATUSES`). The goods behind them
+  were already bought and are still the customer's to collect; erasing would cancel a
+  purchase that was already made and leave the owner without a name or a number to ask
+  about it. The person collects the goods, or asks the owner to move the order — their own
+  cancellation stops at `PENDING` (`customer_flags`), so "cancel it yourself" is advice
+  they cannot act on — and then deletes. The account page asks `GET /users/me/deletion`
+  before it draws the button, so this arrives as a disabled button naming the orders, not
+  as an error after the confirmation.
+- **`PENDING` orders** are withdrawn as `CANCELLED_BY_CUSTOMER` — nothing is bought
+  against them yet — and the owner is told in one message naming them
+  (`messages.account_deleted_for_owner`). Finished and already-cancelled orders are left
+  exactly as they are.
+- To every reader the row is gone: `UsersService.get` raises `UserNotFoundError` for it,
+  it drops out of `/admin/users`, and it is absent from `OrdersService.load_customers` and
+  `recipients.get_users`, so the admin order list shows its orders with `—` and the bot
+  addresses nobody. The released phone number can start a brand-new account.
+- **No account with admin rights can be erased** — neither role (`account_not_deletable`).
+  Erasure is a customer's right over their own data; an admin row is a way into the shop's
+  panel, granted by the owner, and handing it back is `set_role` to `CUSTOMER` first —
+  after which it erases like anybody else's. SUPER_ADMIN is that rule at its strongest, for
+  the same reason its role cannot be changed at all. The site hides the button from both.
+  This is also what lets `recipients.get_owners` select on role alone: an erased admin —
+  nameless, with no chat to send to, yet still in the owner fan-out — is a state the table
+  cannot reach.
+
+The session ends with the account: refresh tokens and waiting login sessions are deleted
+rows, and the site posts `/api/auth/logout` straight after the `DELETE`, which clears the
+`lb_at`/`lb_rt` cookies whatever the backend answers. What cannot be taken back is an
+access token already copied out of a cookie: those are verified without a DB lookup by
+design, so one keeps opening the customer endpoints until it expires (up to
+`JWT_ACCESS_TTL_SECONDS`, 15 minutes), exactly as it does after `revoke_all_for_user`.
+
 ## The order cycle
 
 A cycle has a `deadline_at`, an optional `label`, and a status: `UPCOMING` → `ACTIVE` →
@@ -51,6 +99,20 @@ carts stayed attached to the first one.
 `get_active_cycle()` requires _both_ `deadline_at > now` **and** `status != CLOSED` — the owner
 can close a cycle early, and a cycle whose carts have already been emptied must not keep
 accepting new ones just because its date hasn't arrived.
+
+### Opening a cycle is announced once
+
+Creating a cycle broadcasts "Открыт новый сбор" to every linked customer. The broadcast runs
+outside the request and stamps `announced_at` when it is through; the `cycle_notice_sweep` job
+re-runs it for any still-collecting cycle the stamp is missing from, so an announcement cut
+short by a restart reaches the rest of the shop instead of being lost. Same trade as the
+reminders: a repeat to the people already reached beats a cycle nobody heard about. Details in
+[telegram.md](telegram.md#notifications).
+
+Reopening a finished cycle clears the stamp along with `closed_at` and the reminder stamps
+(see [What closing does](#what-closing-does)), so the reopening is announced like an opening —
+that is the message the shop needs, and the one it gets: "дедлайн перенесён" would go only to
+the few people already inside a cycle nobody else knows is collecting again.
 
 ### What closing does
 
@@ -116,15 +178,25 @@ image snapshot) and a `total_cents`.
 ```
 PENDING ──▶ CONFIRMED ──▶ READY ──▶ COMPLETED
    │            │            │
-   └────────────┴────────────┴──▶ CANCELLED_BY_OWNER
-(customer's own cancel, from any live status) ──▶ CANCELLED_BY_CUSTOMER
+   └────────────┴────────────┴──▶ CANCELLED_BY_OWNER ──▶ PENDING   (owner's own undo)
+
+PENDING ◀──────────────────────▶ CANCELLED_BY_CUSTOMER   (customer's cancel / restore)
 ```
 
-`ALLOWED_TRANSITIONS` in `app/orders/models.py` is authoritative; terminal statuses lead
-nowhere. Two distinct cancellations exist because one `CANCELLED` left both sides guessing —
-the customer couldn't tell "я передумал" from "владелец не смог достать". The owner cannot
-assign `CANCELLED_BY_CUSTOMER` (`order_status_not_assignable`); an invalid target is
-`order_status_transition_invalid`.
+`ALLOWED_TRANSITIONS` in `app/orders/models.py` is authoritative for what the *owner* may
+set; `COMPLETED` and `CANCELLED_BY_CUSTOMER` lead nowhere. Two distinct cancellations exist
+because one `CANCELLED` left both sides guessing — the customer couldn't tell "я передумал"
+from "владелец не смог достать". The owner cannot assign `CANCELLED_BY_CUSTOMER`
+(`order_status_not_assignable`); an invalid target is `order_status_transition_invalid`.
+
+**A cancellation is taken back by whoever made it, and by nobody else.** The owner's own is
+`CANCELLED_BY_OWNER → PENDING` from the admin panel (refused on an order `drop_product`
+emptied — there is nothing to bring back), and the customer is told it came back. The
+customer's own is `POST /orders/{id}/restore`, which never touches `CANCELLED_BY_OWNER`:
+letting them undo the owner's "не смогла достать" would put the order back into the tally
+and the purchase sheet with nobody told. Both of the customer's own presses are announced
+to the owner (`notify_order_cancelled_by_customer`) — they change what gets bought, and
+the admin table is not something anyone watches.
 
 `CANCELLED_STATUSES` and `OPEN_STATUSES` (PENDING/CONFIRMED/READY) are the sets to test
 membership against — never compare to a single status.
@@ -132,10 +204,13 @@ membership against — never compare to a single status.
 ### What the customer may still do
 
 While the order is `PENDING` **and** its cycle is open, the customer can edit the note, change
-or remove item quantities, add items, cancel, and restore. Past that: `order_not_editable`
+or remove item quantities, add items, and cancel. Past that: `order_not_editable`
 ("сбор закрылся или владелец взял её в работу"). Removing the last line is refused
-(`last_order_item`) — that action is a cancellation, and the message says so. Restoring fails
-with `order_not_restorable` if the cycle closed or nothing is left to restore.
+(`last_order_item`) — that action is a cancellation, and the message says so. Restoring is
+theirs only over `CANCELLED_BY_CUSTOMER`, and fails with `order_not_restorable` when the order
+was cancelled by the owner, the cycle closed, or nothing is left to restore. Both answers
+travel to the UI as `isEditable`/`isRestorable` (`OrdersService.customer_flags`) — the site
+never recomputes them.
 
 ### Price snapshots
 
@@ -149,9 +224,27 @@ every PENDING order and cancels (as `CANCELLED_BY_OWNER`) any order left with no
 
 ### Export
 
+Two sheets, and they are opposites. Cell values starting with `=` are forced to text in
+both — a product name from an import must not become a formula.
+
 `GET /admin/export/orders` builds an xlsx purchase list: one row per product summed across
-every order in the cycle, Russian headers, optional price columns. Cell values starting with
-`=` are forced to text — a product name from an import must not become a formula.
+every order in the cycle, **Russian headers**, optional price columns. It is read by a
+person (or handed to a supplier) and never uploaded back.
+
+`GET /admin/export/products` dumps the live catalogue, and exists for the round trip:
+export → edit prices and stock in Excel → upload the same file back through
+`POST /admin/catalog/import`. So its headers are the **import's own column names**
+(`name`, `slug`, `brand`, `category`, `price`, `volume`, `inStock`), not Russian captions —
+a caption would break the file on the way back in. `inStock` is written `да`/`нет`, which
+the import reads as a boolean, and `category` carries the slug, which is the category's
+identity.
+
+Two columns are deliberately absent, and their absence is the safety property: the import
+treats a column it does not see as **"leave this field alone"**, so re-uploading the sheet
+keeps every `description` and every photo the catalogue already has. Both are edited on the
+product page instead. Soft-deleted products are left out too — the import matches on slug
+and knows nothing about `deleted_at`, so a deleted row coming back would resurrect the
+product.
 
 ## Money
 

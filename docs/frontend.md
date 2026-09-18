@@ -26,7 +26,7 @@ vanilla-extract plugin wired in here is the webpack one. **Don't drop that flag.
 
 | Group        | Pages                                                                                                                               | Rendering                          |
 | ------------ | ----------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------- |
-| Public       | `index`, `catalog/index`, `catalog/[slug]`                                                                                          | SSG + ISR                          |
+| Public       | `index`, `catalog/index`, `catalog/[slug]`, `privacy`                                                                               | SSG + ISR (`privacy` is plain SSG) |
 | Behind login | `cart`, `checkout`, `orders/index`, `orders/[id]`, `account`, `wishlist`                                                            | Static shell, client-rendered data |
 | Auth         | `login` — **this is the registration too**                                                                                          | Static                             |
 | Owner-only   | `admin/index`, `admin/products/{index,add,[id]}`, `admin/categories`, `admin/import`, `admin/cycles`, `admin/orders`, `admin/users` | Static, gated on the client        |

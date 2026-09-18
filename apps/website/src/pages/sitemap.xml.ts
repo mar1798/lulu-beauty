@@ -48,8 +48,20 @@ interface ISitemapEntry {
   lastModified?: string
 }
 
-/** Статические публичные адреса. Приватное (корзина, заявки, вход) закрыто в `robots.txt`. */
-const STATIC_ENTRIES: readonly ISitemapEntry[] = [{ path: '/' }, { path: '/catalog' }]
+/**
+ * Статические публичные адреса. Приватное (корзина, заявки, вход) закрыто в `robots.txt`.
+ *
+ * Политика обработки данных здесь наравне с витриной: на неё ссылается бот в первом
+ * сообщении, её ищут поиском по названию магазина, и закрывать её от индексации значило
+ * бы прятать документ, который существует ровно затем, чтобы его нашли. `lastmod` у неё
+ * нет по той же причине, что у главной: дата редакции живёт в самой странице, а честной
+ * машинной даты правки у статического файла не существует.
+ */
+const STATIC_ENTRIES: readonly ISitemapEntry[] = [
+  { path: '/' },
+  { path: '/catalog' },
+  { path: '/privacy' },
+]
 
 /**
  * `updatedAt` в виде, который понимает формат карты сайта (W3C Datetime).
@@ -104,7 +116,9 @@ function buildSitemap(entries: readonly ISitemapEntry[]): string {
     .map(entry => {
       const loc = `<loc>${escapeXml(`${siteUrl}${entry.path}`)}</loc>`
       const lastmod =
-        entry.lastModified === undefined ? '' : `<lastmod>${escapeXml(entry.lastModified)}</lastmod>`
+        entry.lastModified === undefined
+          ? ''
+          : `<lastmod>${escapeXml(entry.lastModified)}</lastmod>`
 
       return `  <url>${loc}${lastmod}</url>`
     })

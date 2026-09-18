@@ -19,3 +19,7 @@ Default.parameters = {
   layout: 'padded',
 }
 Default.args = feedProductGrid()
+
+/** Ждём новую выдачу: прошлые карточки на месте, но приглушены. */
+export const Busy = Template.bind({})
+Busy.args = { ...feedProductGrid(), isBusy: true }

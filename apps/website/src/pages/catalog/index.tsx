@@ -9,6 +9,7 @@ import { CatalogTemplate } from 'widgets/templates'
 import { SiteLayout } from '@/layouts/SiteLayout'
 import { AddToCartButton } from '@/components/AddToCartButton'
 import { ClosedCycleNotice } from '@/components/ClosedCycleNotice'
+import { CycleCountdown } from '@/components/CycleCountdown'
 import { JsonLd } from '@/components/JsonLd'
 import { PageMeta } from '@/components/PageMeta'
 import { WishlistButton } from '@/components/WishlistButton'
@@ -24,6 +25,7 @@ import { listBrands, listCategories, listProducts } from '@/services/endpoints/c
 import { getActiveCycleOrNull } from '@/services/endpoints/cycles'
 import { activeCycleFallback, type ISwrFallback } from '@/services/swrFallback'
 import { productListLd } from '@/utils/jsonLd'
+import { scrollToTop } from '@/utils/scroll'
 import { CATALOG_DESCRIPTION, CATALOG_TITLE } from '@/utils/seo'
 import * as styles from '@/styles/catalog.css'
 
@@ -142,6 +144,20 @@ const CatalogPage: React.FC<ICatalogPageProps> = ({ categories, brands, initial 
 
   const [search, setSearch] = useQueryTextInput(q, commitSearch)
 
+  /*
+    Пагинация внизу сетки, и следующая страница начинается за верхним краем
+    экрана: без прокрутки человек остаётся у кнопок, глядя на хвост нового
+    набора. Прокрутка своя, а не встроенная в переход (`scroll: false`), —
+    иначе Next дёрнул бы страницу к началу мгновенно.
+  */
+  const goToPage = useCallback(
+    (next: number) => {
+      setParams({ page: next }, { scroll: false })
+      scrollToTop()
+    },
+    [setParams]
+  )
+
   const isDefaultParams = categorySlug === null && brand === null && pageNumber === 1 && q === ''
 
   /*
@@ -159,6 +175,7 @@ const CatalogPage: React.FC<ICatalogPageProps> = ({ categories, brands, initial 
   const {
     data: page,
     error: fetchError,
+    isValidating,
     mutate,
   } = useSWR<IPage<IProduct>>(
     ['catalog-products', categorySlug, brand, q, pageNumber],
@@ -180,6 +197,23 @@ const CatalogPage: React.FC<ICatalogPageProps> = ({ categories, brands, initial 
     это и было мигание.
   */
   const isFirstLoad = page === undefined
+
+  /*
+    Выдача на экране есть, но она уже не про то, что набрано. Скелетоном её
+    подменять нельзя (ради этого и стоит `keepPreviousData`), а молчать —
+    значит полсекунды показывать прошлые товары как ответ: человек дописывает
+    букву, и ничего не происходит.
+
+    Два слагаемых, потому что ожидание из двух частей: `search !== q` —
+    набранное ещё не доехало до адреса (дебаунс `useQueryTextInput`),
+    `isValidating` — запрос по новому ключу уже в пути. Первое сетевой флаг не
+    покрывает: ключ в этот момент ещё старый.
+
+    Сравнение дословное, без `trim`: в адрес уезжает ровно набранное, пробелы
+    включительно (`textParam`), и подрезанная копия с ним никогда бы не
+    совпала — поиск остался бы «занят» навсегда.
+  */
+  const isStale = !isFirstLoad && (search !== q || isValidating)
 
   const error = fetchError === undefined ? null : messageForError(fetchError, 'catalog.load')
 
@@ -229,6 +263,9 @@ const CatalogPage: React.FC<ICatalogPageProps> = ({ categories, brands, initial 
       <CatalogTemplate
         title="Каталог"
         summary={isFirstLoad ? undefined : `Найдено товаров: ${total}`}
+        // Срок сбора виден и здесь, а не только в герое главной: на витрину
+        // приходят по ссылке на категорию и поиском, минуя главную вовсе.
+        aside={<CycleCountdown />}
         filter={
           // `> 1` — кроме «Все бренды» в списке есть хоть что-то выбираемое.
           categories.length === 0 && brandOptions.length <= 1 ? undefined : (
@@ -256,13 +293,13 @@ const CatalogPage: React.FC<ICatalogPageProps> = ({ categories, brands, initial 
             </div>
           )
         }
-        search={<SearchField value={search} onChange={setSearch} />}
+        search={<SearchField value={search} onChange={setSearch} isBusy={isStale} />}
         pagination={
           <Pagination
             page={pageNumber}
             pageSize={PAGE_SIZE}
             total={total}
-            onChange={next => setParams({ page: next })}
+            onChange={goToPage}
           />
         }
       >
@@ -272,6 +309,7 @@ const CatalogPage: React.FC<ICatalogPageProps> = ({ categories, brands, initial 
           <ProductGrid
             products={products}
             isLoading={isFirstLoad}
+            isBusy={isStale}
             buildHref={product => `/catalog/${product.slug}`}
             categoryNames={categoryNames}
             priorityCount={PRIORITY_CARDS}
