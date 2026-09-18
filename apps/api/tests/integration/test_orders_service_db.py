@@ -23,6 +23,7 @@ from app.orders.service import (
     StatusNotAssignableError,
     StatusTransitionError,
 )
+from app.users.service import UsersService
 from tests.integration.factories import (
     make_category,
     make_cycle,
@@ -141,6 +142,27 @@ async def test_load_customers_batches_users_for_admin_listing(db_session: AsyncS
 
 async def test_load_customers_on_empty_list_does_not_query(db_session: AsyncSession) -> None:
     assert await OrdersService(db_session).load_customers([]) == {}
+
+
+async def test_load_customers_leaves_out_an_erased_account(db_session: AsyncSession) -> None:
+    """The order outlives the person who placed it, and the row left behind holds a
+    placeholder name and a filled-in phone that exist precisely so nobody reads them back.
+
+    Filtered here rather than where the response is drawn: the next reader of this map
+    would otherwise have to remember the rule, and forgetting it puts "Удалённый аккаунт"
+    and "deleted:…" in front of the owner."""
+    user = await make_user(db_session, phone="+996700000003")
+    await make_cycle(db_session)
+    product = await make_product(db_session)
+    service = OrdersService(db_session)
+    await CartService(db_session).add_item(user.id, product.id, 1)
+    await service.checkout(user.id, note=None)
+
+    await UsersService(db_session).delete_account(user.id)
+
+    orders = await service.list_admin(None)
+    assert len(orders) == 1
+    assert await service.load_customers(orders) == {}
 
 
 async def test_load_item_tags_reads_the_live_catalog(db_session: AsyncSession) -> None:

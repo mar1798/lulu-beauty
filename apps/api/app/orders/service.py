@@ -680,12 +680,22 @@ class OrdersService:
         return list(result.scalars().all()), total
 
     async def load_customers(self, orders: list[Order]) -> dict[uuid.UUID, User]:
-        """Batch-load the users behind a set of orders (one query, not one per order)."""
+        """Batch-load the users behind a set of orders (one query, not one per order).
+
+        An erased account is not among them, like everywhere a profile is read
+        (`UsersService.get`, `recipients.get_users`): an order outlives the person who
+        placed it, and the row left behind holds a placeholder name and a filled-in phone
+        that exist precisely so nobody reads them back. The map simply has no entry for
+        that order's `user_id`, and the caller draws a dash — which is the same thing it
+        already does for an id it cannot find.
+        """
         user_ids = {order.user_id for order in orders}
         if not user_ids:
             return {}
 
-        result = await self._session.execute(select(User).where(User.id.in_(user_ids)))
+        result = await self._session.execute(
+            select(User).where(User.id.in_(user_ids), User.deleted_at.is_(None))
+        )
         return {user.id: user for user in result.scalars().all()}
 
     async def update_status(

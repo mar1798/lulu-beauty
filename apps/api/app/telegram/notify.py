@@ -64,7 +64,7 @@ async def notify_new_order(order_id: uuid.UUID) -> None:
                 logger.warning("No ADMIN user to notify about order %s", order_id)
                 return
 
-            customer = await session.get(User, order.user_id)
+            customer = await _load_customer(session, order.user_id)
             cycle = await session.get(OrderCycle, order.cycle_id)
             for owner in owners:
                 await notifications_service.send_new_order(owner, order, customer, cycle)
@@ -84,7 +84,7 @@ async def notify_order_status(order_id: uuid.UUID) -> None:
             if order is None:
                 return
 
-            customer = await session.get(User, order.user_id)
+            customer = await _load_customer(session, order.user_id)
             if customer is None:
                 return
             await notifications_service.send_order_status(customer, order)
@@ -111,13 +111,36 @@ async def notify_order_cancelled_by_customer(order_id: uuid.UUID, *, restored: b
                 logger.warning("No ADMIN user to notify about order %s", order_id)
                 return
 
-            customer = await session.get(User, order.user_id)
+            customer = await _load_customer(session, order.user_id)
             for owner in owners:
                 await notifications_service.send_customer_cancellation(
                     owner, order, customer, restored=restored
                 )
     except Exception:  # noqa: BLE001 - the order is already changed; see module docstring
         logger.exception("Failed to announce the customer's own change to order %s", order_id)
+
+
+async def notify_account_deleted(order_ids: Sequence[uuid.UUID]) -> None:
+    """Tells the owner a customer erased their account, and which orders left with them.
+
+    Travels by value like `notify_order_deleted`, and for a related reason: the customer
+    this is about no longer exists in any readable form, so re-reading anything would find
+    a nameless row. The ids are all there is to say, and all there should be.
+
+    Only called when something was actually withdrawn — `delete_account` returns an empty
+    list for a person who left between cycles, and the router doesn't queue this for it.
+    """
+    try:
+        async with async_session() as session:
+            owners = await recipients.get_owners(session)
+            if not owners:
+                logger.warning("No ADMIN user to notify about %d withdrawn orders", len(order_ids))
+                return
+
+            for owner in owners:
+                await notifications_service.send_account_deleted(owner, order_ids)
+    except Exception:  # noqa: BLE001 - the account is already erased; see module docstring
+        logger.exception("Failed to announce an erased account's %d orders", len(order_ids))
 
 
 async def notify_order_deleted(
@@ -132,7 +155,7 @@ async def notify_order_deleted(
     """
     try:
         async with async_session() as session:
-            customer = await session.get(User, user_id)
+            customer = await _load_customer(session, user_id)
             if customer is None:
                 return
             await notifications_service.send_order_deleted(customer, order_id, status)
@@ -218,6 +241,21 @@ async def _fan_out_order_notices(
             )
     except Exception:  # noqa: BLE001 - the orders are already changed; see module docstring
         logger.exception("Failed to announce a catalog %s to affected orders", subject)
+
+
+async def _load_customer(session: AsyncSession, user_id: uuid.UUID) -> User | None:
+    """The person an order belongs to, or None when there is no longer one.
+
+    An erased account (`deleted_at`) answers None here, exactly as it does to every other
+    reader of a profile. Its `name` and `phone` still hold something — a placeholder and a
+    filled hole — and this is the one place that would otherwise put them in front of the
+    owner, which is precisely what the erasure was for. Anything addressed *to* that
+    person has nowhere to go either: the chat binding is gone with the rest.
+    """
+    user = await session.get(User, user_id)
+    if user is None or user.deleted_at is not None:
+        return None
+    return user
 
 
 async def _load_order(session: AsyncSession, order_id: uuid.UUID) -> Order | None:

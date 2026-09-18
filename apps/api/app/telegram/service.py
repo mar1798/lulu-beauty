@@ -163,6 +163,29 @@ class NotificationsService:
             "%s; deletion of order %s not announced", self._fallback_reason(user), order_id
         )
 
+    async def send_account_deleted(self, owner: User, order_ids: Sequence[uuid.UUID]) -> None:
+        """A customer erased their account; these orders left the purchase list with them.
+
+        The admin link, like every other piece of news about orders the owner has to act
+        on — here it is the only thing offered, since there is no customer left to contact
+        about it.
+        """
+        message = messages.account_deleted_for_owner(order_ids)
+        if await self._try_send(
+            owner.telegram_chat_id, message, reply_markup=keyboards.admin_orders_link()
+        ):
+            logger.info(
+                "Notified owner %s that an erased account withdrew %d orders",
+                owner.phone,
+                len(order_ids),
+            )
+            return
+        logger.warning(
+            "%s; an erased account's %d withdrawn orders not announced",
+            self._fallback_reason(owner),
+            len(order_ids),
+        )
+
     async def send_cycle_closed(
         self, owner: User, cycle: OrderCycle, orders_count: int, total_cents: int
     ) -> None:

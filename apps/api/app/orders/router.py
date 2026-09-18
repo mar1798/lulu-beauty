@@ -107,6 +107,10 @@ async def _one_order_response(service: OrdersService, order: Order) -> OrderResp
 def _admin_order_response(
     order: Order, customer: User | None, tags: Mapping[uuid.UUID, ProductTags]
 ) -> AdminOrderResponse:
+    # `None` is the erased account, not a rarity: `load_customers` leaves it out of the map
+    # so its placeholder name and filled-in phone are never read back, and the dash this
+    # response already had for a missing row is exactly the right answer. The order itself
+    # is unchanged — what the owner bought is still on it.
     return AdminOrderResponse(
         id=order.id,
         cycle_id=order.cycle_id,
@@ -115,7 +119,6 @@ def _admin_order_response(
         note=order.note,
         created_at=order.created_at,
         items=_order_items(order, tags),
-        # A deleted user cascades its orders away, so this is defensive only.
         customer_name=customer.name if customer is not None else "—",
         customer_phone=customer.phone if customer is not None else "—",
     )

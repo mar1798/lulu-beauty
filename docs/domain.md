@@ -38,6 +38,54 @@ registration endpoint, no password column and no OTP — see [telegram.md](teleg
 - Anything addressed to "the owner" goes to **every** admin of either role
   (`telegram/recipients.get_owners`).
 
+### Erasing an account
+
+A customer may erase their own account from `/account` (`DELETE /users/me`,
+`UsersService.delete_account`). It is the only way to withdraw the consent given in the
+bot, so it is deliberately not something the owner has to be asked for.
+
+It is **not** `DELETE FROM users`. Every order points at that row with `ON DELETE
+CASCADE`, so removing it would take the shop's record of goods it bought and handed over
+with it — including cycles that closed months ago. What goes is the data about the
+person; what stays is a nameless row and the order history hanging off it:
+
+- `phone` is overwritten with a per-row placeholder (the column is UNIQUE and NOT NULL, so
+  erasing it means filling it), `name` becomes "Удалённый аккаунт", `telegram_chat_id` is
+  cleared and `deleted_at` is stamped.
+- Cart, wishlist, refresh tokens and any waiting login session are deleted outright.
+- **`CONFIRMED` and `READY` orders refuse the erasure** (`409
+account_has_unfinished_orders`, `DELETION_BLOCKING_STATUSES`). The goods behind them
+  were already bought and are still the customer's to collect; erasing would cancel a
+  purchase that was already made and leave the owner without a name or a number to ask
+  about it. The person collects the goods, or asks the owner to move the order — their own
+  cancellation stops at `PENDING` (`customer_flags`), so "cancel it yourself" is advice
+  they cannot act on — and then deletes. The account page asks `GET /users/me/deletion`
+  before it draws the button, so this arrives as a disabled button naming the orders, not
+  as an error after the confirmation.
+- **`PENDING` orders** are withdrawn as `CANCELLED_BY_CUSTOMER` — nothing is bought
+  against them yet — and the owner is told in one message naming them
+  (`messages.account_deleted_for_owner`). Finished and already-cancelled orders are left
+  exactly as they are.
+- To every reader the row is gone: `UsersService.get` raises `UserNotFoundError` for it,
+  it drops out of `/admin/users`, and it is absent from `OrdersService.load_customers` and
+  `recipients.get_users`, so the admin order list shows its orders with `—` and the bot
+  addresses nobody. The released phone number can start a brand-new account.
+- **No account with admin rights can be erased** — neither role (`account_not_deletable`).
+  Erasure is a customer's right over their own data; an admin row is a way into the shop's
+  panel, granted by the owner, and handing it back is `set_role` to `CUSTOMER` first —
+  after which it erases like anybody else's. SUPER_ADMIN is that rule at its strongest, for
+  the same reason its role cannot be changed at all. The site hides the button from both.
+  This is also what lets `recipients.get_owners` select on role alone: an erased admin —
+  nameless, with no chat to send to, yet still in the owner fan-out — is a state the table
+  cannot reach.
+
+The session ends with the account: refresh tokens and waiting login sessions are deleted
+rows, and the site posts `/api/auth/logout` straight after the `DELETE`, which clears the
+`lb_at`/`lb_rt` cookies whatever the backend answers. What cannot be taken back is an
+access token already copied out of a cookie: those are verified without a DB lookup by
+design, so one keeps opening the customer endpoints until it expires (up to
+`JWT_ACCESS_TTL_SECONDS`, 15 minutes), exactly as it does after `revoke_all_for_user`.
+
 ## The order cycle
 
 A cycle has a `deadline_at`, an optional `label`, and a status: `UPCOMING` → `ACTIVE` →

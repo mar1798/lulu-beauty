@@ -170,8 +170,9 @@ def cart_moved_to_wishlist(title: str, saved: int, dropped: int) -> str:
 def new_order_for_owner(order: Order, customer: User | None, cycle: OrderCycle | None) -> str:
     lines = [
         f"🆕 Новая заявка {order_reference(order.id)}",
-        # A deleted customer cascades their orders away, so the fallback is defensive
-        # only — same reasoning as _admin_order_response in orders/router.py.
+        # `None` is the erased account, not a rarity: `notify._load_customer` hands it
+        # over as None precisely so its placeholder name and phone are never read back
+        # out into a message. Same rule as _admin_order_response in orders/router.py.
         f"Покупатель: {customer.name}, {customer.phone}" if customer else "Покупатель: —",
         f"Сбор: {cycle_title(cycle)}" if cycle else "Сбор: —",
         f"Позиций: {len(order.items)}",
@@ -196,11 +197,32 @@ def customer_cancellation_for_owner(order: Order, customer: User | None, *, rest
     return "\n".join(
         [
             headline,
-            # Как и в `new_order_for_owner`: удалённый покупатель уносит заявки с собой,
-            # так что запасной вариант здесь — защита, а не рабочий случай.
+            # Как и в `new_order_for_owner`: `None` — это стёртый аккаунт, и подставлять
+            # вместо него плейсхолдер из `users` нельзя, его для того и стирали.
             f"Покупатель: {customer.name}, {customer.phone}" if customer else "Покупатель: —",
             f"Позиций: {len(order.items)}",
             f"Сумма: {format_price(order.total_cents)}",
+        ]
+    )
+
+
+def account_deleted_for_owner(order_ids: Sequence[uuid.UUID]) -> str:
+    """Человек удалил аккаунт, и его незакрытые заявки ушли из закупки вместе с ним.
+
+    Одно сообщение на все заявки, а не по одному на каждую: это одно событие, и рассылка
+    из пяти «отменена покупателем» подряд читается как пять разных решений.
+
+    Имени и телефона тут нет и быть не может — их только что стёрли. Владельцу остаются
+    номера заявок: по ним заявка находится в админке, а больше о человеке сказать нечего
+    и не следует.
+    """
+    count = len(order_ids)
+    listed = ", ".join(order_reference(order_id) for order_id in order_ids)
+    return "\n".join(
+        [
+            "🗑 Покупатель удалил аккаунт",
+            f"{plural(count, 'Отменена заявка', 'Отменены заявки', 'Отменены заявки')}: {listed}",
+            "Эти позиции больше не нужно закупать.",
         ]
     )
 

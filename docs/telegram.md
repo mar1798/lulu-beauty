@@ -136,6 +136,7 @@ with admin rights — `ADMIN` and `SUPER_ADMIN` alike (`recipients.get_owners`).
 | Cycle closed: shopping summary | Owner |
 | Cycle closed: cart rescued into wishlist | Each cart holder |
 | Cycle closed | Customers with orders in it |
+| Account erased, withdrawing its pending orders | Owner (one message naming them) |
 
 **Three rules that the code is shaped around:**
 

@@ -72,11 +72,18 @@ async def get_cycle_participants(
 
 
 async def get_users(session: AsyncSession, user_ids: Sequence[uuid.UUID]) -> dict[uuid.UUID, User]:
-    """Batch-loads the recipients of a personalised fan-out (one query, not one each)."""
+    """Batch-loads the recipients of a personalised fan-out (one query, not one each).
+
+    Erased accounts drop out, like everywhere a profile is read: an id can reach this from
+    an order that outlived the person who placed it, and there is nobody behind it to
+    address. Every caller already skips an id the map doesn't answer for.
+    """
     if not user_ids:
         return {}
 
-    result = await session.execute(select(User).where(User.id.in_(user_ids)))
+    result = await session.execute(
+        select(User).where(User.id.in_(user_ids), User.deleted_at.is_(None))
+    )
     return {user.id: user for user in result.scalars().all()}
 
 

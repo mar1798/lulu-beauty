@@ -424,3 +424,24 @@ def test_customer_cancellation_for_owner_survives_a_deleted_customer() -> None:
     )
 
     assert "Покупатель: —" in text
+
+
+def test_account_deleted_for_owner_names_the_orders_and_nobody_else() -> None:
+    """Владельцу нужны номера заявок, чтобы найти их в админке. Имени и телефона в этом
+    сообщении быть не может — их только что стёрли, в этом всё событие."""
+    first = uuid.UUID("a1b2c3d4-0000-0000-0000-000000000000")
+    second = uuid.UUID("b2c3d4e5-0000-0000-0000-000000000000")
+
+    text = messages.account_deleted_for_owner([first, second])
+
+    assert "удалил аккаунт" in text
+    assert messages.order_reference(first) in text
+    assert messages.order_reference(second) in text
+
+
+def test_account_deleted_for_owner_agrees_with_itself_about_one_order() -> None:
+    """Одна заявка — «Отменена заявка», не «Отменены заявки»: множественное число в
+    сообщении об одной строке читается как потеря нескольких."""
+    text = messages.account_deleted_for_owner([uuid.uuid4()])
+
+    assert "Отменена заявка" in text
