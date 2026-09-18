@@ -116,8 +116,15 @@ export const AdminCycleCalendar: FC<IAdminCycleCalendarProps & IBasicStyling> = 
   error,
   className,
 }) => {
-  const [selectedDate, setSelectedDate] = useState<string | null>(null)
-  const [draft, setDraft] = useState<ICycleDraft>({ date: '', time: DEFAULT_TIME, label: '' })
+  /**
+   * Выбор владельца. `null` — пока по календарю не кликали: тогда выбран
+   * сегодняшний день, а редактор наполняется из сборов (см. `draft` ниже).
+   *
+   * Одно состояние на день и на черновик, а не два: пока владелец ничего не
+   * выбрал, оба вычисляются — иначе черновик, собранный на монтировании, застыл
+   * бы с пустым временем и подписью, потому что сборы приезжают позже него.
+   */
+  const [selection, setSelection] = useState<ICycleDraft | null>(null)
 
   /*
     Оба вычисления мемоизированы, потому что рядом живёт `draft`: он меняется на
@@ -144,6 +151,14 @@ export const AdminCycleCalendar: FC<IAdminCycleCalendarProps & IBasicStyling> = 
 
     return map
   }, [cycles])
+
+  /*
+    Сегодняшний день выбран сам собой — с него владелец чаще всего и начинает.
+    Только пока он же и показан: подставлять «сегодня» в редактор, когда в
+    календаре листается другой месяц, значило бы править невидимый день.
+  */
+  const defaultDate = today !== undefined && today.startsWith(month) ? today : null
+  const selectedDate = selection?.date ?? defaultDate
 
   const selectedCycle = selectedDate === null ? null : (byDate.get(selectedDate)?.[0] ?? null)
   const isActive = selectedCycle !== null && selectedCycle.id === activeCycleId
@@ -173,16 +188,27 @@ export const AdminCycleCalendar: FC<IAdminCycleCalendarProps & IBasicStyling> = 
     (selectedCycle.status === 'CLOSED' ||
       (today !== undefined && selectedDate !== null && selectedDate < today))
 
-  const selectDay = (date: string): void => {
+  /** Черновик дня: время и подпись уже назначенного сбора или значения по умолчанию. */
+  const draftForDate = (date: string): ICycleDraft => {
     const existing = byDate.get(date)?.[0] ?? null
     const parts = existing === null ? null : toStoreParts(existing.deadlineAt)
 
-    setSelectedDate(date)
-    setDraft({
-      date,
-      time: parts?.time ?? DEFAULT_TIME,
-      label: existing?.label ?? '',
-    })
+    return { date, time: parts?.time ?? DEFAULT_TIME, label: existing?.label ?? '' }
+  }
+
+  const draft =
+    selection ??
+    (selectedDate === null
+      ? { date: '', time: DEFAULT_TIME, label: '' }
+      : draftForDate(selectedDate))
+
+  const selectDay = (date: string): void => {
+    setSelection(draftForDate(date))
+  }
+
+  /** Правка поля редактора: первая же фиксирует черновик как выбор владельца. */
+  const patchDraft = (patch: Partial<ICycleDraft>): void => {
+    setSelection({ ...draft, ...patch })
   }
 
   return (
@@ -365,7 +391,7 @@ export const AdminCycleCalendar: FC<IAdminCycleCalendarProps & IBasicStyling> = 
                   value={draft.time}
                   hint={TIME_HINT}
                   onChange={next => {
-                    setDraft(current => ({ ...current, time: next }))
+                    patchDraft({ time: next })
                   }}
                 />
 
@@ -375,7 +401,7 @@ export const AdminCycleCalendar: FC<IAdminCycleCalendarProps & IBasicStyling> = 
                   maxLength={255}
                   hint="Например: «Сбор на август». Видна в уведомлениях."
                   onChange={next => {
-                    setDraft(current => ({ ...current, label: next }))
+                    patchDraft({ label: next })
                   }}
                 />
               </>
