@@ -18,6 +18,19 @@ const MINUTE = 60
 const HOUR = 60 * MINUTE
 const DAY = 24 * HOUR
 
+/**
+ * Опрос чаще секунды — намеренно.
+ *
+ * `setInterval` считает от монтирования, а не от границы секунды, и при дрейфе
+ * таймера видимое число задерживалось бы на два тика или перескакивало через
+ * значение. Пока показывались только минуты, этого не было видно; секунды
+ * видны всегда. Снимок — целое число секунд, поэтому лишние опросы не доходят
+ * до рендера: `useSyncExternalStore` сравнивает значения и перерисовывает
+ * по-прежнему раз в секунду, а расхождение с реальной секундой падает до
+ * четверти.
+ */
+const POLL = 250
+
 export interface ICountdown {
   days: number
   hours: number
@@ -30,7 +43,7 @@ export interface ICountdown {
 }
 
 const subscribe = (onChange: () => void): (() => void) => {
-  const timer = setInterval(onChange, SECOND)
+  const timer = setInterval(onChange, POLL)
 
   return () => clearInterval(timer)
 }

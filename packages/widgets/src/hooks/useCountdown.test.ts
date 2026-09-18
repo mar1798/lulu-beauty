@@ -53,6 +53,27 @@ describe('useCountdown', () => {
     expect(result.current.seconds).toBe(7)
   })
 
+  /*
+    Опрос идёт чаще секунды, и монтирование не на границе — это видно.
+    `setInterval` считает от монтирования: при опросе раз в секунду компонент,
+    смонтированный на 300 мс позже границы, и перерисовывался бы на 300 мс
+    позже неё, показывая всё это время просроченное число.
+  */
+  it('не отстаёт от границы секунды при монтировании между тиками', () => {
+    vi.setSystemTime(new Date(NOW.getTime() + 300))
+
+    const { result } = renderHook(() => useCountdown(inFuture(10 * SECOND)))
+
+    expect(result.current.seconds).toBe(10)
+
+    // 1100 мс от `NOW`: секунда сменилась 100 мс назад, тика раз в секунду ещё не было.
+    act(() => {
+      vi.advanceTimersByTime(800)
+    })
+
+    expect(result.current.seconds).toBe(9)
+  })
+
   it('переходит в «истёк» ровно на дедлайне', () => {
     const { result } = renderHook(() => useCountdown(inFuture(2 * SECOND)))
 
