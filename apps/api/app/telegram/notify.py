@@ -77,6 +77,34 @@ async def notify_order_status(order_id: uuid.UUID) -> None:
         logger.exception("Failed to announce status of order %s", order_id)
 
 
+async def notify_order_cancelled_by_customer(order_id: uuid.UUID, *, restored: bool) -> None:
+    """Tells the owner a customer cancelled their own order, or took that back.
+
+    The one thing the customer can do after checkout that changes what the owner buys,
+    and until now it changed it silently: the row simply read differently the next time
+    the admin list was opened. A restore is announced for the same reason the owner's
+    own undo is announced to the customer — the previous message said the order was off.
+    """
+    try:
+        async with async_session() as session:
+            order = await _load_order(session, order_id)
+            if order is None:  # deleted between the commit and this task running
+                return
+
+            owners = await recipients.get_owners(session)
+            if not owners:
+                logger.warning("No ADMIN user to notify about order %s", order_id)
+                return
+
+            customer = await session.get(User, order.user_id)
+            for owner in owners:
+                await notifications_service.send_customer_cancellation(
+                    owner, order, customer, restored=restored
+                )
+    except Exception:  # noqa: BLE001 - the order is already changed; see module docstring
+        logger.exception("Failed to announce the customer's own change to order %s", order_id)
+
+
 async def notify_order_deleted(
     user_id: uuid.UUID, order_id: uuid.UUID, status: OrderStatus
 ) -> None:

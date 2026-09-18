@@ -182,6 +182,29 @@ def new_order_for_owner(order: Order, customer: User | None, cycle: OrderCycle |
     return "\n".join(lines)
 
 
+def customer_cancellation_for_owner(order: Order, customer: User | None, *, restored: bool) -> str:
+    """Что покупатель сделал со своей заявкой, пока владелец в неё не смотрел.
+
+    Обе новости одной функцией: восстановление — это отмена наоборот, и владельцу важна
+    та же строка (кто, сколько, на что). Сумму видно здесь, чтобы решение «идёт ли ещё
+    эта заявка в закупку» не требовало открывать админку.
+    """
+    if restored:
+        headline = f"↩️ Заявка {order_reference(order.id)} возвращена покупателем"
+    else:
+        headline = f"❌ Заявка {order_reference(order.id)} отменена покупателем"
+    return "\n".join(
+        [
+            headline,
+            # Как и в `new_order_for_owner`: удалённый покупатель уносит заявки с собой,
+            # так что запасной вариант здесь — защита, а не рабочий случай.
+            f"Покупатель: {customer.name}, {customer.phone}" if customer else "Покупатель: —",
+            f"Позиций: {len(order.items)}",
+            f"Сумма: {format_price(order.total_cents)}",
+        ]
+    )
+
+
 _ORDER_STATUS_NEWS = {
     # Владелец отменил заявку и передумал: покупатель уже получил «отменена владельцем»,
     # и без этой строки заявка воскресала бы у него молча.

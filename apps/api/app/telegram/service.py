@@ -95,6 +95,32 @@ class NotificationsService:
             return
         logger.warning("%s; new order %s not announced", self._fallback_reason(owner), order.id)
 
+    async def send_customer_cancellation(
+        self, owner: User, order: Order, customer: User | None, *, restored: bool
+    ) -> None:
+        """The other direction from `send_order_status`: what the customer did, to the owner.
+
+        Without buttons to act on, unlike a new order — there is nothing for the owner to
+        confirm here, and a cancelled order is precisely the one whose «Подтвердить» must
+        not be one tap away. The admin list is the only thing to offer.
+        """
+        message = messages.customer_cancellation_for_owner(order, customer, restored=restored)
+        if await self._try_send(
+            owner.telegram_chat_id, message, reply_markup=keyboards.admin_orders_link()
+        ):
+            logger.info(
+                "Notified owner %s that order %s was %s by its customer",
+                owner.phone,
+                order.id,
+                "restored" if restored else "cancelled",
+            )
+            return
+        logger.warning(
+            "%s; the customer's own change to order %s not announced",
+            self._fallback_reason(owner),
+            order.id,
+        )
+
     async def send_order_status(self, user: User, order: Order) -> None:
         message = messages.order_status_changed(order)
         if message is None:

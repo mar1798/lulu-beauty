@@ -258,3 +258,37 @@ async def test_delivery_gives_up_after_a_second_flood_wait() -> None:
     await service.send_reminder(_user(telegram_chat_id=42), _cycle())
 
     assert bot.send_message.await_count == 2
+
+
+async def test_send_customer_cancellation_reaches_the_owner_without_order_buttons(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """«Подтвердить» под отменённой заявкой — это подтверждение того, чего уже нет;
+    владельцу здесь нечего нажимать, кроме дороги в админку."""
+    monkeypatch.setattr("app.config.settings.website_base_url", "https://lulu.example.com")
+    bot = AsyncMock()
+    service = NotificationsService(bot)
+    order = _order(status=OrderStatus.CANCELLED_BY_CUSTOMER)
+
+    await service.send_customer_cancellation(
+        _user(telegram_chat_id=42), order, _user(telegram_chat_id=7), restored=False
+    )
+
+    chat_id, message = bot.send_message.await_args.args
+    assert chat_id == 42
+    assert "отменена покупателем" in message
+    markup = bot.send_message.await_args.kwargs["reply_markup"]
+    buttons = [button for row in markup.inline_keyboard for button in row]
+    assert [button.url for button in buttons] == ["https://lulu.example.com/admin/orders"]
+
+
+async def test_send_customer_cancellation_stays_quiet_on_a_dead_binding() -> None:
+    """Владелец заблокировал бота: событие уже произошло, ронять фоновую задачу нечем."""
+    bot = AsyncMock()
+    service = NotificationsService(bot)
+
+    await service.send_customer_cancellation(
+        _user(telegram_chat_id=None), _order(), None, restored=True
+    )
+
+    bot.send_message.assert_not_awaited()

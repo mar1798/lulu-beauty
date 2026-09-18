@@ -127,6 +127,7 @@ with admin rights — `ADMIN` and `SUPER_ADMIN` alike (`recipients.get_owners`).
 | --- | --- |
 | New order at checkout | Owner |
 | Order status change (incl. the owner undoing their own cancel) | Customer |
+| Order cancelled by its customer, and that cancellation taken back | Owner |
 | Order deleted by owner (unless it was already completed or cancelled) | Customer |
 | Catalog price change repricing PENDING orders | Each affected customer |
 | Product soft-deleted, dropping lines | Each affected customer |

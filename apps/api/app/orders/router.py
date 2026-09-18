@@ -34,7 +34,12 @@ from app.orders.service import (
     StatusNotAssignableError,
     StatusTransitionError,
 )
-from app.telegram.notify import notify_new_order, notify_order_deleted, notify_order_status
+from app.telegram.notify import (
+    notify_new_order,
+    notify_order_cancelled_by_customer,
+    notify_order_deleted,
+    notify_order_status,
+)
 
 router = APIRouter(tags=["orders"])
 
@@ -277,9 +282,11 @@ async def remove_my_order_item(
 @router.post("/orders/{order_id}/cancel", response_model=OrderResponse)
 async def cancel_my_order(
     order_id: uuid.UUID,
+    background_tasks: BackgroundTasks,
     session: AsyncSession = Depends(get_session),
     current_user: CurrentUser = Depends(get_current_user),
 ) -> OrderResponse:
+    """The customer withdraws their own order; the owner is told it left the shopping list."""
     service = OrdersService(session)
     try:
         order = await service.cancel(current_user.id, order_id)
@@ -288,12 +295,14 @@ async def cancel_my_order(
 
     response = await _one_order_response(service, order)
     await session.commit()
+    background_tasks.add_task(notify_order_cancelled_by_customer, order.id, restored=False)
     return response
 
 
 @router.post("/orders/{order_id}/restore", response_model=OrderResponse)
 async def restore_my_order(
     order_id: uuid.UUID,
+    background_tasks: BackgroundTasks,
     session: AsyncSession = Depends(get_session),
     current_user: CurrentUser = Depends(get_current_user),
 ) -> OrderResponse:
@@ -302,6 +311,9 @@ async def restore_my_order(
     Cancelling by mistake used to be final — the only way back was placing the whole
     request again. Nothing is bought against a cancelled order, so before the deadline
     there's nothing to undo but a status.
+
+    Announced to the owner like the cancellation itself: they were told the order was
+    off, and without this the shopping list grows back without a word.
     """
     service = OrdersService(session)
     try:
@@ -311,6 +323,7 @@ async def restore_my_order(
 
     response = await _one_order_response(service, order)
     await session.commit()
+    background_tasks.add_task(notify_order_cancelled_by_customer, order.id, restored=True)
     return response
 
 

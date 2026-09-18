@@ -132,7 +132,9 @@ from "владелец не смог достать". The owner cannot assign `C
 emptied — there is nothing to bring back), and the customer is told it came back. The
 customer's own is `POST /orders/{id}/restore`, which never touches `CANCELLED_BY_OWNER`:
 letting them undo the owner's "не смогла достать" would put the order back into the tally
-and the purchase sheet with nobody told.
+and the purchase sheet with nobody told. Both of the customer's own presses are announced
+to the owner (`notify_order_cancelled_by_customer`) — they change what gets bought, and
+the admin table is not something anyone watches.
 
 `CANCELLED_STATUSES` and `OPEN_STATUSES` (PENDING/CONFIRMED/READY) are the sets to test
 membership against — never compare to a single status.

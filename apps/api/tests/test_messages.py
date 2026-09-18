@@ -401,3 +401,26 @@ def test_cycle_closed_for_customer_says_the_order_can_no_longer_be_changed() -> 
 
     assert "«Июнь»" in text
     assert "нельзя" in text
+
+
+def test_customer_cancellation_for_owner_tells_the_two_events_apart() -> None:
+    """Отмена и возврат приходят одной цепочкой в один чат: если они читаются одинаково,
+    владелец видит два сообщения об одной заявке и не знает, чем дело кончилось."""
+    order = _order(status=OrderStatus.CANCELLED_BY_CUSTOMER)
+    customer = User(name="Айгуль", phone="+996700112233")
+
+    cancelled = messages.customer_cancellation_for_owner(order, customer, restored=False)
+    restored = messages.customer_cancellation_for_owner(order, customer, restored=True)
+
+    assert "отменена покупателем" in cancelled
+    assert "возвращена покупателем" in restored
+    assert "Айгуль" in cancelled and "+996700112233" in cancelled
+
+
+def test_customer_cancellation_for_owner_survives_a_deleted_customer() -> None:
+    """Как и `new_order_for_owner`: строка без покупателя лучше, чем упавшая задача."""
+    text = messages.customer_cancellation_for_owner(
+        _order(status=OrderStatus.CANCELLED_BY_CUSTOMER), None, restored=False
+    )
+
+    assert "Покупатель: —" in text
