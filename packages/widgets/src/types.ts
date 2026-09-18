@@ -1417,6 +1417,29 @@ export interface IAccountTemplateProps {
   children: ReactNode
 }
 
+/**
+ * Раздел правового документа.
+ *
+ * `body` — смесь абзацев и списков: строка рисуется абзацем, массив строк —
+ * маркированным списком. Разделять их на два поля значило бы задавать порядок
+ * («сначала все абзацы, потом все списки»), которого у документа нет.
+ */
+export interface ILegalSection {
+  title: string
+  body: (string | string[])[]
+}
+
+export interface ILegalTemplateProps {
+  title: string
+  /** Дата редакции в виде, пригодном и для `datetime`, и для чтения: `ДД.ММ.ГГГГ` не подойдёт. */
+  updatedAt: string
+  /** Вводный абзац над разделами — о чём документ и к кому относится. */
+  summary?: string
+  sections: ILegalSection[]
+  /** Слот под контакты: куда писать по поводу написанного выше. */
+  footer?: ReactNode
+}
+
 export interface IErrorTemplateProps {
   /**
    * Код ответа крупной цифрой. Необязателен: тем же шаблоном рисуется и

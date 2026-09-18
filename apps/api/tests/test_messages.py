@@ -426,6 +426,26 @@ def test_customer_cancellation_for_owner_survives_a_deleted_customer() -> None:
     assert "Покупатель: —" in text
 
 
+def test_consent_names_the_button_it_is_about() -> None:
+    """Согласие фиксируется до нажатия, а не в ответ на него: аккаунт заводится ровно
+    в тот момент, когда человек делится номером, — поэтому текст называет ту самую
+    кнопку, о которой говорит.
+
+    Проверяется и состав перечисленного: текст обещает ровно то, что действительно
+    сохраняется в `users` — номер, имя и чат, — и врать этому списку нельзя.
+    """
+    assert messages.SHARE_CONTACT_BUTTON in messages.CONSENT
+    assert "персональных данных" in messages.CONSENT
+    assert all(word in messages.CONSENT for word in ("номер", "имя", "чат"))
+
+
+def test_consent_carries_no_address_of_its_own() -> None:
+    """Ссылка на политику — кнопка (`keyboards.privacy_link`), и адресом в тексте она
+    быть не должна: на деве это `http://localhost:3000/privacy`, а на проде — хвост,
+    который нельзя нажать."""
+    assert "http" not in messages.CONSENT
+
+
 def test_account_deleted_for_owner_names_the_orders_and_nobody_else() -> None:
     """Владельцу нужны номера заявок, чтобы найти их в админке. Имени и телефона в этом
     сообщении быть не может — их только что стёрли, в этом всё событие."""

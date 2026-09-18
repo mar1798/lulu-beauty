@@ -66,6 +66,19 @@ const accountColumn = (isAuthorized: boolean): IFooterColumn => ({
       [{ label: 'Вход', link: { href: '/login' } }],
 })
 
+/**
+ * Документы магазина. Отдельной колонкой, а не строкой в «Магазине»: политика —
+ * не раздел витрины, и человек, которому она понадобилась, ищет её глазами
+ * именно там, где её принято держать, — в подвале, под своим заголовком.
+ *
+ * Ссылка одна, и колонка из одной ссылки — это нормально: вторым документом
+ * здесь когда-нибудь встанет оферта, а до тех пор обещать её нечем.
+ */
+const LEGAL_COLUMN: IFooterColumn = {
+  title: 'Документы',
+  links: [{ label: 'Обработка данных', link: { href: '/privacy' } }],
+}
+
 const START_YEAR = 2026
 
 /**
@@ -135,7 +148,7 @@ export const SiteLayout: React.FC<ISiteLayoutProps> = ({ children, isCartCountSh
   const headerUser = user === null ? null : { name: user.name, link: { href: '/account' } }
 
   const footerColumns = useMemo<IFooterColumn[]>(
-    () => [SHOP_COLUMN, accountColumn(user !== null), CONTACTS_COLUMN],
+    () => [SHOP_COLUMN, accountColumn(user !== null), CONTACTS_COLUMN, LEGAL_COLUMN],
     [user]
   )
 

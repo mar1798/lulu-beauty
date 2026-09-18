@@ -1,7 +1,7 @@
 import React from 'react'
 import Head from 'next/head'
 import { useRouter } from 'next/router'
-import { Spinner } from 'widgets/atoms'
+import { AppLink, Spinner, Text } from 'widgets/atoms'
 import { TelegramLoginPanel } from 'widgets/organisms'
 import { AuthTemplate } from 'widgets/templates'
 import { SiteLayout } from '@/layouts/SiteLayout'
@@ -53,6 +53,30 @@ const LoginPage: React.FC = () => {
         className={layout.sessionArea}
         title="Вход"
         subtitle="Через Telegram — регистрация не нужна, аккаунт заведётся сам"
+        /*
+          Согласие — под карточкой, но на экране одновременно с кнопкой входа:
+          вход здесь и есть регистрация, аккаунт заводится в тот же момент, и
+          сказать, что при этом сохраняется, нужно до нажатия, а не после.
+
+          Тот же текст живёт в первом сообщении бота (`telegram/messages.py`,
+          `start`) — оба пути к аккаунту ведут через него, и оба обязаны о нём
+          предупредить. Слово в слово они не совпадают намеренно: здесь человек
+          нажимает кнопку на сайте, там — кнопку в чате.
+
+          Показывается и в состоянии проверки сессии тоже: это слот шаблона,
+          а не часть панели, и мигать вместе со спиннером ему незачем.
+        */
+        footer={
+          <Text size="sm" tone="muted">
+            Входя, вы соглашаетесь на обработку персональных данных: магазин сохранит ваш номер, имя
+            из профиля Telegram и чат с ботом — чтобы принимать заявки и писать вам о них. Подробнее
+            — в{' '}
+            <AppLink href="/privacy" className={styles.inlineLink}>
+              политике обработки данных
+            </AppLink>
+            .
+          </Text>
+        }
       >
         {isRedirecting ? (
           <Spinner label="Проверяем сессию" />

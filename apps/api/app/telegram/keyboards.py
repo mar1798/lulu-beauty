@@ -182,6 +182,7 @@ WISHLIST_PATH = "/wishlist"
 CATALOG_PATH = "/catalog"
 ORDERS_PATH = "/orders"
 ADMIN_ORDERS_PATH = "/admin/orders"
+PRIVACY_PATH = "/privacy"
 
 
 def instagram_button() -> InlineKeyboardButton:
@@ -257,6 +258,22 @@ def owner_contact_actions() -> InlineKeyboardMarkup:
         rows.append([orders])
     rows.append([instagram_button()])
     return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def privacy_link() -> InlineKeyboardMarkup | None:
+    """Under the consent message the bot sends before anyone shares a number.
+
+    A button rather than the address written out, and that is the whole reason this
+    message is separate from the greeting: `share_contact()` takes the greeting's single
+    `reply_markup` slot, so the policy could only have travelled as text — which reads as
+    `http://localhost:3000/privacy` in development and as an unclickable tail in
+    production.
+
+    `None` on a host Telegram won't link to (`_site_button`), like every other link here.
+    The consent still sends; it simply loses its way to the document, which is the same
+    trade the cart reminder and the order list already make on localhost.
+    """
+    return _site_link(PRIVACY_PATH, messages.PRIVACY_BUTTON)
 
 
 def site_link() -> InlineKeyboardMarkup | None:

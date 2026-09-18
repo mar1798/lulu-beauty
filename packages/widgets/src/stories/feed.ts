@@ -14,6 +14,7 @@ import {
   IAlertProps,
   IAppearProps,
   IAuthTemplateProps,
+  ILegalTemplateProps,
   IAuthUser,
   ICart,
   ICartItem,
@@ -652,6 +653,25 @@ export const feedAuthTemplate = (): IAuthTemplateProps => ({
   title: 'Вход',
   subtitle: 'Введите телефон и пароль — код придёт в Telegram.',
   children: 'Сюда встаёт форма',
+})
+
+export const feedLegalTemplate = (): ILegalTemplateProps => ({
+  title: 'Политика обработки персональных данных',
+  updatedAt: '2026-09-18',
+  summary: 'Короткая выжимка того, что магазин сохраняет и зачем.',
+  sections: [
+    {
+      title: 'Какие данные мы собираем',
+      body: [
+        'Только то, без чего нельзя принять заявку и сообщить о ней:',
+        ['номер телефона', 'имя из профиля Telegram', 'идентификатор чата с ботом'],
+      ],
+    },
+    {
+      title: 'Как удалить аккаунт',
+      body: ['Кнопка «Удалить аккаунт» в профиле стирает эти данные без обращения к владельцу.'],
+    },
+  ],
 })
 
 export const feedTelegramLoginPanel = (): ITelegramLoginPanelProps => ({

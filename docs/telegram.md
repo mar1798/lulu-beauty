@@ -19,6 +19,22 @@ any card from their address book, and Telegram delivers both as a plain `contact
 the number alone would hand over the account behind it, so the handler checks
 `contact.user_id` — filled in by Telegram, not the client. **Do not relax that check.**
 
+Because the account is born at that tap, the tap is also where consent is taken.
+`/start` answers an unbound chat with **two** messages: the greeting carrying the
+share-contact reply keyboard, then `messages.CONSENT` carrying a «Политика обработки
+данных» url button (`keyboards.privacy_link`). Two, because a message has room for one
+`reply_markup` and the greeting spends it on the keyboard — and the consent goes second so
+it sits directly above the button it is about, still before the tap. It names what will be
+stored (number, Telegram profile name, this chat) and why; that list must keep matching
+what the `users` table actually holds. The address is never written into the text: it is a
+button, so on a host Telegram won't link to it simply drops (`_site_button`) rather than
+leaving `http://localhost:3000/privacy` in the first thing a customer reads.
+
+The same promise is made on the site's `/login` page, and both are the consent the shop
+relies on. Erasing an account is how it is withdrawn
+([domain.md](domain.md#erasing-an-account)); it also unbinds the chat, so the same number
+can start over from `/start`.
+
 ## Sign-in
 
 ### 1. Bot-confirmed session (the default, `/login`)

@@ -32,7 +32,12 @@ def _stub_session(monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
 
 
 async def test_handle_start_prompts_for_contact_share(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Чат без привязки и без аккаунта — единственный путь дальше это «поделиться номером»."""
+    """Чат без привязки и без аккаунта — единственный путь дальше это «поделиться номером».
+
+    Два сообщения, а не одно: у сообщения ровно один `reply_markup`, приветствие тратит
+    его на reply-клавиатуру с кнопкой, и согласию остаётся своё — с inline-кнопкой на
+    политику. Согласие вторым, то есть последним перед полем ввода: прямо над той
+    кнопкой, о которой оно говорит, и всё ещё до нажатия."""
     message = MagicMock()
     message.chat.id = 555
     message.answer = AsyncMock()
@@ -43,9 +48,10 @@ async def test_handle_start_prompts_for_contact_share(monkeypatch: pytest.Monkey
 
     await handle_start(message, CommandObject(command="start", args=None))
 
-    message.answer.assert_awaited_once()
-    _, kwargs = message.answer.await_args
-    assert "reply_markup" in kwargs
+    greeting, consent = message.answer.await_args_list
+    assert greeting.args[0] == messages.START
+    assert greeting.kwargs["reply_markup"] is not None
+    assert consent.args[0] == messages.CONSENT
 
 
 def test_start_is_matched_by_command_filter_not_exact_text() -> None:

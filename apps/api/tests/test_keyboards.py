@@ -4,7 +4,7 @@ from typing import get_args
 import pytest
 
 from app.orders.models import OrderStatus
-from app.telegram import keyboards
+from app.telegram import keyboards, messages
 from app.telegram.keyboards import MenuAction, OrderAction, OrderActionName
 
 # Telegram's hard limit on callback_data; exceeding it is rejected at send time, so the
@@ -260,3 +260,31 @@ def test_order_actions_keep_working_without_a_public_site(
 
     assert len(rows) == 1
     assert len(rows[0]) == 2
+
+
+def test_privacy_link_points_at_the_page_the_site_serves(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Путь дублирует маршрут `apps/website/src/pages/privacy.tsx` — бот и сайт разные
+    приложения, общего роутера у них нет, и разъедутся они молча.
+
+    Подпись — та же, что у ссылки в подвале сайта: это один документ, и называться он
+    должен одинаково, где бы человек на него ни наткнулся."""
+    monkeypatch.setattr("app.config.settings.website_base_url", "https://lulu.example.com/")
+
+    markup = keyboards.privacy_link()
+
+    assert markup is not None
+    button = markup.inline_keyboard[0][0]
+    assert button.url == "https://lulu.example.com/privacy"
+    assert button.text == messages.PRIVACY_BUTTON
+
+
+def test_privacy_link_disarms_itself_on_a_non_public_host(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Согласие уходит и без кнопки: Telegram отказывает всему сообщению целиком, а
+    первое сообщение бота — не то, что можно позволить себе потерять."""
+    monkeypatch.setattr("app.config.settings.website_base_url", "http://localhost:3000")
+
+    assert keyboards.privacy_link() is None
