@@ -139,3 +139,33 @@ class ImportSummaryResponse(CamelModel):
     created: int
     updated: int
     errors: list[ImportRowErrorResponse]
+
+
+class SuggestCategoryResponse(CamelModel):
+    name: str
+    slug: str
+
+
+class SuggestProductResponse(CamelModel):
+    """A product as the header dropdown shows it: name, brand, price, one picture.
+
+    Not `ProductResponse` trimmed by the client — the suggestion list fires on every
+    few keystrokes, and sending the description plus every image of five products for
+    a row that displays one thumbnail is the difference between a snappy dropdown and
+    a slow one.
+    """
+
+    id: uuid.UUID
+    name: str
+    slug: str
+    brand: str | None
+    price_cents: int
+    in_stock: bool
+    image_url: str | None
+    image_alt: str | None
+
+
+class SearchSuggestResponse(CamelModel):
+    categories: list[SuggestCategoryResponse]
+    brands: list[str]
+    products: list[SuggestProductResponse]

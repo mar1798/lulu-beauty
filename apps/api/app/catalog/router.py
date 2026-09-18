@@ -29,8 +29,9 @@ from app.catalog.schemas import (
     ProductImageResponse,
     ProductResponse,
     ProductUpdateRequest,
+    SearchSuggestResponse,
 )
-from app.catalog.serializers import category_response, product_response
+from app.catalog.serializers import category_response, product_response, suggest_response
 from app.catalog.service import (
     CategoryNotFoundError,
     CategoryService,
@@ -157,6 +158,28 @@ async def list_products(
         page=page,
         page_size=page_size,
     )
+
+
+@router.get("/search/suggest", response_model=SearchSuggestResponse)
+async def suggest_search(
+    # One character is a question too: the catalogue is small and mostly Cyrillic, where
+    # a single letter already narrows it usefully, and the groups are capped at five rows
+    # each anyway. Only an empty `q` is refused, because it asks for the whole catalogue.
+    #
+    # Below three characters the trigram indexes cannot help (a trigram needs three
+    # characters to exist), so such a query is a sequential scan by construction. Fine at
+    # this size; if the catalogue grows past a few thousand products, raise this floor
+    # rather than hoping for an index.
+    q: str = Query(min_length=1, max_length=255),
+    session: AsyncSession = Depends(get_session),
+) -> SearchSuggestResponse:
+    """What the header search offers mid-typing: categories, brands, a few products.
+
+    Separate from `GET /products?q=` rather than a flag on it. That endpoint answers
+    the catalog page — paginated, filtered, whole products — while this one answers a
+    dropdown, and the two differ in every part of the response.
+    """
+    return suggest_response(await ProductService(session).suggest(q))
 
 
 @router.get("/products/{slug}", response_model=ProductResponse)

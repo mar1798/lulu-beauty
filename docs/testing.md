@@ -10,8 +10,10 @@ Three suites, none of which covers another.
 
 ## ⚠️ Never point the API suite at your dev database
 
-`apps/api/tests/conftest.py` only **`setdefault`s** `DATABASE_URL`. An environment variable —
-or the value in `apps/api/.env`, which pydantic-settings reads — wins. The `db_session` fixture
+`apps/api/tests/conftest.py` only **`setdefault`s** `DATABASE_URL`, so an environment variable
+you exported yourself wins. (The value in `apps/api/.env` does not: the `setdefault` runs
+before pydantic-settings loads, and a real environment variable outranks the dotenv file —
+which is luck rather than a guarantee.) The `db_session` fixture
 `TRUNCATE`s **every table** before each test, so a stray `DATABASE_URL` empties the database
 you develop against: accounts, catalog, orders and all.
 

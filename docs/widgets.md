@@ -24,12 +24,12 @@ Storybook is the primary dev loop here — build a widget against stories, not a
 [Atomic design](https://bradfrost.com/blog/post/atomic-web-design/); all four tiers are
 populated.
 
-| Tier | Examples |
-| --- | --- |
-| `src/atoms` | `Button`, `Input`, `Price`, `Badge`, `Chip`, `Select`, `Combobox`, `Tooltip`, `Skeleton`, `Appear`, `Reveal`, `Parallax`, `AppLink`, `AppImage` |
-| `src/molecules` | `ProductCard`, `QuantityStepper`, `SearchField`, `Pagination`, `OrderCard`, `OrderStatusBadge`, `DeadlineCountdown`, `Toast`, `EmptyState`, `FileDropzone` |
-| `src/organisms` | `Header`, `Footer`, `CartPanel`, `CheckoutForm`, `ProductGrid`, `ProductDetails`, `OrderDetails`, `Modal`, `ConfirmDialog`, `ToastViewport`, `MobileMenu`, `TelegramLoginPanel`, `AdminOrdersTable`, `AdminProductsTable`, `AdminProductForm`, `AdminCycleCalendar`, `AdminUsersTable`, `AdminImportPanel`, `AdminCategoriesPanel`, `ProductPicker` |
-| `src/templates` | `BaseLayout`, `AdminLayout`, `HomeTemplate`, `CatalogTemplate`, `ProductTemplate`, `CartTemplate`, `AccountTemplate`, `AuthTemplate`, `LegalTemplate`, `ErrorTemplate` |
+| Tier            | Examples                                                                                                                                                                                                                                                                                                                                                            |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/atoms`     | `Button`, `Input`, `Price`, `Badge`, `Chip`, `Select`, `Combobox`, `Tooltip`, `Skeleton`, `Appear`, `Reveal`, `Parallax`, `AppLink`, `AppImage`                                                                                                                                                                                                                     |
+| `src/molecules` | `ProductCard`, `QuantityStepper`, `SearchField`, `Pagination`, `OrderCard`, `OrderStatusBadge`, `DeadlineCountdown`, `Toast`, `EmptyState`, `FileDropzone`                                                                                                                                                                                                          |
+| `src/organisms` | `Header`, `HeaderSearch`, `Footer`, `CartPanel`, `CheckoutForm`, `ProductGrid`, `ProductDetails`, `OrderDetails`, `Modal`, `ConfirmDialog`, `ToastViewport`, `MobileMenu`, `TelegramLoginPanel`, `AdminOrdersTable`, `AdminProductsTable`, `AdminProductForm`, `AdminCycleCalendar`, `AdminUsersTable`, `AdminImportPanel`, `AdminCategoriesPanel`, `ProductPicker` |
+| `src/templates` | `BaseLayout`, `AdminLayout`, `HomeTemplate`, `CatalogTemplate`, `ProductTemplate`, `CartTemplate`, `AccountTemplate`, `AuthTemplate`, `LegalTemplate`, `ErrorTemplate`                                                                                                                                                                                              |
 
 Supporting directories:
 
@@ -90,7 +90,7 @@ The package is consumed through subpath exports: `widgets/atoms`, `widgets/molec
 
 All shared styling lives in `src/styling`, never inline in a component:
 
-- `lib/` — style-*writing* utilities: `color.ts`, `media.ts`, `font.ts`, `shadow.ts`,
+- `lib/` — style-_writing_ utilities: `color.ts`, `media.ts`, `font.ts`, `shadow.ts`,
   `rem.ts`, `border.ts`, `transition.ts`, `linearGradient.ts`, `nested.ts`, …
 - `mixin/` — composable style objects: `flex.ts`, `grid.ts`, `focusRing.ts`, `field.ts`,
   `panel.ts`, `table.ts`, `tag.ts`, `truncate.ts`, `container.ts`, `visuallyHidden.ts`.
@@ -108,6 +108,11 @@ Two rules that look odd and are not negotiable:
 1. **Colors are stored as `'R, G, B'` channel strings**, because the `color()` getter in
    `styling/lib/color.ts` composes `rgb()` / `rgba()` from them.
 
+2. **`tokens.ts` imports from `../lib/rem` and `../lib/shadow` directly, never via the `lib`
+   barrel.** The barrel pulls in `lib/color.ts`, which imports `contract.css.ts` — closing the
+   cycle tokens → lib → color → contract → tokens, and `color` would initialize before `vars`
+   is ready.
+
 **Fonts come from the host app**, not from the library: both `font.inter` and `font.display`
 resolve to `var(--font-inter, …)`, which `apps/website/src/pages/_app.tsx` defines through
 `next/font`. `display` is the heading role and deliberately names the same family as body text
@@ -115,10 +120,6 @@ right now — the accent face it used to point at (Eloquia Display) shipped **no
 all**, so every Russian heading, which is every heading here, quietly fell back to a different
 system font on each machine. The role kept its own token so that swapping in a face with
 Cyrillic is one line in `tokens.ts` rather than two dozen style files.
-2. **`tokens.ts` imports from `../lib/rem` and `../lib/shadow` directly, never via the `lib`
-   barrel.** The barrel pulls in `lib/color.ts`, which imports `contract.css.ts` — closing the
-   cycle tokens → lib → color → contract → tokens, and `color` would initialize before `vars`
-   is ready.
 
 ## Animation
 

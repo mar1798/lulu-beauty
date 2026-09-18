@@ -1,15 +1,16 @@
 import uuid
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Sequence
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import Select, func, select
+from sqlalchemy import Select, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.catalog.models import Category, Product, ProductImage
+from app.catalog.results import CatalogSuggestions
 from app.orders.models import OrderItem
 
 
@@ -116,9 +117,42 @@ class CategoryService:
         return result.scalar_one_or_none() is not None
 
 
+# How many spellings of one brand the suggestion query allows for. Brands collapse by
+# case after the fetch, so the SQL limit has to be wider than the group it fills, and this
+# is the width: three ways of writing the same name is already a catalogue that needs
+# tidying, not a dropdown that needs a bigger limit.
+BRAND_CASING_HEADROOM = 3
+
+
+def like_pattern(search: str) -> str:
+    """An infix ILIKE pattern with the wildcards the user typed taken literally.
+
+    Escaped rather than stripped: someone searching for "50%" means a product whose
+    name contains "50%", and an unescaped `%` would have matched the whole catalog.
+    """
+    escaped = search.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    return f"%{escaped}%"
+
+
 class ProductService:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
+
+    async def _search_category_ids(self, search: str) -> list[uuid.UUID]:
+        """Ids of the categories whose name matches, resolved before the product query.
+
+        A separate round trip rather than an EXISTS inside the `OR`, and the difference
+        is the whole point: a subquery in a disjunction makes it unindexable, so the
+        planner drops both trigram indexes and reads every product row — the name arm
+        included, which was indexed before search grew past the name. Plain ids turn the
+        third arm into `category_id IN (…)`, which a bitmap OR combines with them
+        (`ix_products_category_id`). Categories are tens of rows; the scan this removes
+        is the whole catalogue.
+        """
+        result = await self._session.execute(
+            select(Category.id).where(Category.name.ilike(like_pattern(search), escape="\\"))
+        )
+        return list(result.scalars().all())
 
     def _filtered_query(
         self,
@@ -127,6 +161,7 @@ class ProductService:
         search: str | None,
         include_deleted: bool,
         brand: str | None = None,
+        search_category_ids: Sequence[uuid.UUID] = (),
     ) -> Select[tuple[Product]]:
         query = select(Product)
         if not include_deleted:
@@ -142,9 +177,20 @@ class ProductService:
         if in_stock is not None:
             query = query.where(Product.in_stock.is_(in_stock))
         if search:
-            # Escape LIKE wildcards so a user searching for "50%" doesn't match everything.
-            pattern = search.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-            query = query.where(Product.name.ilike(f"%{pattern}%", escape="\\"))
+            pattern = like_pattern(search)
+            # Name, brand and category together, because the header search is one field
+            # for all three: someone typing "Round Lab" or "тонеры" means the products,
+            # not a literal name match, and a name-only `q` answered them with nothing.
+            # The category arm is a plain id list (`_search_category_ids`) rather than a
+            # join or an EXISTS: a join would collide with the one `category_slug` above
+            # may already have made, and an EXISTS would cost both trigram indexes.
+            arms = [
+                Product.name.ilike(pattern, escape="\\"),
+                Product.brand.ilike(pattern, escape="\\"),
+            ]
+            if search_category_ids:
+                arms.append(Product.category_id.in_(search_category_ids))
+            query = query.where(or_(*arms))
         return query
 
     async def _paginate(
@@ -173,7 +219,12 @@ class ProductService:
         brand: str | None = None,
     ) -> tuple[list[Product], int]:
         query = self._filtered_query(
-            category_slug, in_stock, search, include_deleted=False, brand=brand
+            category_slug,
+            in_stock,
+            search,
+            include_deleted=False,
+            brand=brand,
+            search_category_ids=await self._search_category_ids(search) if search else (),
         )
         return await self._paginate(query, page, page_size)
 
@@ -188,7 +239,14 @@ class ProductService:
         brand: str | None = None,
     ) -> tuple[list[Product], int]:
         """Admin listing — unlike list_public it can surface soft-deleted products."""
-        query = self._filtered_query(category_slug, in_stock, search, include_deleted, brand)
+        query = self._filtered_query(
+            category_slug,
+            in_stock,
+            search,
+            include_deleted,
+            brand,
+            search_category_ids=await self._search_category_ids(search) if search else (),
+        )
         return await self._paginate(query, page, page_size)
 
     async def list_brands(self, include_deleted: bool = False) -> list[str]:
@@ -221,6 +279,86 @@ class ProductService:
             seen.add(brand.lower())
             brands.append(brand)
         return brands
+
+    async def suggest(
+        self, search: str, product_limit: int = 5, group_limit: int = 5
+    ) -> CatalogSuggestions:
+        """What to offer while someone is still typing in the header.
+
+        Deliberately not one ranked list: the three groups answer three different
+        intents, and mixing them would bury the two cheap, decisive hits (a category,
+        a brand) under whichever products happened to sort first alphabetically.
+
+        Only live products count, and a category is offered only when it still has
+        one — an empty catalog behind a suggestion is worse than no suggestion.
+        """
+        pattern = like_pattern(search)
+        # Resolved once and used twice: the offered categories are these, and the same
+        # ids are what makes the product query's category arm indexable.
+        category_ids = await self._search_category_ids(search)
+
+        category_result = await self._session.execute(
+            select(Category)
+            .where(
+                Category.id.in_(category_ids),
+                Category.products.any(Product.deleted_at.is_(None)),
+            )
+            .order_by(Category.sort_order, Category.name)
+            .limit(group_limit)
+        )
+
+        # Capped in SQL as well as below, with room for the spellings the loop collapses:
+        # unlike `/brands`, this runs on a public endpoint once per debounced keystroke,
+        # and a one-letter query otherwise drags back every brand in the catalogue to
+        # throw all but five of them away. The headroom is what keeps the cap honest —
+        # five rows still come out five even when every brand is written two ways.
+        brand_result = await self._session.execute(
+            select(Product.brand)
+            .where(
+                Product.brand.is_not(None),
+                Product.brand != "",
+                Product.brand.ilike(pattern, escape="\\"),
+                Product.deleted_at.is_(None),
+            )
+            .distinct()
+            .order_by(Product.brand)
+            .limit(group_limit * BRAND_CASING_HEADROOM)
+        )
+
+        # Same case-collapsing as `list_brands`, and for the same reason: "round lab"
+        # and "Round Lab" are one brand, and offering both as separate rows in a
+        # five-line dropdown wastes two of them.
+        brands: list[str] = []
+        seen: set[str] = set()
+        for brand in brand_result.scalars().all():
+            if brand is None or brand.lower() in seen:
+                continue
+            seen.add(brand.lower())
+            brands.append(brand)
+            if len(brands) == group_limit:
+                break
+
+        # A name match first, the rest after: the five rows are the whole dropdown, and
+        # a product actually called what the person typed must not be pushed out of them
+        # by whatever brand or category match happens to sort earlier alphabetically.
+        product_result = await self._session.execute(
+            self._filtered_query(
+                None,
+                None,
+                search,
+                include_deleted=False,
+                search_category_ids=category_ids,
+            )
+            .options(selectinload(Product.images))
+            .order_by(Product.name.ilike(pattern, escape="\\").desc(), Product.name, Product.id)
+            .limit(product_limit)
+        )
+
+        return CatalogSuggestions(
+            categories=list(category_result.scalars().all()),
+            brands=brands,
+            products=list(product_result.scalars().all()),
+        )
 
     async def canonical_brand(self, brand: str) -> str:
         """The spelling the catalog already uses for this brand, if it knows one.

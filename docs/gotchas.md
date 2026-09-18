@@ -56,7 +56,7 @@ nothing at all — no 404, no skeleton, the connection just sat open — while t
 answered `404` in 0.3s to a bot user-agent, because Next renders blocking for bots whatever
 `fallback` says. It is `fallback: 'blocking'` now, which is that working path for everyone;
 don't move it back. Worth remembering when reading the page: in production the prerendered
-paths are always empty (the image builds with no API), so *every* product page takes the cold
+paths are always empty (the image builds with no API), so _every_ product page takes the cold
 path, and whatever that path does is what visitors get.
 
 **`revalidate: 60` costs a minute _and_ an extra request.** ISR serves the stale page to
@@ -155,8 +155,11 @@ importing `app.*` without them fails immediately — including Alembic. That's w
 itself when Postgres isn't reachable, so a green local run proves less than it looks.
 
 **`uv run pytest` can also wipe your dev database.** `conftest.py` only `setdefault`s
-`DATABASE_URL`, so `apps/api/.env` wins, and the fixture `TRUNCATE`s every table per test. Use
-a dedicated `lulu_test` database — [testing.md](testing.md).
+`DATABASE_URL`, so an exported one wins — and the fixture `TRUNCATE`s every table per test.
+(`apps/api/.env` does _not_ win here: the `setdefault` runs before pydantic-settings loads,
+and a real environment variable outranks the dotenv file. Which is luck, not a guarantee —
+export that variable for one command and the suite is pointed at your dev data.) Use a
+dedicated `lulu_test` database — [testing.md](testing.md).
 
 **Reading a column with a SQL-side `onupdate` after a flush is a 500, not a lazy load.**
 `TimestampMixin.updated_at` is set by `onupdate=func.now()`, so the new value exists only
@@ -167,6 +170,14 @@ session. Anything serializing a row it has just written hits this — it took `P
 grew an `updated_at` for the sitemap. The mixin now carries
 `__mapper_args__ = {"eager_defaults": True}`, which makes the flush add RETURNING to the
 same statement; a new model with a server-side `onupdate` outside that mixin needs its own.
+
+**A subquery inside an `OR` costs you every index in the query.** Catalogue search matches
+name, brand and category under one `q`, and writing the category arm as
+`Product.category.has(...)` puts a hashed SubPlan in the disjunction, which makes the whole
+of it unindexable — a sequential scan over `products`, the name arm included. So the ids are
+resolved first (`ProductService._search_category_ids`) and the arm becomes
+`category_id IN (…)`: the three then combine into one `BitmapOr`. Measured on 20k rows, the
+difference is `Seq Scan (cost=0.00..35467.00)` against `Bitmap Heap Scan (cost=118.92..312.20)`.
 
 **Services must not commit.** The caller owns the transaction; notifications go out _after_
 the commit, or a rolled-back state gets announced and cannot be retracted.

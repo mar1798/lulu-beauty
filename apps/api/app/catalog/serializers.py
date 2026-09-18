@@ -5,8 +5,17 @@ whole products, and a second hand-written copy of this mapping is exactly how a 
 added to ProductResponse ends up populated on one endpoint and missing on the other.
 """
 
+from app.catalog.images import primary_image
 from app.catalog.models import Category, Product
-from app.catalog.schemas import CategoryResponse, ProductImageResponse, ProductResponse
+from app.catalog.results import CatalogSuggestions
+from app.catalog.schemas import (
+    CategoryResponse,
+    ProductImageResponse,
+    ProductResponse,
+    SearchSuggestResponse,
+    SuggestCategoryResponse,
+    SuggestProductResponse,
+)
 
 
 def category_response(category: Category) -> CategoryResponse:
@@ -37,5 +46,28 @@ def product_response(product: Product) -> ProductResponse:
                 is_primary=image.is_primary,
             )
             for image in product.images
+        ],
+    )
+
+
+def suggest_response(suggestions: CatalogSuggestions) -> SearchSuggestResponse:
+    return SearchSuggestResponse(
+        categories=[
+            SuggestCategoryResponse(name=category.name, slug=category.slug)
+            for category in suggestions.categories
+        ],
+        brands=suggestions.brands,
+        products=[
+            SuggestProductResponse(
+                id=product.id,
+                name=product.name,
+                slug=product.slug,
+                brand=product.brand,
+                price_cents=product.price_cents,
+                in_stock=product.in_stock,
+                image_url=None if (image := primary_image(product.images)) is None else image.url,
+                image_alt=None if image is None else image.alt,
+            )
+            for product in suggestions.products
         ],
     )

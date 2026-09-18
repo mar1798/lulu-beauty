@@ -610,6 +610,67 @@ export interface IHeaderUser {
   link: ILink
 }
 
+/**
+ * Строка выпадающего поиска: то, куда из шапки можно уйти одним движением.
+ *
+ * Адрес приходит готовым (`link`), а не собирается здесь: виджет не знает ни
+ * маршрутов сайта, ни того, что бренд фильтруется полным названием, а
+ * категория — слагом (см. `IProductListParams` в `apps/website`).
+ */
+export interface ISearchSuggestItem {
+  /** Уникален в пределах всего списка: им адресуется активная строка. */
+  id: string
+  label: string
+  link: ILink
+  /** Вторая строка под названием — у товара это его бренд. */
+  hint?: string
+  image?: IImage
+  /** Копейки, как отдаёт бэкенд. Есть только у товарных строк. */
+  priceCents?: number
+  /** Товара нет в наличии: строка помечается, но остаётся рабочей ссылкой. */
+  isUnavailable?: boolean
+}
+
+export interface ISearchSuggestGroup {
+  title: string
+  items: ISearchSuggestItem[]
+}
+
+export interface IHeaderSearchProps {
+  value: string
+  onChange: (value: string) => void
+  /**
+   * Группы подсказок под текущий запрос. `null` — их ещё не спрашивали
+   * (слишком короткий запрос или первый ответ не пришёл): это не то же самое,
+   * что пустой массив, который означает «искали и не нашли».
+   */
+  groups: ISearchSuggestGroup[] | null
+  /** Последняя строка списка — «показать всё» на странице каталога. */
+  allResults?: ILinkedLabel
+  /** Идёт запрос: спиннер встаёт в поле вместо лупы. */
+  isBusy?: boolean
+  /**
+   * Enter, когда ни одна строка не выделена: уйти на страницу каталога с
+   * набранным запросом. Навигацию делает сайт — виджет только сообщает.
+   */
+  onSubmit?: () => void
+  /**
+   * Enter по выделенной строке. Мышью строка открывается сама (это ссылка),
+   * с клавиатуры перейти может только тот, кто владеет роутером.
+   */
+  onSelect?: (item: ISearchSuggestItem) => void
+  placeholder?: string
+  /** Подпись кнопки-лупы, которая открывает панель поиска на узком экране. */
+  expandLabel?: string
+  /** Предел длины запроса; по умолчанию 255 — столько принимает API. */
+  maxLength?: number
+  /**
+   * Куда написать, когда поиск ничего не нашёл: строка появляется под
+   * «ничего не нашлось» и ведёт наружу. Адрес знает сайт, не виджет.
+   */
+  contact?: ILinkedLabel
+}
+
 export interface IHeaderProps {
   logo: ILinkedLabel
   navigation: ILinkedLabel[]
@@ -620,6 +681,12 @@ export interface IHeaderProps {
   loginLink: ILink
   /** Текущий путь — для `aria-current` в навигации. */
   currentHref?: string
+  /**
+   * Поиск по каталогу. Слот, а не готовое поле: подсказки ходят в API, а
+   * шапка — часть `widgets`, где данных не бывает (`HeaderSearch` живёт здесь,
+   * но наполняет его сайт).
+   */
+  search?: ReactNode
   /** Полоса под шапкой: дедлайн текущего сбора. */
   notice?: ReactNode
   /** Кнопка мобильного меню появляется только когда обработчик задан. */

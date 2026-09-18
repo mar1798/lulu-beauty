@@ -27,7 +27,7 @@ describe('StatusSelect', () => {
     await userEvent.click(screen.getByRole('combobox'))
 
     expect(screen.queryByRole('option', { name: 'Отменена покупателем' })).toBeNull()
-    expect(screen.getByRole('option', { name: 'Отменена владельцем' })).toBeTruthy()
+    expect(screen.getByRole('option', { name: 'Отменена магазином' })).toBeTruthy()
   })
 
   it('показывает уже стоящую отмену покупателем — иначе поле выглядело бы пустым', async () => {
@@ -61,6 +61,6 @@ describe('StatusSelect', () => {
     await userEvent.click(screen.getByRole('combobox'))
 
     expect(screen.queryByRole('option', { name: 'Ожидает подтверждения' })).toBeNull()
-    expect(screen.getByRole('option', { name: 'Отменена владельцем' })).toBeTruthy()
+    expect(screen.getByRole('option', { name: 'Отменена магазином' })).toBeTruthy()
   })
 })

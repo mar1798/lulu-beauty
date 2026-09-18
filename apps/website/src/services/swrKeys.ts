@@ -97,6 +97,9 @@ export const isAdminUsersKey = (key: unknown): boolean =>
 
 export const productSearchKey = (q: string, limit: number) => ['product-search', q, limit] as const
 
+/** Подсказки поиска в шапке. Ключ — сам запрос: повтор берётся из кеша без мигания. */
+export const searchSuggestKey = (q: string) => ['search-suggest', q] as const
+
 /** Инвалидация всех вариантов фильтров/страниц списка админ-товаров разом. */
 export const isAdminProductsKey = (key: unknown): boolean =>
   Array.isArray(key) && key[0] === ADMIN_PRODUCTS_TAG

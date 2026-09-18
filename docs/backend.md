@@ -92,6 +92,7 @@ Public and customer-facing:
 | `GET`                         | `/categories`, `/brands`                      |                                                              |
 | `GET`                         | `/products`                                   | Paged. Query params **snake_case**: `in_stock`, `page_size`. |
 | `GET`                         | `/products/{slug}`                            |                                                              |
+| `GET`                         | `/search/suggest`                             | Header search: categories + brands + 5 products. `q` 1–255.  |
 | `GET`                         | `/cycles/active`                              |                                                              |
 | `GET`/`PATCH`/`DELETE`        | `/users/me`                                   | `DELETE` erases the account — see "Erasing an account".      |
 | `GET`                         | `/users/me/deletion`                          | Whether the caller may erase, and what blocks it.            |
@@ -231,6 +232,42 @@ withdrawal here is not: the xlsx import revives a product it meets again, and th
 restore one by hand.
 
 **Money** is integer `*_cents`. **Products are soft-deleted.** See [domain.md](domain.md).
+
+## Catalogue search
+
+`q` is **one field over three things**: it matches a product's name, its brand, or its
+category's name (`ProductService._filtered_query`). That holds for the admin listing too —
+`GET /admin/products?q=` shares the same builder, so a query naming a category returns
+everything in it, which is what the admin product picker and the product list now do. The category arm is a plain list of ids
+resolved first by `_search_category_ids`, not a join and not an EXISTS: a join would collide
+with the one `category=` may already have made, and a subquery inside the `OR` makes the
+whole disjunction unindexable — the planner then reads every product row, the name arm
+included. Wildcards the user typed are escaped, not stripped — "50%" means a name containing
+"50%".
+
+Two partial trigram GIN indexes carry it, `ix_products_live_name_trgm` and
+`ix_products_live_brand_trgm`, and with the id list the three arms combine into one
+`BitmapOr` (the third uses `ix_products_category_id`). An infix `ILIKE '%…%'` rules out any
+btree, so without them every search read the whole table. Both are partial on
+`deleted_at IS NULL`, the condition every public listing carries. `pg_trgm` is a _trusted_
+extension, so the migration creates it without superuser.
+
+Note also that a query shorter than three characters cannot use a trigram index at all — a
+trigram needs three characters to exist — so one- and two-letter searches are sequential
+scans by construction. That is affordable at this catalogue's size and is the price of
+answering the first keystroke.
+
+`GET /search/suggest?q=` answers the header dropdown and is deliberately **not** a flag on
+`GET /products`: it returns three groups (up to 5 categories, 5 brands, 5 products), a
+product there is trimmed to one image, and the whole thing is unpaged. Products with the
+query in their **name** are ordered ahead of those matched only by brand or category — five
+rows are the entire dropdown, and a literal hit must not be crowded out of them. A category
+is offered only when it still has a live product behind it, and brands collapse by case the
+same way `/brands` does — with the difference that the brand query is capped in SQL as well
+(`BRAND_CASING_HEADROOM` times the group size, since the collapsing happens after the
+fetch): this one runs on every debounced keystroke, and a one-letter query must not drag
+back the whole brand list to throw all but five of it away. `q` is one character minimum
+(only an empty query is refused) and 255 maximum.
 
 ## Rate limiting
 

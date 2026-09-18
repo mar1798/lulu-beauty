@@ -56,6 +56,7 @@ import {
   IHomeHeroProps,
   IHomeTemplateProps,
   IHeaderProps,
+  IHeaderSearchProps,
   IIconButtonProps,
   IImage,
   IInputProps,
@@ -297,6 +298,49 @@ export const feedHeader = (): IHeaderProps => ({
   notice: 'Приём заявок закрывается 12 августа',
 })
 
+export const feedHeaderSearch = (): IHeaderSearchProps => ({
+  value: 'тон',
+  onChange: noop,
+  groups: [
+    {
+      title: 'Категории',
+      items: [{ id: 'c-toners', label: 'Тонеры', link: { href: '/catalog?category=toners' } }],
+    },
+    {
+      title: 'Бренды',
+      items: [{ id: 'b-tonymoly', label: 'Tonymoly', link: { href: '/catalog?brand=Tonymoly' } }],
+    },
+    {
+      title: 'Товары',
+      items: [
+        {
+          id: 'p-1',
+          label: 'Тонер с центеллой, 200 мл',
+          hint: 'Round Lab',
+          link: { href: '/catalog/toner-centella' },
+          priceCents: 189000,
+        },
+        {
+          id: 'p-2',
+          label: 'Тонер-пэды с ниацинамидом',
+          hint: 'Anua',
+          link: { href: '/catalog/toner-pads' },
+          priceCents: 245000,
+          isUnavailable: true,
+        },
+      ],
+    },
+  ],
+  allResults: {
+    label: 'Показать всё по запросу «тон»',
+    link: { href: '/catalog?q=%D1%82%D0%BE%D0%BD' },
+  },
+  contact: {
+    label: 'Instagram',
+    link: { href: 'https://www.instagram.com/sululu_kg', target: '_blank' },
+  },
+})
+
 export const feedMobileMenu = (): IMobileMenuProps => ({
   isOpen: true,
   onClose: noop,
@@ -362,18 +406,17 @@ export const feedStepList = (): IStepListProps => ({
     },
     {
       title: 'Оформите заявку',
-      description: 'Это не оплата: заявка уходит владельцу, цены фиксируются на момент отправки.',
+      description: 'Это не оплата: заявка уходит нам, цены фиксируются на момент отправки.',
       visual: 'request',
     },
     {
       title: 'Дождитесь подтверждения',
-      description:
-        'После закрытия сбора владелец подтвердит заявку — уведомление придёт в Telegram.',
+      description: 'После закрытия сбора мы подтвердим заявку — уведомление придёт в Telegram.',
       visual: 'confirm',
     },
     {
       title: 'Получите товар',
-      description: 'Когда заказ приедет, владелец обсудит с вами доставку или самовывоз.',
+      description: 'Когда заказ приедет, мы обсудим с вами доставку или самовывоз.',
       visual: 'handover',
     },
   ],
@@ -469,12 +512,12 @@ export const feedFaqAccordion = (): IFaqAccordionProps => ({
     {
       question: 'Чем заявка отличается от заказа?',
       answer:
-        'Заявка — это список того, что вы хотите взять в текущем сборе. Она уходит владельцу, а не в оплату.',
+        'Заявка — это список того, что вы хотите взять в текущем сборе. Она уходит нам, а не в оплату.',
     },
     {
       question: 'Почему нельзя оплатить на сайте?',
       answer:
-        'Онлайн-оплаты нет вовсе: владелец подтверждает заявки после закрытия сбора, а оплата обсуждается лично.',
+        'Онлайн-оплаты нет вовсе: мы подтверждаем заявки после закрытия сбора, а оплата обсуждается лично.',
     },
     {
       question: 'Сбора сейчас нет — что делать?',
@@ -482,7 +525,7 @@ export const feedFaqAccordion = (): IFaqAccordionProps => ({
         'Каталог открыт всегда, но корзина работает только при открытом сборе — понравившееся сохраняйте в избранное.',
     },
     {
-      question: 'Как связаться с владельцем?',
+      question: 'Как связаться с магазином?',
       answer: 'Напишите напрямую в {link} — в остальном переписку ведёт бот.',
       action: {
         label: 'Instagram магазина',
@@ -669,7 +712,7 @@ export const feedLegalTemplate = (): ILegalTemplateProps => ({
     },
     {
       title: 'Как удалить аккаунт',
-      body: ['Кнопка «Удалить аккаунт» в профиле стирает эти данные без обращения к владельцу.'],
+      body: ['Кнопка «Удалить аккаунт» в профиле стирает эти данные без обращения к нам.'],
     },
   ],
 })
@@ -756,7 +799,7 @@ export const feedCheckoutPanel = (): Omit<ICheckoutPanelProps, 'form'> => ({
 
 export const feedCartTemplate = (): ICartTemplateProps => ({
   title: 'Корзина',
-  summary: 'Заявка отправится владельцу после закрытия сбора.',
+  summary: 'Заявка отправится нам после закрытия сбора.',
   children: 'Сюда встаёт список позиций',
 })
 
