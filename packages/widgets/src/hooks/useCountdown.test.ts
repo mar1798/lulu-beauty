@@ -92,6 +92,44 @@ describe('useCountdown', () => {
     expect(result.current.isExpired).toBe(true)
   })
 
+  /*
+    Считать нечего — значит, и будить браузер незачем: без этого интервал жил
+    бы, пока открыта вкладка, и опрашивал время ради строки, которая больше не
+    изменится.
+  */
+  it('не заводит опрос, когда считать нечего', () => {
+    renderHook(() => useCountdown(null))
+    renderHook(() => useCountdown(inFuture(-HOUR)))
+
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it('гасит опрос, когда дедлайн проходит', () => {
+    renderHook(() => useCountdown(inFuture(2 * SECOND)))
+
+    expect(vi.getTimerCount()).toBe(1)
+
+    act(() => {
+      vi.advanceTimersByTime(2 * SECOND)
+    })
+
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  /* Время у таймеров общее — интервал на всех тоже один. */
+  it('делит один опрос между таймерами', () => {
+    const first = renderHook(() => useCountdown(inFuture(10 * SECOND)))
+    const second = renderHook(() => useCountdown(inFuture(20 * SECOND)))
+
+    expect(vi.getTimerCount()).toBe(1)
+
+    first.unmount()
+    expect(vi.getTimerCount()).toBe(1)
+
+    second.unmount()
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
   it('переживает отсутствие сбора и битую дату', () => {
     expect(renderHook(() => useCountdown(null)).result.current.isExpired).toBe(true)
     expect(renderHook(() => useCountdown('не дата')).result.current.isExpired).toBe(true)
