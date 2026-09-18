@@ -155,8 +155,11 @@ importing `app.*` without them fails immediately — including Alembic. That's w
 itself when Postgres isn't reachable, so a green local run proves less than it looks.
 
 **`uv run pytest` can also wipe your dev database.** `conftest.py` only `setdefault`s
-`DATABASE_URL`, so `apps/api/.env` wins, and the fixture `TRUNCATE`s every table per test. Use
-a dedicated `lulu_test` database — [testing.md](testing.md).
+`DATABASE_URL`, so an exported one wins — and the fixture `TRUNCATE`s every table per test.
+(`apps/api/.env` does _not_ win here: the `setdefault` runs before pydantic-settings loads,
+and a real environment variable outranks the dotenv file. Which is luck, not a guarantee —
+export that variable for one command and the suite is pointed at your dev data.) Use a
+dedicated `lulu_test` database — [testing.md](testing.md).
 
 **Reading a column with a SQL-side `onupdate` after a flush is a 500, not a lazy load.**
 `TimestampMixin.updated_at` is set by `onupdate=func.now()`, so the new value exists only

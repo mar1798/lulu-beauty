@@ -176,8 +176,8 @@ Full list: [docs/gotchas.md](docs/gotchas.md).
 > existing import rather than typing it.
 
 > ⚠️ **Never point the API test suite at your dev database.** `tests/conftest.py` only
-> `setdefault`s `DATABASE_URL`, so an env var — or the value in `apps/api/.env` — wins, and the
-> fixture `TRUNCATE`s every table per test. Use a dedicated database:
+> `setdefault`s `DATABASE_URL`, so an exported env var wins (`apps/api/.env` does not — the
+> `setdefault` beats the dotenv file), and the fixture `TRUNCATE`s every table per test. Use a dedicated database:
 > `docker compose exec db psql -U lulu -d postgres -c 'CREATE DATABASE lulu_test'`, then
 > `DATABASE_URL='postgresql+asyncpg://lulu:lulu@localhost:5432/lulu_test'` for both
 > `alembic upgrade head` and `uv run pytest`. The DB-backed tests under `tests/integration/`
