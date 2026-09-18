@@ -56,7 +56,7 @@ nothing at all — no 404, no skeleton, the connection just sat open — while t
 answered `404` in 0.3s to a bot user-agent, because Next renders blocking for bots whatever
 `fallback` says. It is `fallback: 'blocking'` now, which is that working path for everyone;
 don't move it back. Worth remembering when reading the page: in production the prerendered
-paths are always empty (the image builds with no API), so *every* product page takes the cold
+paths are always empty (the image builds with no API), so _every_ product page takes the cold
 path, and whatever that path does is what visitors get.
 
 **`revalidate: 60` costs a minute _and_ an extra request.** ISR serves the stale page to
