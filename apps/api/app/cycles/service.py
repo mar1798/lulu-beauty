@@ -156,11 +156,18 @@ class CyclesService:
         # second time. It also kept `closed_at` and both reminder stamps, so the new
         # deadline would pass unannounced. UPCOMING rather than ACTIVE for the same reason
         # `create()` leaves it there: the sweep promotes whichever cycle is next.
+        #
+        # `announced_at` goes with them: a reopened cycle is collecting orders that nobody
+        # outside it has been told about — the announcement it carries describes a cycle
+        # that has since ended. Clearing it is what lets the shop hear the reopening at
+        # all, from the router's background task, with `cycle_notice_sweep` behind it as
+        # the same safety net it is for a new cycle.
         if not was_closed_early and cycle.status is CycleStatus.CLOSED and cycle.deadline_at > now:
             cycle.status = CycleStatus.UPCOMING
             cycle.closed_at = None
             cycle.reminder_sent_at = None
             cycle.final_reminder_sent_at = None
+            cycle.announced_at = None
 
         await self._session.flush()
         return cycle

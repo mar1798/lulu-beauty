@@ -98,6 +98,7 @@ async def update_cycle(
     # the notification below is about the difference between the two.
     existing = await service.get(cycle_id)
     previous_deadline_at = existing.deadline_at if existing is not None else None
+    was_closed = existing is not None and existing.status is CycleStatus.CLOSED
 
     try:
         cycle = await service.update(cycle_id, updates)
@@ -115,10 +116,17 @@ async def update_cycle(
     response = _cycle_response(cycle)
     await session.commit()
 
+    # A reopened cycle is announced, not reported as a moved deadline: the shop at large
+    # has heard nothing about it — `update()` clears `announced_at` for exactly this — and
+    # "дедлайн перенесён" would reach only the handful of people already inside a cycle
+    # everyone else doesn't know is collecting again. One message, not both.
+    reopened = was_closed and cycle.status is not CycleStatus.CLOSED
+    if reopened:
+        background_tasks.add_task(notify_cycle_opened, cycle.id)
     # Only a moved deadline, and only on a cycle that is still collecting: renaming one
     # changes nothing for the customer, and a past cycle's date is bookkeeping. Same
     # background fan-out as the opening announcement, for the same reason.
-    if (
+    elif (
         previous_deadline_at is not None
         and cycle.deadline_at != previous_deadline_at
         and cycle.status is not CycleStatus.CLOSED

@@ -61,6 +61,11 @@ short by a restart reaches the rest of the shop instead of being lost. Same trad
 reminders: a repeat to the people already reached beats a cycle nobody heard about. Details in
 [telegram.md](telegram.md#notifications).
 
+Reopening a finished cycle clears the stamp along with `closed_at` and the reminder stamps
+(see [What closing does](#what-closing-does)), so the reopening is announced like an opening —
+that is the message the shop needs, and the one it gets: "дедлайн перенесён" would go only to
+the few people already inside a cycle nobody else knows is collecting again.
+
 ### What closing does
 
 `close_now` (owner presses close) and the `deadline_sweep` job do exactly the same thing, and

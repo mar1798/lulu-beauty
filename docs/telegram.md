@@ -154,7 +154,8 @@ with admin rights — `ADMIN` and `SUPER_ADMIN` alike (`recipients.get_owners`).
    up any still-collecting cycle the stamp is missing from and re-runs `notify_cycle_opened`,
    which repeats itself to the customers it did reach — the same trade as a duplicate nudge.
    A cycle already closed or past its deadline is left alone: announcing it invites people to
-   order in something that no longer takes orders.
+   order in something that no longer takes orders. Reopening one, on the other hand, clears
+   the stamp and announces it afresh, in place of the deadline-changed notice.
 
    While a broadcast is in flight the cycle is claimed in memory (`notify._announcing`), so a
    tick landing mid-fan-out does not start a second copy of it. In memory and not in the row
