@@ -1,12 +1,13 @@
-import React, { useCallback, useRef } from 'react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/router'
 import type { IControlSize } from 'widgets/types'
 import { Button, IconButton, Tooltip } from 'widgets/atoms'
 import { useToast } from 'widgets/contexts'
-import { IconCheck, IconPlus } from 'widgets/svg'
+import { IconCart, IconCheck, IconPlus } from 'widgets/svg'
 import { useAuth } from '@/contexts/AuthContext'
 import { useCart } from '@/contexts/CartContext'
 import { useActiveCycle } from '@/hooks/useActiveCycle'
+import * as styles from '@/styles/cartButton.css'
 
 /**
  * Кнопка «В корзину» для карточки и страницы товара.
@@ -34,6 +35,21 @@ import { useActiveCycle } from '@/hooks/useActiveCycle'
  */
 const CLOSED_REASON = 'Сейчас нет открытого сбора — товар можно сохранить в избранное'
 
+/**
+ * Сколько круглая кнопка держит галочку после добавления, мс.
+ *
+ * Галочка отвечает на клик («добавили»), но действием она не читается: это
+ * знак завершённости, и человек не догадывался, что тот же круг ведёт в
+ * корзину. Поэтому подтверждение живёт ровно столько, чтобы его заметили, а
+ * дальше кнопка меняет знак на корзину — ту же, что в шапке, — и дальше
+ * читается как переход.
+ *
+ * Секунда с небольшим: меньше — галочку не успевают увидеть те, кто уже
+ * увёл взгляд к следующей карточке; больше — подмена происходит, когда на
+ * кнопку уже никто не смотрит, и смысла в ней нет.
+ */
+const CONFIRMATION_MS = 1200
+
 export const AddToCartButton: React.FC<{
   productId: string
   size?: IControlSize
@@ -57,6 +73,26 @@ export const AddToCartButton: React.FC<{
    * только вернула бы мигание.
    */
   const isRunning = useRef(false)
+
+  /**
+   * Товар положили прямо сейчас — кнопка держит галочку подтверждения. Через
+   * `CONFIRMATION_MS` состояние гаснет само, и на её место встаёт корзина.
+   *
+   * Состояние поднято на кнопку, а не выведено из корзины: в корзине лежит
+   * только факт «товар там», а «положили секунду назад» знает лишь тот
+   * экземпляр кнопки, по которому нажали.
+   */
+  const [isConfirming, setIsConfirming] = useState(false)
+
+  useEffect(() => {
+    if (!isConfirming) {
+      return
+    }
+
+    const timer = window.setTimeout(() => setIsConfirming(false), CONFIRMATION_MS)
+
+    return () => window.clearTimeout(timer)
+  }, [isConfirming])
 
   const add = useCallback(async (): Promise<void> => {
     /*
@@ -86,7 +122,9 @@ export const AddToCartButton: React.FC<{
 
       const result = await addItem(productId)
 
-      if (!result.ok) {
+      if (result.ok) {
+        setIsConfirming(true)
+      } else {
         /*
           Причину показываем словами корзины, а не общим «попробуйте ещё раз»:
           закрытый сбор, снятый с продажи товар и истёкшая сессия чинятся
@@ -107,17 +145,27 @@ export const AddToCartButton: React.FC<{
 
   if (isInCart) {
     /*
-      В карточке «уже в корзине» — та же круглая кнопка, но белая с галочкой:
-      состояние читается формой заливки, а не длиной подписи, и продолжает
-      вести в корзину.
+      В карточке «уже в корзине» — та же круглая кнопка, но белая: состояние
+      читается формой заливки, а не длиной подписи. Знак внутри зависит от
+      того, только что товар положили или он лежал там и раньше
+      (`CONFIRMATION_MS`): сразу после клика — галочка, дальше — корзина.
+
+      Ссылка, а не `router.push` по клику: переход обязан оставаться
+      переходом. Курсор, адрес в статусной строке, Cmd+клик и средняя кнопка —
+      четыре признака «ведёт в корзину», которых у `button` нет вовсе, и
+      именно их не хватало, чтобы догадаться о переходе, не нажав.
     */
     return isCompact ? (
       <IconButton
-        icon={<IconCheck />}
-        label="В корзине — перейти в корзину"
+        icon={
+          <span key={isConfirming ? 'check' : 'cart'} className={styles.iconSwap}>
+            {isConfirming ? <IconCheck /> : <IconCart />}
+          </span>
+        }
+        label={isConfirming ? 'Добавлено — перейти в корзину' : 'В корзине — перейти в корзину'}
         variant="solid"
         size="md"
-        onClick={() => void router.push('/cart')}
+        link={{ href: '/cart' }}
       />
     ) : (
       <Button variant="secondary" size={size} isFullWidth={isFullWidth} link={{ href: '/cart' }}>
