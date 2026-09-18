@@ -56,6 +56,7 @@ import {
   IHomeHeroProps,
   IHomeTemplateProps,
   IHeaderProps,
+  IHeaderSearchProps,
   IIconButtonProps,
   IImage,
   IInputProps,
@@ -295,6 +296,49 @@ export const feedHeader = (): IHeaderProps => ({
   loginLink: { href: '/login' },
   currentHref: '/catalog',
   notice: 'Приём заявок закрывается 12 августа',
+})
+
+export const feedHeaderSearch = (): IHeaderSearchProps => ({
+  value: 'тон',
+  onChange: noop,
+  groups: [
+    {
+      title: 'Категории',
+      items: [{ id: 'c-toners', label: 'Тонеры', link: { href: '/catalog?category=toners' } }],
+    },
+    {
+      title: 'Бренды',
+      items: [{ id: 'b-tonymoly', label: 'Tonymoly', link: { href: '/catalog?brand=Tonymoly' } }],
+    },
+    {
+      title: 'Товары',
+      items: [
+        {
+          id: 'p-1',
+          label: 'Тонер с центеллой, 200 мл',
+          hint: 'Round Lab',
+          link: { href: '/catalog/toner-centella' },
+          priceCents: 189000,
+        },
+        {
+          id: 'p-2',
+          label: 'Тонер-пэды с ниацинамидом',
+          hint: 'Anua',
+          link: { href: '/catalog/toner-pads' },
+          priceCents: 245000,
+          isUnavailable: true,
+        },
+      ],
+    },
+  ],
+  allResults: {
+    label: 'Показать всё по запросу «тон»',
+    link: { href: '/catalog?q=%D1%82%D0%BE%D0%BD' },
+  },
+  contact: {
+    label: 'Instagram',
+    link: { href: 'https://www.instagram.com/sululu_kg', target: '_blank' },
+  },
 })
 
 export const feedMobileMenu = (): IMobileMenuProps => ({

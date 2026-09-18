@@ -45,3 +45,36 @@ export const listProducts = (params: IProductListParams = {}): Promise<IPage<IPr
 
 export const getProduct = (slug: string): Promise<IProduct> =>
   api.get(`/products/${encodeURIComponent(slug)}`)
+
+/**
+ * Подсказки для поиска в шапке: три группы под один запрос.
+ *
+ * Отдельная ручка, а не `listProducts` с маленьким `pageSize`: там страница
+ * каталога с полными товарами, а здесь выпадающий список, которому нужны ещё
+ * категории и бренды, а из товара — одна картинка вместо всех.
+ */
+export interface ISuggestProduct {
+  id: string
+  name: string
+  slug: string
+  brand: string | null
+  priceCents: number
+  inStock: boolean
+  imageUrl: string | null
+  imageAlt: string | null
+}
+
+export interface ISearchSuggestions {
+  categories: { name: string; slug: string }[]
+  brands: string[]
+  products: ISuggestProduct[]
+}
+
+/** Пустой запрос ручка не принимает (422) — вызывать её незачем. */
+export const SUGGEST_MIN_LENGTH = 1
+
+/** И длиннее 255 символов тоже не принимает: поле в шапке обрезает набор по этой длине. */
+export const SUGGEST_MAX_LENGTH = 255
+
+export const suggestSearch = (q: string): Promise<ISearchSuggestions> =>
+  api.get('/search/suggest', { query: { q } })

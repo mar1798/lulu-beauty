@@ -6,7 +6,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from app.catalog.models import Product
+from app.catalog.models import Category, Product, ProductImage
+from app.catalog.results import CatalogSuggestions
 from app.db import get_session
 from app.main import app
 
@@ -81,3 +82,63 @@ async def test_live_product_carries_its_modification_time(client: AsyncClient) -
     assert body["slug"] == "rose-serum"
     # The envelope writes UTC as `Z`, `datetime.isoformat` as `+00:00` — same instant.
     assert datetime.fromisoformat(body["updatedAt"]) == product.updated_at
+
+
+async def test_suggest_refuses_an_empty_query(client: AsyncClient) -> None:
+    """A single letter is a question; nothing at all asks for the whole catalogue."""
+    response = await client.get("/search/suggest", params={"q": ""})
+
+    assert response.status_code == 422
+
+
+async def test_suggest_answers_a_single_character(client: AsyncClient) -> None:
+    with patch("app.catalog.router.ProductService") as mock_service_cls:
+        mock_service_cls.return_value.suggest = AsyncMock(
+            return_value=CatalogSuggestions(categories=[], brands=[], products=[])
+        )
+
+        response = await client.get("/search/suggest", params={"q": "т"})
+
+    assert response.status_code == 200
+
+
+async def test_suggest_returns_the_three_groups(client: AsyncClient) -> None:
+    category = Category(id=uuid.uuid4(), name="Тонеры", slug="toners", sort_order=0)
+    product = _product()
+    product.images = [
+        ProductImage(
+            id=uuid.uuid4(),
+            product_id=product.id,
+            url="http://x/1.jpg",
+            alt="Роза",
+            sort_order=0,
+            is_primary=True,
+        )
+    ]
+
+    with patch("app.catalog.router.ProductService") as mock_service_cls:
+        mock_service_cls.return_value.suggest = AsyncMock(
+            return_value=CatalogSuggestions(
+                categories=[category], brands=["Anua"], products=[product]
+            )
+        )
+
+        response = await client.get("/search/suggest", params={"q": "ро"})
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "categories": [{"name": "Тонеры", "slug": "toners"}],
+        "brands": ["Anua"],
+        "products": [
+            {
+                "id": str(product.id),
+                "name": "Rose Serum",
+                "slug": "rose-serum",
+                "brand": "Anua",
+                "priceCents": 1000,
+                "inStock": True,
+                "imageUrl": "http://x/1.jpg",
+                "imageAlt": "Роза",
+            }
+        ],
+    }

@@ -39,6 +39,16 @@ class Product(UUIDPrimaryKeyMixin, TimestampMixin, Base):
             postgresql_ops={"name": "gin_trgm_ops"},
             postgresql_where=text("deleted_at IS NULL"),
         ),
+        # The same, for brand: search is one field over name, brand and category now
+        # (`ProductService._filtered_query`), so `brand ILIKE '%…%'` runs on every
+        # search too, and the plain btree above only serves the exact-match filter.
+        Index(
+            "ix_products_live_brand_trgm",
+            "brand",
+            postgresql_using="gin",
+            postgresql_ops={"brand": "gin_trgm_ops"},
+            postgresql_where=text("deleted_at IS NULL"),
+        ),
     )
 
     name: Mapped[str] = mapped_column(String(255))

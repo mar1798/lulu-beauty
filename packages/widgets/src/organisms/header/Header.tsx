@@ -16,6 +16,11 @@ import * as styles from './Header.css'
  * ничего не открывает сама: `MobileMenu` (Drawer) — отдельный организм,
  * состоянием которого владеет страница.
  *
+ * Поиск — слот (`search`), а не встроенное поле: подсказки к нему ходят в
+ * API, а шапка данных не знает. Сам виджет поля — `HeaderSearch`, наполняет
+ * его `apps/website`. На узком экране он показывает лупу и открывает такую же
+ * панель, как `MobileMenu` под бургером, — поле живёт уже внутри неё.
+ *
  * Режим `isFloating` (главная): шапка лежит fixed поверх полноэкранного
  * героя без фона и границы, а с первым же пикселем прокрутки возвращает
  * обычный вид. Порог отслеживается `useScroll` + `useMotionValueEvent` —
@@ -71,6 +76,7 @@ export const Header: FC<IHeaderProps & IBasicStyling> = ({
   user,
   loginLink,
   currentHref,
+  search,
   notice,
   onMenuClick,
   isFloating = false,
@@ -111,6 +117,8 @@ export const Header: FC<IHeaderProps & IBasicStyling> = ({
               </AppLink>
             ))}
           </nav>
+
+          {search}
 
           <div className={styles.actions}>
             {user === null || user === undefined ? (

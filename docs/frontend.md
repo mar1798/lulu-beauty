@@ -209,11 +209,17 @@ Client-side fetching is [SWR](https://swr.vercel.app/), configured globally in `
   `isCartCountShown={false}` to `SiteLayout` for exactly that: no badge in the admin header,
   and therefore no cart request on admin pages.
 - `src/layouts/` — `SiteLayout` and `AdminShell`, wrapping the `widgets` templates with
-  site-specific navigation.
+  site-specific navigation. `SiteLayout` fills the header's `search` slot with
+  `CatalogSearch`: the widget draws the field and the dropdown — on a narrow screen a
+  magnifier that opens the same drawer the burger does, with field and results inside it —
+  and the site owns the request (`GET /search/suggest`, debounced) and the addresses each
+  row leads to: `/catalog?category=…`, `/catalog?brand=…`, `/catalog/<slug>`, and
+  `/catalog?q=…` for Enter. The field empties itself on `routeChangeComplete`, since a row
+  opened with the mouse is an ordinary link and passes through no callback.
 - `src/components/` — the website-side adapters injected into `widgets` via `ServicesContext`
   (`Link`, `Image`) plus components that need API knowledge (`AddToCartButton`,
-  `WishlistButton`, `TelegramLoginWidget`, `TelegramMiniAppSession`, …). Anything purely
-  visual belongs in `widgets` instead.
+  `WishlistButton`, `CatalogSearch`, `TelegramLoginWidget`, `TelegramMiniAppSession`, …).
+  Anything purely visual belongs in `widgets` instead.
 - `src/hooks/` — `useAdminGate`, `useActiveCycle`, `useEditableOrder`, `useProductSearch`,
   `useTelegramLogin`, `useTelegramMiniApp`, `useQrCode`, `useQueryParams`,
   `usePrefetchRoutes`, `useRedirectIfAuthenticated`.

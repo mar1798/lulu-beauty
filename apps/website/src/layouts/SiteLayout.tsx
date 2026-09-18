@@ -5,6 +5,7 @@ import { Footer, Header, MobileMenu } from 'widgets/organisms'
 import { useDisclosure } from 'widgets/hooks'
 import { IconInstagram } from 'widgets/svg'
 import { BaseLayout } from 'widgets/templates'
+import { CatalogSearch } from '@/components/CatalogSearch'
 import { useAuth } from '@/contexts/AuthContext'
 import { useCart } from '@/contexts/CartContext'
 import { usePrefetchRoutes } from '@/hooks/usePrefetchRoutes'
@@ -164,6 +165,7 @@ export const SiteLayout: React.FC<ISiteLayoutProps> = ({ children, isCartCountSh
             user={headerUser}
             loginLink={{ href: '/login' }}
             currentHref={currentHref}
+            search={<CatalogSearch />}
             onMenuClick={menu.open}
             /*
               Режим «поверх героя» — только на главной: там первый экран

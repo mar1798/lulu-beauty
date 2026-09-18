@@ -171,6 +171,14 @@ grew an `updated_at` for the sitemap. The mixin now carries
 `__mapper_args__ = {"eager_defaults": True}`, which makes the flush add RETURNING to the
 same statement; a new model with a server-side `onupdate` outside that mixin needs its own.
 
+**A subquery inside an `OR` costs you every index in the query.** Catalogue search matches
+name, brand and category under one `q`, and writing the category arm as
+`Product.category.has(...)` puts a hashed SubPlan in the disjunction, which makes the whole
+of it unindexable — a sequential scan over `products`, the name arm included. So the ids are
+resolved first (`ProductService._search_category_ids`) and the arm becomes
+`category_id IN (…)`: the three then combine into one `BitmapOr`. Measured on 20k rows, the
+difference is `Seq Scan (cost=0.00..35467.00)` against `Bitmap Heap Scan (cost=118.92..312.20)`.
+
 **Services must not commit.** The caller owns the transaction; notifications go out _after_
 the commit, or a rolled-back state gets announced and cannot be retracted.
 

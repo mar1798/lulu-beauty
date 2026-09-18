@@ -11,6 +11,7 @@ from app.catalog.serializers import product_response
 from app.catalog.service import ProductNotFoundError, ProductService
 from app.orders.service import OrdersService
 from tests.integration.factories import (
+    make_category,
     make_cycle,
     make_product,
     make_product_image,
@@ -549,3 +550,89 @@ async def test_import_reports_no_price_changes_when_nothing_moved(
     _, changes = await CatalogImportService(db_session).import_file("prices.csv", content)
 
     assert changes == []
+
+
+async def test_search_also_matches_brand_and_category(db_session: AsyncSession) -> None:
+    """One field for three things: the header search sends everything through `q`."""
+    toners = await make_category(db_session, name="Тонеры", slug="toners")
+    await make_product(db_session, name="Rose Serum", brand="Round Lab")
+    await make_product(db_session, name="Lipstick", brand="Bloom", category_id=toners.id)
+    service = ProductService(db_session)
+
+    by_brand, _ = await service.list_public(None, None, 1, 20, "round")
+    assert [product.name for product in by_brand] == ["Rose Serum"]
+
+    by_category, _ = await service.list_public(None, None, 1, 20, "тонер")
+    assert [product.name for product in by_category] == ["Lipstick"]
+
+
+async def test_search_still_narrows_within_a_category_filter(db_session: AsyncSession) -> None:
+    """The category arm is an extra `OR`, so it must not loosen an explicit filter."""
+    toners = await make_category(db_session, name="Тонеры", slug="toners")
+    await make_product(db_session, name="Rose Serum", brand="Lumen")
+    await make_product(db_session, name="Rose Toner", brand="Lumen", category_id=toners.id)
+    service = ProductService(db_session)
+
+    found, total = await service.list_public("toners", None, 1, 20, "lumen")
+
+    assert [product.name for product in found] == ["Rose Toner"]
+    assert total == 1
+
+
+async def test_suggest_groups_categories_brands_and_products(db_session: AsyncSession) -> None:
+    toners = await make_category(db_session, name="Тонеры", slug="toners")
+    await make_category(db_session, name="Тонеры для сухой кожи", slug="toners-dry")
+    product = await make_product(
+        db_session, name="Rose Toner", brand="Tonymoly", category_id=toners.id
+    )
+    await make_product_image(db_session, product, url="http://x/1.jpg", is_primary=True)
+    await make_product(db_session, name="Lipstick", brand="Bloom")
+    service = ProductService(db_session)
+
+    suggestions = await service.suggest("тон")
+
+    # Only the category with live products behind it — the empty one is not offered.
+    assert [category.slug for category in suggestions.categories] == ["toners"]
+    assert suggestions.brands == []
+    assert [item.name for item in suggestions.products] == ["Rose Toner"]
+
+    by_brand = await service.suggest("tony")
+    assert by_brand.brands == ["Tonymoly"]
+    assert [item.name for item in by_brand.products] == ["Rose Toner"]
+
+
+async def test_suggest_collapses_brand_casing_and_hides_deleted(db_session: AsyncSession) -> None:
+    await make_product(db_session, name="A", brand="Round Lab")
+    await make_product(db_session, name="B", brand="round lab")
+    await make_product(
+        db_session, name="Round Lab Pad", brand="Purito", deleted_at=datetime.now(UTC)
+    )
+    service = ProductService(db_session)
+
+    suggestions = await service.suggest("round")
+
+    assert suggestions.brands == ["Round Lab"]
+    assert [product.name for product in suggestions.products] == ["A", "B"]
+
+
+async def test_suggest_puts_name_matches_before_the_rest(db_session: AsyncSession) -> None:
+    """Five rows are the whole dropdown, so the literal hit must not be crowded out."""
+    for index in range(6):
+        await make_product(db_session, name=f"Anua Pad {index}", brand="Anua")
+    await make_product(db_session, name="Ягодный тонер Anua", brand="Purito")
+    service = ProductService(db_session)
+
+    suggestions = await service.suggest("тонер")
+
+    assert suggestions.products[0].name == "Ягодный тонер Anua"
+
+
+async def test_suggest_caps_each_group(db_session: AsyncSession) -> None:
+    for index in range(8):
+        await make_product(db_session, name=f"Rose {index}", brand=f"Rose Brand {index}")
+    service = ProductService(db_session)
+
+    suggestions = await service.suggest("rose", product_limit=5, group_limit=3)
+
+    assert len(suggestions.products) == 5
+    assert len(suggestions.brands) == 3
