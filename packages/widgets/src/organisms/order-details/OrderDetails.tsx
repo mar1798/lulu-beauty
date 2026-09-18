@@ -170,7 +170,7 @@ export const OrderDetails: FC<IOrderDetailsProps & IBasicStyling> = ({
       if (order.status === 'CANCELLED_BY_OWNER') {
         return (
           <Text size="sm" tone="secondary">
-            Заявка отменена владельцем. Если это ошибка — напишите в{' '}
+            Заявка отменена магазином. Если это ошибка — напишите в{' '}
             {contactLink === undefined ? (
               'Instagram магазина'
             ) : (
@@ -185,7 +185,7 @@ export const OrderDetails: FC<IOrderDetailsProps & IBasicStyling> = ({
 
       return (
         <Text size="sm" tone="secondary">
-          Заявка относится к текущему сбору. Изменить её уже нельзя — напишите владельцу.
+          Заявка относится к текущему сбору. Изменить её уже нельзя — напишите нам.
         </Text>
       )
     }
@@ -320,8 +320,8 @@ export const OrderDetails: FC<IOrderDetailsProps & IBasicStyling> = ({
       {isEditable && onCancel !== undefined && (
         <div className={styles.footer}>
           <Text size="sm" tone="muted">
-            Отменённая заявка остаётся видна владельцу — он поймёт, что вы передумали. Передумать
-            обратно можно, пока сбор открыт.
+            Отменённую заявку мы увидим и поймём, что вы передумали. Передумать обратно можно, пока
+            сбор открыт.
           </Text>
           <Button variant="danger" disabled={isBusy} onClick={onCancel}>
             Отменить заявку

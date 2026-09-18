@@ -163,7 +163,7 @@ describe('OrderDetails', () => {
     )
 
     expect(screen.queryByRole('button', { name: 'Вернуть заявку' })).not.toBeInTheDocument()
-    expect(screen.getByText(/Заявка отменена владельцем/)).toBeInTheDocument()
+    expect(screen.getByText(/Заявка отменена магазином/)).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Instagram магазина' })).toHaveAttribute(
       'href',
       'https://www.instagram.com/sululu_kg'
@@ -185,7 +185,7 @@ describe('OrderDetails', () => {
       />
     )
 
-    expect(screen.queryByText(/Заявка отменена владельцем/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/Заявка отменена магазином/)).not.toBeInTheDocument()
   })
 
   it('возвратимой заявке не говорит, что менять уже нечего', () => {

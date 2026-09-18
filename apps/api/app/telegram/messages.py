@@ -105,7 +105,7 @@ ORDER_STATUS_LABEL = {
     OrderStatus.READY: "Готова к выдаче",
     OrderStatus.COMPLETED: "Выдана",
     OrderStatus.CANCELLED_BY_CUSTOMER: "Отменена покупателем",
-    OrderStatus.CANCELLED_BY_OWNER: "Отменена владельцем",
+    OrderStatus.CANCELLED_BY_OWNER: "Отменена магазином",
 }
 
 
@@ -228,14 +228,14 @@ def account_deleted_for_owner(order_ids: Sequence[uuid.UUID]) -> str:
 
 
 _ORDER_STATUS_NEWS = {
-    # Владелец отменил заявку и передумал: покупатель уже получил «отменена владельцем»,
+    # Владелец отменил заявку и передумал: покупатель уже получил «отменена магазином»,
     # и без этой строки заявка воскресала бы у него молча.
-    OrderStatus.PENDING: "снова ждёт подтверждения — владелец вернул её в работу",
-    OrderStatus.CONFIRMED: "подтверждена — владелец начал закупку",
+    OrderStatus.PENDING: "снова ждёт подтверждения — мы вернули её в работу",
+    OrderStatus.CONFIRMED: "подтверждена — мы начали закупку",
     OrderStatus.READY: "готова к выдаче. О получении договоритесь лично.",
     OrderStatus.COMPLETED: "выдана. Спасибо за заказ!",
     OrderStatus.CANCELLED_BY_OWNER: (
-        "отменена владельцем. Если это ошибка — напишите в Instagram магазина."
+        "отменена магазином. Если это ошибка — напишите в Instagram магазина."
     ),
     # Про свою же отмену покупателю сообщать нечего: он её и сделал, а уведомление
     # выглядело бы так, будто её сделал кто-то другой.
@@ -271,7 +271,7 @@ def order_deleted(order_id: uuid.UUID, status: OrderStatus) -> str | None:
     if status in SILENT_DELETION_STATUSES:
         return None
     return (
-        f"Заявка {order_reference(order_id)} удалена владельцем. "
+        f"Заявка {order_reference(order_id)} удалена магазином. "
         "Если это ошибка — напишите в Instagram магазина."
     )
 
@@ -346,7 +346,7 @@ def orders_items_dropped(drops: Sequence[OrderItemDrop]) -> str:
 
     count = len(by_order)
     affected = plural(count, "заявку", "заявки", "заявок")
-    lines = [f"Владелец снял товары с продажи — это затронуло {count} ваших {affected}."]
+    lines = [f"Мы сняли товары с продажи — это затронуло {count} ваших {affected}."]
     for order_id, order_drops in by_order.items():
         names = ", ".join(drop.product_name for drop in order_drops)
         removed = plural(len(order_drops), "товар", "товара", "товаров")
@@ -367,7 +367,7 @@ def order_item_removed(order_id: uuid.UUID, product_name: str, total_cents: int)
     """Товар сняли с продажи, и заявка лишилась строки — но не вся."""
     return (
         f"Из заявки {order_reference(order_id)} убран товар: {product_name} — "
-        "владелец снял его с продажи.\n"
+        "мы сняли его с продажи.\n"
         f"Сумма заявки теперь {format_price(total_cents)}."
     )
 
@@ -379,7 +379,7 @@ def order_cancelled_last_item_removed(order_id: uuid.UUID, product_name: str) ->
     нет в работе, и сказать надо именно это.
     """
     return (
-        f"Заявка {order_reference(order_id)} отменена: владелец снял с продажи "
+        f"Заявка {order_reference(order_id)} отменена: мы сняли с продажи "
         f"единственный товар в ней — {product_name}.\n"
         "Соберите новую заявку, пока сбор открыт."
     )
@@ -424,7 +424,7 @@ def cycle_closed_for_customer(cycle: OrderCycle) -> str:
     """
     return (
         f"Сбор {cycle_title(cycle)} закрыт — заявки приняты.\n"
-        "Изменить состав уже нельзя. Владелец подтвердит вашу заявку и напишет сюда, "
+        "Изменить состав уже нельзя. Мы подтвердим вашу заявку и напишем сюда, "
         "когда всё будет готово к выдаче."
     )
 

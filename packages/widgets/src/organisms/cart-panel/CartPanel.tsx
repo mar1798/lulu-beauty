@@ -143,7 +143,7 @@ export const CartPanel: FC<ICartPanelProps & IBasicStyling> = ({
         </Button>
 
         <Text size="sm" tone="muted">
-          Оплата не проводится: после закрытия сбора владелец подтвердит заявку в Telegram
+          Оплата не проводится: после закрытия сбора мы подтвердим заявку в Telegram
         </Text>
       </div>
     </div>
