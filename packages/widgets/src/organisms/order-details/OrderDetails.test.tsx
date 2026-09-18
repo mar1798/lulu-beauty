@@ -148,6 +148,42 @@ describe('OrderDetails', () => {
     expect(screen.getByText(/Изменить её уже нельзя/)).toBeInTheDocument()
   })
 
+  it('отменённой владельцем заявке объясняет, что возврат не за покупателем', () => {
+    renderWidget(
+      <OrderDetails
+        {...feedOrderDetails()}
+        order={feedOrder({
+          status: 'CANCELLED_BY_OWNER',
+          isEditable: false,
+          isRestorable: false,
+        })}
+        isCurrentCycle={true}
+        onRestore={vi.fn()}
+      />
+    )
+
+    expect(screen.queryByRole('button', { name: 'Вернуть заявку' })).not.toBeInTheDocument()
+    expect(screen.getByText(/Вернуть её может только он/)).toBeInTheDocument()
+  })
+
+  /* В закрытом сборе «напишите ему» — совет исправить то, чего уже не исправить. */
+  it('о той же отмене в прошлом сборе молчит', () => {
+    renderWidget(
+      <OrderDetails
+        {...feedOrderDetails()}
+        order={feedOrder({
+          status: 'CANCELLED_BY_OWNER',
+          isEditable: false,
+          isRestorable: false,
+        })}
+        isCurrentCycle={false}
+        onRestore={vi.fn()}
+      />
+    )
+
+    expect(screen.queryByText(/Вернуть её может только он/)).not.toBeInTheDocument()
+  })
+
   it('возвратимой заявке не говорит, что менять уже нечего', () => {
     renderWidget(
       <OrderDetails

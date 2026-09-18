@@ -85,10 +85,16 @@ def test_cycle_mention_says_nothing_about_an_unlabelled_cycle() -> None:
     assert text.count(messages.format_deadline(unlabelled.deadline_at)) == 1
 
 
-def test_order_status_changed_says_nothing_about_pending() -> None:
-    """PENDING is the owner undoing a cancellation — news to nobody."""
-    assert messages.order_status_changed(_order(status=OrderStatus.PENDING)) is None
+def test_order_status_changed_says_nothing_about_the_customers_own_cancellation() -> None:
+    """Про свою же отмену покупателю сообщать нечего — он её и сделал."""
+    assert messages.order_status_changed(_order(status=OrderStatus.CANCELLED_BY_CUSTOMER)) is None
     assert messages.order_status_changed(_order(status=OrderStatus.READY)) is not None
+
+
+def test_order_status_changed_announces_the_owner_taking_a_cancellation_back() -> None:
+    """PENDING приходит только от владельца: покупатель уже получил «отменена
+    владельцем», и без этой строки заявка воскресала бы у него молча."""
+    assert messages.order_status_changed(_order(status=OrderStatus.PENDING)) is not None
 
 
 def test_order_deleted_stays_silent_on_what_was_already_finished() -> None:

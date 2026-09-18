@@ -19,3 +19,20 @@ Default.parameters = {
   layout: 'centered',
 }
 Default.args = feedStatusSelect()
+
+/**
+ * Отмена владельца: свою отмену он здесь же и снимает — в списке есть «Ожидает
+ * подтверждения».
+ */
+export const CancelledByOwner = Template.bind({})
+CancelledByOwner.parameters = { layout: 'centered' }
+CancelledByOwner.args = { ...feedStatusSelect(), value: 'CANCELLED_BY_OWNER' as const }
+
+/** Та же заявка, но опустевшая: возвращать в закупку нечего, и возврата в списке нет. */
+export const CancelledAndEmpty = Template.bind({})
+CancelledAndEmpty.parameters = { layout: 'centered' }
+CancelledAndEmpty.args = {
+  ...feedStatusSelect(),
+  value: 'CANCELLED_BY_OWNER' as const,
+  isEmpty: true,
+}

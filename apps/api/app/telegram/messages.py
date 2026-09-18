@@ -183,6 +183,9 @@ def new_order_for_owner(order: Order, customer: User | None, cycle: OrderCycle |
 
 
 _ORDER_STATUS_NEWS = {
+    # Владелец отменил заявку и передумал: покупатель уже получил «отменена владельцем»,
+    # и без этой строки заявка воскресала бы у него молча.
+    OrderStatus.PENDING: "снова ждёт подтверждения — владелец вернул её в работу",
     OrderStatus.CONFIRMED: "подтверждена — владелец начал закупку",
     OrderStatus.READY: "готова к выдаче. О получении договоритесь лично.",
     OrderStatus.COMPLETED: "выдана. Спасибо за заказ!",
@@ -193,10 +196,11 @@ _ORDER_STATUS_NEWS = {
 
 
 def order_status_changed(order: Order) -> str | None:
-    """None means "say nothing".
+    """None means "say nothing" — currently only about the customer's own cancellation.
 
-    PENDING is the owner undoing a cancellation, which the customer either asked for or
-    never knew about — announcing it would be noise either way.
+    Sent for the owner's status changes only: the customer's own restore goes through
+    `OrdersService.restore`, whose router queues no notification at all, so PENDING here
+    always means the owner walked their cancellation back.
     """
     news = _ORDER_STATUS_NEWS.get(order.status)
     if news is None:

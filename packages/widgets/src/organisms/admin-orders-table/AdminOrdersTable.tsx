@@ -146,6 +146,7 @@ export const AdminOrdersTable: FC<IAdminOrdersTableProps & IBasicStyling> = ({
                         <StatusSelect
                           value={order.status}
                           isLabelHidden={true}
+                          isEmpty={order.items.length === 0}
                           disabled={busyId === order.id}
                           onChange={status => {
                             onStatusChange(order, status)

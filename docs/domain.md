@@ -116,15 +116,23 @@ image snapshot) and a `total_cents`.
 ```
 PENDING ──▶ CONFIRMED ──▶ READY ──▶ COMPLETED
    │            │            │
-   └────────────┴────────────┴──▶ CANCELLED_BY_OWNER
-(customer's own cancel, from any live status) ──▶ CANCELLED_BY_CUSTOMER
+   └────────────┴────────────┴──▶ CANCELLED_BY_OWNER ──▶ PENDING   (owner's own undo)
+
+PENDING ◀──────────────────────▶ CANCELLED_BY_CUSTOMER   (customer's cancel / restore)
 ```
 
-`ALLOWED_TRANSITIONS` in `app/orders/models.py` is authoritative; terminal statuses lead
-nowhere. Two distinct cancellations exist because one `CANCELLED` left both sides guessing —
-the customer couldn't tell "я передумал" from "владелец не смог достать". The owner cannot
-assign `CANCELLED_BY_CUSTOMER` (`order_status_not_assignable`); an invalid target is
-`order_status_transition_invalid`.
+`ALLOWED_TRANSITIONS` in `app/orders/models.py` is authoritative for what the *owner* may
+set; `COMPLETED` and `CANCELLED_BY_CUSTOMER` lead nowhere. Two distinct cancellations exist
+because one `CANCELLED` left both sides guessing — the customer couldn't tell "я передумал"
+from "владелец не смог достать". The owner cannot assign `CANCELLED_BY_CUSTOMER`
+(`order_status_not_assignable`); an invalid target is `order_status_transition_invalid`.
+
+**A cancellation is taken back by whoever made it, and by nobody else.** The owner's own is
+`CANCELLED_BY_OWNER → PENDING` from the admin panel (refused on an order `drop_product`
+emptied — there is nothing to bring back), and the customer is told it came back. The
+customer's own is `POST /orders/{id}/restore`, which never touches `CANCELLED_BY_OWNER`:
+letting them undo the owner's "не смогла достать" would put the order back into the tally
+and the purchase sheet with nobody told.
 
 `CANCELLED_STATUSES` and `OPEN_STATUSES` (PENDING/CONFIRMED/READY) are the sets to test
 membership against — never compare to a single status.
@@ -132,10 +140,13 @@ membership against — never compare to a single status.
 ### What the customer may still do
 
 While the order is `PENDING` **and** its cycle is open, the customer can edit the note, change
-or remove item quantities, add items, cancel, and restore. Past that: `order_not_editable`
+or remove item quantities, add items, and cancel. Past that: `order_not_editable`
 ("сбор закрылся или владелец взял её в работу"). Removing the last line is refused
-(`last_order_item`) — that action is a cancellation, and the message says so. Restoring fails
-with `order_not_restorable` if the cycle closed or nothing is left to restore.
+(`last_order_item`) — that action is a cancellation, and the message says so. Restoring is
+theirs only over `CANCELLED_BY_CUSTOMER`, and fails with `order_not_restorable` when the order
+was cancelled by the owner, the cycle closed, or nothing is left to restore. Both answers
+travel to the UI as `isEditable`/`isRestorable` (`OrdersService.customer_flags`) — the site
+never recomputes them.
 
 ### Price snapshots
 

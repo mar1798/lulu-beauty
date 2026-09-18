@@ -124,7 +124,7 @@ with admin rights — `ADMIN` and `SUPER_ADMIN` alike (`recipients.get_owners`).
 | Trigger | Who hears |
 | --- | --- |
 | New order at checkout | Owner |
-| Order status change | Customer |
+| Order status change (incl. the owner undoing their own cancel) | Customer |
 | Order deleted by owner | Customer |
 | Catalog price change repricing PENDING orders | Each affected customer |
 | Product soft-deleted, dropping lines | Each affected customer |

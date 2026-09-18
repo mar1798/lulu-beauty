@@ -138,12 +138,14 @@ async def test_send_order_deleted_tells_a_customer_still_waiting() -> None:
     assert str(order_id)[:8] in message
 
 
-async def test_send_order_status_stays_silent_on_pending() -> None:
-    """The owner restoring an order they cancelled is not news the customer needs."""
+async def test_send_order_status_stays_silent_on_the_customers_own_cancellation() -> None:
+    """Telling someone what they just did themselves reads as if someone else did it."""
     bot = AsyncMock()
     service = NotificationsService(bot)
 
-    await service.send_order_status(_user(telegram_chat_id=42), _order(OrderStatus.PENDING))
+    await service.send_order_status(
+        _user(telegram_chat_id=42), _order(OrderStatus.CANCELLED_BY_CUSTOMER)
+    )
 
     bot.send_message.assert_not_awaited()
 

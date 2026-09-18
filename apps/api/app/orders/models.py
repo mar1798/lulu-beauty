@@ -37,16 +37,20 @@ OPEN_STATUSES = frozenset({OrderStatus.PENDING, OrderStatus.CONFIRMED, OrderStat
 # into the purchase list.
 #
 # Cancelling stays available from every live status: it is the answer to "не смогла
-# достать", which can happen at any point up to handover. The terminal ones lead nowhere
-# — an order that ended goes back only through the customer's own restore, which returns
-# it to PENDING, or through deletion.
+# достать", which can happen at any point up to handover.
+#
+# A cancellation is undone by whoever made it, and by nobody else. The owner's own goes
+# back to PENDING from here; the customer's is theirs to take back, through
+# `OrdersService.restore`, and never appears in this table — the owner reviving an order
+# the customer withdrew would put them back in a queue they chose to leave. COMPLETED
+# leads nowhere either way: it is a statement about goods already handed over.
 ALLOWED_TRANSITIONS: dict[OrderStatus, frozenset[OrderStatus]] = {
     OrderStatus.PENDING: frozenset({OrderStatus.CONFIRMED, OrderStatus.CANCELLED_BY_OWNER}),
     OrderStatus.CONFIRMED: frozenset({OrderStatus.READY, OrderStatus.CANCELLED_BY_OWNER}),
     OrderStatus.READY: frozenset({OrderStatus.COMPLETED, OrderStatus.CANCELLED_BY_OWNER}),
     OrderStatus.COMPLETED: frozenset(),
     OrderStatus.CANCELLED_BY_CUSTOMER: frozenset(),
-    OrderStatus.CANCELLED_BY_OWNER: frozenset(),
+    OrderStatus.CANCELLED_BY_OWNER: frozenset({OrderStatus.PENDING}),
 }
 
 

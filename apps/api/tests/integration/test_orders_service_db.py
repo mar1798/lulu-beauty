@@ -21,6 +21,7 @@ from app.orders.service import (
     OrdersService,
     ProductNotFoundError,
     StatusNotAssignableError,
+    StatusTransitionError,
 )
 from tests.integration.factories import (
     make_category,
@@ -851,7 +852,8 @@ async def test_drop_product_cancels_an_order_left_with_nothing(
     assert order.status == OrderStatus.CANCELLED_BY_OWNER
     assert drops[0].is_cancelled is True
 
-    # And it can't be walked back into an order with nothing in it.
+    # And the customer can't walk it back into an order with nothing in it — nor, since
+    # the owner is the one it is recorded against, back into their own restore.
     flags = await OrdersService(db_session).customer_flags([order])
     assert flags[order.id].is_restorable is False
     with pytest.raises(OrderNotRestorableError):
@@ -871,5 +873,62 @@ async def test_owner_cannot_mark_an_order_cancelled_by_the_customer(
     updated, changed = await service.update_status(order.id, OrderStatus.CANCELLED_BY_OWNER)
     assert changed is True
     assert updated.status == OrderStatus.CANCELLED_BY_OWNER
-    # Отмена владельца обратима, пока сбор открыт, — как и отмена покупателя.
-    assert (await service.customer_flags([updated]))[order.id].is_restorable is True
+
+
+async def test_the_customer_cannot_take_back_the_owners_cancellation(
+    db_session: AsyncSession,
+) -> None:
+    """Отменённое возвращает тот, кто отменил: «не смогла достать» — решение владельца,
+    и заявка не должна возвращаться в закупку помимо него.
+    """
+    user_id, order = await _order_with_items(db_session)
+    service = OrdersService(db_session)
+
+    await service.update_status(order.id, OrderStatus.CANCELLED_BY_OWNER)
+
+    assert (await service.customer_flags([order]))[order.id].is_restorable is False
+    with pytest.raises(OrderNotRestorableError):
+        await service.restore(user_id, order.id)
+
+
+async def test_the_owner_takes_back_their_own_cancellation(db_session: AsyncSession) -> None:
+    """И обратная сторона того же правила: своя отмена у владельца снимается."""
+    _, order = await _order_with_items(db_session, lines=2)
+    service = OrdersService(db_session)
+    total_before = order.total_cents
+    await service.update_status(order.id, OrderStatus.CANCELLED_BY_OWNER)
+
+    restored, changed = await service.update_status(order.id, OrderStatus.PENDING)
+
+    assert changed is True
+    assert restored.status == OrderStatus.PENDING
+    # Отмена не трогала состав, поэтому возвращать нечего — он на месте.
+    assert len(restored.items) == 2
+    assert restored.total_cents == total_before
+
+
+async def test_the_owner_cannot_revive_a_cancellation_the_customer_made(
+    db_session: AsyncSession,
+) -> None:
+    """Зеркало предыдущего: покупатель ушёл сам, и обратно его не возвращают за него."""
+    user_id, order = await _order_with_items(db_session)
+    service = OrdersService(db_session)
+    await service.cancel(user_id, order.id)
+
+    with pytest.raises(StatusTransitionError):
+        await service.update_status(order.id, OrderStatus.PENDING)
+
+
+async def test_the_owner_cannot_revive_an_order_left_with_nothing(
+    db_session: AsyncSession,
+) -> None:
+    """`drop_product` отменяет опустевшую заявку от имени владельца — но возвращать
+    в закупку нечего, и «Ожидает» на ней не даёт ничего, кроме пустой строки.
+    """
+    order, product_id = await _order_with(db_session, price_cents=1000)
+    service = OrdersService(db_session)
+    await service.drop_product(product_id)
+    assert order.status == OrderStatus.CANCELLED_BY_OWNER
+
+    with pytest.raises(StatusTransitionError):
+        await service.update_status(order.id, OrderStatus.PENDING)
