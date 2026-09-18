@@ -89,8 +89,10 @@ Menu buttons, each also a command: 🛒 Корзина (`/cart`), 📦 Мои з
 ⭐ Избранное (`/wishlist`), 📅 Текущий сбор (`/deadline`), 🌐 Ссылки (`/links`, and
 `/site` for the older name), ℹ️ Помощь (`/help`), plus `/start`, `/menu` and unlinking.
 
-🌐 Ссылки and ℹ️ Помощь both carry an **Instagram** button — the shop's account is the only
-place the owner speaks outside the bot. Its address is hardcoded in `keyboards.INSTAGRAM_URL`
+🌐 Ссылки and ℹ️ Помощь carry an **Instagram** button, and so do the two notifications
+that send the customer to the owner — an order deleted and one the owner cancelled, both
+through `keyboards.owner_contact_actions`. The shop's account is the only place the owner
+speaks outside the bot. Its address is hardcoded in `keyboards.INSTAGRAM_URL`
 and duplicated by hand in `apps/website/src/utils/contacts.ts` (the footer and the FAQ use it
 there); change one and change the other. Unlike every link to the site it needs no
 `_is_public_url` check, so it survives on localhost, where the site button disarms itself.
@@ -125,7 +127,7 @@ with admin rights — `ADMIN` and `SUPER_ADMIN` alike (`recipients.get_owners`).
 | --- | --- |
 | New order at checkout | Owner |
 | Order status change (incl. the owner undoing their own cancel) | Customer |
-| Order deleted by owner | Customer |
+| Order deleted by owner (unless it was already completed or cancelled) | Customer |
 | Catalog price change repricing PENDING orders | Each affected customer |
 | Product soft-deleted, dropping lines | Each affected customer |
 | Cycle opened / deadline moved | Customers |

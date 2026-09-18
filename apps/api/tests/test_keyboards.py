@@ -211,6 +211,31 @@ def test_site_links_put_the_shop_above_the_instagram(monkeypatch: pytest.MonkeyP
     ]
 
 
+def test_owner_contact_actions_always_offer_the_instagram(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Текст обещает «напишите», а бот односторонний: Instagram — это обещание
+    кнопкой, и оно не зависит от того, куда смотрит WEBSITE_BASE_URL."""
+    monkeypatch.setattr("app.config.settings.website_base_url", "http://localhost:3000")
+
+    rows = keyboards.owner_contact_actions().inline_keyboard
+
+    assert [[b.url for b in row] for row in rows] == [[keyboards.INSTAGRAM_URL]]
+
+
+def test_owner_contact_actions_put_the_orders_above_the_instagram(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("app.config.settings.website_base_url", "https://lulu.example.com/")
+
+    rows = keyboards.owner_contact_actions().inline_keyboard
+
+    assert [[b.url for b in row] for row in rows] == [
+        ["https://lulu.example.com/orders"],
+        [keyboards.INSTAGRAM_URL],
+    ]
+
+
 def test_order_actions_add_the_admin_link_when_the_site_is_addressable(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

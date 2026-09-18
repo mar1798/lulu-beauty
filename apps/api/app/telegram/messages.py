@@ -189,7 +189,9 @@ _ORDER_STATUS_NEWS = {
     OrderStatus.CONFIRMED: "подтверждена — владелец начал закупку",
     OrderStatus.READY: "готова к выдаче. О получении договоритесь лично.",
     OrderStatus.COMPLETED: "выдана. Спасибо за заказ!",
-    OrderStatus.CANCELLED_BY_OWNER: "отменена владельцем. Если это ошибка — напишите ему.",
+    OrderStatus.CANCELLED_BY_OWNER: (
+        "отменена владельцем. Если это ошибка — напишите в Instagram магазина."
+    ),
     # Про свою же отмену покупателю сообщать нечего: он её и сделал, а уведомление
     # выглядело бы так, будто её сделал кто-то другой.
 }
@@ -225,7 +227,7 @@ def order_deleted(order_id: uuid.UUID, status: OrderStatus) -> str | None:
         return None
     return (
         f"Заявка {order_reference(order_id)} удалена владельцем. "
-        "Если это ошибка — напишите ему."
+        "Если это ошибка — напишите в Instagram магазина."
     )
 
 

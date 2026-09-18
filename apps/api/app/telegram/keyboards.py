@@ -241,6 +241,24 @@ def orders_link() -> InlineKeyboardMarkup | None:
     return _site_link(ORDERS_PATH, messages.ORDERS_BUTTON)
 
 
+def owner_contact_actions() -> InlineKeyboardMarkup:
+    """Under the two messages that send the customer to the owner — a deleted order and
+    one the owner cancelled: the list, and the way to ask about it.
+
+    Instagram is the point of this keyboard — both texts tell the customer to write if
+    it is a mistake, and the bot is one-way, so without the button «напишите» means
+    finding the shop's account by hand. Never `None` for the same reason as
+    `site_links`: on a non-addressable host the orders row drops out and Instagram
+    still stands.
+    """
+    rows = []
+    orders = _site_button(ORDERS_PATH, messages.ORDERS_BUTTON)
+    if orders is not None:
+        rows.append([orders])
+    rows.append([instagram_button()])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
 def site_link() -> InlineKeyboardMarkup | None:
     """The site itself — wherever there is nowhere more specific to point."""
     return _site_link("", messages.SITE_BUTTON)

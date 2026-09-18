@@ -8,6 +8,7 @@ from aiogram.exceptions import TelegramForbiddenError, TelegramRetryAfter
 from app.auth.models import User
 from app.cycles.models import OrderCycle
 from app.orders.models import Order, OrderStatus
+from app.telegram import keyboards
 from app.telegram.keyboards import OrderAction
 from app.telegram.service import CartRescueNotice, NotificationsService
 
@@ -136,6 +137,25 @@ async def test_send_order_deleted_tells_a_customer_still_waiting() -> None:
     chat_id, message = bot.send_message.await_args.args
     assert chat_id == 42
     assert str(order_id)[:8] in message
+    # The text sends them to the owner, so the keyboard has to carry the only address
+    # the owner answers at.
+    markup = bot.send_message.await_args.kwargs["reply_markup"]
+    urls = [button.url for row in markup.inline_keyboard for button in row]
+    assert keyboards.INSTAGRAM_URL in urls
+
+
+async def test_send_order_status_offers_the_instagram_on_the_owners_cancellation() -> None:
+    """«Если это ошибка — напишите»: без кнопки это значит искать аккаунт руками."""
+    bot = AsyncMock()
+    service = NotificationsService(bot)
+
+    await service.send_order_status(
+        _user(telegram_chat_id=42), _order(status=OrderStatus.CANCELLED_BY_OWNER)
+    )
+
+    markup = bot.send_message.await_args.kwargs["reply_markup"]
+    urls = [button.url for row in markup.inline_keyboard for button in row]
+    assert keyboards.INSTAGRAM_URL in urls
 
 
 async def test_send_order_status_stays_silent_on_the_customers_own_cancellation() -> None:

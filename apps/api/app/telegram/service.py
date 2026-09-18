@@ -100,10 +100,15 @@ class NotificationsService:
         if message is None:
             return
         # With the link: a status change is precisely the reason to open the list, and
-        # without a button that means going to find the site by hand.
-        if await self._try_send(
-            user.telegram_chat_id, message, reply_markup=keyboards.orders_link()
-        ):
+        # without a button that means going to find the site by hand. The owner's own
+        # cancellation also asks the customer to write if it is a mistake, so that one
+        # carries the address the text promises.
+        keyboard = (
+            keyboards.owner_contact_actions()
+            if order.status is OrderStatus.CANCELLED_BY_OWNER
+            else keyboards.orders_link()
+        )
+        if await self._try_send(user.telegram_chat_id, message, reply_markup=keyboard):
             logger.info("Notified %s about order %s → %s", user.phone, order.id, order.status)
             return
         logger.warning(
@@ -120,8 +125,11 @@ class NotificationsService:
         message = messages.order_deleted(order_id, status)
         if message is None:
             return
+        # Not `orders_link` like a status change: the message asks the customer to write
+        # to the owner, and Instagram is the only place they can. The keyboard carries
+        # both — the list, and the address the text promises.
         if await self._try_send(
-            user.telegram_chat_id, message, reply_markup=keyboards.orders_link()
+            user.telegram_chat_id, message, reply_markup=keyboards.owner_contact_actions()
         ):
             logger.info("Notified %s that order %s was deleted", user.phone, order_id)
             return
