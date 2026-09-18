@@ -3,10 +3,17 @@ import { color, font, rem } from '../../styling/lib'
 import { flexColumn, flexRow } from '../../styling/mixin'
 import { vars } from '../../styling/themes/contract.css'
 
+/**
+ * `minHeight` — под строку значения (16/22), а не под подпись (14/20): до
+ * гидратации здесь стоит заглушка, и меньшая высота означала бы, что всё
+ * ниже — в каталоге это сетка товаров — переезжает на пару пикселей ровно в
+ * момент появления таймера.
+ */
 export const container = style({
   ...flexRow(8),
   alignItems: 'baseline',
   flexWrap: 'wrap',
+  minHeight: rem(22),
 })
 
 export const label = style({
@@ -30,12 +37,18 @@ export const tone = styleVariants({
 /**
  * Ширина — по самой длинной строке («2 д 05 ч 30 мин 12 с»), а не по средней:
  * заглушка стоит до гидратации, и меньшая ширина означала бы скачок раскладки
- * ровно в тот момент, когда появляется таймер.
+ * ровно в тот момент, когда появляется таймер. Подпись заглушка не заменяет
+ * собой, а показывает настоящую — иначе на узком экране переносится на вторую
+ * строку то, что до гидратации умещалось в одну.
+ *
+ * `alignSelf` — мимо `baseline` контейнера: у пустого блока базовая линия
+ * проходит по нижнему краю, и он повисал бы над строкой, надставляя её своей
+ * высотой сверх тех же 22px.
  */
 export const placeholder = style({
-  display: 'inline-block',
+  alignSelf: 'center',
   width: rem(170),
-  height: rem(20),
+  height: rem(22),
   borderRadius: vars.radius.pill,
   backgroundColor: color.neutral('200'),
 })
@@ -100,6 +113,8 @@ export const unit = style({
  * обе меры не покрыть — на телефоне строка уже (≈204px против 276px).
  */
 export const placeholderBlocks = style({
+  /* Колонка растягивает по ширине, а блоки стоят от левого края. */
+  alignSelf: 'flex-start',
   width: rem(270),
   height: rem(56),
   borderRadius: vars.radius.lg,

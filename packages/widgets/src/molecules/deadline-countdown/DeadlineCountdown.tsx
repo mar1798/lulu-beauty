@@ -62,9 +62,15 @@ export const DeadlineCountdown: FC<IDeadlineCountdownProps & IBasicStyling> = ({
   const isBlocks = variant === 'blocks'
 
   if (!isReady) {
-    // До гидратации текущего времени нет — заглушка вместо неверного «истёк».
+    /*
+      До гидратации текущего времени нет — заглушка вместо неверного «истёк».
+      Подпись при этом настоящая, и контейнер тот же, что у готового таймера:
+      заглушка обязана занимать ровно его место, иначе она не спасает от
+      скачка раскладки, а сама его и устраивает.
+    */
     return (
-      <div className={clsx(styles.container, className)}>
+      <div className={clsx(isBlocks ? styles.containerBlocks : styles.container, className)}>
+        {!isLabelHidden && <span className={styles.label}>{label}</span>}
         <span
           className={clsx(styles.placeholder, isBlocks && styles.placeholderBlocks)}
           aria-hidden={true}
