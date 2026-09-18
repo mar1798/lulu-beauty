@@ -14,4 +14,24 @@ describe('SearchField', () => {
 
     expect(container.firstElementChild).not.toBeNull()
   })
+
+  /*
+    Занятость показывается на месте лупы, а кнопка очистки остаётся: стереть
+    набранное должно быть можно и во время запроса.
+  */
+  it('на время поиска подменяет лупу спиннером, не трогая очистку', () => {
+    const feed = { ...feedSearchField(), value: 'крем' }
+
+    const idle = renderWidget(<SearchField {...feed} />)
+
+    expect(idle.container.querySelector('svg')).not.toBeNull()
+    expect(idle.container.querySelector('[role="status"]')).toBeNull()
+
+    idle.unmount()
+
+    const busy = renderWidget(<SearchField {...feed} isBusy={true} />)
+
+    expect(busy.container.querySelector('[role="status"]')).not.toBeNull()
+    expect(busy.getByLabelText('Очистить поиск')).toBeInTheDocument()
+  })
 })

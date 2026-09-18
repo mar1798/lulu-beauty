@@ -38,6 +38,7 @@ export const ProductGrid: FC<IProductGridProps & IBasicStyling> = ({
   renderMediaAction,
   isStaggered = false,
   priorityCount = 0,
+  isBusy = false,
   className,
 }) => {
   if (isLoading) {
@@ -75,7 +76,10 @@ export const ProductGrid: FC<IProductGridProps & IBasicStyling> = ({
   */
   return (
     <Appear>
-      <div className={clsx(styles.container, className)}>
+      <div
+        className={clsx(styles.container, isBusy && styles.busy, className)}
+        aria-busy={isBusy || undefined}
+      >
         {products.map((product, index) => {
           const card = (
             <ProductCard

@@ -25,3 +25,10 @@ Default.parameters = {
   layout: 'centered',
 }
 Default.args = feedSearchField()
+
+/** Запрос ушёл, выдача на странице пока прежняя: лупа сменилась спиннером. */
+export const Busy = Template.bind({})
+Busy.parameters = {
+  layout: 'centered',
+}
+Busy.args = { ...feedSearchField(), value: 'крем', isBusy: true }

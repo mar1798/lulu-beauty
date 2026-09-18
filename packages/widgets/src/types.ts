@@ -1020,6 +1020,12 @@ export interface ISearchFieldProps {
   onChange: (value: string) => void
   label?: string
   placeholder?: string
+  /**
+   * Идёт поиск: лупа подменяется спиннером. Особенно нужен там, где выдача
+   * остаётся на экране прежней (каталог), — иначе о том, что запрос ушёл,
+   * сказать нечем.
+   */
+  isBusy?: boolean
 }
 
 export interface IProductGalleryProps {
@@ -1041,6 +1047,12 @@ export interface IProductGridProps {
   categoryNames?: Record<string, string>
   isLoading?: boolean
   skeletonCount?: number
+  /**
+   * Выдача устарела: ждём новую, а на экране пока прошлая. Отличается от
+   * `isLoading` тем, что показывать есть что, — сетка приглушается, а не
+   * подменяется скелетоном (см. `keepPreviousData` на странице каталога).
+   */
+  isBusy?: boolean
   /** Что показать, когда ничего не нашлось. */
   emptyState?: ReactNode
   renderAction?: (product: IProduct) => ReactNode

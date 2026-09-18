@@ -160,6 +160,7 @@ const CatalogPage: React.FC<ICatalogPageProps> = ({ categories, brands, initial 
   const {
     data: page,
     error: fetchError,
+    isValidating,
     mutate,
   } = useSWR<IPage<IProduct>>(
     ['catalog-products', categorySlug, brand, q, pageNumber],
@@ -181,6 +182,23 @@ const CatalogPage: React.FC<ICatalogPageProps> = ({ categories, brands, initial 
     это и было мигание.
   */
   const isFirstLoad = page === undefined
+
+  /*
+    Выдача на экране есть, но она уже не про то, что набрано. Скелетоном её
+    подменять нельзя (ради этого и стоит `keepPreviousData`), а молчать —
+    значит полсекунды показывать прошлые товары как ответ: человек дописывает
+    букву, и ничего не происходит.
+
+    Два слагаемых, потому что ожидание из двух частей: `search !== q` —
+    набранное ещё не доехало до адреса (дебаунс `useQueryTextInput`),
+    `isValidating` — запрос по новому ключу уже в пути. Первое сетевой флаг не
+    покрывает: ключ в этот момент ещё старый.
+
+    Сравнение дословное, без `trim`: в адрес уезжает ровно набранное, пробелы
+    включительно (`textParam`), и подрезанная копия с ним никогда бы не
+    совпала — поиск остался бы «занят» навсегда.
+  */
+  const isStale = !isFirstLoad && (search !== q || isValidating)
 
   const error = fetchError === undefined ? null : messageForError(fetchError, 'catalog.load')
 
@@ -260,7 +278,7 @@ const CatalogPage: React.FC<ICatalogPageProps> = ({ categories, brands, initial 
             </div>
           )
         }
-        search={<SearchField value={search} onChange={setSearch} />}
+        search={<SearchField value={search} onChange={setSearch} isBusy={isStale} />}
         pagination={
           <Pagination
             page={pageNumber}
@@ -276,6 +294,7 @@ const CatalogPage: React.FC<ICatalogPageProps> = ({ categories, brands, initial 
           <ProductGrid
             products={products}
             isLoading={isFirstLoad}
+            isBusy={isStale}
             buildHref={product => `/catalog/${product.slug}`}
             categoryNames={categoryNames}
             priorityCount={PRIORITY_CARDS}

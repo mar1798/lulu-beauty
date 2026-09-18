@@ -4,6 +4,7 @@ import type { IBasicStyling, ISearchFieldProps } from '../../types'
 import { IconClose, IconSearch } from '../../svg/icons'
 import { IconButton } from '../../atoms/icon-button'
 import { Input } from '../../atoms/input'
+import { Spinner } from '../../atoms/spinner'
 import * as styles from './SearchField.css'
 
 /**
@@ -17,12 +18,19 @@ import * as styles from './SearchField.css'
  * обычно оказывается его же дословным повтором. Без неё поле не остаётся
  * безымянным — тем же текстом подставляется `aria-label`, потому что
  * placeholder именем для скринридера не считается.
+ *
+ * `isBusy` показывает занятость в самом поле: в каталоге прошлые товары
+ * остаются на экране до ответа, и без спиннера полсекунды между последней
+ * буквой и новой выдачей выглядят так, будто поиск не работает. Там, где
+ * выдачу подменяет скелетон (подборщик), спиннер встаёт раньше него — пока
+ * человек ещё смотрит в поле.
  */
 export const SearchField: FC<ISearchFieldProps & IBasicStyling> = ({
   value,
   onChange,
   label,
   placeholder = 'Поиск по названию',
+  isBusy = false,
   className,
 }) => (
   <Input
@@ -33,7 +41,16 @@ export const SearchField: FC<ISearchFieldProps & IBasicStyling> = ({
     label={label}
     ariaLabel={placeholder}
     placeholder={placeholder}
-    prefix={<IconSearch className={styles.icon} />}
+    prefix={
+      isBusy ? (
+        <span className={styles.spinner}>
+          {/* «Загрузку» объявляет контейнер выдачи (`aria-busy`) — здесь молча. */}
+          <Spinner size="sm" label={null} />
+        </span>
+      ) : (
+        <IconSearch className={styles.icon} />
+      )
+    }
     suffix={
       value === '' ? undefined : (
         <IconButton
