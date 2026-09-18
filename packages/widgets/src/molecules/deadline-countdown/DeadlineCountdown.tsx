@@ -7,12 +7,15 @@ import * as styles from './DeadlineCountdown.css'
 /**
  * Сколько осталось до закрытия сбора заказов.
  *
- * Секунды показываются только на последнем часе: на «двух днях» они лишь
- * мельтешат, а вот в конце по ним и правда принимают решение.
+ * Секунды показываются всегда, на любом остатке. Раньше они включались только
+ * на последнем часе, чтобы не мельтешить на «двух днях», — но эта экономия
+ * ничего не экономила: `useCountdown` тикает раз в секунду в любом случае, а
+ * платой за неё был скачок раскладки на границе часа, когда блок секунд
+ * появлялся. Живой счёт виден сразу, и таймер читается как идущий, а не как
+ * подпись.
  *
- * `variant` по умолчанию `inline`, поэтому корзина, чекаут и админка не
- * меняются вовсе — это обязательное условие правки. `blocks` — крупные
- * блоки «дн / час / мин» для `StatusPanel` в герое.
+ * `variant` по умолчанию `inline` — строка для корзины, чекаута и админки;
+ * `blocks` — крупные блоки «дн / час / мин / сек» для `StatusPanel` в герое.
  */
 
 /**
@@ -25,11 +28,11 @@ const pad = (value: number): string => String(value).padStart(2, '0')
 
 const formatLeft = (days: number, hours: number, minutes: number, seconds: number): string => {
   if (days > 0) {
-    return `${days} д ${pad(hours)} ч ${pad(minutes)} мин`
+    return `${days} д ${pad(hours)} ч ${pad(minutes)} мин ${pad(seconds)} с`
   }
 
   if (hours > 0) {
-    return `${pad(hours)} ч ${pad(minutes)} мин`
+    return `${pad(hours)} ч ${pad(minutes)} мин ${pad(seconds)} с`
   }
 
   return `${pad(minutes)}:${pad(seconds)}`
@@ -40,20 +43,12 @@ interface IBlock {
   unit: string
 }
 
-const toBlocks = (days: number, hours: number, minutes: number, seconds: number): IBlock[] => {
-  const blocks: IBlock[] = [
-    { value: String(days), unit: 'дн' },
-    { value: pad(hours), unit: 'час' },
-    { value: pad(minutes), unit: 'мин' },
-  ]
-
-  // Секунды — только на последнем часе, тем же правилом, что у `formatLeft`.
-  if (days === 0 && hours === 0) {
-    blocks.push({ value: pad(seconds), unit: 'сек' })
-  }
-
-  return blocks
-}
+const toBlocks = (days: number, hours: number, minutes: number, seconds: number): IBlock[] => [
+  { value: String(days), unit: 'дн' },
+  { value: pad(hours), unit: 'час' },
+  { value: pad(minutes), unit: 'мин' },
+  { value: pad(seconds), unit: 'сек' },
+]
 
 export const DeadlineCountdown: FC<IDeadlineCountdownProps & IBasicStyling> = ({
   deadlineAt,

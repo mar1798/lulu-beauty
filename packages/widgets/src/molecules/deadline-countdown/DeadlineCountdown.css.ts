@@ -27,9 +27,14 @@ export const tone = styleVariants({
   expired: { color: color.text('muted') },
 })
 
+/**
+ * Ширина — по самой длинной строке («2 д 05 ч 30 мин 12 с»), а не по средней:
+ * заглушка стоит до гидратации, и меньшая ширина означала бы скачок раскладки
+ * ровно в тот момент, когда появляется таймер.
+ */
 export const placeholder = style({
   display: 'inline-block',
-  width: rem(120),
+  width: rem(170),
   height: rem(20),
   borderRadius: vars.radius.pill,
   backgroundColor: color.neutral('200'),
@@ -89,9 +94,13 @@ export const unit = style({
   color: color.text('muted'),
 })
 
-/** Заглушка до гидратации — в габаритах блочной строки, чтобы не прыгало. */
+/**
+ * Заглушка до гидратации — в габаритах блочной строки, чтобы не прыгало.
+ * Ширина снята с широкого экрана: кегль цифры задан `clamp()`, и одним числом
+ * обе меры не покрыть — на телефоне строка уже (≈204px против 276px).
+ */
 export const placeholderBlocks = style({
-  width: rem(200),
+  width: rem(270),
   height: rem(56),
   borderRadius: vars.radius.lg,
 })
