@@ -10,6 +10,9 @@ import * as styles from './CatalogTemplate.css'
  * Раскладка витрины: заголовок, строка управления (поиск + фильтр), сетка,
  * пагинация.
  *
+ * Справа от заголовка — слот `aside`: там стоит таймер сбора, чтобы срок был
+ * виден не только на главной.
+ *
  * Всё содержимое — слоты: состоянием фильтров и страницы владеет страница
  * в `apps/website` (оно живёт в query-параметрах), а шаблон отвечает только
  * за расположение.
@@ -17,6 +20,7 @@ import * as styles from './CatalogTemplate.css'
 export const CatalogTemplate: FC<ICatalogTemplateProps & IBasicStyling> = ({
   title,
   summary,
+  aside,
   search,
   filter,
   children,
@@ -25,8 +29,12 @@ export const CatalogTemplate: FC<ICatalogTemplateProps & IBasicStyling> = ({
 }) => (
   <Container as="section" className={clsx(styles.container, className)}>
     <div className={styles.head}>
-      <Heading level={1}>{title}</Heading>
-      {summary !== undefined && <Text tone="secondary">{summary}</Text>}
+      <div className={styles.heading}>
+        <Heading level={1}>{title}</Heading>
+        {summary !== undefined && <Text tone="secondary">{summary}</Text>}
+      </div>
+
+      {aside !== undefined && <div className={styles.aside}>{aside}</div>}
     </div>
 
     {(search !== undefined || filter !== undefined) && (

@@ -638,6 +638,7 @@ export const feedProductDetails = (): IProductDetailsProps => ({
 export const feedCatalogTemplate = (): ICatalogTemplateProps => ({
   title: 'Каталог',
   summary: 'Заявки принимаются до ближайшего дедлайна.',
+  aside: 'Сюда встаёт таймер сбора',
   children: 'Сюда встаёт сетка товаров',
 })
 

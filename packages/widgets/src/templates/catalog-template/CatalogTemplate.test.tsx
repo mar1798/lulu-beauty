@@ -1,3 +1,4 @@
+import { screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import { CatalogTemplate } from '.'
 import { feedCatalogTemplate } from '../../stories/feed'
@@ -13,5 +14,15 @@ describe('CatalogTemplate', () => {
     const { container } = renderWidget(<CatalogTemplate {...feedCatalogTemplate()} />)
 
     expect(container.firstElementChild).not.toBeNull()
+  })
+
+  it('показывает слот `aside` в шапке — рядом с заголовком, а не под сеткой', () => {
+    renderWidget(<CatalogTemplate {...feedCatalogTemplate()} aside="Таймер" />)
+
+    const heading = screen.getByRole('heading', { level: 1 })
+    const aside = screen.getByText('Таймер')
+
+    // Общий родитель — шапка: таймер стоит в одной строке с заголовком.
+    expect(heading.closest('div')?.parentElement).toBe(aside.parentElement)
   })
 })

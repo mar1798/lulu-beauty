@@ -1077,6 +1077,8 @@ export interface IProductDetailsProps {
 export interface ICatalogTemplateProps {
   title: string
   summary?: string
+  /** Правый край шапки: таймер сбора и прочее, что относится ко всей витрине. */
+  aside?: ReactNode
   search?: ReactNode
   filter?: ReactNode
   children: ReactNode

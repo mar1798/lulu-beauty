@@ -9,6 +9,7 @@ import { CatalogTemplate } from 'widgets/templates'
 import { SiteLayout } from '@/layouts/SiteLayout'
 import { AddToCartButton } from '@/components/AddToCartButton'
 import { ClosedCycleNotice } from '@/components/ClosedCycleNotice'
+import { CycleCountdown } from '@/components/CycleCountdown'
 import { JsonLd } from '@/components/JsonLd'
 import { PageMeta } from '@/components/PageMeta'
 import { WishlistButton } from '@/components/WishlistButton'
@@ -229,6 +230,9 @@ const CatalogPage: React.FC<ICatalogPageProps> = ({ categories, brands, initial 
       <CatalogTemplate
         title="Каталог"
         summary={isFirstLoad ? undefined : `Найдено товаров: ${total}`}
+        // Срок сбора виден и здесь, а не только в герое главной: на витрину
+        // приходят по ссылке на категорию и поиском, минуя главную вовсе.
+        aside={<CycleCountdown />}
         filter={
           // `> 1` — кроме «Все бренды» в списке есть хоть что-то выбираемое.
           categories.length === 0 && brandOptions.length <= 1 ? undefined : (

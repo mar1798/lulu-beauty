@@ -9,7 +9,31 @@ export const container = style({
   paddingBlock: vars.space.xxl,
 })
 
-export const head = style(flexColumn(8))
+/**
+ * Заголовок и слот `aside` разведены по краям строки. До `sm` — столбцом:
+ * таймер со своей подписью в узкую строку рядом с «Каталогом» не встаёт, и
+ * перенос там честнее сжатия.
+ *
+ * Выравнивание по нижнему краю: у заголовка под ним стоит «Найдено товаров»,
+ * и по верхнему краю таймер повисал бы у самой крупной строки макета.
+ */
+export const head = style({
+  ...flexColumn(16),
+  ...media({
+    sm: {
+      ...flexRow(24),
+      alignItems: 'flex-end',
+      justifyContent: 'space-between',
+    },
+  }),
+})
+
+export const heading = style(flexColumn(8))
+
+/** Таймер не сжимается: его ширина фиксирована, отдавать её сетке нечему. */
+export const aside = style({
+  flexShrink: 0,
+})
 
 /**
  * Фильтры и поиск выровнены по **нижнему** краю, а не по верхнему: у списков
