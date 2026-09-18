@@ -4,6 +4,7 @@ import type { IBasicStyling, IOrderDetailsProps } from '../../types'
 import { formatDateTime } from '../../utils/datetime'
 import { pluralize } from '../../utils/plural'
 import { Alert } from '../../atoms/alert'
+import { AppLink } from '../../atoms/app-link'
 import { Button } from '../../atoms/button'
 import { Divider } from '../../atoms/divider'
 import { Heading } from '../../atoms/heading'
@@ -32,7 +33,9 @@ import * as styles from './OrderDetails.css'
  * тот же дедлайн с другой стороны). Отменённая заявка сохраняет состав,
  * поэтому возврат ничего не пересобирает — он меняет только статус. Отмену
  * владельца покупатель не отзывает: `isRestorable` приходит от бэкенда `false`,
- * и карточка объясняет, к кому с этим идти.
+ * и карточка объясняет, куда с этим идти, — теми же словами, что и бот
+ * (`_ORDER_STATUS_NEWS` в `apps/api/app/telegram/messages.py`), потому что
+ * уведомление и страница читаются подряд. Адрес приходит в `contactLink`.
  *
  * Комментарий правится отдельной кнопкой, а не по каждому нажатию клавиши:
  * иначе на каждую букву уходил бы PATCH.
@@ -48,6 +51,7 @@ export const OrderDetails: FC<IOrderDetailsProps & IBasicStyling> = ({
   skeletonRows = DEFAULT_SKELETON_ROWS,
   buildProductHref,
   isCurrentCycle = false,
+  contactLink,
   onItemQuantityChange,
   onItemRemove,
   addItem,
@@ -157,15 +161,24 @@ export const OrderDetails: FC<IOrderDetailsProps & IBasicStyling> = ({
       /*
         Отмена владельца — его решение, и снимает его он сам. Покупателю здесь
         нечего нажать, и молчание выглядело бы как пропавшая кнопка: раз возврата
-        нет, надо сказать, почему и куда идти.
+        нет, надо сказать, почему и куда идти. Instagram — единственный обратный
+        адрес магазина: бот односторонний, и без ссылки «напишите» никуда не ведёт.
 
-        Только пока сбор текущий: в закрытом «напишите ему, если это ошибка» —
+        Только пока сбор текущий: в закрытом «напишите, если это ошибка» —
         совет исправить то, чего уже не исправить.
       */
       if (order.status === 'CANCELLED_BY_OWNER') {
         return (
           <Text size="sm" tone="secondary">
-            Заявку отменил владелец. Вернуть её может только он — напишите ему, если это ошибка.
+            Заявка отменена владельцем. Если это ошибка — напишите в{' '}
+            {contactLink === undefined ? (
+              'Instagram магазина'
+            ) : (
+              <AppLink className={styles.contactLink} {...contactLink}>
+                Instagram магазина
+              </AppLink>
+            )}
+            .
           </Text>
         )
       }

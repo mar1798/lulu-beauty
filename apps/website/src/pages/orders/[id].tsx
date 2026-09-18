@@ -24,6 +24,7 @@ import {
   updateMyOrderNote,
 } from '@/services/endpoints/orders'
 import { activeCycleKey, isOrdersKey, orderKey } from '@/services/swrKeys'
+import { INSTAGRAM_URL } from '@/utils/contacts'
 
 /**
  * Одна заявка покупателя.
@@ -232,6 +233,12 @@ const OrderPage: React.FC = () => {
         order={order}
         buildProductHref={productHref}
         isCurrentCycle={cycle !== null && cycle.id === order.cycleId}
+        /*
+          Отмену владельца покупатель не отзывает, и единственный обратный
+          адрес магазина — Instagram: тот же, что уходит кнопкой под
+          уведомлением бота об этой же отмене.
+        */
+        contactLink={{ href: INSTAGRAM_URL, target: '_blank' }}
         onItemQuantityChange={(itemId, quantity) => {
           void runAction(
             () => updateMyOrderItemQuantity(order.id, itemId, quantity),

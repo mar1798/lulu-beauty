@@ -819,6 +819,7 @@ export const feedOrderDetails = (): IOrderDetailsProps => ({
   order: feedOrder({ note: 'Позвоните после 18:00, пожалуйста.' }),
   buildProductHref: slug => `/catalog/${slug}`,
   isCurrentCycle: true,
+  contactLink: { href: 'https://www.instagram.com/sululu_kg', target: '_blank' },
 })
 
 export const feedProductPicker = (): IProductPickerProps => ({

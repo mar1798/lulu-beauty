@@ -148,7 +148,7 @@ describe('OrderDetails', () => {
     expect(screen.getByText(/Изменить её уже нельзя/)).toBeInTheDocument()
   })
 
-  it('отменённой владельцем заявке объясняет, что возврат не за покупателем', () => {
+  it('отменённой владельцем заявке даёт адрес, по которому об этом спросить', () => {
     renderWidget(
       <OrderDetails
         {...feedOrderDetails()}
@@ -163,10 +163,14 @@ describe('OrderDetails', () => {
     )
 
     expect(screen.queryByRole('button', { name: 'Вернуть заявку' })).not.toBeInTheDocument()
-    expect(screen.getByText(/Вернуть её может только он/)).toBeInTheDocument()
+    expect(screen.getByText(/Заявка отменена владельцем/)).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Instagram магазина' })).toHaveAttribute(
+      'href',
+      'https://www.instagram.com/sululu_kg'
+    )
   })
 
-  /* В закрытом сборе «напишите ему» — совет исправить то, чего уже не исправить. */
+  /* В закрытом сборе «напишите» — совет исправить то, чего уже не исправить. */
   it('о той же отмене в прошлом сборе молчит', () => {
     renderWidget(
       <OrderDetails
@@ -181,7 +185,7 @@ describe('OrderDetails', () => {
       />
     )
 
-    expect(screen.queryByText(/Вернуть её может только он/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/Заявка отменена владельцем/)).not.toBeInTheDocument()
   })
 
   it('возвратимой заявке не говорит, что менять уже нечего', () => {
