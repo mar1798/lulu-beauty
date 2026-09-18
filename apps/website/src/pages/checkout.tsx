@@ -2,7 +2,7 @@ import React, { useState } from 'react'
 import Head from 'next/head'
 import { mutate as globalMutate } from 'swr'
 import type { IOrder } from 'widgets/types'
-import { Alert, Button, Text } from 'widgets/atoms'
+import { Alert, AppLink, Button, Text } from 'widgets/atoms'
 import { EmptyState } from 'widgets/molecules'
 import { CheckoutForm, CheckoutPanel, ProductPicker } from 'widgets/organisms'
 import { ITEM_FORMS, orderNumber } from 'widgets/molecules'
@@ -16,7 +16,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import { useCart } from '@/contexts/CartContext'
 import { useProductSearch } from '@/hooks/useProductSearch'
 import { messageForError } from '@/services/apiErrors'
-import { checkout } from '@/services/endpoints/orders'
+import { addMyOrderItem, checkout } from '@/services/endpoints/orders'
 import { isOrdersKey } from '@/services/swrKeys'
 
 /**
@@ -28,7 +28,11 @@ import { isOrdersKey } from '@/services/swrKeys'
  *
  * Забытый товар добавляется здесь же — тем же `ProductPicker`, что и в уже
  * поданной заявке. Разница только в получателе: до отправки товар кладётся в
- * корзину (заявки ещё нет), после — прямо в заявку (`/orders/[id]`).
+ * корзину (заявки ещё нет), после — прямо в заявку (`POST /orders/{id}/items`),
+ * не создавая вторую. Экран успеха поэтому не тупик: подборщик остаётся на
+ * нём, пока бэкенд считает заявку правимой (`isEditable`), — вспоминают
+ * забытое чаще всего ровно после отправки, и уводить за этим на `/orders/[id]`
+ * значит терять только что поданную заявку из виду.
  */
 const CheckoutPage: React.FC = () => {
   const { user, isLoading: isAuthLoading } = useAuth()
@@ -56,6 +60,32 @@ const CheckoutPage: React.FC = () => {
     )
   }
 
+  /**
+   * Добавление в уже поданную заявку — с экрана успеха.
+   *
+   * Ручка возвращает заявку целиком, поэтому состав и номер на экране берутся
+   * из ответа: количество позиций пересчитывает сервер (товар, который в
+   * заявке уже есть, сливается со своей строкой, а не заводит вторую).
+   */
+  const handleAddToOrder = async (orderId: string, productId: string): Promise<void> => {
+    setIsAdding(true)
+
+    try {
+      setOrder(await addMyOrderItem(orderId, productId))
+      // Список заявок показывает состав — там та же заявка уже другая.
+      void globalMutate(isOrdersKey)
+      notify({ tone: 'success', title: 'Товар добавлен в заявку' })
+    } catch (cause: unknown) {
+      notify({
+        tone: 'danger',
+        title: 'Не получилось',
+        description: messageForError(cause, 'order.item.add'),
+      })
+    } finally {
+      setIsAdding(false)
+    }
+  }
+
   const handleSubmit = async (note: string | null): Promise<void> => {
     setIsSubmitting(true)
     setError(null)
@@ -79,15 +109,55 @@ const CheckoutPage: React.FC = () => {
     if (order !== null) {
       return (
         <>
-          <Alert tone="success" title="Заявка принята">
-            Мы передали её владельцу. После закрытия сбора он подтвердит заявку — уведомление придёт
-            в Telegram, а о выдаче договоритесь лично.
-          </Alert>
+          {/*
+            Номер над врезкой, а не под ней: это опознавательный знак заявки —
+            по нему её называют владельцу, — и искать его после абзаца про
+            подтверждение значит читать абзац целиком.
 
-          {/* `items.length` — число позиций, а не штук: складывать количества здесь незачем. */}
+            `items.length` — число позиций, а не штук: складывать количества
+            здесь незачем.
+          */}
           <Text tone="secondary">
             {`Номер заявки: ${orderNumber(order.id)} · ${pluralize(order.items.length, ITEM_FORMS)}`}
           </Text>
+
+          <Alert tone="success" title="Заявка принята">
+            Мы передали её владельцу. После закрытия сбора он подтвердит заявку — уведомление придёт
+            в Telegram, а о выдаче договоритесь лично.
+            {order.isEditable && (
+              <>
+                {' Пока сбор открыт, заявку можно дополнить — добавьте товар прямо здесь или на '}
+                <AppLink href={`/orders/${order.id}`} className={styles.alertLink}>
+                  странице заявки
+                </AppLink>
+                {', второй заявки для этого не нужно.'}
+              </>
+            )}
+          </Alert>
+
+          {/*
+            Правимость решает бэкенд: между отправкой и этим кадром сбор мог
+            закрыться, а владелец — подтвердить заявку. Обещать добавление,
+            которое вернёт 409, хуже, чем не обещать его вовсе.
+          */}
+          {order.isEditable && (
+            <ProductPicker
+              query={search.query}
+              onQueryChange={search.setQuery}
+              products={search.products}
+              isSearching={search.isSearching}
+              error={search.error}
+              addedProductIds={order.items
+                .map(item => item.productId)
+                .filter((productId): productId is string => productId !== null)}
+              onAdd={productId => {
+                void handleAddToOrder(order.id, productId)
+              }}
+              isBusy={isAdding}
+              label="Забыли что-то? Добавьте в эту же заявку"
+              className={styles.flushPicker}
+            />
+          )}
 
           <div className={styles.actions}>
             <Button link={{ href: `/orders/${order.id}` }} isFullWidth="mobile">
@@ -191,6 +261,22 @@ const CheckoutPage: React.FC = () => {
     )
   }
 
+  /*
+    Подпись шапки: до отправки — про состав и комментарий, после — про то, что
+    заявка ещё открыта для правок. Молчать на экране успеха значило бы прятать
+    главное: подать вторую заявку взамен дополнения — самая дорогая ошибка,
+    потому что сводит их владелец руками.
+  */
+  const orderSummary = (): string | undefined => {
+    if (order === null) {
+      return 'Проверьте состав и добавьте комментарий, если он нужен'
+    }
+
+    return order.isEditable
+      ? 'Пока сбор открыт и заявка не подтверждена, в неё можно добавить товар — новая заявка не нужна'
+      : undefined
+  }
+
   return (
     <SiteLayout>
       <Head>
@@ -200,9 +286,7 @@ const CheckoutPage: React.FC = () => {
 
       <CartTemplate
         title={order === null ? 'Оформление заявки' : 'Заявка отправлена'}
-        summary={
-          order === null ? 'Проверьте состав и добавьте комментарий, если он нужен' : undefined
-        }
+        summary={orderSummary()}
       >
         {content()}
       </CartTemplate>

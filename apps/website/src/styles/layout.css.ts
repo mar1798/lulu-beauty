@@ -1,5 +1,6 @@
 import { style } from '@vanilla-extract/css'
-import { flexRow } from 'widgets/styling/mixin'
+import { rem } from 'widgets/styling/lib'
+import { flexRow, focusVisibleRing } from 'widgets/styling/mixin'
 import { vars } from 'widgets/styling/theme'
 
 /** Ряд кнопок под сообщением: на узком экране переносится, а не сжимает подписи. */
@@ -41,4 +42,34 @@ export const sessionArea = style({
  */
 export const inlineIcon = style({
   verticalAlign: '-0.15em',
+})
+
+/**
+ * Ссылка внутри строки текста врезки (`Alert`).
+ *
+ * Цвет наследуется от тона врезки — свой акцентный спорил бы с её рамкой и
+ * фоном, — поэтому отличать ссылку от текста приходится подчёркиванием и
+ * насыщенностью: одного цвета там нет вовсе, и без них она сливается.
+ */
+export const alertLink = style([
+  {
+    fontWeight: 500,
+    textDecoration: 'underline',
+    textUnderlineOffset: rem(3),
+  },
+  focusVisibleRing(),
+])
+
+/**
+ * Подборщик на экране успеха: без внутреннего отступа, которым он отделяется
+ * от состава на шаге оформления.
+ *
+ * Там он врезка внутри карточки состава, здесь — самостоятельный блок в потоке
+ * страницы, и подложка с отступом читалась бы вторым, вложенным экраном под
+ * врезкой «Заявка принята». Фон снимается вместе с отступом: без него подложка
+ * обжимает содержимое вплотную и превращается в обрезок.
+ */
+export const flushPicker = style({
+  padding: 0,
+  backgroundColor: 'transparent',
 })
