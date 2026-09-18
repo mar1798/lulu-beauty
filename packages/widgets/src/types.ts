@@ -508,7 +508,7 @@ export interface ISkeletonProps {
   width?: number | string
   height?: number | string
   shape?: 'text' | 'block' | 'circle'
-  /** `brand` — розовый пульс для витринных мест (сетка каталога). */
+  /** `brand` — розовый пульс для витринных мест (сетка каталога, подборщик). */
   tone?: 'neutral' | 'brand'
 }
 
@@ -1362,11 +1362,13 @@ export interface IOrderDetailsProps {
 export interface IProductPickerProps {
   query: string
   onQueryChange: (query: string) => void
-  /**
-   * Найденные товары. `null` — результатов ещё нет: либо не искали, либо идёт
-   * первый запрос (вместе с `isSearching` рисуется скелетон).
-   */
+  /** Найденные товары. `null` — результатов ещё нет: либо не искали, либо ищем. */
   products: IProduct[] | null
+  /**
+   * Идёт поиск: рисуется скелетон, что бы ни лежало в `products`. Считается от
+   * набранного в поле, а не от сетевого запроса, — иначе между последней буквой
+   * и уходом запроса (дебаунс) показывать нечего.
+   */
   isSearching?: boolean
   /** Товары, которые уже есть в заявке: добавление сольётся с их строкой. */
   addedProductIds?: string[]

@@ -30,6 +30,7 @@ interface IProductSearch {
 
 export const useProductSearch = (limit: number = RESULT_LIMIT): IProductSearch => {
   const [query, setQuery] = useState('')
+  const pending = query.trim()
   const debounced = useDebouncedValue(query).trim()
 
   const {
@@ -40,11 +41,20 @@ export const useProductSearch = (limit: number = RESULT_LIMIT): IProductSearch =
     listProducts({ q: debounced, pageSize: limit }).then(page => page.items)
   )
 
+  /*
+    Ищем с первой буквы, а не с ухода запроса: дебаунс — те же полсекунды, что
+    и сам запрос, и всё это время подборщику нечего показать (подсказка уже не
+    к месту, выдачи ещё нет). Отсюда `pending !== debounced` — набранное ещё не
+    доехало до ключа — рядом с `isLoading`, которое покрывает уже сам запрос.
+
+    Повторный поиск того же текста берётся из кеша SWR: там `isLoading` ложно,
+    и мигания скелетоном на готовом ответе не будет.
+  */
   return {
     query,
     setQuery,
     products: data ?? null,
-    isSearching: debounced !== '' && isLoading,
+    isSearching: pending !== '' && (pending !== debounced || isLoading),
     error: fetchError === undefined ? null : messageForError(fetchError, 'catalog.search'),
   }
 }
