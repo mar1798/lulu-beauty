@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useCallback, useState } from 'react'
 import Head from 'next/head'
 import useSWR from 'swr'
 import { Alert, Button } from 'widgets/atoms'
@@ -11,6 +11,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import { messageForError } from '@/services/apiErrors'
 import { listMyOrders, MY_ORDERS_PAGE_SIZE } from '@/services/endpoints/orders'
 import { ordersKey } from '@/services/swrKeys'
+import { scrollToTop } from '@/utils/scroll'
 
 /**
  * Мои заявки.
@@ -23,6 +24,15 @@ const OrdersPage: React.FC = () => {
   const { user, isLoading: isAuthLoading } = useAuth()
   const userId = user?.id ?? null
   const [page, setPage] = useState(1)
+
+  /*
+    Пагинация внизу списка: без прокрутки следующая страница начинается за
+    верхним краем экрана, и человек остаётся у кнопок, глядя на её хвост.
+  */
+  const goToPage = useCallback((next: number) => {
+    setPage(next)
+    scrollToTop()
+  }, [])
 
   // Ключ с идентификатором аккаунта — чужие заявки не залипнут при смене входа.
   const {
@@ -104,7 +114,7 @@ const OrdersPage: React.FC = () => {
             page={data.page}
             pageSize={data.pageSize}
             total={data.total}
-            onChange={setPage}
+            onChange={goToPage}
           />
         )}
       </>

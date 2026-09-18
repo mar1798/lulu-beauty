@@ -25,6 +25,7 @@ import { listBrands, listCategories, listProducts } from '@/services/endpoints/c
 import { getActiveCycleOrNull } from '@/services/endpoints/cycles'
 import { activeCycleFallback, type ISwrFallback } from '@/services/swrFallback'
 import { productListLd } from '@/utils/jsonLd'
+import { scrollToTop } from '@/utils/scroll'
 import { CATALOG_DESCRIPTION, CATALOG_TITLE } from '@/utils/seo'
 import * as styles from '@/styles/catalog.css'
 
@@ -142,6 +143,20 @@ const CatalogPage: React.FC<ICatalogPageProps> = ({ categories, brands, initial 
   )
 
   const [search, setSearch] = useQueryTextInput(q, commitSearch)
+
+  /*
+    Пагинация внизу сетки, и следующая страница начинается за верхним краем
+    экрана: без прокрутки человек остаётся у кнопок, глядя на хвост нового
+    набора. Прокрутка своя, а не встроенная в переход (`scroll: false`), —
+    иначе Next дёрнул бы страницу к началу мгновенно.
+  */
+  const goToPage = useCallback(
+    (next: number) => {
+      setParams({ page: next }, { scroll: false })
+      scrollToTop()
+    },
+    [setParams]
+  )
 
   const isDefaultParams = categorySlug === null && brand === null && pageNumber === 1 && q === ''
 
@@ -284,7 +299,7 @@ const CatalogPage: React.FC<ICatalogPageProps> = ({ categories, brands, initial 
             page={pageNumber}
             pageSize={PAGE_SIZE}
             total={total}
-            onChange={next => setParams({ page: next })}
+            onChange={goToPage}
           />
         }
       >

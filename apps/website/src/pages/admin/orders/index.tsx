@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react'
+import React, { useCallback, useMemo, useState } from 'react'
 import useSWR, { mutate as globalMutate } from 'swr'
 import type { IAdminOrder, IOrderCycle, ISelectOption, OrderStatus } from 'widgets/types'
 import { Alert, Button, Select, Switch } from 'widgets/atoms'
@@ -19,6 +19,7 @@ import {
 } from '@/services/endpoints/admin'
 import { downloadOrdersExport } from '@/services/endpoints/export'
 import { adminOrdersKey, cyclesKey, isAdminOverviewKey } from '@/services/swrKeys'
+import { scrollToTop } from '@/utils/scroll'
 import * as styles from '@/styles/admin.css'
 
 /**
@@ -92,6 +93,15 @@ const AdminOrdersPage: React.FC = () => {
     ключ SWR от него не зависит, перезапрашивать нечего.
   */
   const [includePrices, setIncludePrices] = useState(true)
+
+  /*
+    Пагинация внизу таблицы: без прокрутки следующая страница начинается за
+    верхним краем экрана, и владелец остаётся у кнопок, глядя на её хвост.
+  */
+  const goToPage = useCallback((next: number) => {
+    setPage(next)
+    scrollToTop()
+  }, [])
 
   // Общий ключ со «Сборами» (`/admin/cycles`): список в фильтре не отстаёт от календаря.
   const { data: cycles } = useSWR(cyclesKey, () => listCycles())
@@ -310,7 +320,7 @@ const AdminOrdersPage: React.FC = () => {
           page={data.page}
           pageSize={data.pageSize}
           total={data.total}
-          onChange={setPage}
+          onChange={goToPage}
         />
       )}
     </AdminShell>

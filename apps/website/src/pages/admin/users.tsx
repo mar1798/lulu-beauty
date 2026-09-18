@@ -11,6 +11,7 @@ import { pageParam, textParam, useQueryParams, useQueryTextInput } from '@/hooks
 import { messageForError } from '@/services/apiErrors'
 import { listAdminUsers, updateUserRole } from '@/services/endpoints/admin'
 import { adminUsersKey, isAdminUsersKey } from '@/services/swrKeys'
+import { scrollToTop } from '@/utils/scroll'
 import * as styles from '@/styles/admin.css'
 
 /**
@@ -48,6 +49,20 @@ const AdminUsersPage: React.FC = () => {
   )
 
   const [search, setSearch] = useQueryTextInput(query, commitSearch, SEARCH_DELAY_MS)
+
+  /*
+    Пагинация внизу таблицы: без прокрутки следующая страница начинается за
+    верхним краем экрана, и владелец остаётся у кнопок, глядя на её хвост.
+    Прокрутка своя, а не встроенная в переход (`scroll: false`), — иначе Next
+    дёрнул бы страницу к началу мгновенно.
+  */
+  const goToPage = useCallback(
+    (next: number) => {
+      setParams({ page: next }, { scroll: false })
+      scrollToTop()
+    },
+    [setParams]
+  )
 
   const [busyId, setBusyId] = useState<string | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
@@ -189,9 +204,7 @@ const AdminUsersPage: React.FC = () => {
           page={page}
           total={data.total}
           pageSize={PAGE_SIZE}
-          onChange={next => {
-            setParams({ page: next })
-          }}
+          onChange={goToPage}
         />
       )}
     </AdminShell>

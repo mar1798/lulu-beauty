@@ -25,6 +25,7 @@ import {
 import { listCategories } from '@/services/endpoints/catalog'
 import { SHOWCASE_PATHS, productPath, refreshPublicPages } from '@/services/endpoints/revalidate'
 import { adminBrandsKey, adminProductsKey, categoriesKey } from '@/services/swrKeys'
+import { scrollToTop } from '@/utils/scroll'
 import * as styles from '@/styles/admin.css'
 
 /**
@@ -75,6 +76,20 @@ const AdminProductsPage: React.FC = () => {
   )
 
   const [search, setSearch] = useQueryTextInput(query, commitSearch, SEARCH_DELAY_MS)
+
+  /*
+    Пагинация внизу таблицы: без прокрутки следующая страница начинается за
+    верхним краем экрана, и владелец остаётся у кнопок, глядя на её хвост.
+    Прокрутка своя, а не встроенная в переход (`scroll: false`), — иначе Next
+    дёрнул бы страницу к началу мгновенно.
+  */
+  const goToPage = useCallback(
+    (next: number) => {
+      setParams({ page: next }, { scroll: false })
+      scrollToTop()
+    },
+    [setParams]
+  )
 
   const [busyId, setBusyId] = useState<string | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
@@ -314,7 +329,7 @@ const AdminProductsPage: React.FC = () => {
           page={data.page}
           pageSize={data.pageSize}
           total={data.total}
-          onChange={next => setParams({ page: next })}
+          onChange={goToPage}
         />
       )}
     </AdminShell>
