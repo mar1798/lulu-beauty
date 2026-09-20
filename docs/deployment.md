@@ -13,26 +13,26 @@ scale-to-zero don't fit, and horizontal scaling isn't needed yet.
 
 ## Already done (in the repository)
 
-| File                                   | Purpose                                                                                                        |
-| -------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| `apps/api/Dockerfile`                  | Backend image. Build context is `apps/api` itself. Runs `alembic upgrade head` on start                        |
-| `apps/api/.dockerignore`               | For the backend context: `.venv`, caches, the local `uploads/`                                                 |
-| `apps/website/Dockerfile`              | Frontend image. Build context is the **repository root** (Next compiles `widgets` from source)                 |
-| `.dockerignore`                        | For the frontend context, i.e. the whole repo: keeps `.git`, `node_modules`, `.env*` out of the image          |
-| `docker-compose.prod.yml`              | The production stack: `db`, `api`, `website`, `caddy` — images come prebuilt from GHCR                         |
-| `docker-compose.prod.build.yml`        | Override that builds those two images on the server instead of pulling them (`release.sh --build`)             |
-| `deploy/Caddyfile`                     | Routes and automatic TLS                                                                                       |
-| `deploy/.env.prod.example`             | Template for every production variable (copied to `.env.prod` at the root)                                     |
+| File                                   | Purpose                                                                                                                        |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `apps/api/Dockerfile`                  | Backend image. Build context is `apps/api` itself. Runs `alembic upgrade head` on start                                        |
+| `apps/api/.dockerignore`               | For the backend context: `.venv`, caches, the local `uploads/`                                                                 |
+| `apps/website/Dockerfile`              | Frontend image. Build context is the **repository root** (Next compiles `widgets` from source)                                 |
+| `.dockerignore`                        | For the frontend context, i.e. the whole repo: keeps `.git`, `node_modules`, `.env*` out of the image                          |
+| `docker-compose.prod.yml`              | The production stack: `db`, `api`, `website`, `caddy` — images come prebuilt from GHCR                                         |
+| `docker-compose.prod.build.yml`        | Override that builds those two images on the server instead of pulling them (`release.sh --build`)                             |
+| `deploy/Caddyfile`                     | Routes and automatic TLS                                                                                                       |
+| `deploy/.env.prod.example`             | Template for every production variable (copied to `.env.prod` at the root)                                                     |
 | `deploy/backup.sh`                     | Backs up the database and photos, verifies and rotates the archives, uploads via `rclone`, checks free disk, pings the monitor |
-| `deploy/restore.sh`                    | Restores from those archives, keeping a safety copy of the current state                                       |
-| `deploy/health-watch.sh`               | Checks the site every 5 minutes and pings healthchecks.io (Step 10)                                            |
-| `deploy/release.sh`                    | Deploys a release by tag: backup, pull, wait for `healthy`, check `/health`, write the log (see "Releases")    |
-| `deploy/watch-release.sh`              | From cron: notices an approved release on GitHub, runs `release.sh`, reports the outcome (see "Releases")      |
-| `apps/website/next.config.js`          | `output: 'standalone'`, security headers, the `/files/*` rewrite — nothing to change here                      |
-| `.github/scripts/check-migrations.py`  | Reports contracting operations in a release's migrations; used by the guard, runnable by hand                  |
-| `.github/workflows/release-tag.yml`    | On a merge into `master`: checks the migrations, tags it, builds both images into GHCR, prunes the old ones    |
-| `.github/workflows/release-deploy.yml` | Checks the release, waits for your approval, moves `refs/deploy/current` — the only manual step                |
-| `.gitignore`                           | Contains `.env.prod`, so secrets never reach git                                                               |
+| `deploy/restore.sh`                    | Restores from those archives, keeping a safety copy of the current state                                                       |
+| `deploy/health-watch.sh`               | Checks the site every 5 minutes and pings healthchecks.io (Step 10)                                                            |
+| `deploy/release.sh`                    | Deploys a release by tag: backup, pull, wait for `healthy`, check `/health`, write the log (see "Releases")                    |
+| `deploy/watch-release.sh`              | From cron: notices an approved release on GitHub, runs `release.sh`, reports the outcome (see "Releases")                      |
+| `apps/website/next.config.js`          | `output: 'standalone'`, security headers, the `/files/*` rewrite — nothing to change here                                      |
+| `.github/scripts/check-migrations.py`  | Reports contracting operations in a release's migrations; used by the guard, runnable by hand                                  |
+| `.github/workflows/release-tag.yml`    | On a merge into `master`: checks the migrations, tags it, builds both images into GHCR, prunes the old ones                    |
+| `.github/workflows/release-deploy.yml` | Checks the release, waits for your approval, moves `refs/deploy/current` — the only manual step                                |
+| `.gitignore`                           | Contains `.env.prod`, so secrets never reach git                                                                               |
 
 The root `docker-compose.yml` (no suffix) is the **development** one: it brings
 up only `db` and `api` for local work. Production never uses it, which is why
@@ -458,14 +458,14 @@ Daily, from cron (as `deploy`, `crontab -e`):
 
 Configured through environment variables:
 
-| Variable            | Default                        | Purpose                                                         |
-| ------------------- | ------------------------------ | --------------------------------------------------------------- |
-| `BACKUP_DIR`        | `$HOME/lulu-backups`           | where to put the archives                                       |
-| `KEEP_DAYS`         | `14`                           | how long to keep the database dumps (locally and on the remote) |
-| `KEEP_DAYS_UPLOADS` | `4`                            | how long to keep the photo archives, same two places            |
-| `BACKUP_REMOTE`     | `BACKUP_REMOTE` in `.env.prod` | rclone remote to upload to, e.g. `r2:lulu-backups`              |
-| `ENV_FILE`          | `<root>/.env.prod`             | where compose reads variables from                              |
-| `BACKUP_PING_URL`   | empty                          | monitoring ping address (Step 10)                               |
+| Variable            | Default                        | Purpose                                                                                |
+| ------------------- | ------------------------------ | -------------------------------------------------------------------------------------- |
+| `BACKUP_DIR`        | `$HOME/lulu-backups`           | where to put the archives                                                              |
+| `KEEP_DAYS`         | `14`                           | how long to keep the database dumps (locally and on the remote)                        |
+| `KEEP_DAYS_UPLOADS` | `4`                            | how long to keep the photo archives, same two places                                   |
+| `BACKUP_REMOTE`     | `BACKUP_REMOTE` in `.env.prod` | rclone remote to upload to, e.g. `r2:lulu-backups`                                     |
+| `ENV_FILE`          | `<root>/.env.prod`             | where compose reads variables from                                                     |
+| `BACKUP_PING_URL`   | empty                          | monitoring ping address (Step 10)                                                      |
 | `DISK_WARN_PERCENT` | `80`                           | how full the disk may get before the run reports a failure (in the cron line, Step 10) |
 
 **Why the two windows differ.** The database changes continuously, so fourteen
@@ -1008,7 +1008,7 @@ see "Site and database" in Step 10.
 runs `deploy/release.sh` out of the working tree, and the working tree is still
 on the deployed tag at that moment; the `checkout --detach` inside happens with
 the script already running. So a change to `release.sh` takes effect one release
-*later* than the one that ships it — the flag above, for instance, starts muting
+_later_ than the one that ships it — the flag above, for instance, starts muting
 false alarms on the release after the one that introduced it.
 
 That is safe rather than merely lucky, and the reason is worth writing down
@@ -1021,7 +1021,7 @@ that: it unlinks the file and creates a new one, so the inode changes and the
 running shell keeps reading the old one through its open descriptor, to the end.
 Verified on bash 5.2 / git 2.39 — the same experiment fails with `cat` and passes
 with `checkout`, three runs for three. What it means in practice: the deploy runs
-*entirely* the old script, never a mix of the two, and the lag is the whole of
+_entirely_ the old script, never a mix of the two, and the lag is the whole of
 the consequence.
 
 The pull comes before the checkout on purpose: the images depend on the tag and
@@ -1151,7 +1151,7 @@ Once `Release tag` has finished for the first time, at
   that costs otherwise). The step stays written down because a recreated package
   comes back private.
 - **Package settings → Manage Actions access → add `lulu-beauty` with the `Write`
-  role.** ⚠️ A container package belongs to the *account*, not to the repository
+  role.** ⚠️ A container package belongs to the _account_, not to the repository
   that built it, and `GITHUB_TOKEN` reaches it only through this setting. The
   push works regardless — it authenticates as the actor — but `Prune old images`
   does not, and that job is `continue-on-error: true` on purpose, so it fails

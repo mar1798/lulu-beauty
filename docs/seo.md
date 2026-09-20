@@ -100,7 +100,7 @@ What each page carries:
 
 | Page                | Nodes                                                                     |
 | ------------------- | ------------------------------------------------------------------------- |
-| every page (`_app`) | `OnlineStore`: `logo`/`image`, and `sameAs` to the Instagram and the bot |
+| every page (`_app`) | `OnlineStore`: `logo`/`image`, and `sameAs` to the Instagram and the bot  |
 | `/`                 | `FAQPage`, built from the same `FAQ_ITEMS` array that renders the section |
 | `/catalog`          | `ItemList` of the products currently on screen                            |
 | `/catalog/[slug]`   | `Product` + `Offer`, `BreadcrumbList`                                     |

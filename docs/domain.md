@@ -183,7 +183,7 @@ PENDING ──▶ CONFIRMED ──▶ READY ──▶ COMPLETED
 PENDING ◀──────────────────────▶ CANCELLED_BY_CUSTOMER   (customer's cancel / restore)
 ```
 
-`ALLOWED_TRANSITIONS` in `app/orders/models.py` is authoritative for what the *owner* may
+`ALLOWED_TRANSITIONS` in `app/orders/models.py` is authoritative for what the _owner_ may
 set; `COMPLETED` and `CANCELLED_BY_CUSTOMER` lead nowhere. Two distinct cancellations exist
 because one `CANCELLED` left both sides guessing — the customer couldn't tell "я передумал"
 from "владелец не смог достать". The owner cannot assign `CANCELLED_BY_CUSTOMER`

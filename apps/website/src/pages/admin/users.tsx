@@ -200,12 +200,7 @@ const AdminUsersPage: React.FC = () => {
       />
 
       {data !== undefined && data.total > PAGE_SIZE && (
-        <Pagination
-          page={page}
-          total={data.total}
-          pageSize={PAGE_SIZE}
-          onChange={goToPage}
-        />
+        <Pagination page={page} total={data.total} pageSize={PAGE_SIZE} onChange={goToPage} />
       )}
     </AdminShell>
   )

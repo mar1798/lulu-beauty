@@ -98,7 +98,9 @@ export const ProductCard: FC<IProductCardProps & IBasicStyling> = ({
 
         <div className={styles.footer}>
           <Price size="md" priceCents={product.priceCents} />
-          {action !== undefined && action !== null && <span className={styles.action}>{action}</span>}
+          {action !== undefined && action !== null && (
+            <span className={styles.action}>{action}</span>
+          )}
         </div>
       </div>
     </article>

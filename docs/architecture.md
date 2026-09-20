@@ -99,11 +99,11 @@ ISR. No session is involved, which is why `getStaticProps` can only ever fetch p
 300s), each re-reading state from the database rather than holding per-cycle timers so a
 restart loses nothing:
 
-| Job                    | What it does                                                                            |
-| ---------------------- | --------------------------------------------------------------------------------------- |
+| Job                    | What it does                                                                                                                   |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
 | `cycle_notice_sweep`   | Re-announces any cycle missing `announced_at`, then plans deadline nudges (24h and 3h before), sends them, _then_ stamps them. |
-| `deadline_sweep`       | Closes cycles whose deadline passed, rescues carts into wishlists, notifies afterwards. |
-| `auth_session_cleanup` | Deletes Telegram login sessions past `AUTH_SESSION_RETENTION_SECONDS` and dead refresh tokens. |
+| `deadline_sweep`       | Closes cycles whose deadline passed, rescues carts into wishlists, notifies afterwards.                                        |
+| `auth_session_cleanup` | Deletes Telegram login sessions past `AUTH_SESSION_RETENTION_SECONDS` and dead refresh tokens.                                 |
 
 Announcements and reminders share one job rather than getting one each, for the order: on the
 tick where both have work, a cycle whose opening was lost must not have its "last chance"

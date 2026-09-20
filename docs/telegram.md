@@ -113,7 +113,7 @@ and duplicated by hand in `apps/website/src/utils/contacts.ts` (the footer and t
 there); change one and change the other. Unlike every link to the site it needs no
 `_is_public_url` check, so it survives on localhost, where the site button disarms itself.
 
-**Throttling** (`throttling.py`) is an *outer* middleware registered before filters run: every
+**Throttling** (`throttling.py`) is an _outer_ middleware registered before filters run: every
 path into the bot opens a database session on behalf of an unauthenticated sender, and a
 throttled update should not even be matched against handlers. It is a token bucket, so
 tapping three buttons in a row is fine and only a sustained burst is refused.
@@ -139,20 +139,20 @@ production token never receives an update — see **Local dev needs its own bot*
 `app/telegram/notify.py`. Everything addressed to "the owner" fans out to **every** account
 with admin rights — `ADMIN` and `SUPER_ADMIN` alike (`recipients.get_owners`).
 
-| Trigger | Who hears |
-| --- | --- |
-| New order at checkout | Owner |
-| Order status change (incl. the owner undoing their own cancel) | Customer |
-| Order cancelled by its customer, and that cancellation taken back | Owner |
-| Order deleted by owner (unless it was already completed or cancelled) | Customer |
-| Catalog price change repricing PENDING orders | Each affected customer |
-| Product soft-deleted, dropping lines | Each affected customer |
-| Cycle opened / deadline moved | Customers |
-| Deadline reminders (24h, 3h) | Customers with a non-empty cart |
-| Cycle closed: shopping summary | Owner |
-| Cycle closed: cart rescued into wishlist | Each cart holder |
-| Cycle closed | Customers with orders in it |
-| Account erased, withdrawing its pending orders | Owner (one message naming them) |
+| Trigger                                                               | Who hears                       |
+| --------------------------------------------------------------------- | ------------------------------- |
+| New order at checkout                                                 | Owner                           |
+| Order status change (incl. the owner undoing their own cancel)        | Customer                        |
+| Order cancelled by its customer, and that cancellation taken back     | Owner                           |
+| Order deleted by owner (unless it was already completed or cancelled) | Customer                        |
+| Catalog price change repricing PENDING orders                         | Each affected customer          |
+| Product soft-deleted, dropping lines                                  | Each affected customer          |
+| Cycle opened / deadline moved                                         | Customers                       |
+| Deadline reminders (24h, 3h)                                          | Customers with a non-empty cart |
+| Cycle closed: shopping summary                                        | Owner                           |
+| Cycle closed: cart rescued into wishlist                              | Each cart holder                |
+| Cycle closed                                                          | Customers with orders in it     |
+| Account erased, withdrawing its pending orders                        | Owner (one message naming them) |
 
 **Three rules that the code is shaped around:**
 
