@@ -69,19 +69,23 @@ export const name = style([
 ])
 
 /**
- * Вторая строка карточки: слева управление, справа сумма позиции.
+ * Вторая строка карточки: управление и сумма позиции.
  *
  * До `sm` занимает всю ширину, с `sm` возвращается в правую колонку одной
  * строкой — на широком экране ломать карточку не за что.
+ *
+ * Прижато вправо на всех ширинах: `space-between` разносил управление и сумму
+ * по краям карточки, и на узком экране они расходились тем дальше, чем шире
+ * телефон, — сумма переставала читаться как итог стоящего рядом количества.
  */
 export const footer = style({
   gridArea: 'footer',
   ...flexRow(12),
   alignItems: 'center',
-  justifyContent: 'space-between',
+  justifyContent: 'flex-end',
   flexWrap: 'wrap',
   ...media({
-    sm: { justifyContent: 'flex-end', gap: vars.space.md },
+    sm: { gap: vars.space.md },
   }),
 })
 
