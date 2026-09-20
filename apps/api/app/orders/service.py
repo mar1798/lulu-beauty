@@ -607,9 +607,7 @@ class OrdersService:
                 .options(selectinload(Order.items))
                 .where(
                     Order.status == OrderStatus.PENDING,
-                    Order.id.in_(
-                        select(OrderItem.order_id).where(OrderItem.product_id.in_(chunk))
-                    ),
+                    Order.id.in_(select(OrderItem.order_id).where(OrderItem.product_id.in_(chunk))),
                 )
             )
             for order in result.scalars().all():
@@ -627,9 +625,7 @@ class OrdersService:
         """Pulls one catalog price change through every order still awaiting confirmation."""
         return await self.reprice_products({product_id: price_cents})
 
-    async def reprice_products(
-        self, prices: Mapping[uuid.UUID, int]
-    ) -> list[OrderPriceChange]:
+    async def reprice_products(self, prices: Mapping[uuid.UUID, int]) -> list[OrderPriceChange]:
         """Pulls catalog price changes through every order still awaiting confirmation.
 
         Lines are snapshots on purpose (`OrderItem` denormalises name and price at
