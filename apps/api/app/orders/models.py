@@ -1,5 +1,6 @@
 import enum
 import uuid
+from datetime import timedelta
 
 from sqlalchemy import BigInteger, ForeignKey, Index, Integer, String, Text, text
 from sqlalchemy import Enum as SAEnum
@@ -52,6 +53,45 @@ ALLOWED_TRANSITIONS: dict[OrderStatus, frozenset[OrderStatus]] = {
     OrderStatus.CANCELLED_BY_CUSTOMER: frozenset(),
     OrderStatus.CANCELLED_BY_OWNER: frozenset({OrderStatus.PENDING}),
 }
+
+
+class PendingStage(enum.StrEnum):
+    """Where a PENDING order stands against the cycle's clock.
+
+    `PENDING` says one thing only — nothing has been bought against this order yet — and
+    that single word covered two situations the customer reads very differently: an order
+    in a cycle still collecting, which they may still rewrite, and one in a cycle that
+    closed weeks ago, which they could neither change nor understand. The badge stayed
+    "Ожидает подтверждения" for both and the page went silent for the second.
+
+    The stage is not a status and never reaches the database: it is derived from the
+    cycle behind the order, so it moves on its own as time passes and no sweep has to
+    walk the table to keep it true. Only the copy branches on it — every rule about what
+    the customer may *do* still hangs off the status.
+    """
+
+    # The cycle is still collecting: the order is editable, like it was at checkout.
+    COLLECTING = "COLLECTING"
+    # The cycle closed and the owner is out buying against the list this order is on.
+    PURCHASING = "PURCHASING"
+    # Past the shopping window, still unanswered. Nothing is wrong yet — a supplier can
+    # be slow — but the shop owes the customer a word, and the page says so.
+    DELAYED = "DELAYED"
+    # Long past it. In practice this order was never taken into the purchase: saying so
+    # is honest, and leaving it saying "ожидает подтверждения" is not.
+    UNFULFILLED = "UNFULFILLED"
+
+
+# How long after a cycle closes the owner is normally still buying. Measured from
+# `closed_at` — the cycle's own deadline is when it stopped taking orders, and the
+# shopping starts there, so counting from the deadline would be counting the wrong thing
+# for a cycle the owner closed early.
+PURCHASE_WINDOW = timedelta(days=5)
+
+# When an order still sitting in PENDING stops being "slow" and starts being one that
+# never made it into the purchase. Deliberately a good deal wider than the window above:
+# the first number is what the shop aims for, this one is what it admits to.
+UNFULFILLED_AFTER = timedelta(days=10)
 
 
 class Order(UUIDPrimaryKeyMixin, TimestampMixin, Base):

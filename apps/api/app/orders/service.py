@@ -15,9 +15,12 @@ from app.cycles.models import CycleStatus, OrderCycle
 from app.cycles.service import CyclesService
 from app.orders.models import (
     ALLOWED_TRANSITIONS,
+    PURCHASE_WINDOW,
+    UNFULFILLED_AFTER,
     Order,
     OrderItem,
     OrderStatus,
+    PendingStage,
 )
 from app.orders.schemas import MAX_ITEM_QUANTITY
 
@@ -62,8 +65,8 @@ class OrderNotRestorableError(Exception):
     """Nothing to undo, or the window to undo it in has closed.
 
     The order isn't cancelled by the customer themselves — the owner's cancellation is
-    the owner's to undo — or the cycle deadline has passed and the owner is already
-    buying against the list this order is no longer on.
+    the owner's to undo — or its cycle closed so long ago that the order was plainly
+    never taken into a purchase, and there is nothing left for it to go back into.
     """
 
 
@@ -88,14 +91,53 @@ class StatusTransitionError(Exception):
 
 @dataclass(frozen=True)
 class OrderFlags:
-    """What the customer may still do with an order.
+    """What the customer may still do with an order, and how it reads while they wait.
 
-    Both answers hang off the same fact — whether the cycle deadline has passed — so
-    they're computed together, from one query, and travel to the UI together.
+    Every answer hangs off the same fact — where the cycle behind the order stands
+    against the clock — so they're computed together, from one query, and travel to the
+    UI together.
     """
 
     is_editable: bool
     is_restorable: bool
+    # Withdrawing is not editing, and tying them to one flag made a closed cycle take
+    # both. PENDING means nothing has been bought yet, so an order in it costs the shop
+    # nothing to let go of, deadline or no deadline — while the purchase list froze on
+    # the deadline, which is why the composition still does. The far end is the one
+    # exception: at `UNFULFILLED` there is nothing left to withdraw from.
+    is_cancellable: bool
+    # Only ever set for a PENDING order: elsewhere the status already says everything,
+    # and a stage under "Выдана" would be answering a question nobody asked.
+    pending_stage: PendingStage | None
+
+
+@dataclass(frozen=True)
+class _CycleClock:
+    """The one fact every flag is derived from: where this order's cycle stands now.
+
+    `closed_since` is `closed_at` when the owner or the sweep stamped it, and the
+    deadline otherwise — a cycle whose deadline passed minutes before the sweep ran is
+    closed to the customer whether or not a job has caught up with it yet.
+    """
+
+    is_open: bool
+    closed_since: datetime
+
+    def stage(self, now: datetime) -> PendingStage:
+        if self.is_open:
+            return PendingStage.COLLECTING
+
+        elapsed = now - self.closed_since
+        if elapsed < PURCHASE_WINDOW:
+            return PendingStage.PURCHASING
+        if elapsed < UNFULFILLED_AFTER:
+            return PendingStage.DELAYED
+        return PendingStage.UNFULFILLED
+
+
+# An order whose cycle is gone from under it — nothing to compute a stage from. Treated
+# as long closed rather than open: the alternative offers an edit the API would refuse.
+_LOST_CYCLE = _CycleClock(is_open=False, closed_since=datetime.min.replace(tzinfo=UTC))
 
 
 @dataclass(frozen=True)
@@ -297,35 +339,45 @@ class OrdersService:
             for product_id, brand, volume_ml, category_name in result.all()
         }
 
-    async def _open_cycle_ids(self, orders: list[Order]) -> set[uuid.UUID]:
-        """Of the cycles behind these orders, the ones still collecting — one query."""
+    async def _cycle_clocks(self, orders: list[Order]) -> dict[uuid.UUID, _CycleClock]:
+        """Where each of these orders' cycles stands right now — one query per page."""
         cycle_ids = {order.cycle_id for order in orders}
         if not cycle_ids:
-            return set()
+            return {}
 
+        now = datetime.now(UTC)
         result = await self._session.execute(
-            select(OrderCycle.id).where(
-                OrderCycle.id.in_(cycle_ids),
-                OrderCycle.deadline_at > datetime.now(UTC),
-                # Closed early by the owner: the deadline hasn't arrived, but the shopping
-                # list has already been drawn up, and editing an order against it now
-                # would change what the owner is out buying.
-                OrderCycle.status != CycleStatus.CLOSED,
-            )
+            select(
+                OrderCycle.id, OrderCycle.status, OrderCycle.deadline_at, OrderCycle.closed_at
+            ).where(OrderCycle.id.in_(cycle_ids))
         )
-        return set(result.scalars().all())
+        return {
+            cycle_id: _CycleClock(
+                # Closed early by the owner counts as closed: the deadline hasn't arrived,
+                # but the shopping list has already been drawn up, and editing an order
+                # against it now would change what the owner is out buying.
+                is_open=deadline_at > now and status != CycleStatus.CLOSED,
+                closed_since=closed_at if closed_at is not None else deadline_at,
+            )
+            for cycle_id, status, deadline_at, closed_at in result.all()
+        }
 
     async def customer_flags(self, orders: list[Order]) -> dict[uuid.UUID, OrderFlags]:
         """What the customer may still do with each of these orders — one query per page.
 
-        The rules live here, not in the frontend: they need the cycle deadline, which the
+        The rules live here, not in the frontend: they need the cycle's dates, which the
         order itself doesn't carry, and the API guards and the UI must agree on them.
         """
-        open_cycles = await self._open_cycle_ids(orders)
+        clocks = await self._cycle_clocks(orders)
+        now = datetime.now(UTC)
 
-        return {
-            order.id: OrderFlags(
-                is_editable=order.status == OrderStatus.PENDING and order.cycle_id in open_cycles,
+        flags: dict[uuid.UUID, OrderFlags] = {}
+        for order in orders:
+            stage = clocks.get(order.cycle_id, _LOST_CYCLE).stage(now)
+            is_pending = order.status == OrderStatus.PENDING
+
+            flags[order.id] = OrderFlags(
+                is_editable=is_pending and stage is PendingStage.COLLECTING,
                 # Their own cancellation only: an order the owner took off is the owner's
                 # to put back (CANCELLED_BY_OWNER → PENDING in `ALLOWED_TRANSITIONS`).
                 # Letting the customer undo it would walk an order the owner has already
@@ -334,12 +386,25 @@ class OrdersService:
                 # `order.items` too: an order cancelled because its last product left the
                 # catalog (see `drop_product`) has nothing to come back to, and offering
                 # the button would only earn a 409.
+                #
+                # The window is the mirror of `is_cancellable`: withdrawing an order the
+                # owner has not answered has to be undoable for as long as it is doable,
+                # or the one dead end is simply replaced by another one press further on.
                 is_restorable=order.status == OrderStatus.CANCELLED_BY_CUSTOMER
-                and order.cycle_id in open_cycles
+                and stage is not PendingStage.UNFULFILLED
                 and bool(order.items),
+                # Both stop at UNFULFILLED. Past that the order is one the purchase went
+                # by, and neither button means what it says any more: "отменить" would
+                # promise the customer they are calling off something still in motion,
+                # and "вернуть" would drop a months-old request into the owner's panel
+                # as if it were new. What the order needs there is the shop's answer —
+                # the owner is nudged for one (`stale_order_sweep`), and the page says
+                # where to write meanwhile.
+                is_cancellable=is_pending and stage is not PendingStage.UNFULFILLED,
+                pending_stage=stage if is_pending else None,
             )
-            for order in orders
-        }
+
+        return flags
 
     async def _flags_for(self, order: Order) -> OrderFlags:
         return (await self.customer_flags([order]))[order.id]
@@ -347,6 +412,18 @@ class OrdersService:
     async def _get_editable(self, user_id: uuid.UUID, order_id: uuid.UUID) -> Order:
         order = await self.get_for_user(user_id, order_id)
         if not (await self._flags_for(order)).is_editable:
+            raise OrderNotEditableError
+        return order
+
+    async def _get_cancellable(self, user_id: uuid.UUID, order_id: uuid.UUID) -> Order:
+        """The wider gate: PENDING whatever the cycle is doing, up to `UNFULFILLED`.
+
+        Same error as editing when it refuses — from the customer's side both are "this
+        request is already past the point where you decide", and the site picks the
+        wording from the action, not from the code.
+        """
+        order = await self.get_for_user(user_id, order_id)
+        if not (await self._flags_for(order)).is_cancellable:
             raise OrderNotEditableError
         return order
 
@@ -439,19 +516,38 @@ class OrdersService:
 
     async def cancel(self, user_id: uuid.UUID, order_id: uuid.UUID) -> Order:
         """Customer-side "delete": the owner keeps seeing the order, marked as cancelled
-        *by the customer* — which is the whole difference from the owner dropping it."""
-        order = await self._get_editable(user_id, order_id)
+        *by the customer* — which is the whole difference from the owner dropping it.
+
+        Available while the order is PENDING, and deliberately not tied to the cycle the
+        way editing is. Nothing is bought against a PENDING order, so letting it go costs
+        the owner a notification; the deadline it used to be tied to guards the purchase
+        list, which a withdrawal shortens and never rewrites. Before that, an order left
+        unanswered in a closed cycle had no action on it at all — the customer sat in
+        front of "Ожидает подтверждения" with nothing to press.
+
+        It ends at `PendingStage.UNFULFILLED`. An order the purchase went by is not one
+        the customer is still holding up, so "я передумал" would be a claim about a
+        decision that is no longer theirs to make — and it would file the shop's own
+        failure to answer under the customer changing their mind, where neither the owner
+        nor a later count of unfulfilled requests would ever find it again. From there
+        the order is the shop's to answer.
+        """
+        order = await self._get_cancellable(user_id, order_id)
         order.status = OrderStatus.CANCELLED_BY_CUSTOMER
         await self._session.flush()
         return order
 
     async def restore(self, user_id: uuid.UUID, order_id: uuid.UUID) -> Order:
-        """Undo a cancellation while the cycle is still collecting.
+        """Undo a cancellation, for as long as making one is still possible.
 
         Cancelling is something the customer does to themselves, and nothing is bought
-        against a cancelled order — so putting it back costs the owner nothing as long
-        as the deadline hasn't passed. The order returns to PENDING exactly as it was:
-        cancelling never touched the lines or their snapshot prices.
+        against a cancelled order — so putting it back costs the owner nothing while the
+        order is one the owner has still not answered. The window is exactly the one
+        `cancel` has, ending where it ends (`PendingStage.UNFULFILLED`): a narrower one
+        would turn a misclick into a dead end one press further on, and a wider one would
+        let an order come back from a purchase that is long over. The order returns to
+        PENDING exactly as it was: cancelling never touched the lines or their snapshot
+        prices.
 
         Their own cancellation only. `CANCELLED_BY_OWNER` means the owner decided against
         this order — usually "не смогла достать" — and the customer quietly putting it

@@ -24,11 +24,11 @@ describe('OrderDetails', () => {
     expect(screen.queryByRole('button', { name: 'Отменить заявку' })).not.toBeInTheDocument()
   })
 
-  it('не пускает к правке заявку, которую бэкенд закрыл', () => {
+  it('не пускает к правке заявку, которую бэкенд закрыл, но отменить даёт', () => {
     renderWidget(
       <OrderDetails
         {...feedOrderDetails()}
-        order={feedOrder({ isEditable: false })}
+        order={feedOrder({ isEditable: false, pendingStage: 'PURCHASING' })}
         onItemQuantityChange={vi.fn()}
         onItemRemove={vi.fn()}
         onCancel={vi.fn()}
@@ -36,7 +36,68 @@ describe('OrderDetails', () => {
     )
 
     expect(screen.queryByRole('button', { name: /Убрать из заявки/ })).not.toBeInTheDocument()
+    /*
+      Ради этого флаги и разъехались: состав замирает вместе со списком закупки,
+      а сама заявка — нет, против неподтверждённой ничего не куплено.
+    */
+    expect(screen.getByRole('button', { name: 'Отменить заявку' })).toBeInTheDocument()
+  })
+
+  it('у заявки, которую уже подтвердили, отмены нет', () => {
+    renderWidget(
+      <OrderDetails
+        {...feedOrderDetails()}
+        order={feedOrder({
+          status: 'CONFIRMED',
+          isEditable: false,
+          isCancellable: false,
+          pendingStage: null,
+        })}
+        onItemQuantityChange={vi.fn()}
+        onCancel={vi.fn()}
+      />
+    )
+
     expect(screen.queryByRole('button', { name: 'Отменить заявку' })).not.toBeInTheDocument()
+  })
+
+  /*
+    Пустая карточка здесь и была жалобой: два одинаковых «Ожидает подтверждения»,
+    под одним действия, под другим ничего — и ни слова почему.
+  */
+  it('ждущей заявке из закрытого сбора объясняет, чего она ждёт', () => {
+    const { rerender } = renderWidget(
+      <OrderDetails
+        {...feedOrderDetails()}
+        order={feedOrder({ isEditable: false, pendingStage: 'PURCHASING' })}
+      />
+    )
+    expect(screen.getByText(/владелец закупает заявки/)).toBeInTheDocument()
+
+    rerender(
+      <OrderDetails
+        {...feedOrderDetails()}
+        order={feedOrder({ isEditable: false, isCancellable: false, pendingStage: 'UNFULFILLED' })}
+      />
+    )
+    expect(screen.getByText(/не вошла в закупку/)).toBeInTheDocument()
+  })
+
+  it('у заявки, мимо которой прошла закупка, отмены больше нет', () => {
+    renderWidget(
+      <OrderDetails
+        {...feedOrderDetails()}
+        order={feedOrder({ isEditable: false, isCancellable: false, pendingStage: 'UNFULFILLED' })}
+        onCancel={vi.fn()}
+      />
+    )
+
+    /*
+      Кнопки нет, но экран не пустой: отменять то, что уже не состоится, нечего,
+      а объяснение и адрес, куда написать, остаются на месте.
+    */
+    expect(screen.queryByRole('button', { name: 'Отменить заявку' })).not.toBeInTheDocument()
+    expect(screen.getByText(/не вошла в закупку/)).toBeInTheDocument()
   })
 
   it('меняет количество и убирает позицию по идентификатору строки', async () => {
@@ -121,6 +182,8 @@ describe('OrderDetails', () => {
           status: 'CANCELLED_BY_CUSTOMER',
           isEditable: false,
           isRestorable: true,
+          isCancellable: false,
+          pendingStage: null,
         })}
         onRestore={onRestore}
       />
@@ -138,6 +201,8 @@ describe('OrderDetails', () => {
           status: 'CANCELLED_BY_CUSTOMER',
           isEditable: false,
           isRestorable: false,
+          isCancellable: false,
+          pendingStage: null,
         })}
         isCurrentCycle={true}
         onRestore={vi.fn()}
@@ -156,6 +221,8 @@ describe('OrderDetails', () => {
           status: 'CANCELLED_BY_OWNER',
           isEditable: false,
           isRestorable: false,
+          isCancellable: false,
+          pendingStage: null,
         })}
         isCurrentCycle={true}
         onRestore={vi.fn()}
@@ -179,6 +246,8 @@ describe('OrderDetails', () => {
           status: 'CANCELLED_BY_OWNER',
           isEditable: false,
           isRestorable: false,
+          isCancellable: false,
+          pendingStage: null,
         })}
         isCurrentCycle={false}
         onRestore={vi.fn()}
@@ -196,6 +265,8 @@ describe('OrderDetails', () => {
           status: 'CANCELLED_BY_CUSTOMER',
           isEditable: false,
           isRestorable: true,
+          isCancellable: false,
+          pendingStage: null,
         })}
         isCurrentCycle={true}
         onRestore={vi.fn()}

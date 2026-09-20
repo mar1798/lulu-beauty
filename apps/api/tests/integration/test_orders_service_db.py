@@ -8,8 +8,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.cart.models import CartItem
 from app.cart.service import CartService
+from app.cycles.models import CycleStatus, OrderCycle
 from app.db import async_session
-from app.orders.models import OPEN_STATUSES, Order, OrderItem, OrderStatus
+from app.orders.models import OPEN_STATUSES, Order, OrderItem, OrderStatus, PendingStage
 from app.orders.schemas import MAX_ITEM_QUANTITY
 from app.orders.service import (
     EmptyCartError,
@@ -272,6 +273,8 @@ async def test_new_order_is_editable(db_session: AsyncSession) -> None:
     flags = await OrdersService(db_session).customer_flags([order])
 
     assert flags[order.id].is_editable is True
+    assert flags[order.id].is_cancellable is True
+    assert flags[order.id].pending_stage is PendingStage.COLLECTING
     # Nothing to restore: the order was never cancelled.
     assert flags[order.id].is_restorable is False
 
@@ -286,6 +289,10 @@ async def test_order_is_not_editable_once_owner_moved_it_off_pending(
     flags = await OrdersService(db_session).customer_flags([order])
 
     assert flags[order.id].is_editable is False
+    # Confirmed means bought: withdrawing is over too, and there is no stage to show —
+    # the status already says where the order stands.
+    assert flags[order.id].is_cancellable is False
+    assert flags[order.id].pending_stage is None
 
 
 async def test_order_is_not_editable_after_the_deadline(db_session: AsyncSession) -> None:
@@ -301,6 +308,55 @@ async def test_order_is_not_editable_after_the_deadline(db_session: AsyncSession
     flags = await OrdersService(db_session).customer_flags([order])
 
     assert flags[order.id].is_editable is False
+    # But still withdrawable: the composition froze with the purchase list, the order
+    # itself did not — nothing has been bought against it yet.
+    assert flags[order.id].is_cancellable is True
+
+
+async def _pending_stage_after(db_session: AsyncSession, closed_ago: timedelta) -> PendingStage:
+    """The stage of a PENDING order whose cycle closed `closed_ago` in the past."""
+    user = await make_user(db_session)
+    closed_at = datetime.now(UTC) - closed_ago
+    cycle = await make_cycle(db_session, deadline_at=datetime.now(UTC) + timedelta(days=1))
+    product = await make_product(db_session)
+    await CartService(db_session).add_item(user.id, product.id, 1)
+    order = await OrdersService(db_session).checkout(user.id, note=None)
+
+    cycle.status = CycleStatus.CLOSED
+    cycle.closed_at = closed_at
+    await db_session.flush()
+
+    stage = (await OrdersService(db_session).customer_flags([order]))[order.id].pending_stage
+    assert stage is not None
+    return stage
+
+
+async def test_pending_stage_walks_the_cycle_clock(db_session: AsyncSession) -> None:
+    # Fresh out of a closed cycle: the owner is out buying against this very order.
+    assert await _pending_stage_after(db_session, timedelta(days=1)) is PendingStage.PURCHASING
+    # Past the shopping window and still unanswered — late, not lost.
+    assert await _pending_stage_after(db_session, timedelta(days=7)) is PendingStage.DELAYED
+    # Long past it: this order was never taken into a purchase, and the page says so.
+    assert await _pending_stage_after(db_session, timedelta(days=30)) is PendingStage.UNFULFILLED
+
+
+async def test_pending_stage_counts_from_an_early_close_not_the_deadline(
+    db_session: AsyncSession,
+) -> None:
+    """A cycle the owner shut early starts its clock there — the deadline never arrived."""
+    user = await make_user(db_session)
+    cycle = await make_cycle(db_session, deadline_at=datetime.now(UTC) + timedelta(days=30))
+    product = await make_product(db_session)
+    await CartService(db_session).add_item(user.id, product.id, 1)
+    order = await OrdersService(db_session).checkout(user.id, note=None)
+
+    cycle.status = CycleStatus.CLOSED
+    cycle.closed_at = datetime.now(UTC) - timedelta(days=20)
+    await db_session.flush()
+
+    flags = (await OrdersService(db_session).customer_flags([order]))[order.id]
+
+    assert flags.pending_stage is PendingStage.UNFULFILLED
 
 
 async def test_set_item_quantity_recalculates_the_total(db_session: AsyncSession) -> None:
@@ -514,21 +570,95 @@ async def test_restore_of_an_order_that_was_never_cancelled_is_refused(
         await OrdersService(db_session).restore(user_id, order.id)
 
 
-async def test_restore_after_the_deadline_is_refused(db_session: AsyncSession) -> None:
+async def _closed_cycle_order(
+    db_session: AsyncSession, closed_ago: timedelta
+) -> tuple[uuid.UUID, Order]:
+    """A PENDING order left behind by a cycle that closed `closed_ago` in the past."""
     user = await make_user(db_session)
     cycle = await make_cycle(db_session)
     product = await make_product(db_session)
     await CartService(db_session).add_item(user.id, product.id, 1)
     order = await OrdersService(db_session).checkout(user.id, note=None)
-    service = OrdersService(db_session)
-    await service.cancel(user.id, order.id)
 
-    cycle.deadline_at = datetime.now(UTC) - timedelta(minutes=1)
+    cycle.status = CycleStatus.CLOSED
+    cycle.closed_at = datetime.now(UTC) - closed_ago
+    cycle.deadline_at = cycle.closed_at
+    await db_session.flush()
+    return user.id, order
+
+
+async def test_cancel_is_allowed_after_the_cycle_closed(db_session: AsyncSession) -> None:
+    """The whole point of splitting the flags: a closed cycle used to take both.
+
+    An order nobody has confirmed is an order nobody has bought, so withdrawing it is
+    still the customer's to do — and before this it was the one thing they could not do,
+    which left "Ожидает подтверждения" sitting there with no action under it at all.
+    """
+    user_id, order = await _closed_cycle_order(db_session, timedelta(days=1))
+    service = OrdersService(db_session)
+
+    cancelled = await service.cancel(user_id, order.id)
+
+    assert cancelled.status == OrderStatus.CANCELLED_BY_CUSTOMER
+    # Editing stays shut: the purchase list froze when the cycle did.
+    with pytest.raises(OrderNotEditableError):
+        await service.update_note(user_id, order.id, "too late")
+
+
+async def test_cancel_stops_where_the_purchase_plainly_passed_the_order_by(
+    db_session: AsyncSession,
+) -> None:
+    """At `UNFULFILLED` the order stops being the customer's to call off.
+
+    Not a narrowing for its own sake: "я передумал" over a request the purchase went by
+    would record the shop's own silence as the customer changing their mind, and leave
+    nothing on the row to say the order was never answered.
+    """
+    user_id, order = await _closed_cycle_order(db_session, timedelta(days=30))
+    service = OrdersService(db_session)
+
+    flags = (await service.customer_flags([order]))[order.id]
+    assert flags.pending_stage is PendingStage.UNFULFILLED
+    assert flags.is_cancellable is False
+
+    with pytest.raises(OrderNotEditableError):
+        await service.cancel(user_id, order.id)
+    assert order.status == OrderStatus.PENDING
+
+
+async def test_a_cancellation_is_restorable_while_the_owner_is_still_buying(
+    db_session: AsyncSession,
+) -> None:
+    """Cancel and restore share one window, or the wider cancel is just a later trap."""
+    user_id, order = await _closed_cycle_order(db_session, timedelta(days=1))
+    service = OrdersService(db_session)
+    await service.cancel(user_id, order.id)
+
+    assert (await service.customer_flags([order]))[order.id].is_restorable is True
+    assert (await service.restore(user_id, order.id)).status == OrderStatus.PENDING
+
+
+async def test_restore_of_an_order_the_purchase_left_behind_is_refused(
+    db_session: AsyncSession,
+) -> None:
+    """Past `UNFULFILLED_AFTER` there is nothing to go back into.
+
+    The cycle closed long ago and this order was never bought; putting it back would
+    drop a months-old request into the owner's panel as if it were new.
+    """
+    user_id, order = await _closed_cycle_order(db_session, timedelta(days=1))
+    service = OrdersService(db_session)
+    await service.cancel(user_id, order.id)
+
+    # The cancellation was made while the owner was still buying; the wait outlived it.
+    cycle = await db_session.get(OrderCycle, order.cycle_id)
+    assert cycle is not None
+    cycle.closed_at = datetime.now(UTC) - timedelta(days=30)
     await db_session.flush()
 
     assert (await service.customer_flags([order]))[order.id].is_restorable is False
     with pytest.raises(OrderNotRestorableError):
-        await service.restore(user.id, order.id)
+        await service.restore(user_id, order.id)
 
 
 async def test_restoring_someone_elses_order_is_a_not_found(db_session: AsyncSession) -> None:

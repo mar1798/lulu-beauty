@@ -5,7 +5,7 @@ from pydantic import Field
 
 from app.common.limits import MAX_ITEM_QUANTITY
 from app.common.schemas import CamelModel
-from app.orders.models import OrderStatus
+from app.orders.models import OrderStatus, PendingStage
 
 __all__ = [
     "MAX_ITEM_QUANTITY",
@@ -78,9 +78,19 @@ class OrderResponse(CamelModel):
     # Computed here so the UI doesn't re-derive a rule it can't fully see — the deadline
     # lives on the cycle, not on the order.
     is_editable: bool = False
-    # The other side of the same deadline: a cancellation the customer can still walk
-    # back, i.e. CANCELLED and the cycle still open. Never true together with is_editable.
+    # The other side of the same clock: a cancellation the customer can still walk
+    # back. Never true together with is_editable — an order is either live or withdrawn.
     is_restorable: bool = False
+    # Withdrawing, which is not editing: true through PENDING, cycle or no cycle,
+    # because nothing has been bought against the order yet. Split off from is_editable
+    # so a request left unanswered in a closed cycle still has one action on it instead
+    # of none — and false again at `UNFULFILLED`, where the order is past being the
+    # customer's to call off and is waiting on the shop's answer instead.
+    is_cancellable: bool = False
+    # Which of the two very different PENDINGs this is — still collecting, being bought,
+    # late, or never taken into a purchase. Copy only: nothing is permitted or refused
+    # by it, and it is null for every status but PENDING.
+    pending_stage: PendingStage | None = None
 
 
 class AdminOrderResponse(OrderResponse):

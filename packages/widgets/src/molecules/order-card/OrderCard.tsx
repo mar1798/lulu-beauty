@@ -6,7 +6,7 @@ import { pluralize, type IPluralForms } from '../../utils/plural'
 import { AppLink } from '../../atoms/app-link'
 import { Price } from '../../atoms/price'
 import { Text } from '../../atoms/text'
-import { OrderStatusBadge } from '../order-status-badge'
+import { OrderStatusBadge, pendingStageHint } from '../order-status-badge'
 import * as styles from './OrderCard.css'
 
 /**
@@ -15,6 +15,11 @@ import * as styles from './OrderCard.css'
  * Ссылкой оформлена вся карточка, но доступное имя собирается из номера и
  * даты: «заявка 3f2a1b9c от 4 августа» читается с закрытыми глазами лучше,
  * чем набор цифр и статус вперемешку.
+ *
+ * У ждущей заявки под датой стоит приписка о стадии (`pendingStage`). Именно в
+ * списке разница и била по глазам: две заявки с одинаковым «Ожидает
+ * подтверждения» вели себя по-разному, потому что за одинаковым словом стояли
+ * идущий сбор и сбор, закрывшийся месяц назад.
  */
 
 /** Полный UUID покупателю не нужен — по короткому номеру владелец находит заявку. */
@@ -42,6 +47,12 @@ export const OrderCard: FC<IOrderCardProps & IBasicStyling> = ({ order, href, cl
       <Text size="sm" tone="muted">
         {created}
       </Text>
+
+      {order.status === 'PENDING' && order.pendingStage !== null && (
+        <Text size="sm" tone="secondary">
+          {pendingStageHint(order.pendingStage)}
+        </Text>
+      )}
 
       <div className={styles.foot}>
         <Text size="sm" tone="secondary">

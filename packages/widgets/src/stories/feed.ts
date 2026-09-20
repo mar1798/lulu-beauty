@@ -840,6 +840,8 @@ export const feedOrder = (overrides: Partial<IOrder> = {}): IOrder => {
     items,
     isEditable: true,
     isRestorable: false,
+    isCancellable: true,
+    pendingStage: 'COLLECTING',
     ...overrides,
   }
 }
