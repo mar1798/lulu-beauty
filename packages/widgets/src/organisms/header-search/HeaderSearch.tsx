@@ -124,7 +124,9 @@ export const HeaderSearch: FC<IHeaderSearchProps & IBasicStyling> = ({
 
   const isReduced = useReducedMotion() ?? false
 
-  const panelRef = useFocusTrap<HTMLDivElement>(isDrawerOpen)
+  /* Открытая панель бесполезна без фокуса в поле — печатать начинают сразу,
+     а первой в обходе стоит кнопка закрытия. */
+  const panelRef = useFocusTrap<HTMLDivElement>(isDrawerOpen, drawerInputRef)
   useLockBodyScroll(isDrawerOpen)
 
   const allResultsItem: ISearchSuggestItem | null =
@@ -362,13 +364,6 @@ export const HeaderSearch: FC<IHeaderSearchProps & IBasicStyling> = ({
       host.scrollTop = bottom - host.clientHeight
     }
   }, [activeIndex, isListShown, isDrawerOpen])
-
-  /** Открытая панель бесполезна без фокуса в поле — печатать начинают сразу. */
-  useEffect(() => {
-    if (isDrawerOpen) {
-      drawerInputRef.current?.focus()
-    }
-  }, [isDrawerOpen])
 
   /*
     Раскрытие — одной строкой `transform`, чтобы Motion отдал анимацию в WAAPI

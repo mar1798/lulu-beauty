@@ -8,6 +8,12 @@ import { useEffect, useState, type RefObject } from 'react'
  * с которого слой открыли, — иначе после закрытия модалки клавиатурный
  * пользователь оказывается в начале страницы.
  *
+ * `initialFocus` — куда поставить фокус при открытии, если первый в обходе
+ * элемент не тот, с которого начинают работать (в панели поиска первой стоит
+ * кнопка закрытия, а печатать идут в поле). Собственный эффект потребителя
+ * эту задачу не решал: узел контейнера приезжает в ловушку через состояние,
+ * то есть рендером позже, и её `focus()` перебивал чужой.
+ *
  * Список фокусируемых элементов пересчитывается на каждый Tab, а не один раз
  * при открытии: содержимое диалога меняется (появляется ошибка, включается
  * кнопка), и закешированный список быстро расходится с DOM.
@@ -27,7 +33,10 @@ const focusableIn = (container: HTMLElement): HTMLElement[] =>
     element => element.offsetParent !== null || element === document.activeElement
   )
 
-export const useFocusTrap = <T extends HTMLElement>(isActive: boolean): RefObject<T | null> => {
+export const useFocusTrap = <T extends HTMLElement>(
+  isActive: boolean,
+  initialFocus?: RefObject<HTMLElement | null>
+): RefObject<T | null> => {
   /*
     Узел живёт в состоянии, а не только в `ref.current`, потому что появляется
     он позже первого коммита: `Portal` до своего эффекта возвращает `null`, а
@@ -62,7 +71,7 @@ export const useFocusTrap = <T extends HTMLElement>(isActive: boolean): RefObjec
     }
 
     const restoreTo = document.activeElement as HTMLElement | null
-    const initial = focusableIn(container)[0] ?? container
+    const initial = initialFocus?.current ?? focusableIn(container)[0] ?? container
 
     initial.focus()
 
@@ -105,7 +114,7 @@ export const useFocusTrap = <T extends HTMLElement>(isActive: boolean): RefObjec
       document.removeEventListener('keydown', onKeyDown)
       restoreTo?.focus()
     }
-  }, [isActive, container])
+  }, [isActive, container, initialFocus])
 
   return ref
 }
