@@ -10,10 +10,12 @@ import * as styles from './CheckoutPanel.css'
 /**
  * Оформление: состав заявки слева, форма отправки справа.
  *
- * Состав здесь только читается, а правится в корзине — по ссылке рядом с
- * заголовком. Степпер под кнопкой «Отправить заявку» превращал бы последний
- * экран в ещё одну корзину, а промах по `−` за секунду до отправки стоил бы
- * дороже лишнего перехода.
+ * Количество правится на месте (`onQuantityChange`), а удаление остаётся в
+ * корзине — по ссылке рядом с заголовком. Разделение не косметическое:
+ * `−` промахивается в пределах одной позиции и виден по итогу, а крестик в
+ * сантиметре от «Отправить заявку» уносит позицию целиком, и отменить это
+ * нечем — undo в тостах нет. Заодно удаление последней позиции опустошило бы
+ * корзину и подменило бы экран оформления пустым состоянием.
  *
  * Итог не дублируется: он в форме, вплотную к кнопке, — там, где на него
  * смотрят перед отправкой.
@@ -32,6 +34,8 @@ export const CheckoutPanel: FC<ICheckoutPanelProps & IBasicStyling> = ({
   cartHref,
   form,
   addItem,
+  onQuantityChange,
+  isBusy = false,
   isLoading = false,
   skeletonRows = DEFAULT_SKELETON_ROWS,
   className,
@@ -44,11 +48,14 @@ export const CheckoutPanel: FC<ICheckoutPanelProps & IBasicStyling> = ({
         </Heading>
 
         {/*
-          Ссылка, а не кнопка: правка живёт в корзине целиком, и вести туда
-          честнее, чем повторять её контролы на последнем шаге.
+          Ссылка остаётся и при живых степперах: убрать позицию можно только
+          там, и вести туда честнее, чем молчать о недостающем действии. Но
+          называется она действием, а не фразой о нём («убрать товар можно в
+          корзине»): ссылку и зачитывают как действие — «ссылка: убрать
+          товар в корзине».
         */}
         <AppLink href={cartHref} className={styles.edit}>
-          Изменить в корзине
+          {onQuantityChange === undefined ? 'Изменить в корзине' : 'Убрать товар в корзине'}
         </AppLink>
       </div>
 
@@ -71,7 +78,25 @@ export const CheckoutPanel: FC<ICheckoutPanelProps & IBasicStyling> = ({
               </div>
             ))
           : cart.items.map(item => (
-              <ItemRow key={item.productId} item={item} href={buildProductHref(item.productSlug)} />
+              <ItemRow
+                key={item.productId}
+                item={item}
+                href={buildProductHref(item.productSlug)}
+                /*
+                  `onRemove` не передаётся — вместе с ним `ItemRow` нарисовал бы
+                  крестик, а удаление здесь не предусмотрено (см. докстринг).
+
+                  Под собственный запрос количество не гаснет: оно меняется
+                  оптимистично, запросы уходят по очереди, и быстрые нажатия
+                  должны складываться. Замирает оно только под отправкой.
+                */
+                isQuantityBusy={isBusy}
+                onQuantityChange={
+                  onQuantityChange === undefined
+                    ? undefined
+                    : quantity => onQuantityChange(item.productId, quantity)
+                }
+              />
             ))}
       </div>
 

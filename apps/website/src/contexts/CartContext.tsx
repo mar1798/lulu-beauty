@@ -114,6 +114,16 @@ export interface ICartContextValue {
   removeItem: (productId: string) => Promise<ICartResult>
   empty: () => Promise<ICartResult>
   reload: () => Promise<ICartResult>
+  /**
+   * Ждёт, пока корзина на сервере догонит показанную на экране.
+   *
+   * Нужно ровно оформлению: количество меняется оптимистично, а `POST
+   * /orders/checkout` идёт мимо очереди изменений — нажатие `+` и сразу
+   * «Отправить заявку» иначе снимает заявку с прежнего состава, и человек
+   * этого не видит. Ошибку не возвращает: осечку своей мутации вызывающий
+   * уже получил её собственным `ICartResult`.
+   */
+  settled: () => Promise<void>
   clearError: () => void
   /**
    * Подписка потребителя на данные. Не для вызова из компонентов: её дёргает
@@ -289,6 +299,14 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
     [runMutation]
   )
 
+  /*
+    Очередь не рвётся на осечках (`runMutation` гасит их при постановке), так
+    что ждать её можно без `try`.
+  */
+  const settled = useCallback(async (): Promise<void> => {
+    await queue.current
+  }, [])
+
   const clearError = useCallback(() => setError(null), [])
 
   /*
@@ -332,6 +350,7 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
       removeItem,
       empty,
       reload,
+      settled,
       clearError,
       subscribe,
     }),
@@ -347,6 +366,7 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
       removeItem,
       empty,
       reload,
+      settled,
       clearError,
       subscribe,
     ]

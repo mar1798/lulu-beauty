@@ -37,6 +37,26 @@ WithAddItem.args = {
   ),
 }
 
+/**
+ * Правка количества на месте: степперы есть, крестика нет — убрать позицию
+ * можно только в корзине, куда и ведёт ссылка у заголовка.
+ */
+export const Editable = Template.bind({})
+Editable.args = {
+  ...feedCheckoutPanel(),
+  form: <CheckoutForm {...feedCheckoutForm()} />,
+  onQuantityChange: () => undefined,
+}
+
+/** Отправка началась: состав уже уходит на сервер, степперы замерли. */
+export const Submitting = Template.bind({})
+Submitting.args = {
+  ...feedCheckoutPanel(),
+  form: <CheckoutForm {...feedCheckoutForm()} isSubmitting={true} />,
+  onQuantityChange: () => undefined,
+  isBusy: true,
+}
+
 /** Первая загрузка корзины: состав и форма рисуются скелетонами разом. */
 export const Loading = Template.bind({})
 Loading.args = {
