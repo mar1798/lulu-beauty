@@ -1,6 +1,7 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
+import { fireEvent, screen } from '@testing-library/react'
 import { Toast } from '.'
-import { feedToast } from '../../stories/feed'
+import { feedToast, feedToastWithAction } from '../../stories/feed'
 import { renderWidget } from '../../testing/render'
 
 /**
@@ -13,5 +14,30 @@ describe('Toast', () => {
     const { container } = renderWidget(<Toast {...feedToast()} />)
 
     expect(container.firstElementChild).not.toBeNull()
+  })
+
+  it('обратный ход срабатывает и закрывает уведомление', () => {
+    const onAction = vi.fn()
+    const onDismiss = vi.fn()
+    const fixture = feedToastWithAction()
+
+    renderWidget(
+      <Toast
+        toast={{ ...fixture.toast, action: { label: 'Вернуть', onAction } }}
+        onDismiss={onDismiss}
+      />
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Вернуть' }))
+
+    expect(onAction).toHaveBeenCalledOnce()
+    // Закрывается сразу: результат возврата приедет отдельным уведомлением.
+    expect(onDismiss).toHaveBeenCalledWith(fixture.toast.id)
+  })
+
+  it('без действия рисуется только закрытие', () => {
+    renderWidget(<Toast {...feedToast()} />)
+
+    expect(screen.queryByRole('button', { name: 'Вернуть' })).toBeNull()
   })
 })

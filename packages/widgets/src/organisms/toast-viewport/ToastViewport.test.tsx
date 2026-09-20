@@ -19,13 +19,15 @@ describe('ToastViewport', () => {
     expect(screen.getByText('Товар сохранён')).toBeInTheDocument()
     expect(screen.getByText('Фотография загружена')).toBeInTheDocument()
     expect(screen.getByText('Не удалось удалить сбор')).toBeInTheDocument()
+    // Обратный ход — у того тоста, который о нём заявил, а не у всей стопки.
+    expect(screen.getAllByRole('button', { name: 'Вернуть' })).toHaveLength(1)
   })
 
   it('ошибку объявляет как alert, остальное — как status', () => {
     renderWidget(<ToastViewport {...feedToastViewport()} />)
 
     expect(screen.getByRole('alert')).toHaveTextContent('Не удалось удалить сбор')
-    expect(screen.getAllByRole('status')).toHaveLength(2)
+    expect(screen.getAllByRole('status')).toHaveLength(3)
   })
 
   it('закрывает именно тот тост, по которому нажали', async () => {

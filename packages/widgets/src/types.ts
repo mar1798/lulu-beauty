@@ -1553,13 +1553,32 @@ export interface IConfirmDialogProps {
   onCancel: () => void
 }
 
-export type IToastTone = 'info' | 'success' | 'danger'
+/**
+ * Тон уведомления. `warning` — то, что человек сейчас потерял (позиция,
+ * убранная из корзины или заявки): это не ошибка, но и не «всё хорошо», а
+ * состояние, из которого стоит выйти — тем самым «Вернуть» рядом.
+ */
+export type IToastTone = 'info' | 'success' | 'warning' | 'danger'
+
+/**
+ * Обратное действие в уведомлении — «Вернуть» после удаления.
+ *
+ * Одно на тост и без спиннера: нажатие закрывает уведомление, а о том, чем
+ * кончился сам запрос, сообщает уже следующий тост. Держать закрывающийся
+ * тост открытым ради кружка означало бы вернуть на экран то, что человек
+ * только что отпустил.
+ */
+export interface IToastAction {
+  label: string
+  onAction: () => void
+}
 
 export interface IToast {
   id: string
   tone: IToastTone
   title: string
   description?: string
+  action?: IToastAction
 }
 
 export interface IToastProps {
@@ -1570,6 +1589,14 @@ export interface IToastProps {
 export interface IToastViewportProps {
   toasts: IToast[]
   onDismiss: (id: string) => void
+  /**
+   * Курсор зашёл на стопку или в неё попал фокус — отсчёт до автозакрытия
+   * останавливается (`ToastProvider`). Уведомление с обратным ходом живёт
+   * секунды, и «Вернуть», исчезающее на пути к нему, второго шанса не даёт.
+   */
+  onPause?: () => void
+  /** Курсор ушёл, фокус вышел — отсчёт продолжается с того места, где встал. */
+  onResume?: () => void
 }
 
 /* --- Загрузка файлов и статусы --- */

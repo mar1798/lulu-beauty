@@ -16,17 +16,35 @@ import * as styles from './ToastViewport.css'
  *
  * Порядок — снизу вверх: свежий тост появляется у нижнего края, где взгляд
  * уже был, а не сдвигает предыдущие.
+ *
+ * `onPause`/`onResume` — остановка отсчёта, пока стопкой занимаются: курсор на
+ * ней или фокус внутри. Слушает контейнер, а не отдельный тост, потому что
+ * останавливается стопка целиком.
  */
 export const ToastViewport: FC<IToastViewportProps & IBasicStyling> = ({
   toasts,
   onDismiss,
+  onPause,
+  onResume,
   className,
 }) => {
   const isReduced = useReducedMotion() ?? false
 
   return (
     <Portal>
-      <div className={clsx(styles.container, className)}>
+      {/*
+        События приходят от самих тостов — контейнер прозрачен для мыши и
+        целью указателя не бывает, — но всплывают до него, и React считает
+        `enter`/`leave` по общему предку: переход между соседними тостами
+        паузу не снимает. `onFocus`/`onBlur` всплывают так же (`focusin`).
+      */}
+      <div
+        className={clsx(styles.container, className)}
+        onPointerEnter={onPause}
+        onPointerLeave={onResume}
+        onFocus={onPause}
+        onBlur={onResume}
+      >
         <AnimatePresence initial={false}>
           {toasts.map(toast => (
             <motion.div
