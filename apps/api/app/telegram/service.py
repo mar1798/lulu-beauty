@@ -200,6 +200,32 @@ class NotificationsService:
             "%s; closing summary for cycle %s not sent", self._fallback_reason(owner), cycle.id
         )
 
+    async def send_stale_orders(self, owner: User, cycle: OrderCycle, count: int) -> bool:
+        """The nudge about a closed cycle nobody finished answering.
+
+        Carries the same button as the closing tally: what it asks for is done in the
+        orders panel, and the owner reads this on a phone.
+
+        Reports whether it arrived, unlike its neighbours here: the caller stamps the
+        cycle on the strength of that answer, and a stamp is what stops this nudge from
+        ever being sent again.
+        """
+        message = messages.stale_orders_for_owner(cycle, count)
+        if await self._try_send(
+            owner.telegram_chat_id, message, reply_markup=keyboards.admin_orders_link()
+        ):
+            logger.info(
+                "Nudged owner %s about %d unanswered order(s) in cycle %s",
+                owner.phone,
+                count,
+                cycle.id,
+            )
+            return True
+        logger.warning(
+            "%s; stale-order nudge for cycle %s not sent", self._fallback_reason(owner), cycle.id
+        )
+        return False
+
     # ─── Fan-out ─────────────────────────────────────────────────────────────────
 
     async def send_cycle_opened(self, users: list[User], cycle: OrderCycle) -> BroadcastResult:

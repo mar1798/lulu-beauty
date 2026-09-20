@@ -14,7 +14,7 @@ from app.common.limits import MAX_WISHLIST_ITEMS
 from app.cycles.models import CycleStatus, OrderCycle
 from app.cycles.reminders import REMINDER_STAGES, WIDEST_REMINDER_WINDOW
 from app.cycles.service import CycleAlreadyClosedError, CycleNotFoundError
-from app.orders.models import CANCELLED_STATUSES, Order
+from app.orders.models import CANCELLED_STATUSES, UNFULFILLED_AFTER, Order, OrderStatus
 from app.wishlist.models import WishlistItem
 
 
@@ -49,6 +49,18 @@ class CartRescue:
     user_id: uuid.UUID
     saved: int
     dropped: int
+
+
+@dataclass(frozen=True)
+class StaleOrders:
+    """A closed cycle still holding orders nobody answered, and how many.
+
+    Carries the cycle row rather than its id: the stamp that keeps this nudge to one per
+    cycle is written on it after the send, in the same session that planned it.
+    """
+
+    cycle: OrderCycle
+    count: int
 
 
 @dataclass(frozen=True)
@@ -179,6 +191,43 @@ class CycleSchedulerService:
             .distinct()
         )
         return list(result.scalars().all())
+
+    async def plan_stale_order_notices(self) -> list[StaleOrders]:
+        """Closed cycles whose tail of unanswered orders the owner has not been told about.
+
+        The threshold is `UNFULFILLED_AFTER` — the same one behind `PendingStage`, so the
+        nudge and the line the customer is reading ("заявка не вошла в закупку") appear
+        together rather than a week apart.
+
+        Deliberately a nudge and not a sweep that acts: ending an order is the owner's
+        decision, made one order at a time in the panel, and an order waiting this long
+        may still be one they are about to confirm.
+
+        Plans only; the stamp follows the send, for the reason `plan_reminders` gives.
+        """
+        now = datetime.now(UTC)
+        result = await self._session.execute(
+            select(OrderCycle, func.count(Order.id))
+            .join(Order, Order.cycle_id == OrderCycle.id)
+            .where(
+                OrderCycle.status == CycleStatus.CLOSED,
+                OrderCycle.stale_orders_notice_at.is_(None),
+                # `closed_at` is where "actually ended" lives; the deadline is the fallback
+                # for a cycle closed before that column existed (see `_CycleClock.of`).
+                func.coalesce(OrderCycle.closed_at, OrderCycle.deadline_at)
+                <= now - UNFULFILLED_AFTER,
+                Order.status == OrderStatus.PENDING,
+            )
+            .group_by(OrderCycle.id)
+        )
+        return [StaleOrders(cycle=cycle, count=count) for cycle, count in result.all()]
+
+    async def mark_stale_orders_notified(self, notices: Sequence[StaleOrders]) -> None:
+        """Closes the nudge for these cycles. After the send, never before it."""
+        now = datetime.now(UTC)
+        for notice in notices:
+            notice.cycle.stale_orders_notice_at = now
+        await self._session.flush()
 
     async def sweep_deadlines(self) -> list[CycleClosure]:
         now = datetime.now(UTC)

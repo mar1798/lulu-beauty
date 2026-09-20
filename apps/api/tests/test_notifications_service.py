@@ -292,3 +292,35 @@ async def test_send_customer_cancellation_stays_quiet_on_a_dead_binding() -> Non
     )
 
     bot.send_message.assert_not_awaited()
+
+
+async def test_send_stale_orders_points_the_owner_at_the_panel(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Напоминание просит решения, а решают его в админке — туда и ведёт кнопка."""
+    monkeypatch.setattr("app.config.settings.website_base_url", "https://lulu.example.com")
+    bot = AsyncMock()
+    service = NotificationsService(bot)
+
+    assert await service.send_stale_orders(_user(telegram_chat_id=42), _cycle(), 2) is True
+
+    chat_id, message = bot.send_message.await_args.args
+    assert chat_id == 42
+    assert "2 заявки без ответа" in message
+    markup = bot.send_message.await_args.kwargs["reply_markup"]
+    buttons = [button for row in markup.inline_keyboard for button in row]
+    assert [button.url for button in buttons] == ["https://lulu.example.com/admin/orders"]
+
+
+async def test_send_stale_orders_stays_quiet_on_a_dead_binding() -> None:
+    """Владелец не привязал чат: напомнить некуда, а свип обязан идти дальше.
+
+    Отвечает `False`, и это не мелочь: по этому ответу свип решает, ставить ли отметку,
+    а отметка навсегда закрывает единственное напоминание про эти заявки.
+    """
+    bot = AsyncMock()
+    service = NotificationsService(bot)
+
+    assert await service.send_stale_orders(_user(telegram_chat_id=None), _cycle(), 2) is False
+
+    bot.send_message.assert_not_awaited()

@@ -465,3 +465,43 @@ def test_account_deleted_for_owner_agrees_with_itself_about_one_order() -> None:
     text = messages.account_deleted_for_owner([uuid.uuid4()])
 
     assert "Отменена заявка" in text
+
+
+def test_stale_orders_for_owner_counts_and_asks_for_a_decision() -> None:
+    """Напоминание, а не отчёт: владельцу нужно число и что с ним сделать."""
+    cycle = OrderCycle(deadline_at=datetime(2030, 6, 12, 14, tzinfo=UTC), label="Июнь")
+
+    text = messages.stale_orders_for_owner(cycle, 3)
+
+    assert "«Июнь»" in text
+    assert "3 заявки без ответа" in text
+    assert "Подтвердите те" in text
+
+
+def test_stale_orders_for_owner_names_a_cycle_without_a_label() -> None:
+    """Просроченных сборов может накопиться несколько, и приходят они подряд.
+
+    Срока в этом сообщении нет, поэтому `cycle_mention` оставлял от сбора без подписи
+    пустоту: два «В сборе N заявок» подряд не различить и не найти в панели.
+    """
+    cycle = OrderCycle(deadline_at=datetime(2030, 6, 12, 14, tzinfo=UTC), label=None)
+
+    text = messages.stale_orders_for_owner(cycle, 3)
+
+    assert messages.format_deadline(cycle.deadline_at) in text
+
+
+def test_stale_orders_for_owner_agrees_with_itself_about_one_order() -> None:
+    """«1 заявки ждут» — это не по-русски, а читает его человек, а не парсер.
+
+    Склоняется всё сообщение целиком: звать отменить «остальные» там, где заявка одна,
+    — это просьба поискать то, чего нет.
+    """
+    cycle = OrderCycle(deadline_at=datetime(2030, 6, 12, 14, tzinfo=UTC), label="Июнь")
+
+    text = messages.stale_orders_for_owner(cycle, 1)
+
+    assert "1 заявка без ответа" in text
+    assert "ждёт подтверждения" in text
+    assert "Подтвердите её" in text
+    assert "остальные" not in text

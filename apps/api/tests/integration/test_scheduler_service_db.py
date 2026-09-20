@@ -8,16 +8,19 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.auth.models import Role
 from app.cart.models import CartItem
 from app.cart.service import CartService
-from app.cycles.models import CycleStatus
+from app.cycles.models import CycleStatus, OrderCycle
 from app.cycles.scheduler_service import CartRescue, CycleSchedulerService
 from app.cycles.service import CycleAlreadyClosedError, CyclesService
+from app.orders.models import UNFULFILLED_AFTER, Order, OrderStatus
 from app.orders.service import OrdersService
 from app.telegram.notify import (
     notify_carts_rescued,
     notify_cycle_opened,
     notify_cycle_reminders,
+    notify_stale_orders,
 )
 from app.telegram.service import BroadcastResult
 from app.wishlist.models import WishlistItem
@@ -157,6 +160,94 @@ async def test_planning_sends_nothing_and_an_empty_audience_is_not_broadcast(
     broadcast.reset_mock()
     await notify_cycle_reminders(db_session, [replace(reminders[0], user_ids=[])])
     broadcast.assert_not_awaited()
+
+
+async def _cycle_with_pending_order(
+    db_session: AsyncSession, *, closed_ago: timedelta
+) -> tuple[OrderCycle, Order]:
+    """A closed cycle still holding one order nobody ever answered."""
+    user = await make_user(db_session)
+    cycle = await make_cycle(db_session)
+    product = await make_product(db_session)
+    await CartService(db_session).add_item(user.id, product.id, 1)
+    order = await OrdersService(db_session).checkout(user.id, note=None)
+
+    cycle.status = CycleStatus.CLOSED
+    cycle.closed_at = datetime.now(UTC) - closed_ago
+    cycle.deadline_at = cycle.closed_at
+    await db_session.flush()
+    return cycle, order
+
+
+async def test_stale_orders_are_planned_once_the_purchase_is_plainly_over(
+    db_session: AsyncSession,
+) -> None:
+    """The same threshold the customer's `UNFULFILLED` uses, so both appear together."""
+    cycle, _ = await _cycle_with_pending_order(db_session, closed_ago=UNFULFILLED_AFTER * 2)
+    service = CycleSchedulerService(db_session)
+
+    planned = await service.plan_stale_order_notices()
+
+    assert [(notice.cycle.id, notice.count) for notice in planned] == [(cycle.id, 1)]
+
+
+async def test_stale_orders_say_nothing_while_the_owner_may_still_be_buying(
+    db_session: AsyncSession,
+) -> None:
+    """A cycle that closed two days ago is a shop at work, not a shop that forgot."""
+    await _cycle_with_pending_order(db_session, closed_ago=timedelta(days=2))
+
+    assert await CycleSchedulerService(db_session).plan_stale_order_notices() == []
+
+
+async def test_stale_orders_are_nudged_once_and_the_stamp_closes_it(
+    db_session: AsyncSession,
+) -> None:
+    """A nudge, not an alarm: the condition stays true until a person acts on it, so
+    without the stamp it would arrive on every tick until they did."""
+    cycle, _ = await _cycle_with_pending_order(db_session, closed_ago=UNFULFILLED_AFTER * 2)
+    service = CycleSchedulerService(db_session)
+
+    planned = await service.plan_stale_order_notices()
+    await service.mark_stale_orders_notified(planned)
+
+    assert cycle.stale_orders_notice_at is not None
+    assert await service.plan_stale_order_notices() == []
+
+
+async def test_a_nudge_that_never_went_out_is_not_stamped_as_sent(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Отметка окончательна, а это напоминание — единственное, что вообще когда-либо
+    скажет про те заявки: несостоявшаяся отправка обязана оставить сбор неотмеченным."""
+    send = AsyncMock(return_value=False)
+    monkeypatch.setattr("app.telegram.notify.notifications_service.send_stale_orders", send)
+    cycle, _ = await _cycle_with_pending_order(db_session, closed_ago=UNFULFILLED_AFTER * 2)
+    await make_user(db_session, role=Role.SUPER_ADMIN, telegram_chat_id=42)
+    service = CycleSchedulerService(db_session)
+
+    planned = await service.plan_stale_order_notices()
+    notice = planned[0]
+
+    assert await notify_stale_orders(db_session, notice.cycle, notice.count) is False
+    send.assert_awaited_once()
+    assert cycle.stale_orders_notice_at is None
+    # Следующий тик планирует тот же сбор заново — и в этот раз напоминание уходит.
+    assert [item.cycle.id for item in await service.plan_stale_order_notices()] == [cycle.id]
+
+    send.return_value = True
+    assert await notify_stale_orders(db_session, notice.cycle, notice.count) is True
+
+
+async def test_a_cycle_the_owner_finished_answering_is_never_nudged_about(
+    db_session: AsyncSession,
+) -> None:
+    """Nothing left in PENDING means nothing left to ask about."""
+    _, order = await _cycle_with_pending_order(db_session, closed_ago=UNFULFILLED_AFTER * 2)
+    order.status = OrderStatus.CANCELLED_BY_OWNER
+    await db_session.flush()
+
+    assert await CycleSchedulerService(db_session).plan_stale_order_notices() == []
 
 
 async def test_sweep_deadlines_closes_cycle_and_clears_abandoned_carts_only(

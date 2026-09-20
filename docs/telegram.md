@@ -153,6 +153,7 @@ with admin rights — `ADMIN` and `SUPER_ADMIN` alike (`recipients.get_owners`).
 | Cycle closed: cart rescued into wishlist                              | Each cart holder                |
 | Cycle closed                                                          | Customers with orders in it     |
 | Account erased, withdrawing its pending orders                        | Owner (one message naming them) |
+| Closed cycle still holding unanswered orders (once per cycle)         | Owner                           |
 
 **Three rules that the code is shaped around:**
 
@@ -179,6 +180,20 @@ with admin rights — `ADMIN` and `SUPER_ADMIN` alike (`recipients.get_owners`).
    on purpose — a claim that survived the process would leave a cycle killed mid-announcement
    claimed for good, which is the failure this exists to repair. It rests on the scheduler
    living in the one API process, as every sweep here already does.
+
+**The stale-order nudge** (`stale_order_sweep`) is the one message about something that
+never happened. `UNFULFILLED_AFTER` past a cycle's close, any order still `PENDING` in it is
+one the purchase went by without answering — the customer already reads that on the site
+(`PendingStage.UNFULFILLED`, [domain.md](domain.md)), and this tells the owner the same thing
+once, in `order_cycles.stale_orders_notice_at`, plan → send → stamp like the reminders —
+and, like them, only what actually went out is stamped: the stamp is final, so a nudge that
+failed to send is left planned for the next tick rather than lost.
+
+It nudges and never acts. Nothing expires an order: the sweep touches no row but the stamp,
+and the orders it counts are ended — or confirmed after all — by the owner in the panel, one
+at a time. A timer picking `CANCELLED_BY_OWNER` on their behalf would be the shop saying "не
+смогла достать" about goods nobody had looked for, and an order three weeks old may still be
+one a slow owner is about to confirm.
 
 Message copy lives in `messages.py` and is Russian. The bot omits link buttons pointing at
 `localhost` — Telegram rejects those — so those buttons simply don't appear in local dev.
