@@ -286,6 +286,7 @@ const ProductPage: React.FC<IProductPageProps> = ({ product, categoryName }) => 
           secondaryAction={
             <WishlistButton
               productId={product.id}
+              productName={product.name}
               withTooltip={true}
               size="lg"
             />

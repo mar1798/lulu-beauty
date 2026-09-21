@@ -30,6 +30,12 @@ import { useWishlist } from '@/contexts/WishlistContext'
  */
 export const WishlistButton: React.FC<{
   productId: string
+  /**
+   * Название товара для тостов. Нужно именно пропом: у ещё не сохранённого
+   * товара имени взять неоткуда — в избранном его нет, а тост о сохранении
+   * пишется до того, как список успеет ответить.
+   */
+  productName?: string
   /** Белая заливка с тенью — для угла фотографии в карточке каталога. */
   variant?: 'ghost' | 'solid'
   size?: IControlSize
@@ -40,7 +46,7 @@ export const WishlistButton: React.FC<{
    * над каждым мешал бы смотреть товары.
    */
   withTooltip?: boolean
-}> = ({ productId, variant = 'solid', size = 'md', withTooltip = false }) => {
+}> = ({ productId, productName, variant = 'solid', size = 'md', withTooltip = false }) => {
   const router = useRouter()
   const { user, isLoading: isAuthLoading, reload: reloadSession } = useAuth()
   const { wishlist, has, toggle, add, isItemBusy } = useWishlist()
@@ -57,9 +63,11 @@ export const WishlistButton: React.FC<{
   /*
     Название снимается до нажатия: после удаления товара в списке уже нет, а
     тост о нём — единственное место, где видно, что именно убрано (в каталоге
-    карточка остаётся на месте, меняется одна заливка сердца).
+    карточка остаётся на месте, меняется одна заливка сердца). Проп важнее
+    списка: у несохранённого товара списка нет вовсе.
   */
-  const name = wishlist?.items.find(item => item.product.id === productId)?.product.name
+  const name =
+    productName ?? wishlist?.items.find(item => item.product.id === productId)?.product.name
 
   /**
    * Возврат только что убранного товара. Избранное ничего не фиксирует — ни
@@ -119,11 +127,16 @@ export const WishlistButton: React.FC<{
       }
 
       /*
-        Об убранном говорим, о сохранённом — нет. Сохранение видно по самой
-        кнопке (сердце заливается) и по счётчику в шапке, а вот убранное
-        исчезает: на странице избранного вместе с карточкой, в каталоге —
-        одной сменой заливки, которую легко не заметить, нажав мимо. Вернуть
-        его без тоста можно только вспомнив, что это был за товар.
+        Говорим об обоих исходах. Об убранном — потому что оно исчезает: на
+        странице избранного вместе с карточкой, в каталоге — одной сменой
+        заливки, которую легко не заметить, нажав мимо; вернуть его без тоста
+        можно только вспомнив, что это был за товар. О сохранённом — потому что
+        заливки сердца и счётчика в шапке не хватает: в углу фотографии смену
+        замечают не сразу, а на странице товара сердце стоит сбоку от кнопки,
+        на которую в этот момент и смотрят.
+
+        Отличаются они не только словами: убранное предлагает вернуть, а
+        сохранённое — посмотреть, где оно теперь лежит.
       */
       if (isSaved) {
         notify({
@@ -133,6 +146,17 @@ export const WishlistButton: React.FC<{
             label: 'Вернуть',
             onAction: () => {
               void restore()
+            },
+          },
+        })
+      } else {
+        notify({
+          tone: 'success',
+          title: name === undefined ? 'Товар в избранном' : `«${name}» в избранном`,
+          action: {
+            label: 'Посмотреть',
+            onAction: () => {
+              void router.push('/wishlist')
             },
           },
         })
