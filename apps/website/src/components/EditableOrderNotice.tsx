@@ -58,12 +58,12 @@ export const EditableOrderNotice: React.FC = () => {
 
     try {
       for (const item of items) {
-        await addMyOrderItem(order.id, item.productId, item.quantity)
+        await addMyOrderItem(order.id, item.variantId, item.quantity)
 
-        const result = await removeItem(item.productId)
+        const result = await removeItem(item.variantId)
 
         /*
-          Товар в заявке уже есть, а из корзины не убрался: продолжать нельзя —
+          Объём в заявке уже есть, а из корзины не убрался: продолжать нельзя —
           следующий проход добавил бы его в заявку второй раз. Ошибку корзина
           уже перевела на человеческий, поэтому она идёт как есть.
         */

@@ -79,7 +79,7 @@ export const CheckoutPanel: FC<ICheckoutPanelProps & IBasicStyling> = ({
             ))
           : cart.items.map(item => (
               <ItemRow
-                key={item.productId}
+                key={item.variantId}
                 item={item}
                 href={buildProductHref(item.productSlug)}
                 /*
@@ -94,7 +94,7 @@ export const CheckoutPanel: FC<ICheckoutPanelProps & IBasicStyling> = ({
                 onQuantityChange={
                   onQuantityChange === undefined
                     ? undefined
-                    : quantity => onQuantityChange(item.productId, quantity)
+                    : quantity => onQuantityChange(item.variantId, quantity)
                 }
               />
             ))}

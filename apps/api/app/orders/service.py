@@ -1,5 +1,5 @@
 import uuid
-from collections.abc import Collection, Mapping, Sequence
+from collections.abc import Callable, Collection, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
@@ -10,7 +10,7 @@ from sqlalchemy.orm import selectinload
 from app.auth.models import User
 from app.cart.models import Cart, CartItem
 from app.catalog.images import primary_image_url
-from app.catalog.models import Category, Product
+from app.catalog.models import Category, Product, ProductVariant
 from app.cycles.models import CycleStatus, OrderCycle
 from app.cycles.service import CyclesService
 from app.orders.models import (
@@ -142,17 +142,21 @@ _LOST_CYCLE = _CycleClock(is_open=False, closed_since=datetime.min.replace(tzinf
 
 @dataclass(frozen=True)
 class ProductTags:
-    """The descriptive labels a product carries: brand, category, volume.
+    """The descriptive labels a product carries: brand and category.
 
     Not snapshotted onto the order line the way name and price are. Those two are what
-    the customer agreed to and must never move under them; these three only describe the
+    the customer agreed to and must never move under them; these two only describe the
     thing, so the current catalog is the better source — and it also gives the labels to
     orders placed before they existed.
+
+    The volume used to be read from here too, and cannot be any more: it is what the
+    customer *chose* between, so once a product is sold in two of them the product row
+    no longer knows which one a line was. It is snapshotted onto the line instead
+    (`OrderItem.product_volume_ml`), next to the price it goes with.
     """
 
     brand: str | None
     category_name: str | None
-    volume_ml: int | None
 
 
 @dataclass(frozen=True)
@@ -167,6 +171,10 @@ class OrderPriceChange:
     order_id: uuid.UUID
     user_id: uuid.UUID
     product_name: str
+    # The volume travels with the name for the same reason it is on the line at all: a
+    # price moves on one volume, and an order holding both would otherwise get two
+    # messages about "Сыворотка" quoting two different numbers.
+    product_volume_ml: int | None
     old_price_cents: int
     new_price_cents: int
     total_cents: int
@@ -174,11 +182,13 @@ class OrderPriceChange:
 
 @dataclass(frozen=True)
 class OrderItemDrop:
-    """A pending order that lost a line because the product left the catalog."""
+    """A pending order that lost a line because the product or the volume left the catalog."""
 
     order_id: uuid.UUID
     user_id: uuid.UUID
     product_name: str
+    # Which volume is gone — the whole news when only one of them was taken off.
+    product_volume_ml: int | None
     total_cents: int
     # The dropped line was the only one: an order with nothing in it is not an order, so
     # it is cancelled rather than left empty — and that is different news for the customer.
@@ -227,12 +237,18 @@ class OrdersService:
         # customer is looking at, and add_item refuses to put one into an order, so
         # checkout must not be the one way in.
         result = await self._session.execute(
-            select(CartItem, Product)
+            select(CartItem, Product, ProductVariant)
             .join(Product, Product.id == CartItem.product_id)
+            .join(ProductVariant, ProductVariant.id == CartItem.variant_id)
             .where(
                 CartItem.cart_id == cart.id,
                 Product.deleted_at.is_(None),
-                Product.in_stock.is_(True),
+                # Stock is the variant's now, and it is the variant's that decides: the
+                # product is "in stock" as long as *any* volume is, so checking the
+                # product alone would carry a sold-out 30 ml into the order on the back
+                # of a 50 ml that is still on the shelf.
+                ProductVariant.deleted_at.is_(None),
+                ProductVariant.in_stock.is_(True),
             )
             .options(selectinload(Product.images))
         )
@@ -242,16 +258,18 @@ class OrdersService:
 
         order = Order(user_id=user_id, cycle_id=cycle.id, status=OrderStatus.PENDING, note=note)
         total_cents = 0
-        for cart_item, product in rows:
-            line_total_cents = product.price_cents * cart_item.quantity
+        for cart_item, product, variant in rows:
+            line_total_cents = variant.price_cents * cart_item.quantity
             total_cents += line_total_cents
             order.items.append(
                 OrderItem(
                     product_id=product.id,
+                    variant_id=variant.id,
                     product_name=product.name,
                     product_slug=product.slug,
                     product_image_url=primary_image_url(product.images),
-                    product_price_cents=product.price_cents,
+                    product_price_cents=variant.price_cents,
+                    product_volume_ml=variant.volume_ml,
                     quantity=cart_item.quantity,
                 )
             )
@@ -330,13 +348,13 @@ class OrdersService:
             return {}
 
         result = await self._session.execute(
-            select(Product.id, Product.brand, Product.volume_ml, Category.name)
+            select(Product.id, Product.brand, Category.name)
             .outerjoin(Category, Category.id == Product.category_id)
             .where(Product.id.in_(product_ids))
         )
         return {
-            product_id: ProductTags(brand=brand, category_name=category_name, volume_ml=volume_ml)
-            for product_id, brand, volume_ml, category_name in result.all()
+            product_id: ProductTags(brand=brand, category_name=category_name)
+            for product_id, brand, category_name in result.all()
         }
 
     async def _cycle_clocks(self, orders: list[Order]) -> dict[uuid.UUID, _CycleClock]:
@@ -439,9 +457,9 @@ class OrdersService:
         raise OrderItemNotFoundError
 
     async def add_item(
-        self, user_id: uuid.UUID, order_id: uuid.UUID, product_id: uuid.UUID, quantity: int
+        self, user_id: uuid.UUID, order_id: uuid.UUID, variant_id: uuid.UUID, quantity: int
     ) -> Order:
-        """Add a product to an order that's already been placed.
+        """Add a volume of a product to an order that's already been placed.
 
         The snapshot is taken now, from the current catalog — this line joins the order
         today, so today's price is the one the customer is agreeing to. Lines that were
@@ -450,32 +468,38 @@ class OrdersService:
         order = await self._get_editable(user_id, order_id)
 
         result = await self._session.execute(
-            select(Product)
+            select(ProductVariant, Product)
+            .join(Product, Product.id == ProductVariant.product_id)
             .where(
-                Product.id == product_id,
+                ProductVariant.id == variant_id,
+                ProductVariant.deleted_at.is_(None),
+                ProductVariant.in_stock.is_(True),
                 Product.deleted_at.is_(None),
-                Product.in_stock.is_(True),
             )
             .options(selectinload(Product.images))
         )
-        product = result.scalar_one_or_none()
-        if product is None:
+        row = result.first()
+        if row is None:
             raise ProductNotFoundError
+        variant, product = row
 
-        existing = next((item for item in order.items if item.product_id == product.id), None)
+        # One line per *volume*: two volumes of one serum are two things to buy, and
+        # collapsing them onto the product would put one price on both.
+        existing = next((item for item in order.items if item.variant_id == variant.id), None)
         if existing is not None:
-            # One line per product, as at checkout: a second row for the same thing would
-            # be the owner's problem to reconcile by hand. The clamp is a ceiling, not a
-            # rule worth an error — nobody means 1000 of anything here.
+            # The clamp is a ceiling, not a rule worth an error — nobody means 1000 of
+            # anything here.
             existing.quantity = min(existing.quantity + quantity, MAX_ITEM_QUANTITY)
         else:
             order.items.append(
                 OrderItem(
                     product_id=product.id,
+                    variant_id=variant.id,
                     product_name=product.name,
                     product_slug=product.slug,
                     product_image_url=primary_image_url(product.images),
-                    product_price_cents=product.price_cents,
+                    product_price_cents=variant.price_cents,
+                    product_volume_ml=variant.volume_ml,
                     quantity=quantity,
                 )
             )
@@ -585,6 +609,32 @@ class OrdersService:
         """Orders still awaiting confirmation that contain the product."""
         return await self._pending_orders_with_any([product_id])
 
+    async def _pending_orders_with_variants(self, variant_ids: Sequence[uuid.UUID]) -> list[Order]:
+        """Orders still awaiting confirmation that contain any of these volumes.
+
+        The variant-keyed twin of `_pending_orders_with_any`, and the same shape for the
+        same reasons — see it for why the subquery, the chunking and the sort are what
+        they are. Kept apart rather than parameterised because the two callers mean
+        different things: a price moves on one volume, a soft-delete takes the whole
+        product off every list.
+        """
+        found: dict[uuid.UUID, Order] = {}
+
+        for start in range(0, len(variant_ids), _PRODUCT_CHUNK):
+            chunk = variant_ids[start : start + _PRODUCT_CHUNK]
+            result = await self._session.execute(
+                select(Order)
+                .options(selectinload(Order.items))
+                .where(
+                    Order.status == OrderStatus.PENDING,
+                    Order.id.in_(select(OrderItem.order_id).where(OrderItem.variant_id.in_(chunk))),
+                )
+            )
+            for order in result.scalars().all():
+                found.setdefault(order.id, order)
+
+        return sorted(found.values(), key=lambda order: order.created_at, reverse=True)
+
     async def _pending_orders_with_any(self, product_ids: Sequence[uuid.UUID]) -> list[Order]:
         """Orders still awaiting confirmation that contain any of these products.
 
@@ -619,13 +669,13 @@ class OrdersService:
         # chunk, so per-query ordering would not survive the merge.
         return sorted(found.values(), key=lambda order: order.created_at, reverse=True)
 
-    async def reprice_product(
-        self, product_id: uuid.UUID, price_cents: int
+    async def reprice_variant(
+        self, variant_id: uuid.UUID, price_cents: int
     ) -> list[OrderPriceChange]:
         """Pulls one catalog price change through every order still awaiting confirmation."""
-        return await self.reprice_products({product_id: price_cents})
+        return await self.reprice_variants({variant_id: price_cents})
 
-    async def reprice_products(self, prices: Mapping[uuid.UUID, int]) -> list[OrderPriceChange]:
+    async def reprice_variants(self, prices: Mapping[uuid.UUID, int]) -> list[OrderPriceChange]:
         """Pulls catalog price changes through every order still awaiting confirmation.
 
         Lines are snapshots on purpose (`OrderItem` denormalises name and price at
@@ -645,19 +695,19 @@ class OrdersService:
 
         changes: list[OrderPriceChange] = []
 
-        for order in await self._pending_orders_with_any(list(prices)):
+        for order in await self._pending_orders_with_variants(list(prices)):
             # Applied first, totalled after: one order may hold several repriced lines,
             # and every notice about it has to quote the same final total — the one the
             # customer will see on the site.
             repriced: list[tuple[OrderItem, int]] = []
 
             for item in order.items:
-                # A line whose product row is gone keeps the price it was bought at —
+                # A line whose variant row is gone keeps the price it was bought at —
                 # there is no catalog entry left to pull a new one from.
-                if item.product_id is None:
+                if item.variant_id is None:
                     continue
 
-                price_cents = prices.get(item.product_id)
+                price_cents = prices.get(item.variant_id)
                 if price_cents is None or item.product_price_cents == price_cents:
                     continue
 
@@ -673,6 +723,7 @@ class OrdersService:
                     order_id=order.id,
                     user_id=order.user_id,
                     product_name=item.product_name,
+                    product_volume_ml=item.product_volume_ml,
                     old_price_cents=old_price_cents,
                     new_price_cents=item.product_price_cents,
                     total_cents=order.total_cents,
@@ -695,10 +746,45 @@ class OrdersService:
         An order left with no lines is cancelled rather than kept at zero: an empty order
         is not something the customer can act on, and the site has no state for it.
         """
+        return await self._drop_lines(
+            await self._pending_orders_with(product_id),
+            lambda item: item.product_id == product_id,
+        )
+
+    async def drop_variants(self, variant_ids: Sequence[uuid.UUID]) -> list[OrderItemDrop]:
+        """Takes single volumes out of every order still awaiting confirmation.
+
+        The variant-keyed twin of `drop_product`, and the same news for the customer: the
+        owner has stopped selling the 30 ml, so an order waiting for an answer cannot be
+        answered with one. Only the lines for these volumes go — the 50 ml of the same
+        product stays, which is exactly why this is not `drop_product` with extra steps.
+
+        Without it a withdrawn volume sat in pending orders forever: the cart dropped it
+        silently, the storefront stopped offering it, and the owner was left reconciling
+        a line for something no longer on the shelf.
+        """
+        if not variant_ids:
+            return []
+
+        wanted = set(variant_ids)
+        return await self._drop_lines(
+            await self._pending_orders_with_variants(list(wanted)),
+            lambda item: item.variant_id in wanted,
+        )
+
+    async def _drop_lines(
+        self, orders: list[Order], matches: Callable[[OrderItem], bool]
+    ) -> list[OrderItemDrop]:
+        """The half `drop_product` and `drop_variants` share: remove, retotal, cancel.
+
+        Which lines go is the callers' difference and their only one — everything after
+        that ("an emptied order is cancelled, and every dropped line is news") is the
+        same rule whether the owner took away a product or one of its volumes.
+        """
         drops: list[OrderItemDrop] = []
 
-        for order in await self._pending_orders_with(product_id):
-            dropped = [item for item in order.items if item.product_id == product_id]
+        for order in orders:
+            dropped = [item for item in order.items if matches(item)]
             if not dropped:
                 continue
 
@@ -717,6 +803,7 @@ class OrdersService:
                     order_id=order.id,
                     user_id=order.user_id,
                     product_name=item.product_name,
+                    product_volume_ml=item.product_volume_ml,
                     total_cents=order.total_cents,
                     is_cancelled=is_cancelled,
                 )

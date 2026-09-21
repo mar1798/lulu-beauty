@@ -22,3 +22,8 @@ MAX_PRICE_CENTS = 2_000_000_000
 # five-litre cosmetics, and a typo like "50000" on the storefront reads as the shop's
 # mistake rather than the customer's; the column behind it is the same 32-bit INTEGER.
 MAX_VOLUME_ML = 10_000
+
+# How many volumes one product may be sold in. A generous ceiling on something that is
+# in practice two or three ("30 мл" and "50 мл"): it exists so that a bad import or a
+# stuck form cannot grow a product page into a wall of buttons, not to police the shop.
+MAX_PRODUCT_VARIANTS = 20

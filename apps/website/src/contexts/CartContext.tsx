@@ -50,9 +50,9 @@ const totalOf = (items: ICart['items']): number =>
  * строк (`app/cart/service.py`, `_build_response`). Всё в целых копейках,
  * поэтому «почти то же самое» тут невозможно.
  */
-const withQuantity = (cart: ICart, productId: string, quantity: number): ICart => {
+const withQuantity = (cart: ICart, variantId: string, quantity: number): ICart => {
   const items = cart.items.map(item =>
-    item.productId === productId
+    item.variantId === variantId
       ? { ...item, quantity, lineTotalCents: item.productPriceCents * quantity }
       : item
   )
@@ -60,8 +60,8 @@ const withQuantity = (cart: ICart, productId: string, quantity: number): ICart =
   return { ...cart, items, totalCents: totalOf(items) }
 }
 
-const without = (cart: ICart, productId: string): ICart => {
-  const items = cart.items.filter(item => item.productId !== productId)
+const without = (cart: ICart, variantId: string): ICart => {
+  const items = cart.items.filter(item => item.variantId !== variantId)
 
   return { ...cart, items, totalCents: totalOf(items) }
 }
@@ -100,7 +100,7 @@ export interface ICartContextValue {
    */
   isWholeCartBusy: boolean
   /** Занята ли конкретная позиция: блокируется только она. */
-  isItemBusy: (productId: string) => boolean
+  isItemBusy: (variantId: string) => boolean
   error: string | null
   /*
    * Изменения возвращают итог с текстом ошибки (см. `ICartResult`). Нужен он
@@ -109,9 +109,10 @@ export interface ICartContextValue {
    * почему товар не добавился, — «сбор закрыт» и «товар сняли с продажи»
    * чинятся по-разному.
    */
-  addItem: (productId: string, quantity?: number) => Promise<ICartResult>
-  updateItem: (productId: string, quantity: number) => Promise<ICartResult>
-  removeItem: (productId: string) => Promise<ICartResult>
+  /* Всё адресуется объёмом: строка корзины — это объём товара, а не товар. */
+  addItem: (variantId: string, quantity?: number) => Promise<ICartResult>
+  updateItem: (variantId: string, quantity: number) => Promise<ICartResult>
+  removeItem: (variantId: string) => Promise<ICartResult>
   empty: () => Promise<ICartResult>
   reload: () => Promise<ICartResult>
   /**
@@ -246,35 +247,35 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
   )
 
   const addItem = useCallback(
-    (productId: string, quantity = 1) =>
+    (variantId: string, quantity = 1) =>
       /*
         Без оптимистичного слепка: состав позиции (название, цена, картинка)
         знает только ответ, а рисовать полустроку ради 200 мс не стоит. Кнопка
         в каталоге эти миллисекунды просто не отыгрывает — спиннер на ней
         читался как мигание (см. `AddToCartButton`).
       */
-      runMutation(productId, () => addCartItem(productId, quantity), 'cart.add'),
+      runMutation(variantId, () => addCartItem(variantId, quantity), 'cart.add'),
     [runMutation]
   )
 
   const updateItem = useCallback(
-    (productId: string, quantity: number) =>
+    (variantId: string, quantity: number) =>
       runMutation(
-        productId,
-        () => updateCartItem(productId, quantity),
+        variantId,
+        () => updateCartItem(variantId, quantity),
         'cart.update',
-        current => withQuantity(current, productId, quantity)
+        current => withQuantity(current, variantId, quantity)
       ),
     [runMutation]
   )
 
   const removeItem = useCallback(
-    (productId: string) =>
+    (variantId: string) =>
       runMutation(
-        productId,
-        () => removeCartItem(productId),
+        variantId,
+        () => removeCartItem(variantId),
         'cart.remove',
-        current => without(current, productId)
+        current => without(current, variantId)
       ),
     [runMutation]
   )
@@ -323,7 +324,7 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [router.events, clearError])
 
   const isItemBusy = useCallback(
-    (productId: string): boolean => busy.includes(productId) || busy.includes(WHOLE_CART),
+    (variantId: string): boolean => busy.includes(variantId) || busy.includes(WHOLE_CART),
     [busy]
   )
 

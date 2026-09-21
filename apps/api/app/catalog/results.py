@@ -22,3 +22,17 @@ class CatalogSuggestions:
     categories: list[Category]
     brands: list[str]
     products: list[Product]
+
+
+@dataclass(frozen=True)
+class VariantSpec:
+    """One line of the owner's "Объёмы" table, on its way into the catalog.
+
+    The volume is the identity: reconciling a product's variants against a list of these
+    matches by `volume_ml`, so editing a price keeps the variant row — and with it every
+    cart line and every pending order that points at it — instead of replacing it.
+    """
+
+    volume_ml: int | None
+    price_cents: int
+    in_stock: bool

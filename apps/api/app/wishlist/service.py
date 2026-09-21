@@ -93,7 +93,9 @@ class WishlistService:
             .join(Product, Product.id == WishlistItem.product_id)
             .where(WishlistItem.user_id == user_id, Product.deleted_at.is_(None))
             .order_by(WishlistItem.created_at.desc())
-            .options(selectinload(Product.images))
+            # Variants too: the card shows "от N ₽" once a product is sold in several,
+            # and `product_response` reads them.
+            .options(selectinload(Product.images), selectinload(Product.variants))
         )
 
         return WishlistResponse(

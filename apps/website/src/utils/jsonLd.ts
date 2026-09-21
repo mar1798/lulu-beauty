@@ -93,11 +93,18 @@ export function storeLd(): IJsonLdNode {
  * предлагает дождаться следующего. Описание берётся из базы, а когда владелец
  * его ещё не написал — то же самое, что стоит в `<meta name="description">`:
  * марка, название и цена. Ничего не выдумывается.
+ *
+ * У товара, который продаётся в нескольких объёмах, одного предложения нет:
+ * цен столько же, сколько объёмов. Тогда пишется `AggregateOffer` с вилкой от
+ * дешёвого к дорогому — это ровно то, что schema.org для такого и заводил, и
+ * единственный честный способ не объявить цену 30 мл ценой товара.
  */
 export function productLd(product: IProduct, categoryName: string | null): IJsonLdNode {
   const path = `/catalog/${product.slug}`
   const url = absoluteUrl(path)
+  const hasSeveralVolumes = product.variants.length > 1
   const volume = formatVolume(product.volumeMl)
+  const prices = product.variants.map(variant => variant.priceCents)
   /*
     Главная фотография первой: из списка поисковик берёт первую пригодную, и
     это должна быть та же карточка, что уходит в `og:image` и в каталог.
@@ -116,15 +123,31 @@ export function productLd(product: IProduct, categoryName: string | null): IJson
     ...(product.brand !== null && { brand: { '@type': 'Brand', name: product.brand } }),
     ...(volume !== null && { size: volume }),
     ...(categoryName !== null && { category: categoryName }),
-    offers: {
-      '@type': 'Offer',
-      url,
-      priceCurrency: CURRENCY,
-      price: priceUnits(product.priceCents),
-      availability: product.inStock ? 'https://schema.org/InStock' : 'https://schema.org/PreOrder',
-      areaServed: COUNTRY,
-      seller: { '@id': STORE_ID },
-    },
+    offers: hasSeveralVolumes
+      ? {
+          '@type': 'AggregateOffer',
+          url,
+          priceCurrency: CURRENCY,
+          lowPrice: priceUnits(Math.min(...prices)),
+          highPrice: priceUnits(Math.max(...prices)),
+          offerCount: product.variants.length,
+          availability: product.inStock
+            ? 'https://schema.org/InStock'
+            : 'https://schema.org/PreOrder',
+          areaServed: COUNTRY,
+          seller: { '@id': STORE_ID },
+        }
+      : {
+          '@type': 'Offer',
+          url,
+          priceCurrency: CURRENCY,
+          price: priceUnits(product.priceCents),
+          availability: product.inStock
+            ? 'https://schema.org/InStock'
+            : 'https://schema.org/PreOrder',
+          areaServed: COUNTRY,
+          seller: { '@id': STORE_ID },
+        },
   }
 }
 

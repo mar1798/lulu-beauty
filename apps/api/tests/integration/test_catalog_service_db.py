@@ -3,6 +3,7 @@ from datetime import UTC, datetime
 import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.cart.service import CartService
 from app.catalog.import_service import CatalogImportService
@@ -16,6 +17,7 @@ from tests.integration.factories import (
     make_product,
     make_product_image,
     make_user,
+    variant_id,
 )
 
 
@@ -274,6 +276,10 @@ async def test_import_folds_a_slug_repeated_inside_one_file(db_session: AsyncSes
 
     Раньше строку спасал автосброс сессии перед каждым построчным SELECT; теперь товары
     разрешаются заранее, и повтор должен попасть в тот же объект, что создала первая строка.
+
+    В файле нет колонки «объём», поэтому строка — это цена «на товар», а у товара он один:
+    вторая строка переписывает тот же вариант, как и раньше. Счётчики считают товары, а не
+    строки: два ряда одного slug — это один созданный товар, а не созданный и обновлённый.
     """
     content = (
         "name,slug,price,brand\n"
@@ -284,15 +290,22 @@ async def test_import_folds_a_slug_repeated_inside_one_file(db_session: AsyncSes
     summary, _ = await CatalogImportService(db_session).import_file("catalog.csv", content)
     await db_session.flush()
 
-    assert (summary.created, summary.updated, summary.errors) == (1, 1, [])
+    assert (summary.created, summary.updated, summary.errors) == (1, 0, [])
     products = (
-        (await db_session.execute(select(Product).where(Product.slug == "povtor")))
+        (
+            await db_session.execute(
+                select(Product)
+                .where(Product.slug == "povtor")
+                .options(selectinload(Product.variants))
+            )
+        )
         .scalars()
         .all()
     )
     assert [(product.name, product.price_cents) for product in products] == [
         ("Последний вариант", 20000)
     ]
+    assert [variant.price_cents for variant in products[0].live_variants] == [20000]
 
 
 async def test_import_lower_cases_the_slug_column(db_session: AsyncSession) -> None:
@@ -345,9 +358,7 @@ async def test_import_folds_brand_case_variants(db_session: AsyncSession) -> Non
     await db_session.flush()
 
     assert summary.errors == []
-    brands = (
-        (await db_session.execute(select(Product.slug, Product.brand))).tuples().all()
-    )
+    brands = (await db_session.execute(select(Product.slug, Product.brand))).tuples().all()
     assert dict(brands) == {
         "known": "Round Lab",
         "toner": "Round Lab",
@@ -363,9 +374,7 @@ async def test_import_accepts_a_row_without_a_brand(db_session: AsyncSession) ->
     видно в админке, а потерянная строка файла не видна никак.
     """
     content = (
-        "name,slug,price,brand\n"
-        "Тонер,toner,100.00,Round Lab\n"
-        "Безымянный,bezymyannyj,200.00,   \n"
+        "name,slug,price,brand\nТонер,toner,100.00,Round Lab\nБезымянный,bezymyannyj,200.00,   \n"
     ).encode()
 
     summary, _ = await CatalogImportService(db_session).import_file("catalog.csv", content)
@@ -472,7 +481,7 @@ async def test_import_leaves_columns_the_file_does_not_have_alone(
 
 
 async def test_import_reads_the_camel_case_in_stock_column(db_session: AsyncSession) -> None:
-    """"inStock" is the spelling the admin panel documents, and it used to be ignored."""
+    """ "inStock" is the spelling the admin panel documents, and it used to be ignored."""
     content = "name,slug,price,inStock\nСыворотка,serum,150.00,нет\n".encode()
 
     summary, _ = await CatalogImportService(db_session).import_file("catalog.csv", content)
@@ -489,9 +498,7 @@ async def test_import_reports_an_overlong_name_as_one_bad_row(db_session: AsyncS
     """name/slug/brand are String(255); past that the row failed at flush, which is a 500
     for the whole upload rather than one reported line."""
     content = (
-        "name,slug,price\n"
-        f"{'я' * 300},too-long,100.00\n"
-        "Нормальная строка,fine,100.00\n"
+        f"name,slug,price\n{'я' * 300},too-long,100.00\nНормальная строка,fine,100.00\n"
     ).encode()
 
     summary, _ = await CatalogImportService(db_session).import_file("catalog.csv", content)
@@ -517,8 +524,8 @@ async def test_import_pulls_its_price_changes_through_pending_orders(
     same = await make_product(db_session, slug="krem-2", name="Тоник", price_cents=500)
 
     cart = CartService(db_session)
-    await cart.add_item(user.id, moved.id, 2)
-    await cart.add_item(user.id, same.id, 1)
+    await cart.add_item(user.id, variant_id(moved), 2)
+    await cart.add_item(user.id, variant_id(same), 1)
     order = await OrdersService(db_session).checkout(user.id, note=None)
 
     content = ("name,slug,price\nКрем,krem-1,15.00\nТоник,krem-2,5.00\n").encode()
@@ -528,9 +535,7 @@ async def test_import_pulls_its_price_changes_through_pending_orders(
 
     assert (summary.updated, summary.errors) == (2, [])
     assert order.total_cents == 3500
-    assert [(change.product_name, change.new_price_cents) for change in changes] == [
-        ("Крем", 1500)
-    ]
+    assert [(change.product_name, change.new_price_cents) for change in changes] == [("Крем", 1500)]
     assert changes[0].order_id == order.id
     assert changes[0].total_cents == 3500
 
@@ -542,7 +547,7 @@ async def test_import_reports_no_price_changes_when_nothing_moved(
     user = await make_user(db_session)
     await make_cycle(db_session)
     product = await make_product(db_session, slug="krem-1", name="Крем", price_cents=1000)
-    await CartService(db_session).add_item(user.id, product.id, 1)
+    await CartService(db_session).add_item(user.id, variant_id(product), 1)
     await OrdersService(db_session).checkout(user.id, note=None)
 
     content = "name,slug,price\nКрем,krem-1,10.00\n".encode()
@@ -636,3 +641,110 @@ async def test_suggest_caps_each_group(db_session: AsyncSession) -> None:
 
     assert len(suggestions.products) == 5
     assert len(suggestions.brands) == 3
+
+
+async def test_import_reads_a_row_per_volume(db_session: AsyncSession) -> None:
+    """Прайс поставщика — это строка на объём с повторяющимся slug, и ровно так же его
+    пишет выгрузка: товар один, объёмов у него столько, сколько строк."""
+    content = (
+        "name,slug,price,volume\n"
+        "Сыворотка Centella,centella,1000.00,30\n"
+        "Сыворотка Centella,centella,1800.00,50 мл\n"
+    ).encode()
+
+    summary, _ = await CatalogImportService(db_session).import_file("price.csv", content)
+    await db_session.flush()
+
+    assert (summary.created, summary.updated, summary.errors) == (1, 0, [])
+    product = (
+        await db_session.execute(
+            select(Product)
+            .where(Product.slug == "centella")
+            .options(selectinload(Product.variants))
+        )
+    ).scalar_one()
+    # Цены в файле — в рублях, в базе — в копейках.
+    assert [(variant.volume_ml, variant.price_cents) for variant in product.live_variants] == [
+        (30, 100_000),
+        (50, 180_000),
+    ]
+    # Витринные поля пересчитаны по вариантам, а не взяты из последней строки файла.
+    assert (product.price_cents, product.volume_ml) == (100_000, None)
+
+
+async def test_import_reports_the_same_volume_twice_instead_of_dropping_a_price(
+    db_session: AsyncSession,
+) -> None:
+    """Без этого вторая строка молча переписывала бы первую, и владелец не узнал бы,
+    что половина прайса не доехала."""
+    content = (
+        "name,slug,price,volume\nСыворотка,centella,1000.00,30\nСыворотка,centella,1200.00,30\n"
+    ).encode()
+
+    summary, _ = await CatalogImportService(db_session).import_file("price.csv", content)
+
+    assert summary.created == 1
+    assert [error.row for error in summary.errors] == [3]
+    assert "уже был выше" in summary.errors[0].message
+
+
+async def test_a_price_only_file_still_moves_a_single_volume_product(
+    db_session: AsyncSession,
+) -> None:
+    """Файл без колонки «объём» — обычный прайс: цена «на товар», и пока объём один,
+    это по-прежнему осмысленно. Второй вариант при этом не заводится."""
+    product = await make_product(db_session, slug="toner", volume_ml=200, price_cents=1000)
+    await db_session.flush()
+
+    content = "name,slug,price\nТоник,toner,1500.00\n".encode()
+    summary, _ = await CatalogImportService(db_session).import_file("price.csv", content)
+    await db_session.flush()
+
+    assert summary.errors == []
+    assert [(variant.volume_ml, variant.price_cents) for variant in product.live_variants] == [
+        (200, 150_000)
+    ]
+
+
+async def test_a_price_only_file_refuses_a_product_sold_in_several_volumes(
+    db_session: AsyncSession,
+) -> None:
+    """Одну цену на все объёмы — значит отменить разделение; угадать, какой имелся в
+    виду, нельзя, поэтому строка отклоняется с подсказкой, чего файлу не хватает."""
+    await make_product(db_session, slug="centella", variants=[(30, 1000, True), (50, 1800, True)])
+    await db_session.flush()
+
+    content = "name,slug,price\nСыворотка,centella,1200.00\n".encode()
+    summary, _ = await CatalogImportService(db_session).import_file("price.csv", content)
+
+    assert (summary.created, summary.updated) == (0, 0)
+    assert [error.row for error in summary.errors] == [2]
+    assert "колонку «объём»" in summary.errors[0].message
+
+
+async def test_import_reprices_only_the_volume_whose_price_moved(
+    db_session: AsyncSession,
+) -> None:
+    """Переоценка идёт по варианту: заявка на 30 мл не должна дорожать оттого, что
+    подорожали 50."""
+    user = await make_user(db_session)
+    await make_cycle(db_session)
+    product = await make_product(
+        db_session,
+        name="Сыворотка",
+        slug="centella",
+        variants=[(30, 1000, True), (50, 1800, True)],
+    )
+    await CartService(db_session).add_item(user.id, variant_id(product, 30), 1)
+    await CartService(db_session).add_item(user.id, variant_id(product, 50), 1)
+    order = await OrdersService(db_session).checkout(user.id, note=None)
+
+    content = (
+        "name,slug,price,volume\nСыворотка,centella,10.00,30\nСыворотка,centella,20.00,50\n"
+    ).encode()
+    _, changes = await CatalogImportService(db_session).import_file("price.csv", content)
+
+    assert len(changes) == 1
+    assert (changes[0].old_price_cents, changes[0].new_price_cents) == (1800, 2000)
+    prices = {item.product_volume_ml: item.product_price_cents for item in order.items}
+    assert prices == {30: 1000, 50: 2000}

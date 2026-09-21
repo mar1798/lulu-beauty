@@ -200,10 +200,15 @@ class CatalogExportService:
         Not the admin catalogue's order (`name`, `id`): a sheet is worked through one
         supplier at a time, and a screen is scrolled looking for one product by name.
 
-        `id` last, and not for show. Product names are not unique — two volumes of the
-        same toner, a re-imported duplicate — so `(brand, name)` leaves the order of the
-        equal rows to the planner, and two downloads of an unchanged catalogue then differ
-        in row order. This file is diffed against the previous one.
+        One row per volume, with the slug repeated: this is a price list, and a price
+        belongs to a volume. It reads back through the import unchanged.
+
+        `id` last, and not for show. Product names are not unique — a re-imported
+        duplicate, two products that genuinely share a name — so `(brand, name)` leaves
+        the order of the equal rows to the planner, and two downloads of an unchanged
+        catalogue then differ in row order. This file is diffed against the previous one.
+        Volumes within a product follow the order the owner arranged them in, which is
+        what `live_variants` returns.
 
         Soft-deleted products are left out: the sheet is meant to be edited and uploaded
         back, and a deleted row coming back through the import would quietly resurrect the
@@ -212,7 +217,7 @@ class CatalogExportService:
         query = (
             select(Product)
             .where(Product.deleted_at.is_(None))
-            .options(selectinload(Product.category))
+            .options(selectinload(Product.category), selectinload(Product.variants))
             .order_by(Product.brand.nulls_last(), Product.name, Product.id)
         )
         products = (await self._session.execute(query)).scalars().all()
@@ -225,9 +230,15 @@ class CatalogExportService:
                 # The slug, not the name: the import reads either, but only the slug is
                 # the identity — two categories may read the same to a person.
                 category_slug=product.category.slug if product.category else None,
-                price_cents=product.price_cents,
-                volume_ml=product.volume_ml,
-                in_stock=product.in_stock,
+                price_cents=variant.price_cents,
+                volume_ml=variant.volume_ml,
+                in_stock=variant.in_stock,
             )
             for product in products
+            # A row per volume, with the slug repeated — which is the shape the import
+            # reads back (see `CatalogImportService._upsert`) and the shape a supplier's
+            # price list already has. Price, volume and stock are the variant's; a
+            # product's own columns are derived from them and would say "от" rather than
+            # a price anyone can edit.
+            for variant in product.live_variants
         ]

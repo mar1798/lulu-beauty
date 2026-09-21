@@ -309,7 +309,7 @@ const CatalogPage: React.FC<ICatalogPageProps> = ({ categories, brands, initial 
             categoryNames={categoryNames}
             priorityCount={PRIORITY_CARDS}
             renderAction={product =>
-              product.inStock ? <AddToCartButton productId={product.id} isCompact={true} /> : null
+              product.inStock ? <AddToCartButton product={product} isCompact={true} /> : null
             }
             /*
               Сердце — у каждого товара, включая снятые с продажи: «нет в

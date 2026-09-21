@@ -5,14 +5,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.models import User
 from app.cart.service import CartService
+from app.catalog.models import Product
 from app.export.service import ExportService
 from app.orders.models import OrderStatus
 from app.orders.service import OrdersService
-from tests.integration.factories import make_cycle, make_product, make_user
+from tests.integration.factories import make_cycle, make_product, make_user, variant_id
 
 
-async def _place_order(session: AsyncSession, user_id, product_id, quantity: int):  # type: ignore[no-untyped-def]
-    await CartService(session).add_item(user_id, product_id, quantity)
+async def _place_order(session: AsyncSession, user_id, product: Product, quantity: int):  # type: ignore[no-untyped-def]
+    """Заявка на единственный объём этого товара — корзина адресуется вариантом."""
+    await CartService(session).add_item(user_id, variant_id(product), quantity)
     return await OrdersService(session).checkout(user_id, note="комментарий")
 
 
@@ -26,9 +28,9 @@ async def test_export_rows_sum_one_product_across_orders(db_session: AsyncSessio
     )
     tonik = await make_product(db_session, name="Тоник", slug="tonik", price_cents=5000)
 
-    order = await _place_order(db_session, first_user.id, krem.id, 2)
-    await OrdersService(db_session).add_item(first_user.id, order.id, tonik.id, 3)
-    await _place_order(db_session, second_user.id, krem.id, 4)
+    order = await _place_order(db_session, first_user.id, krem, 2)
+    await OrdersService(db_session).add_item(first_user.id, order.id, variant_id(tonik), 3)
+    await _place_order(db_session, second_user.id, krem, 4)
 
     rows = await ExportService(db_session)._export_rows(None)
 
@@ -51,10 +53,11 @@ async def test_export_rows_split_one_product_by_its_snapshotted_price(
     await make_cycle(db_session)
     product = await make_product(db_session, name="Крем", slug="krem", price_cents=15000)
 
-    await _place_order(db_session, user.id, product.id, 2)
-    product.price_cents = 20000
+    await _place_order(db_session, user.id, product, 2)
+    # Цена живёт на варианте — на товаре она производная, и checkout снимает её оттуда.
+    product.live_variants[0].price_cents = 20000
     await db_session.flush()
-    await _place_order(db_session, user.id, product.id, 1)
+    await _place_order(db_session, user.id, product, 1)
 
     rows = await ExportService(db_session)._export_rows(None)
 
@@ -69,10 +72,11 @@ async def test_export_rows_without_prices_merge_the_same_product_back_together(
     await make_cycle(db_session)
     product = await make_product(db_session, name="Крем", slug="krem", price_cents=15000)
 
-    await _place_order(db_session, user.id, product.id, 2)
-    product.price_cents = 20000
+    await _place_order(db_session, user.id, product, 2)
+    # Цена живёт на варианте — на товаре она производная, и checkout снимает её оттуда.
+    product.live_variants[0].price_cents = 20000
     await db_session.flush()
-    await _place_order(db_session, user.id, product.id, 1)
+    await _place_order(db_session, user.id, product, 1)
 
     rows = await ExportService(db_session)._export_rows(None, include_prices=False)
 
@@ -89,12 +93,12 @@ async def test_export_rows_can_be_scoped_to_a_cycle_and_a_status(
     product = await make_product(db_session, price_cents=1000)
 
     old_cycle = await make_cycle(db_session, deadline_at=datetime.now(UTC) + timedelta(hours=1))
-    await _place_order(db_session, user.id, product.id, 5)
+    await _place_order(db_session, user.id, product, 5)
 
     # Новый сбор перекрывает старый: get_active_cycle берёт ближайший дедлайн.
     old_cycle.deadline_at = datetime.now(UTC) - timedelta(seconds=1)
     new_cycle = await make_cycle(db_session, deadline_at=datetime.now(UTC) + timedelta(days=1))
-    newer_order = await _place_order(db_session, user.id, product.id, 2)
+    newer_order = await _place_order(db_session, user.id, product, 2)
     await db_session.flush()
 
     service = ExportService(db_session)
@@ -127,7 +131,7 @@ async def test_deleting_a_customer_takes_their_orders_out_of_the_export(
     user = await make_user(db_session)
     await make_cycle(db_session)
     product = await make_product(db_session)
-    await _place_order(db_session, user.id, product.id, 1)
+    await _place_order(db_session, user.id, product, 1)
     assert len(await ExportService(db_session)._export_rows(None)) == 1
 
     await db_session.execute(delete(User).where(User.id == user.id))

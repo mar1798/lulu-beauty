@@ -76,6 +76,35 @@ describe('AdminProductForm', () => {
     expect(volume).toHaveValue('12345')
   })
 
+  it('не пускает буквы ни в объём, ни в цену', async () => {
+    // Поля числовые: отсеиваем на вводе, а не ругаемся на сабмите.
+    const feed = feedAdminProductForm()
+
+    renderWidget(<AdminProductForm {...feed} />)
+
+    const volume = screen.getByRole('textbox', { name: 'Объём, мл' })
+    await userEvent.clear(volume)
+    await userEvent.type(volume, '5e0ф мл')
+    expect(volume).toHaveValue('50')
+
+    const price = screen.getByRole('textbox', { name: 'Цена, сом' })
+    await userEvent.clear(price)
+    await userEvent.type(price, '1a250,5сом')
+    expect(price).toHaveValue('1250,5')
+  })
+
+  it('держит в цене один разделитель и две копейки', async () => {
+    const feed = feedAdminProductForm()
+
+    renderWidget(<AdminProductForm {...feed} />)
+
+    const price = screen.getByRole('textbox', { name: 'Цена, сом' })
+    await userEvent.clear(price)
+    await userEvent.type(price, '12.34.56')
+
+    expect(price).toHaveValue('12.34')
+  })
+
   it('не сохраняет цену выше потолка колонки', async () => {
     const onSubmit = vi.fn()
     const feed = feedAdminProductForm()
@@ -103,5 +132,72 @@ describe('AdminProductForm', () => {
 
     expect(onSubmit).not.toHaveBeenCalled()
     expect(screen.getByRole('alert')).toHaveTextContent('Укажите производителя')
+  })
+})
+
+describe('AdminProductForm и несколько объёмов', () => {
+  it('отдаёт объёмы списком, а витринные поля считает по нему', async () => {
+    const onSubmit = vi.fn()
+    const feed = feedAdminProductForm()
+
+    renderWidget(<AdminProductForm {...feed} onSubmit={onSubmit} />)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Добавить объём' }))
+
+    const volumes = screen.getAllByRole('textbox', { name: 'Объём, мл' })
+    const prices = screen.getAllByRole('textbox', { name: 'Цена, сом' })
+    await userEvent.clear(volumes[0])
+    await userEvent.type(volumes[0], '30')
+    await userEvent.clear(prices[0])
+    await userEvent.type(prices[0], '1800')
+    await userEvent.type(volumes[1], '50')
+    await userEvent.type(prices[1], '1000')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Сохранить' }))
+
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        variants: [
+          { volumeMl: 30, priceCents: 180_000, inStock: true },
+          { volumeMl: 50, priceCents: 100_000, inStock: true },
+        ],
+        // Те же три правила, что и у бэкенда: минимум, объём только пока он
+        // один, наличие — «хоть один есть».
+        priceCents: 100_000,
+        volumeMl: null,
+        inStock: true,
+      })
+    )
+  })
+
+  it('не даёт указать один объём дважды и говорит, какая строка лишняя', async () => {
+    // Иначе это 500 из частичного уникального индекса на бэкенде, а не ошибка
+    // формы, и владелец не узнает, какую строку править.
+    const onSubmit = vi.fn()
+    const feed = feedAdminProductForm()
+
+    renderWidget(<AdminProductForm {...feed} onSubmit={onSubmit} />)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Добавить объём' }))
+
+    const volumes = screen.getAllByRole('textbox', { name: 'Объём, мл' })
+    const prices = screen.getAllByRole('textbox', { name: 'Цена, сом' })
+    await userEvent.clear(volumes[0])
+    await userEvent.type(volumes[0], '30')
+    await userEvent.clear(prices[0])
+    await userEvent.type(prices[0], '1000')
+    await userEvent.type(volumes[1], '30')
+    await userEvent.type(prices[1], '1200')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Сохранить' }))
+
+    expect(onSubmit).not.toHaveBeenCalled()
+    expect(screen.getByText('Такой объём уже есть выше')).toBeInTheDocument()
+  })
+
+  it('последнюю строку убрать не даёт: товар без объёма не сохранить', () => {
+    renderWidget(<AdminProductForm {...feedAdminProductForm()} />)
+
+    expect(screen.queryByRole('button', { name: /^Убрать объём/ })).not.toBeInTheDocument()
   })
 })

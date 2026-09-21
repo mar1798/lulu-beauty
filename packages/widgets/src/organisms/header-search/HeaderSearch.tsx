@@ -516,7 +516,7 @@ export const HeaderSearch: FC<IHeaderSearchProps & IBasicStyling> = ({
 
             {item.priceCents !== undefined && (
               <span className={styles.price}>
-                <Price priceCents={item.priceCents} size="sm" />
+                <Price priceCents={item.priceCents} size="sm" isFrom={item.isPriceFrom} />
                 {item.isUnavailable === true && <span className={styles.stock}>нет в наличии</span>}
               </span>
             )}

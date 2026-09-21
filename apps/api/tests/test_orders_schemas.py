@@ -37,22 +37,22 @@ def test_order_status_update_round_trips_enum() -> None:
 
 
 def test_order_item_add_accepts_camel_case_and_defaults_to_one() -> None:
-    product_id = uuid.uuid4()
+    variant_id = uuid.uuid4()
 
-    request = OrderItemAddRequest.model_validate({"productId": str(product_id)})
+    request = OrderItemAddRequest.model_validate({"variantId": str(variant_id)})
 
-    assert request.product_id == product_id
+    assert request.variant_id == variant_id
     assert request.quantity == 1
 
 
 def test_order_item_add_rejects_quantities_outside_the_range() -> None:
-    product_id = uuid.uuid4()
+    variant_id = uuid.uuid4()
 
     with pytest.raises(ValidationError):
-        OrderItemAddRequest.model_validate({"productId": str(product_id), "quantity": 0})
+        OrderItemAddRequest.model_validate({"variantId": str(variant_id), "quantity": 0})
     with pytest.raises(ValidationError):
         OrderItemAddRequest.model_validate(
-            {"productId": str(product_id), "quantity": MAX_ITEM_QUANTITY + 1}
+            {"variantId": str(variant_id), "quantity": MAX_ITEM_QUANTITY + 1}
         )
 
 
@@ -60,14 +60,18 @@ def test_order_item_response_product_id_can_be_none() -> None:
     response = OrderItemResponse(
         id=uuid.uuid4(),
         product_id=None,
+        variant_id=None,
         product_name="Deleted product",
         product_slug="deleted-product",
         product_image_url=None,
         product_price_cents=1000,
+        product_volume_ml=50,
         quantity=2,
         line_total_cents=2000,
     )
     assert response.product_id is None
+    # The volume is a snapshot too, so it survives the variant row the same way.
+    assert response.product_volume_ml == 50
     # The snapshot outlives the product row, so the slug stays even with product_id gone.
     assert response.product_slug == "deleted-product"
 

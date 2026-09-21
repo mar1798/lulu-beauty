@@ -126,11 +126,14 @@ def test_order_item_repriced_names_both_prices_and_the_new_total() -> None:
     assert "снизилась" in messages.order_item_repriced(order_id, "X", 140_000, 120_000, 240_000)
 
 
-def _price_change(order_id: uuid.UUID, total_cents: int) -> OrderPriceChange:
+def _price_change(
+    order_id: uuid.UUID, total_cents: int, volume_ml: int | None = None
+) -> OrderPriceChange:
     return OrderPriceChange(
         order_id=order_id,
         user_id=uuid.uuid4(),
         product_name="Rose Serum",
+        product_volume_ml=volume_ml,
         old_price_cents=120_000,
         new_price_cents=140_000,
         total_cents=total_cents,
@@ -163,11 +166,18 @@ def test_orders_repriced_names_every_affected_order_in_one_text() -> None:
     assert text.count("выросла") == 2
 
 
-def _drop(order_id: uuid.UUID, *, is_cancelled: bool, name: str = "Rose Serum") -> OrderItemDrop:
+def _drop(
+    order_id: uuid.UUID,
+    *,
+    is_cancelled: bool,
+    name: str = "Rose Serum",
+    volume_ml: int | None = None,
+) -> OrderItemDrop:
     return OrderItemDrop(
         order_id=order_id,
         user_id=uuid.uuid4(),
         product_name=name,
+        product_volume_ml=volume_ml,
         total_cents=50_000,
         is_cancelled=is_cancelled,
     )
@@ -203,6 +213,34 @@ def test_orders_items_dropped_folds_several_orders_into_one_text() -> None:
     assert "Rose Serum, Toner" in text
     assert "отменена" in text
     assert len(text.splitlines()) == 3
+
+
+def test_notifications_name_the_volume_a_line_was_for() -> None:
+    """У товара, который продаётся в 30 и 50 мл, одно название не называет ничего.
+
+    Заявка может держать оба объёма сразу, и без объёма человек получал два сообщения
+    про «Rose Serum» с разными числами — читается это как ошибка магазина.
+    """
+    first = uuid.UUID("a1b2c3d4-0000-0000-0000-000000000000")
+    second = uuid.UUID("b2c3d4e5-0000-0000-0000-000000000000")
+
+    repriced = messages.orders_repriced(
+        [_price_change(first, 280_000, volume_ml=30), _price_change(second, 420_000, volume_ml=50)]
+    )
+    assert "Rose Serum, 30 мл" in repriced
+    assert "Rose Serum, 50 мл" in repriced
+
+    dropped = messages.orders_items_dropped([_drop(first, is_cancelled=False, volume_ml=30)])
+    assert "Rose Serum, 30 мл" in dropped
+
+
+def test_notifications_leave_a_volumeless_product_alone() -> None:
+    """У патчей и тканевых масок объёма нет, и приписывать им «, None мл» нечего."""
+    order_id = uuid.UUID("a1b2c3d4-0000-0000-0000-000000000000")
+
+    assert messages.orders_repriced([_price_change(order_id, 280_000)]) == (
+        messages.order_item_repriced(order_id, "Rose Serum", 120_000, 140_000, 280_000)
+    )
 
 
 def test_order_item_removed_is_not_the_cancellation_text() -> None:
@@ -299,11 +337,13 @@ def test_my_cart_distinguishes_empty_cart_from_closed_shop() -> None:
 
 def test_my_cart_lists_items_total_and_deadline() -> None:
     item = CartItemResponse(
+        variant_id=uuid.uuid4(),
         product_id=uuid.uuid4(),
         product_name="Крем для рук",
         product_slug="krem",
         product_image_url=None,
         product_price_cents=62_500,
+        product_volume_ml=50,
         quantity=2,
         line_total_cents=125_000,
     )
@@ -311,7 +351,8 @@ def test_my_cart_lists_items_total_and_deadline() -> None:
     cart = _cart(items=[item], deadline=datetime(2030, 6, 12, tzinfo=UTC))
     text = _normalize(messages.my_cart(cart))
 
-    assert "Крем для рук × 2" in text
+    # The volume is part of the line: a cart may hold two of them under one name.
+    assert "Крем для рук, 50 мл × 2" in text
     assert "1 250 сом" in text
     assert "12.06.2030" in text
 

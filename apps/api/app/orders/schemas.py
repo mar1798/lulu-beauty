@@ -39,30 +39,37 @@ class OrderItemQuantityRequest(CamelModel):
 
 
 class OrderItemAddRequest(CamelModel):
-    """A product added to an order that's already been placed — not through the cart.
+    """A volume added to an order that's already been placed — not through the cart.
 
     The cart belongs to the *next* order; adding there would leave this one unchanged.
+
+    Addressed by variant, not by product: the customer picks "30 мл", and a product sold
+    in two volumes gives the server no way to guess which one was meant.
     """
 
-    product_id: uuid.UUID
+    variant_id: uuid.UUID
     quantity: int = Field(default=1, ge=1, le=MAX_ITEM_QUANTITY)
 
 
 class OrderItemResponse(CamelModel):
     id: uuid.UUID
     product_id: uuid.UUID | None
+    variant_id: uuid.UUID | None
     product_name: str
     product_slug: str
     product_image_url: str | None
     product_price_cents: int
     quantity: int
     line_total_cents: int
-    # Descriptive labels (brand · category · volume), read from the live catalog rather
-    # than snapshotted: unlike name and price, they are not part of what was agreed, and
-    # a line whose product has been hard-deleted (product_id NULL) simply has none.
+    # Descriptive labels (brand · category), read from the live catalog rather than
+    # snapshotted: unlike name and price, they are not part of what was agreed, and a
+    # line whose product has been hard-deleted (product_id NULL) simply has none.
     # See OrdersService.load_item_tags.
     product_brand: str | None = None
     product_category_name: str | None = None
+    # The volume, unlike the two above, *is* a snapshot on the line — it is what the
+    # customer chose between, and the product row stops knowing it the moment the same
+    # product is sold in a second volume.
     product_volume_ml: int | None = None
 
 

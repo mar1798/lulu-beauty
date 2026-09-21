@@ -17,6 +17,12 @@ interface IProductTagsInput {
   brand: string | null
   categoryName?: string | null
   volumeMl: number | null
+  /**
+   * Готовая подпись объёма вместо `volumeMl`. Нужна там, где объёмов
+   * несколько: у такого товара `volumeMl` пуст (одним числом его не описать),
+   * а сказать «30 / 50 мл» всё равно надо.
+   */
+  volumeLabel?: string | null
 }
 
 /**
@@ -30,7 +36,12 @@ interface IProductTagsInput {
  * Объём последним — он уточняет товар, а не называет его. Пустые строки
  * отбрасываются наравне с `null`: из прайса приходит и то, и другое.
  */
-export const productTags = ({ brand, categoryName, volumeMl }: IProductTagsInput): string[] =>
-  [brand, categoryName, formatVolume(volumeMl)].filter(
+export const productTags = ({
+  brand,
+  categoryName,
+  volumeMl,
+  volumeLabel,
+}: IProductTagsInput): string[] =>
+  [brand, categoryName, volumeLabel ?? formatVolume(volumeMl)].filter(
     (value): value is string => value !== null && value !== undefined && value.trim() !== ''
   )

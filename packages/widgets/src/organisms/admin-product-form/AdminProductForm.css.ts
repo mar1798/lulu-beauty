@@ -1,8 +1,15 @@
 import { style } from '@vanilla-extract/css'
-import { border, color, rem } from '../../styling/lib'
+import { border, color, font, rem } from '../../styling/lib'
 import { media } from '../../styling/lib/media'
-import { flexColumn, flexRow, panel } from '../../styling/mixin'
+import { FIELD_HEIGHT, flexColumn, flexRow, panel } from '../../styling/mixin'
 import { vars } from '../../styling/themes/contract.css'
+
+/**
+ * Высота подписи поля (`fieldLabel`, строка 20px) вместе с зазором до самого
+ * поля (`Input` держит колонку с `rowGap: 6`). На эту полку опускается всё,
+ * что в строке стоит без подписи, но обязано выровняться с полями.
+ */
+const LABEL_BAND = 26
 
 export const container = style({
   ...flexColumn(20),
@@ -91,4 +98,62 @@ export const thumbDelete = style({
   insetInlineEnd: vars.space.xxs,
   insetBlockEnd: vars.space.xxs,
   backgroundColor: color.surface('base'),
+})
+
+/**
+ * Таблица объёмов. `fieldset` сбрасывается до обычного блока: браузерная рамка
+ * с вырезом под легенду в этой форме выглядит чужеродно, а группировка нужна
+ * ради скринридера, а не ради рамки.
+ */
+export const variants = style({
+  ...flexColumn(12),
+  margin: 0,
+  padding: 0,
+  border: 'none',
+})
+
+export const variantsLegend = style({
+  padding: 0,
+  font: font('16/24', 600),
+  color: color.text('primary'),
+})
+
+/**
+ * Строка объёма: на телефоне поля идут друг под другом, с `sm` встают в ряд.
+ * Ширины заданы долями, а не `1fr` поровну: цена длиннее объёма, а тумблеру с
+ * кнопкой нужно ровно столько, сколько они занимают, — они делят третью
+ * ячейку (`variantControls`).
+ */
+export const variantRow = style({
+  ...flexColumn(12),
+  ...media({
+    sm: {
+      display: 'grid',
+      gridTemplateColumns: 'minmax(0, 3fr) minmax(0, 4fr) auto',
+      gap: vars.space.md,
+      alignItems: 'start',
+    },
+  }),
+})
+
+/**
+ * Тумблер «в наличии» и «убрать объём» — одна строка на любой ширине.
+ *
+ * На десктопе они обязаны встать по центру полей, а не по центру ячейки:
+ * ячейка тянется на подпись и подсказку, и `alignItems: center` посадил бы их
+ * то выше, то ниже — в зависимости от того, есть ли под полем подсказка или
+ * ошибка. Поэтому ячейка сама получает высоту поля и полку сверху ровно под
+ * подпись (`14/20` плюс зазор `Input`), а содержимое центрируется уже в ней.
+ */
+export const variantControls = style({
+  ...flexRow(12),
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  ...media({
+    sm: {
+      justifyContent: 'flex-start',
+      minHeight: rem(FIELD_HEIGHT),
+      marginTop: rem(LABEL_BAND),
+    },
+  }),
 })

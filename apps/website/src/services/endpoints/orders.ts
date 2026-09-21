@@ -46,15 +46,16 @@ export const getMyOrder = (orderId: string): Promise<IOrder> =>
  * копится под **следующую** заявку, и положенное в неё эту не изменит.
  *
  * Снапшот снимается в момент добавления — новая позиция встаёт по текущей
- * цене каталога, а уже лежащие в заявке сохраняют свою. Товар, который в
- * заявке уже есть, сливается со своей строкой, а не заводит вторую.
+ * цене каталога, а уже лежащие в заявке сохраняют свою. Объём, который в
+ * заявке уже есть, сливается со своей строкой, а не заводит вторую; два
+ * объёма одного товара — две разные строки.
  */
 export const addMyOrderItem = (
   orderId: string,
-  productId: string,
+  variantId: string,
   quantity: number = 1
 ): Promise<IOrder> =>
-  api.post(`/orders/${encodeURIComponent(orderId)}/items`, { body: { productId, quantity } })
+  api.post(`/orders/${encodeURIComponent(orderId)}/items`, { body: { variantId, quantity } })
 
 export const updateMyOrderItemQuantity = (
   orderId: string,

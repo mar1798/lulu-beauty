@@ -58,7 +58,10 @@ export interface ISuggestProduct {
   name: string
   slug: string
   brand: string | null
+  /** Цена самого дешёвого объёма, когда их несколько (см. `variantCount`). */
   priceCents: number
+  /** Сколько объёмов у товара: больше одного — цена в строке подписывается «от». */
+  variantCount: number
   inStock: boolean
   imageUrl: string | null
   imageAlt: string | null

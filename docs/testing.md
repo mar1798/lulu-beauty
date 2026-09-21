@@ -48,7 +48,11 @@ pytest-asyncio gives each test a fresh event loop, and asyncpg connections are b
 loop they were opened on — a pooled connection from a previous test's loop raises "another
 operation is in progress" the moment it's used.
 
-`tests/integration/factories.py` builds domain objects for those tests.
+`tests/integration/factories.py` builds domain objects for those tests. `make_product` always
+gives the product at least one variant — that is an invariant of the catalogue, not a detail
+of the admin form — and takes `variants=[(volume_ml, price_cents, in_stock), …]` for a product
+sold in several. `variant_id(product)` is how a test names the volume a cart or an order is
+about; asked for a product sold in several without naming one, it fails rather than guessing.
 
 Single test:
 

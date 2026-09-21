@@ -134,12 +134,23 @@ class OrderItem(UUIDPrimaryKeyMixin, Base):
     product_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("products.id", ondelete="SET NULL"), index=True
     )
+    # Which volume was ordered. Nullable for the same reason product_id is — the row
+    # outlives what it points at — and, like it, the line stays readable without it
+    # because product_volume_ml below is a snapshot.
+    variant_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("product_variants.id", ondelete="SET NULL"), index=True
+    )
     product_name: Mapped[str] = mapped_column(String(255))
     # Snapshotted alongside name/price so an order stays renderable (thumbnail + link to the
     # catalog page) after the product is edited or soft-deleted — product_id goes NULL then.
     product_slug: Mapped[str] = mapped_column(String(255), default="")
     product_image_url: Mapped[str | None] = mapped_column(String(2048))
     product_price_cents: Mapped[int] = mapped_column(Integer)
+    # Snapshotted rather than read from the catalog with the other labels (brand,
+    # category — see `OrdersService._product_tags`). Those describe the product and are
+    # the same for every line of it; the volume is the thing the customer *chose*, and
+    # once a product has several, the product row no longer knows which one this was.
+    product_volume_ml: Mapped[int | None] = mapped_column(Integer)
     quantity: Mapped[int] = mapped_column(Integer)
 
     order: Mapped["Order"] = relationship(back_populates="items")

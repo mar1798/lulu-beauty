@@ -31,7 +31,7 @@ async def add_item(
     current_user: CurrentUser = Depends(get_current_user),
 ) -> CartResponse:
     try:
-        cart = await CartService(session).add_item(current_user.id, body.product_id, body.quantity)
+        cart = await CartService(session).add_item(current_user.id, body.variant_id, body.quantity)
     except NoActiveCycleError as error:
         raise HTTPException(status.HTTP_409_CONFLICT, "no_active_cycle") from error
     except ProductNotFoundError as error:
@@ -41,16 +41,18 @@ async def add_item(
     return cart
 
 
-@router.patch("/items/{product_id}", response_model=CartResponse)
+# Addressed by variant: a cart holds a line per volume, so the product alone no
+# longer names one.
+@router.patch("/items/{variant_id}", response_model=CartResponse)
 async def update_item(
-    product_id: uuid.UUID,
+    variant_id: uuid.UUID,
     body: UpdateCartItemRequest,
     session: AsyncSession = Depends(get_session),
     current_user: CurrentUser = Depends(get_current_user),
 ) -> CartResponse:
     try:
         cart = await CartService(session).set_item_quantity(
-            current_user.id, product_id, body.quantity
+            current_user.id, variant_id, body.quantity
         )
     except NoActiveCycleError as error:
         raise HTTPException(status.HTTP_409_CONFLICT, "no_active_cycle") from error
@@ -61,14 +63,14 @@ async def update_item(
     return cart
 
 
-@router.delete("/items/{product_id}", response_model=CartResponse)
+@router.delete("/items/{variant_id}", response_model=CartResponse)
 async def remove_item(
-    product_id: uuid.UUID,
+    variant_id: uuid.UUID,
     session: AsyncSession = Depends(get_session),
     current_user: CurrentUser = Depends(get_current_user),
 ) -> CartResponse:
     try:
-        cart = await CartService(session).remove_item(current_user.id, product_id)
+        cart = await CartService(session).remove_item(current_user.id, variant_id)
     except CartItemNotFoundError as error:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "cart_item_not_found") from error
 

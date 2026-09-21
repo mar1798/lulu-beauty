@@ -87,7 +87,7 @@ const WishlistPage: React.FC = () => {
           buildHref={product => `/catalog/${product.slug}`}
           categoryNames={categoryNames}
           renderAction={product =>
-            product.inStock ? <AddToCartButton productId={product.id} isCompact={true} /> : null
+            product.inStock ? <AddToCartButton product={product} isCompact={true} /> : null
           }
           // Здесь сердце всегда залито, и нажатие убирает товар из списка.
           renderMediaAction={product => <WishlistButton productId={product.id} />}
