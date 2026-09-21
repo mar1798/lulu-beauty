@@ -11,6 +11,7 @@ from sqlalchemy.orm import selectinload
 
 from app.catalog.models import Category, Product, ProductImage, ProductVariant
 from app.catalog.results import CatalogSuggestions, VariantSpec
+from app.catalog.search import normalize_search
 from app.common.limits import MAX_PRODUCT_VARIANTS
 from app.orders.models import OrderItem
 
@@ -154,12 +155,18 @@ BRAND_CASING_HEADROOM = 3
 
 
 def like_pattern(search: str) -> str:
-    """An infix ILIKE pattern with the wildcards the user typed taken literally.
+    """An infix ILIKE pattern for the *_norm columns, wildcards taken literally.
+
+    Normalised first, escaped second, and the order is not a detail: escaping inserts
+    backslashes, and `normalize_search` drops backslashes, so doing it the other way
+    round would quietly unescape whatever it had just escaped.
 
     Escaped rather than stripped: someone searching for "50%" means a product whose
     name contains "50%", and an unescaped `%` would have matched the whole catalog.
+    `%` and `_` survive normalisation for that reason (`catalog/search.py`).
     """
-    escaped = search.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    normalized = normalize_search(search)
+    escaped = normalized.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
     return f"%{escaped}%"
 
 
@@ -179,7 +186,7 @@ class ProductService:
         is the whole catalogue.
         """
         result = await self._session.execute(
-            select(Category.id).where(Category.name.ilike(like_pattern(search), escape="\\"))
+            select(Category.id).where(Category.name_norm.ilike(like_pattern(search), escape="\\"))
         )
         return list(result.scalars().all())
 
@@ -214,8 +221,8 @@ class ProductService:
             # join or an EXISTS: a join would collide with the one `category_slug` above
             # may already have made, and an EXISTS would cost both trigram indexes.
             arms = [
-                Product.name.ilike(pattern, escape="\\"),
-                Product.brand.ilike(pattern, escape="\\"),
+                Product.name_norm.ilike(pattern, escape="\\"),
+                Product.brand_norm.ilike(pattern, escape="\\"),
             ]
             if search_category_ids:
                 arms.append(Product.category_id.in_(search_category_ids))
@@ -346,7 +353,7 @@ class ProductService:
             .where(
                 Product.brand.is_not(None),
                 Product.brand != "",
-                Product.brand.ilike(pattern, escape="\\"),
+                Product.brand_norm.ilike(pattern, escape="\\"),
                 Product.deleted_at.is_(None),
             )
             .distinct()
@@ -381,7 +388,9 @@ class ProductService:
             # Variants too: the row says "от N ₽" for a product sold in several, and
             # `volume_ml` alone cannot tell that apart from a product with no volume.
             .options(selectinload(Product.images), selectinload(Product.variants))
-            .order_by(Product.name.ilike(pattern, escape="\\").desc(), Product.name, Product.id)
+            .order_by(
+                Product.name_norm.ilike(pattern, escape="\\").desc(), Product.name, Product.id
+            )
             .limit(product_limit)
         )
 

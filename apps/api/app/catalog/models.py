@@ -1,17 +1,43 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, String, Text, text
+from sqlalchemy import (
+    Boolean,
+    Computed,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    text,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from app.catalog.search import NOISE_SQL
 from app.common.mixins import TimestampMixin, UUIDPrimaryKeyMixin
 from app.db import Base
+
+
+def _norm(column: str) -> Computed:
+    """The stored, punctuation-free twin of a text column — see `catalog/search.py`.
+
+    Generated rather than written by the service, so that every path that can create a
+    row keeps it true: the admin forms, the xlsx import, and whatever writes next. It is
+    also why `translate()` is used and `lower()` is not — a stored generated column must
+    be immutable, and matching is `ILIKE` regardless.
+    """
+    return Computed(f"translate({column}, '{NOISE_SQL}', '')", persisted=True)
 
 
 class Category(UUIDPrimaryKeyMixin, Base):
     __tablename__ = "categories"
 
     name: Mapped[str] = mapped_column(String(255))
+    # No index: search resolves categories with `_search_category_ids`, which reads the
+    # whole table by design — there are tens of rows, and a GIN index on them would cost
+    # more on every write than the scan it saves.
+    name_norm: Mapped[str] = mapped_column(String(255), _norm("name"))
     slug: Mapped[str] = mapped_column(String(255), unique=True, index=True)
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
 
@@ -27,34 +53,41 @@ class Product(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __table_args__ = (
         Index("ix_products_live_name", "name", postgresql_where=text("deleted_at IS NULL")),
         Index("ix_products_live_brand", "brand", postgresql_where=text("deleted_at IS NULL")),
-        # Catalogue search is `name ILIKE '%…%'`, which no btree index can serve — the
-        # leading wildcard rules it out — so it read every row. A trigram GIN index is the
-        # one thing that indexes an infix match. pg_trgm is a *trusted* extension, so the
+        # Catalogue search is `ILIKE '%…%'`, which no btree index can serve — the leading
+        # wildcard rules it out — so it read every row. A trigram GIN index is the one
+        # thing that indexes an infix match. pg_trgm is a *trusted* extension, so the
         # migration can create it without superuser (verified against a plain database
-        # owner); the index is partial on the same condition as the two above.
+        # owner); the indexes are partial on the same condition as the two above.
+        #
+        # They are on the *_norm columns rather than on `name`/`brand` because that is
+        # where the pattern now runs, and the raw pair they replaced was dropped in the
+        # same migration: two GIN indexes on this table, not four. Nothing else does an
+        # infix match on the raw columns, and the btrees above still serve the ordering
+        # and the exact-match brand filter.
         Index(
-            "ix_products_live_name_trgm",
-            "name",
+            "ix_products_live_name_norm_trgm",
+            "name_norm",
             postgresql_using="gin",
-            postgresql_ops={"name": "gin_trgm_ops"},
+            postgresql_ops={"name_norm": "gin_trgm_ops"},
             postgresql_where=text("deleted_at IS NULL"),
         ),
-        # The same, for brand: search is one field over name, brand and category now
-        # (`ProductService._filtered_query`), so `brand ILIKE '%…%'` runs on every
-        # search too, and the plain btree above only serves the exact-match filter.
         Index(
-            "ix_products_live_brand_trgm",
-            "brand",
+            "ix_products_live_brand_norm_trgm",
+            "brand_norm",
             postgresql_using="gin",
-            postgresql_ops={"brand": "gin_trgm_ops"},
+            postgresql_ops={"brand_norm": "gin_trgm_ops"},
             postgresql_where=text("deleted_at IS NULL"),
         ),
     )
 
     name: Mapped[str] = mapped_column(String(255))
+    name_norm: Mapped[str] = mapped_column(String(255), _norm("name"))
     slug: Mapped[str] = mapped_column(String(255), unique=True, index=True)
     description: Mapped[str | None] = mapped_column(Text)
     brand: Mapped[str | None] = mapped_column(String(255))
+    # NULL when `brand` is, which is what keeps the search arm behaving exactly as it did
+    # against the raw column: a product with no brand matches no brand query.
+    brand_norm: Mapped[str | None] = mapped_column(String(255), _norm("brand"))
     # The three columns below are *derived* from the product's live variants and are
     # rewritten by `ProductService._refresh_display_fields` on every write that can move
     # them. They are kept on the row rather than computed per query because everything
