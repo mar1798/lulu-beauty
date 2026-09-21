@@ -2,7 +2,7 @@ import React, { useState } from 'react'
 import Head from 'next/head'
 import { useRouter } from 'next/router'
 import useSWR from 'swr'
-import { AppLink, Button, Divider, Text } from 'widgets/atoms'
+import { Alert, AppLink, Button, Divider, Text } from 'widgets/atoms'
 import { useConfirm } from 'widgets/contexts'
 import { EmptyState, orderNumber } from 'widgets/molecules'
 import { plural, pluralize, type IPluralForms } from 'widgets/utils'
@@ -48,6 +48,15 @@ const AccountPage: React.FC = () => {
   const [isSaved, setIsSaved] = useState(false)
   const [isLoggingOut, setIsLoggingOut] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
+  /*
+    Отдельно от `error`: тот уходит в `ProfileForm` и показывается у поля имени,
+    наверху формы, — а кнопка удаления стоит в самом низу, в подвале. На узком
+    экране отказ оказывался за пределами видимого, и нажатие выглядело так,
+    будто ничего не произошло.
+  */
+  const [deleteError, setDeleteError] = useState<string | null>(null)
+  /** Аккаунт удалён: вместо формы — прощание, см. `handleDelete`. */
+  const [isDeleted, setIsDeleted] = useState(false)
 
   /*
     Запрашивается только для вошедшего и только на этой странице: ответ нужен
@@ -102,8 +111,14 @@ const AccountPage: React.FC = () => {
    * показывает адрес страницы.
    *
    * Текст перечисляет последствия целиком, включая отмену ещё не подтверждённых
-   * заявок: это единственный момент, когда человека можно об этом предупредить, —
-   * после подтверждения ни аккаунта, ни экрана, на котором это сказать.
+   * заявок: это единственный момент, когда человека можно об этом предупредить
+   * до нажатия.
+   *
+   * После удаления — не редирект, а прощальный экран на этом же месте
+   * (`isDeleted`). Молчаливый переезд в каталог неотличим от сбоя: человек
+   * нажал необратимое и оказался на витрине, ничего про это не узнав. Уходит
+   * он сам, прочитав, что именно стёрто, — так же, как экран успеха после
+   * отправки заявки (`pages/checkout.tsx`) никуда не уводит.
    */
   const handleDelete = async (): Promise<void> => {
     const confirmed = await confirm({
@@ -121,13 +136,13 @@ const AccountPage: React.FC = () => {
     }
 
     setIsDeleting(true)
-    setError(null)
+    setDeleteError(null)
 
     try {
       await deleteAccount()
-      await router.push('/catalog')
+      setIsDeleted(true)
     } catch (cause: unknown) {
-      setError(messageForError(cause, 'account.delete'))
+      setDeleteError(messageForError(cause, 'account.delete'))
       /*
         Перечитываем право на удаление: самая вероятная причина отказа — заявку
         подтвердили, пока страница была открыта. Тогда ответ приедет с её
@@ -135,8 +150,7 @@ const AccountPage: React.FC = () => {
         строки ошибки над той же рабочей кнопкой.
       */
       void reloadDeletion()
-      // Только в ошибке: на успехе экран уже уезжает на витрину, и снятый флаг
-      // успел бы вернуть кнопку в рабочий вид на удалённом аккаунте.
+      // Только в ошибке: на успехе кнопки уже нет — на её месте прощание.
       setIsDeleting(false)
     }
   }
@@ -157,6 +171,30 @@ const AccountPage: React.FC = () => {
   }
 
   const content = (): React.ReactNode => {
+    /*
+      Раньше загрузки и раньше гостя — намеренно: удаление снимает сессию, и
+      сразу после него `user` равен `null`. Без этой ветки на месте формы
+      оказалось бы «Профиль виден после входа» — приглашение войти в аккаунт,
+      которого только что не стало.
+
+      Последствия названы ещё раз, теперь в прошедшем времени: подтверждение
+      человек читал до нажатия и мог не запомнить, а другого экрана, где об
+      этом сказать, больше не будет.
+    */
+    if (isDeleted) {
+      return (
+        <EmptyState
+          title="Аккаунт удалён"
+          description="Номер, имя и привязка к боту стёрты, корзина и избранное — удалены, заявки, ожидавшие подтверждения, отменены. Согласие на обработку данных отозвано. Вернуться можно, заведя аккаунт заново."
+          action={
+            <Button link={{ href: '/catalog' }} isFullWidth="mobile">
+              В каталог
+            </Button>
+          }
+        />
+      )
+    }
+
     /*
       Скелетон в раскладке формы: спиннер сменился бы блоком другой высоты.
       Обработчик тот же самый — в этом состоянии формы ещё нет и нажимать
@@ -284,6 +322,8 @@ const AccountPage: React.FC = () => {
                   >
                     Удалить аккаунт
                   </Button>
+
+                  {deleteError !== null && <Alert tone="danger">{deleteError}</Alert>}
                 </>
               )}
             </>
