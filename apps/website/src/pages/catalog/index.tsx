@@ -295,12 +295,7 @@ const CatalogPage: React.FC<ICatalogPageProps> = ({ categories, brands, initial 
         }
         search={<SearchField value={search} onChange={setSearch} isBusy={isStale} />}
         pagination={
-          <Pagination
-            page={pageNumber}
-            pageSize={PAGE_SIZE}
-            total={total}
-            onChange={goToPage}
-          />
+          <Pagination page={pageNumber} pageSize={PAGE_SIZE} total={total} onChange={goToPage} />
         }
       >
         <ClosedCycleNotice />

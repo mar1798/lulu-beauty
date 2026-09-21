@@ -75,8 +75,10 @@ def _order_items(order: Order, tags: Mapping[uuid.UUID, ProductTags]) -> list[Or
     ]
 
 
-# An order nobody may act on — the admin view, where neither flag has a meaning.
-_NO_ACTIONS = OrderFlags(is_editable=False, is_restorable=False)
+# An order nobody may act on — the admin view, where none of these have a meaning.
+_NO_ACTIONS = OrderFlags(
+    is_editable=False, is_restorable=False, is_cancellable=False, pending_stage=None
+)
 
 
 def _order_response(
@@ -94,6 +96,8 @@ def _order_response(
         items=_order_items(order, tags),
         is_editable=flags.is_editable,
         is_restorable=flags.is_restorable,
+        is_cancellable=flags.is_cancellable,
+        pending_stage=flags.pending_stage,
     )
 
 
@@ -309,11 +313,14 @@ async def restore_my_order(
     session: AsyncSession = Depends(get_session),
     current_user: CurrentUser = Depends(get_current_user),
 ) -> OrderResponse:
-    """Undoes the customer's own cancellation while the cycle is still collecting.
+    """Undoes the customer's own cancellation, in the window cancelling itself has.
 
     Cancelling by mistake used to be final — the only way back was placing the whole
-    request again. Nothing is bought against a cancelled order, so before the deadline
-    there's nothing to undo but a status.
+    request again. Nothing is bought against a cancelled order, so for as long as the
+    owner has not answered it there's nothing to undo but a status. The window closes
+    only where `cancel`'s does: a cycle so far behind that the order was plainly never
+    taken into a purchase (`PendingStage.UNFULFILLED`), which comes back as
+    `order_not_restorable` — the deadline alone no longer shuts this endpoint.
 
     Announced to the owner like the cancellation itself: they were told the order was
     off, and without this the shopping list grows back without a word.

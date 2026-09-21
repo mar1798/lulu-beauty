@@ -1,5 +1,11 @@
 import { type FC } from 'react'
-import type { IBadgeProps, IBasicStyling, IOrderStatusBadgeProps, OrderStatus } from '../../types'
+import type {
+  IBadgeProps,
+  IBasicStyling,
+  IOrderStatusBadgeProps,
+  OrderStatus,
+  PendingStage,
+} from '../../types'
 import { Badge } from '../../atoms/badge'
 
 /**
@@ -29,6 +35,27 @@ const VIEWS: Record<OrderStatus, IStatusView> = {
   CANCELLED_BY_CUSTOMER: { label: 'Отменена покупателем', tone: 'danger' },
   CANCELLED_BY_OWNER: { label: 'Отменена магазином', tone: 'danger' },
 }
+
+/**
+ * Короткая приписка к «Ожидает подтверждения» — та самая, которой не хватало.
+ *
+ * Сам бейдж не трогаем: статус на бэкенде один, и раскрашивать его в четыре
+ * оттенка значило бы обещать четыре разных состояния там, где отличается только
+ * положение сбора во времени. Приписка отвечает ровно на вопрос «почему она
+ * висит»; что при этом можно нажать, говорят флаги заявки, а не она.
+ *
+ * Здесь же, а не в карточках: это единственное место, где состояние заявки
+ * превращается в русский текст, и разъехавшиеся формулировки в списке и на
+ * странице читались бы как два разных положения дел.
+ */
+const PENDING_STAGE_HINTS: Record<PendingStage, string> = {
+  COLLECTING: 'Сбор открыт — состав ещё можно менять',
+  PURCHASING: 'Сбор закрыт, владелец закупает',
+  DELAYED: 'Закупка идёт дольше обычного',
+  UNFULFILLED: 'Заявка не вошла в закупку',
+}
+
+export const pendingStageHint = (stage: PendingStage): string => PENDING_STAGE_HINTS[stage]
 
 /** Все статусы в порядке жизненного цикла — для фильтров и сводок. */
 export const ORDER_STATUSES: OrderStatus[] = [

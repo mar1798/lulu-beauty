@@ -2,7 +2,7 @@ import React, { useState } from 'react'
 import Head from 'next/head'
 import { useRouter } from 'next/router'
 import useSWR, { mutate as globalMutate } from 'swr'
-import type { IOrder } from 'widgets/types'
+import type { IOrder, IToastTone } from 'widgets/types'
 import { Alert, Button } from 'widgets/atoms'
 import { EmptyState } from 'widgets/molecules'
 import { OrderDetails, ProductPicker } from 'widgets/organisms'
@@ -44,10 +44,15 @@ import { INSTAGRAM_URL } from '@/utils/contacts'
  * Товар добавляется прямо в заявку (`POST /orders/{id}/items`), а не через
  * корзину: корзина копится под следующую заявку и эту не изменила бы.
  *
- * Своя отмена обратима, пока сбор открыт (`isRestorable`, `POST /orders/{id}/restore`):
- * состав и цены отмена не трогает, поэтому возврат — это смена статуса, а не
- * повторное оформление. Отмену владельца снимает только владелец — тогда
- * `isRestorable` приходит `false`, и кнопки возврата нет.
+ * Отмена живёт дольше правки (`isCancellable`): против неподтверждённой заявки
+ * ничего не куплено, поэтому отозвать её можно и из закрытого сбора — раньше
+ * там не оставалось ни одного действия. Обрывается она на `UNFULFILLED`: мимо
+ * такой заявки закупка уже прошла, и «я передумал» записало бы молчание
+ * магазина как решение покупателя. Своя отмена обратима ровно в том же окне
+ * (`isRestorable`, `POST /orders/{id}/restore`): состав и цены отмена не
+ * трогает, поэтому возврат — это смена статуса, а не повторное оформление.
+ * Отмену владельца снимает только владелец — тогда `isRestorable` приходит
+ * `false`, и кнопки возврата нет.
  *
  * Активный сбор запрашивается отдельно — у `OrderResponse` есть только
  * `cycleId`, а публичной ручки «цикл по id» на бэкенде нет.
@@ -90,11 +95,20 @@ const OrderPage: React.FC = () => {
     getActiveCycleOrNull()
   )
 
+  /**
+   * `undo` — обратный ход в тосте об удавшемся действии («Вернуть» после
+   * удаления позиции). Показывается только когда действие удалось: предлагать
+   * отменить то, чего не произошло, — врать.
+   *
+   * `tone` — тон того же тоста. По умолчанию `success`, но удаление позиции
+   * сообщает о потере, а не об успехе, и идёт `warning`.
+   */
   const runAction = async (
     action: () => Promise<unknown>,
     success: string,
     scope: ErrorScope,
-    itemId: string | null = null
+    itemId: string | null = null,
+    done: { tone?: IToastTone; undo?: () => void } = {}
   ): Promise<void> => {
     setIsBusy(true)
     setBusyItemId(itemId)
@@ -110,7 +124,11 @@ const OrderPage: React.FC = () => {
         void globalMutate(isOrdersKey)
       }
 
-      notify({ tone: 'success', title: success })
+      notify({
+        tone: done.tone ?? 'success',
+        title: success,
+        action: done.undo === undefined ? undefined : { label: 'Вернуть', onAction: done.undo },
+      })
     } catch (cause: unknown) {
       /*
         Текст выбирается по действию, а не по одному коду: между открытием
@@ -138,8 +156,8 @@ const OrderPage: React.FC = () => {
     const confirmed = await confirm({
       title: 'Отменить заявку?',
       description:
-        'Мы увидим, что вы передумали. Пока сбор открыт, отмену можно отозвать — ' +
-        'заявка вернётся тем же составом',
+        'Мы увидим, что вы передумали. Пока заявка ждёт подтверждения, отмену можно ' +
+        'отозвать — заявка вернётся тем же составом',
       confirmLabel: 'Отменить заявку',
       cancelLabel: 'Оставить',
       tone: 'danger',
@@ -161,7 +179,21 @@ const OrderPage: React.FC = () => {
     }
 
     if (order?.isRestorable === true) {
-      return 'Заявка отменена, но сбор ещё открыт — её можно вернуть в работу'
+      return 'Заявка отменена, но её ещё не начали закупать — можно вернуть в работу'
+    }
+
+    /*
+      Заявка ждёт в закрытом сборе: подпись раздела — первое, что читают, и
+      обещать здесь снимок цен вместо ответа на «почему так долго» значит
+      отвечать не на тот вопрос. Стадии разведены, потому что на `UNFULFILLED`
+      отмены уже нет (`isCancellable`), и звать нажать её было бы враньём.
+    */
+    if (order?.pendingStage === 'DELAYED') {
+      return 'Сбор закрыт, а заявку так и не подтвердили — отменить её можно в любой момент'
+    }
+
+    if (order?.pendingStage === 'UNFULFILLED') {
+      return 'Заявка не вошла в закупку — ответ за нами'
     }
 
     return 'Состав и цены закрепляются в момент подтверждения — дальше они не меняются вслед за каталогом'
@@ -248,11 +280,39 @@ const OrderPage: React.FC = () => {
           )
         }}
         onItemRemove={itemId => {
+          const item = order.items.find(orderItem => orderItem.id === itemId)
+          /*
+            Состав строки известен только до удаления — после неё заявка
+            приедет уже без него. Возврат идёт добавлением товара
+            (`POST /orders/{id}/items`), поэтому у позиции удалённого из
+            каталога товара (`productId === null`) его нет: такую строку
+            бэкенд заново не примет, и обещать «Вернуть» нельзя.
+          */
+          const productId = item?.productId ?? null
+          const quantity = item?.quantity ?? 1
+
+          // Названием, а не «позицией»: тост об удалении читают, когда уже
+          // не смотрят на список, и вернуть надо понимая, что именно убрали.
+          const name = item?.productName
+
           void runAction(
             () => removeMyOrderItem(order.id, itemId),
-            'Позиция убрана',
+            name === undefined ? 'Позиция убрана' : `«${name}» убран`,
             'order.item.remove',
-            itemId
+            itemId,
+            {
+              tone: 'warning',
+              undo:
+                productId === null
+                  ? undefined
+                  : () => {
+                      void runAction(
+                        () => addMyOrderItem(order.id, productId, quantity),
+                        'Вернулся в заявку',
+                        'order.item.add'
+                      )
+                    },
+            }
           )
         }}
         /*

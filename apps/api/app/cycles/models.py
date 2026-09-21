@@ -35,3 +35,9 @@ class OrderCycle(UUIDPrimaryKeyMixin, Base):
     # (see telegram/notify.notify_cycle_opened).
     announced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Stamped when the owner has been told this cycle still holds orders nobody answered
+    # (see cycles/scheduler_service.plan_stale_order_notices). A stamp rather than a
+    # recomputation, for the same reason the reminders carry one: the condition it
+    # describes — "closed long ago and still unanswered" — stays true until the owner acts
+    # on it, so without a stamp the nudge would arrive on every tick until they did.
+    stale_orders_notice_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

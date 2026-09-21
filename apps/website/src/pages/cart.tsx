@@ -5,6 +5,7 @@ import { Button } from 'widgets/atoms'
 import { EmptyState } from 'widgets/molecules'
 import { CartPanel } from 'widgets/organisms'
 import { CartTemplate } from 'widgets/templates'
+import { useToast } from 'widgets/contexts'
 import { SiteLayout } from '@/layouts/SiteLayout'
 import { EditableOrderNotice } from '@/components/EditableOrderNotice'
 import { useAuth } from '@/contexts/AuthContext'
@@ -22,7 +23,69 @@ import * as styles from '@/styles/layout.css'
 const CartPage: React.FC = () => {
   const router = useRouter()
   const { user, isLoading: isAuthLoading } = useAuth()
-  const { cart, isLoading, isWholeCartBusy, isItemBusy, error, updateItem, removeItem } = useCart()
+  const { cart, isLoading, isWholeCartBusy, isItemBusy, error, updateItem, removeItem, addItem } =
+    useCart()
+  const { notify } = useToast()
+
+  /**
+   * Возврат только что убранного товара.
+   *
+   * Добавлением, а не «отменой удаления»: на бэкенде корзина — это набор
+   * позиций по товару, и вернуть строку с прежним количеством значит
+   * положить её заново (`POST /cart/items`). Цена при этом берётся текущая —
+   * та же, что и у любого другого товара в корзине, снимок снимается только
+   * при подтверждении заявки.
+   */
+  const restore = async (productId: string, quantity: number): Promise<void> => {
+    const result = await addItem(productId, quantity)
+
+    notify(
+      result.ok
+        ? { tone: 'success', title: 'Товар вернулся в корзину' }
+        : {
+            tone: 'danger',
+            title: 'Вернуть не получилось',
+            // Чаще всего это закрывшийся сбор: он же закрывает и саму корзину.
+            description: result.error ?? 'Попробуйте добавить товар из каталога',
+          }
+    )
+  }
+
+  /**
+   * Удаление позиции. Тост с «Вернуть» — не вежливость, а единственный путь
+   * назад: строка исчезает мгновенно (оптимистично), и промах по крестику на
+   * телефоне иначе стоил бы похода в каталог за тем же товаром.
+   */
+  const remove = async (productId: string): Promise<void> => {
+    const item = cart?.items.find(cartItem => cartItem.productId === productId)
+    const result = await removeItem(productId)
+
+    if (!result.ok) {
+      notify({
+        tone: 'danger',
+        title: 'Товар не убран',
+        description: result.error ?? 'Попробуйте ещё раз или обновите страницу',
+      })
+
+      return
+    }
+
+    // Количество известно только до удаления — поэтому оно снято выше.
+    const quantity = item?.quantity ?? 1
+
+    notify({
+      // Предупреждение, а не «просто сообщение»: из корзины пропала строка,
+      // и тост существует затем, чтобы это можно было отменить.
+      tone: 'warning',
+      title: item === undefined ? 'Товар убран из корзины' : `«${item.productName}» убран`,
+      action: {
+        label: 'Вернуть',
+        onAction: () => {
+          void restore(productId, quantity)
+        },
+      },
+    })
+  }
 
   const content = (): React.ReactNode => {
     // Пока сессия не проверена, «войдите» показывать нельзя: у залогиненного
@@ -64,7 +127,7 @@ const CartPage: React.FC = () => {
             void updateItem(productId, quantity)
           }}
           onRemove={productId => {
-            void removeItem(productId)
+            void remove(productId)
           }}
           onCheckout={() => {
             void router.push('/checkout')

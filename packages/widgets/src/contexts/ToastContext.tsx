@@ -7,7 +7,7 @@ import React, {
   useRef,
   useState,
 } from 'react'
-import type { IToast, IToastTone } from '../types'
+import type { IToast, IToastAction, IToastTone } from '../types'
 import { ToastViewport } from '../organisms/toast-viewport'
 
 /**
@@ -25,6 +25,12 @@ export interface INotifyInput {
   tone?: IToastTone
   /** Мс до автозакрытия; `0` — не закрывать само (для ошибок, которые надо прочитать). */
   duration?: number
+  /**
+   * Обратный ход — «Вернуть» после удаления. Пока он есть, уведомление висит
+   * дольше обычного (`ACTION_DURATION`): обычных пяти секунд хватает, чтобы
+   * прочитать «убрано», но не чтобы успеть передумать.
+   */
+  action?: IToastAction
 }
 
 export interface IToastContextValue {
@@ -36,6 +42,32 @@ export interface IToastContextValue {
 const ToastContext = createContext<IToastContextValue | null>(null)
 
 const DEFAULT_DURATION = 5000
+
+/** Столько висит уведомление с обратным ходом — см. `INotifyInput.action`. */
+const ACTION_DURATION = 10000
+
+/**
+ * Сколько уведомление живёт после того, как курсор ушёл со стопки.
+ *
+ * Отсчёт продолжается с того места, где встал, но не мгновенным исчезновением:
+ * к «Вернуть» тянутся мышью, и тост, догоревший ровно в момент отвода курсора,
+ * пропал бы у человека под рукой.
+ */
+const RESUME_MINIMUM = 1000
+
+/**
+ * Отсчёт до автозакрытия одного уведомления.
+ *
+ * Хранится остаток, а не только таймер: под курсором и под фокусом отсчёт
+ * останавливается (`timer === null`), и после него надо досчитать оставшееся,
+ * а не начать заново.
+ */
+interface IPending {
+  timer: ReturnType<typeof setTimeout> | null
+  remaining: number
+  /** Момент, с которого идёт текущий отрезок отсчёта. */
+  startedAt: number
+}
 
 let counter = 0
 
@@ -52,18 +84,79 @@ const nextId = (): string => {
 
 export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [toasts, setToasts] = useState<IToast[]>([])
-  const timers = useRef(new Map<string, ReturnType<typeof setTimeout>>())
+  const timers = useRef(new Map<string, IPending>())
+
+  /*
+    Стопка останавливается целиком, а не по одному тосту: курсор всё равно
+    закрывает соседей, а уезжающий из-под него сосед — то же самое исчезновение
+    под рукой, от которого пауза и заводится.
+  */
+  const isPaused = useRef(false)
 
   const dismiss = useCallback((id: string): void => {
-    const timer = timers.current.get(id)
+    const pending = timers.current.get(id)
 
-    if (timer !== undefined) {
-      clearTimeout(timer)
+    if (pending !== undefined) {
+      if (pending.timer !== null) {
+        clearTimeout(pending.timer)
+      }
+
       timers.current.delete(id)
     }
 
     setToasts(current => current.filter(toast => toast.id !== id))
   }, [])
+
+  /** Запускает отсчёт остатка — при показе и после снятия паузы. */
+  const start = useCallback(
+    (id: string, remaining: number): void => {
+      timers.current.set(id, {
+        remaining,
+        startedAt: Date.now(),
+        timer: setTimeout(() => {
+          dismiss(id)
+        }, remaining),
+      })
+    },
+    [dismiss]
+  )
+
+  const pause = useCallback((): void => {
+    if (isPaused.current) {
+      return
+    }
+
+    isPaused.current = true
+
+    const now = Date.now()
+
+    for (const [id, pending] of timers.current) {
+      if (pending.timer === null) {
+        continue
+      }
+
+      clearTimeout(pending.timer)
+      timers.current.set(id, {
+        timer: null,
+        startedAt: now,
+        remaining: Math.max(pending.remaining - (now - pending.startedAt), RESUME_MINIMUM),
+      })
+    }
+  }, [])
+
+  const resume = useCallback((): void => {
+    if (!isPaused.current) {
+      return
+    }
+
+    isPaused.current = false
+
+    for (const [id, pending] of timers.current) {
+      if (pending.timer === null) {
+        start(id, pending.remaining)
+      }
+    }
+  }, [start])
 
   const notify = useCallback(
     (input: INotifyInput): string => {
@@ -72,33 +165,53 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         tone: input.tone ?? 'info',
         title: input.title,
         description: input.description,
+        action: input.action,
       }
 
       setToasts(current => [...current, toast])
 
-      const duration = input.duration ?? DEFAULT_DURATION
+      const duration =
+        input.duration ?? (input.action === undefined ? DEFAULT_DURATION : ACTION_DURATION)
 
       if (duration > 0) {
-        timers.current.set(
-          toast.id,
-          setTimeout(() => {
-            dismiss(toast.id)
-          }, duration)
-        )
+        /*
+          Тост, приехавший при курсоре на стопке (ответ на то же «Вернуть»),
+          встаёт сразу на паузу: иначе он досчитал бы под рукой, пока соседи
+          стоят.
+        */
+        if (isPaused.current) {
+          timers.current.set(toast.id, { timer: null, remaining: duration, startedAt: Date.now() })
+        } else {
+          start(toast.id, duration)
+        }
       }
 
       return toast.id
     },
-    [dismiss]
+    [start]
   )
+
+  /*
+    Стопка опустела — держать паузу больше не за чем. Курсор мог стоять на
+    последнем уведомлении в момент закрытия: узел исчезает под ним, `pointerout`
+    в этом случае приходит не везде, и следующее уведомление встало бы на паузу
+    навсегда.
+  */
+  useEffect(() => {
+    if (toasts.length === 0) {
+      isPaused.current = false
+    }
+  }, [toasts.length])
 
   // Размонтирование посреди показа не должно оставить висящие таймеры.
   const pending = timers.current
 
   useEffect(
     () => () => {
-      for (const timer of pending.values()) {
-        clearTimeout(timer)
+      for (const item of pending.values()) {
+        if (item.timer !== null) {
+          clearTimeout(item.timer)
+        }
       }
 
       pending.clear()
@@ -114,7 +227,13 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   return (
     <ToastContext.Provider value={value}>
       {children}
-      <ToastViewport toasts={toasts} onDismiss={dismiss} />
+      {/*
+        Пауза под курсором и под фокусом — не украшение: «Вернуть» живёт
+        считанные секунды, и кнопка, исчезающая на пути к ней (мышью или
+        табом), не оставляет второго шанса. Заодно это WCAG 2.2.1: у таймера,
+        который нельзя остановить, не должно быть ничего важного.
+      */}
+      <ToastViewport toasts={toasts} onDismiss={dismiss} onPause={pause} onResume={resume} />
     </ToastContext.Provider>
   )
 }

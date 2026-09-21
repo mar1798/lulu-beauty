@@ -38,7 +38,7 @@ export const WishlistButton: React.FC<{
 }> = ({ productId, variant = 'solid', size = 'md', withLabel = false, isFullWidth = false }) => {
   const router = useRouter()
   const { user, isLoading: isAuthLoading, reload: reloadSession } = useAuth()
-  const { has, toggle, isItemBusy } = useWishlist()
+  const { wishlist, has, toggle, add, isItemBusy } = useWishlist()
   const { notify } = useToast()
 
   /**
@@ -48,6 +48,34 @@ export const WishlistButton: React.FC<{
   const isRunning = useRef(false)
 
   const isSaved = has(productId)
+
+  /*
+    Название снимается до нажатия: после удаления товара в списке уже нет, а
+    тост о нём — единственное место, где видно, что именно убрано (в каталоге
+    карточка остаётся на месте, меняется одна заливка сердца).
+  */
+  const name = wishlist?.items.find(item => item.product.id === productId)?.product.name
+
+  /**
+   * Возврат только что убранного товара. Избранное ничего не фиксирует — ни
+   * цены, ни количества, — поэтому вернуть его значит просто сохранить снова.
+   */
+  const restore = useCallback(async (): Promise<void> => {
+    const result = await add(productId)
+
+    notify(
+      result.ok
+        ? {
+            tone: 'success',
+            title: name === undefined ? 'Товар снова в избранном' : `«${name}» снова в избранном`,
+          }
+        : {
+            tone: 'danger',
+            title: 'Вернуть не получилось',
+            description: result.error ?? 'Попробуйте ещё раз или обновите страницу',
+          }
+    )
+  }, [add, productId, name, notify])
 
   const run = useCallback(async (): Promise<void> => {
     // Второй клик по неответившей кнопке ушёл бы с тем же (устаревшим)
@@ -81,11 +109,45 @@ export const WishlistButton: React.FC<{
           title: isSaved ? 'Товар не убран' : 'Товар не сохранён',
           description: result.error ?? 'Попробуйте ещё раз или обновите страницу',
         })
+
+        return
+      }
+
+      /*
+        Об убранном говорим, о сохранённом — нет. Сохранение видно по самой
+        кнопке (сердце заливается) и по счётчику в шапке, а вот убранное
+        исчезает: на странице избранного вместе с карточкой, в каталоге —
+        одной сменой заливки, которую легко не заметить, нажав мимо. Вернуть
+        его без тоста можно только вспомнив, что это был за товар.
+      */
+      if (isSaved) {
+        notify({
+          tone: 'warning',
+          title: name === undefined ? 'Товар убран из избранного' : `«${name}» убран из избранного`,
+          action: {
+            label: 'Вернуть',
+            onAction: () => {
+              void restore()
+            },
+          },
+        })
       }
     } finally {
       isRunning.current = false
     }
-  }, [user, isAuthLoading, reloadSession, router, toggle, isItemBusy, productId, isSaved, notify])
+  }, [
+    user,
+    isAuthLoading,
+    reloadSession,
+    router,
+    toggle,
+    isItemBusy,
+    productId,
+    isSaved,
+    name,
+    notify,
+    restore,
+  ])
 
   const onClick = (): void => {
     void run()

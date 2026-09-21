@@ -240,12 +240,12 @@ export const lightTokens = {
     sm: shadow('out', 0, 2, 8).colorize(ink(0.06)),
     md: uniteShadows(
       shadow('out', 0, 4, 6, -1).colorize(ink(0.1)),
-      shadow('out', 0, 2, 4, -2).colorize(ink(0.1)),
+      shadow('out', 0, 2, 4, -2).colorize(ink(0.1))
     ),
     lg: shadow('out', 0, 4, 24).colorize(ink(0.12)),
     xl: uniteShadows(
       shadow('out', 0, 12, 48).colorize(ink(0.16)),
-      shadow('out', 0, 4, 12).colorize(ink(0.08)),
+      shadow('out', 0, 4, 12).colorize(ink(0.08))
     ),
     brand: shadow('out', 0, 4, 24).colorize(brandGlow(0.34)),
     inset: shadow('in', 0, 1, 2).colorize(ink(0.06)),

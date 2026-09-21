@@ -840,6 +840,8 @@ export const feedOrder = (overrides: Partial<IOrder> = {}): IOrder => {
     items,
     isEditable: true,
     isRestorable: false,
+    isCancellable: true,
+    pendingStage: 'COLLECTING',
     ...overrides,
   }
 }
@@ -935,6 +937,33 @@ export const feedToast = (): IToastProps => ({
   onDismiss: noop,
 })
 
+/** Уведомление с обратным ходом — то, что показывается после удаления. */
+export const feedToastWithAction = (): IToastProps => ({
+  toast: {
+    id: 'toast-2',
+    tone: 'warning',
+    title: '«Крем для рук» убран',
+    action: { label: 'Вернуть', onAction: noop },
+  },
+  onDismiss: noop,
+})
+
+/**
+ * Длинное название: заголовок и пояснение обрезаются на второй строке, а
+ * ширина тоста не зависит от товара.
+ */
+export const feedToastOverflowing = (): IToastProps => ({
+  toast: {
+    id: 'toast-3',
+    tone: 'warning',
+    title: '«Увлажняющая сыворотка с гиалуроновой кислотой и ниацинамидом, 30 мл» убрана',
+    description:
+      'Позиция убрана из заявки. Пока сбор открыт, её можно вернуть — состав и цены пересчитаются сами.',
+    action: { label: 'Вернуть', onAction: noop },
+  },
+  onDismiss: noop,
+})
+
 export const feedToastViewport = (): IToastViewportProps => ({
   toasts: [
     { id: 'toast-1', tone: 'success', title: 'Товар сохранён' },
@@ -944,6 +973,12 @@ export const feedToastViewport = (): IToastViewportProps => ({
       tone: 'danger',
       title: 'Не удалось удалить сбор',
       description: 'В нём есть заявки.',
+    },
+    {
+      id: 'toast-4',
+      tone: 'warning',
+      title: '«Крем для рук» убран',
+      action: { label: 'Вернуть', onAction: noop },
     },
   ],
   onDismiss: noop,

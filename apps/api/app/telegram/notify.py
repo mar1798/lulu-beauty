@@ -189,6 +189,35 @@ async def notify_orders_item_dropped(drops: Sequence[OrderItemDrop]) -> None:
     )
 
 
+async def notify_stale_orders(session: AsyncSession, cycle: OrderCycle, count: int) -> bool:
+    """Nudges the owner about a closed cycle still holding unanswered orders.
+
+    Owner-facing and once per cycle (`stale_orders_notice_at`), because the thing it is
+    about does not go away on its own: nothing expires an order, so a cycle left like
+    this stays exactly as it is until a person decides either way.
+
+    Returns whether an owner was actually told, and that is the whole point of a return
+    value here, exactly as in `notify_cycle_reminders`: the caller stamps what this
+    reports, the stamp is final, and this nudge is the only thing that ever mentions
+    those orders again. A swallowed failure that still got stamped would be the one
+    failure mode the sweep cannot recover from — so an unsent nudge is simply left for
+    the next tick.
+
+    One owner reached is enough: they all read the same message, and refusing to stamp
+    over a second owner who never linked the bot would nudge the first one every tick.
+    """
+    try:
+        return any(
+            [
+                await notifications_service.send_stale_orders(owner, cycle, count)
+                for owner in await recipients.get_owners(session)
+            ]
+        )
+    except Exception:  # noqa: BLE001 - the sweep must survive one cycle's failure
+        logger.exception("Failed to nudge the owner about stale orders in cycle %s", cycle.id)
+        return False
+
+
 def _group_by_user[T: (OrderPriceChange, OrderItemDrop)](
     items: Sequence[T],
 ) -> list[tuple[uuid.UUID, list[T]]]:

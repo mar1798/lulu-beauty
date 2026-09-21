@@ -89,7 +89,7 @@ const Spot: FC<{
           className={clsx(
             styles.image,
             spot.isStrong === true && styles.strong,
-            spot.isFlipped === true && styles.flipped,
+            spot.isFlipped === true && styles.flipped
           )}
           image={spot.image}
           sizes={{ fb: SIZE_CEILING[spot.size] }}

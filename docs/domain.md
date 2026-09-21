@@ -58,10 +58,10 @@ account_has_unfinished_orders`, `DELETION_BLOCKING_STATUSES`). The goods behind 
   were already bought and are still the customer's to collect; erasing would cancel a
   purchase that was already made and leave the owner without a name or a number to ask
   about it. The person collects the goods, or asks the owner to move the order — their own
-  cancellation stops at `PENDING` (`customer_flags`), so "cancel it yourself" is advice
-  they cannot act on — and then deletes. The account page asks `GET /users/me/deletion`
-  before it draws the button, so this arrives as a disabled button naming the orders, not
-  as an error after the confirmation.
+  cancellation stops at `PENDING` (`customer_flags`), whatever the cycle is doing, so
+  "cancel it yourself" is advice they cannot act on — and then deletes. The account page
+  asks `GET /users/me/deletion` before it draws the button, so this arrives as a disabled
+  button naming the orders, not as an error after the confirmation.
 - **`PENDING` orders** are withdrawn as `CANCELLED_BY_CUSTOMER` — nothing is bought
   against them yet — and the owner is told in one message naming them
   (`messages.account_deleted_for_owner`). Finished and already-cancelled orders are left
@@ -183,7 +183,7 @@ PENDING ──▶ CONFIRMED ──▶ READY ──▶ COMPLETED
 PENDING ◀──────────────────────▶ CANCELLED_BY_CUSTOMER   (customer's cancel / restore)
 ```
 
-`ALLOWED_TRANSITIONS` in `app/orders/models.py` is authoritative for what the *owner* may
+`ALLOWED_TRANSITIONS` in `app/orders/models.py` is authoritative for what the _owner_ may
 set; `COMPLETED` and `CANCELLED_BY_CUSTOMER` lead nowhere. Two distinct cancellations exist
 because one `CANCELLED` left both sides guessing — the customer couldn't tell "я передумал"
 from "владелец не смог достать". The owner cannot assign `CANCELLED_BY_CUSTOMER`
@@ -203,14 +203,64 @@ membership against — never compare to a single status.
 
 ### What the customer may still do
 
-While the order is `PENDING` **and** its cycle is open, the customer can edit the note, change
-or remove item quantities, add items, and cancel. Past that: `order_not_editable`
-("сбор закрылся или владелец взял её в работу"). Removing the last line is refused
-(`last_order_item`) — that action is a cancellation, and the message says so. Restoring is
-theirs only over `CANCELLED_BY_CUSTOMER`, and fails with `order_not_restorable` when the order
-was cancelled by the owner, the cycle closed, or nothing is left to restore. Both answers
-travel to the UI as `isEditable`/`isRestorable` (`OrdersService.customer_flags`) — the site
-never recomputes them.
+Two different windows, and conflating them was a bug:
+
+- **Editing** — the note, item quantities, adding and removing lines — needs the order to be
+  `PENDING` **and** its cycle open. Past that: `order_not_editable` ("сбор закрылся или
+  владелец взял её в работу"). Removing the last line is refused (`last_order_item`) — that
+  action is a cancellation, and the message says so.
+- **Cancelling** needs `PENDING` and outlives the deadline. Nothing is bought against an order
+  the owner has not confirmed, so withdrawing one costs the shop a notification; what froze on
+  the deadline is the purchase list, which a withdrawal shortens and never rewrites. While
+  both hung off one flag, a closed cycle took both, and an unanswered request sat under
+  "Ожидает подтверждения" with no action on it at all — beside a live one, with the same
+  badge, that could be cancelled.
+
+  It stops at `PendingStage.UNFULFILLED` (below). An order the purchase went by is no longer
+  one the customer is holding up, so "я передумал" would be a claim about a decision that is
+  not theirs to make any more — and it would file the shop's own silence under the customer
+  changing their mind, where neither the owner nor any later count of unfulfilled requests
+  would find it. From there the order is the shop's to answer, and the owner is nudged for
+  that answer (`stale_order_sweep`, [telegram.md](telegram.md)).
+
+- **Restoring** is theirs only over `CANCELLED_BY_CUSTOMER`, in exactly the window cancelling
+  has — a narrower one would move the dead end one press further on rather than remove it, a
+  wider one would let an order come back from a purchase that is over. It fails with
+  `order_not_restorable` when the order was cancelled by the owner, when nothing is left to
+  restore, or past `UNFULFILLED`.
+
+All of it travels to the UI as `isEditable`/`isCancellable`/`isRestorable`
+(`OrdersService.customer_flags`) — the site never recomputes them.
+
+### How long a `PENDING` order has been waiting
+
+`PENDING` says one thing — nothing has been bought against this order yet — and it says it for
+as long as the owner takes, which is by design: **the shopping happens after the cycle
+closes** (the owner's summary is what sends them out), so `PENDING → CONFIRMED` normally
+happens in a closed cycle. Nothing expires an order, and no sweep touches one.
+
+What the customer sees is therefore derived, not stored: `PendingStage`
+(`app/orders/models.py`) is computed from the cycle behind the order, so it moves on its own.
+
+| Stage         | When                                       | Reads as                                |
+| ------------- | ------------------------------------------ | --------------------------------------- |
+| `COLLECTING`  | cycle still open                           | «Сбор открыт — состав ещё можно менять» |
+| `PURCHASING`  | < `PURCHASE_WINDOW` (5 days) since closing | «Сбор закрыт, владелец закупает»        |
+| `DELAYED`     | past that, < `UNFULFILLED_AFTER` (10 days) | «Закупка идёт дольше обычного»          |
+| `UNFULFILLED` | past `UNFULFILLED_AFTER`                   | «Заявка не вошла в закупку»             |
+
+The clock starts at `closed_at` (falling back to `deadline_at` before the sweep stamps it),
+never at the deadline alone — a cycle the owner shut early starts buying there.
+
+**The stage is mostly copy.** Only `is_cancellable` and `is_restorable` consult it, and only
+at its far end — everything else the customer may do still hangs off the status. An order in
+`UNFULFILLED` is still an ordinary `PENDING` row that the owner can confirm — the shop admits
+the request was not taken into a purchase, it does not cancel it. Cancelling it automatically is a separate
+decision, deliberately not made here: nothing expires an order, and a request three weeks old
+may still be one a slow owner is about to confirm. What the shop does instead is ask — once
+per cycle, the owner is told in Telegram that a closed cycle still holds unanswered orders
+(`stale_order_sweep`, [telegram.md](telegram.md)), and ends them, or confirms them, one at a
+time from the panel.
 
 ### Price snapshots
 

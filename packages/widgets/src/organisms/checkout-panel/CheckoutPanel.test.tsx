@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest'
+import { fireEvent } from '@testing-library/react'
+import { describe, expect, it, vi } from 'vitest'
 import { CheckoutPanel } from '.'
 import { feedCheckoutPanel } from '../../stories/feed'
 import { renderWidget } from '../../testing/render'
@@ -63,5 +64,54 @@ describe('CheckoutPanel', () => {
     )
 
     expect(getByText('Изменить в корзине').getAttribute('href')).toBe('/cart')
+  })
+
+  /*
+    Количество правится на месте, удаление — нет: крестик в сантиметре от
+    «Отправить заявку» уносил бы позицию без возможности отменить.
+  */
+  it('со степпером меняет количество позиции, но не даёт её убрать', () => {
+    const props = feedCheckoutPanel()
+    const first = props.cart?.items[0]
+    const onQuantityChange = vi.fn()
+    const { getAllByRole, queryByLabelText } = renderWidget(
+      <CheckoutPanel {...props} form={<p>Форма</p>} onQuantityChange={onQuantityChange} />
+    )
+
+    expect(first).toBeDefined()
+    expect(queryByLabelText(`Убрать: ${first?.productName ?? ''}`)).toBeNull()
+
+    // «+», а не «−»: у позиции с количеством 1 уменьшение отключено по минимуму.
+    const increase = getAllByRole('button', { name: /Увеличить количество/ })
+    fireEvent.click(increase[0] as HTMLButtonElement)
+
+    expect(onQuantityChange).toHaveBeenCalledWith(first?.productId, (first?.quantity ?? 0) + 1)
+  })
+
+  /*
+    Под отправкой состав уже уходит на сервер: нажатие `+` попало бы в корзину,
+    которую заявка не заберёт.
+  */
+  it('замирает степпер на время отправки', () => {
+    const { getAllByRole } = renderWidget(
+      <CheckoutPanel
+        {...feedCheckoutPanel()}
+        form={<p>Форма</p>}
+        onQuantityChange={vi.fn()}
+        isBusy={true}
+      />
+    )
+
+    const increase = getAllByRole('button', { name: /Увеличить количество/ })
+    expect(increase.length).toBeGreaterThan(0)
+    expect(increase.every(button => button.hasAttribute('disabled'))).toBe(true)
+  })
+
+  it('без обработчика состав только читается', () => {
+    const { queryAllByRole } = renderWidget(
+      <CheckoutPanel {...feedCheckoutPanel()} form={<p>Форма</p>} />
+    )
+
+    expect(queryAllByRole('button', { name: /Увеличить количество/ }).length).toBe(0)
   })
 })

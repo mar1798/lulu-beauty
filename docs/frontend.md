@@ -223,6 +223,25 @@ Client-side fetching is [SWR](https://swr.vercel.app/), configured globally in `
 - `src/hooks/` — `useAdminGate`, `useActiveCycle`, `useEditableOrder`, `useProductSearch`,
   `useTelegramLogin`, `useTelegramMiniApp`, `useQrCode`, `useQueryParams`,
   `usePrefetchRoutes`, `useRedirectIfAuthenticated`.
+- **Every removal in the customer flow is undoable from its toast.** Taking a line out of
+  the cart (`/cart`), an item out of a submitted order (`/orders/[id]`) or a product out of
+  the wishlist (`WishlistButton`, so both `/wishlist` and the catalogue cards) leaves a
+  `notify({ tone: 'warning', action: { label: 'Вернуть', … } })` behind it — `IToast.action`,
+  one button, rendered by `Toast` next to the close cross, and a toast carrying one lives 10s
+  instead of 5s (`ACTION_DURATION` in `ToastContext`). The countdown stops while the stack is
+  hovered or holds the focus (`onPause`/`onResume` on `ToastViewport`) and resumes from where
+  it stopped, never with less than a second left: an undo that expires under the hand reaching
+  for it is no undo, and a timer that cannot be stopped fails WCAG 2.2.1. The tone is `warning`, not `success`:
+  something the person had is gone, and the toast is the only way back. Restoring it reports
+  `success`. There is no "undelete" on the API: the button
+  re-adds the product (`POST /cart/items`, `POST /orders/{id}/items`, `POST /wishlist/items`)
+  with the quantity read off the row **before** the removal, so it has to be captured in the
+  handler — afterwards the row is already gone from the cache. A line whose product was
+  deleted from the catalogue (`IOrderItem.productId === null`) gets no button: that add would
+  be refused. Restoring reports its own result with a second toast, and pressing the button
+  closes the first one immediately. Removals that are a step inside a larger move, not a
+  user's decision — `EditableOrderNotice` emptying the cart into an open order — call the
+  context directly and stay silent.
 - **Anything the session decides must not resize the page.** All pages are static, so the
   first frame does not know guest from signed-in, and `/cart`, `/wishlist` and `/login` used
   to swap a short "войдите" for a full list half a second later — the footer rode along, and

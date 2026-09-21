@@ -13,6 +13,7 @@ from app.telegram.notify import (
     notify_cycle_closed_for_customers,
     notify_cycle_opened,
     notify_cycle_reminders,
+    notify_stale_orders,
 )
 
 logger = logging.getLogger("app.scheduler")
@@ -90,6 +91,36 @@ async def _run_deadline_sweep() -> None:
         logger.info("Deadline sweep closed %d cycle(s)", len(closures))
 
 
+async def _run_stale_order_sweep() -> None:
+    """Nudges the owner about closed cycles still holding unanswered orders.
+
+    Plan, send, then stamp — the order `plan_reminders` explains: a stamp written first
+    would turn one crashed tick into a nudge nobody ever gets, and this is the only thing
+    that ever mentions those orders again. For the same reason only what was *delivered*
+    is stamped: a nudge that failed to go out is left planned, and the next tick tries it
+    again.
+
+    Nothing here changes an order. The clock decides when to *ask*; a person decides what
+    the answer is, order by order, in the admin panel.
+    """
+    async with async_session() as session:
+        service = CycleSchedulerService(session)
+        notices = await service.plan_stale_order_notices()
+        delivered = [
+            notice
+            for notice in notices
+            if await notify_stale_orders(session, notice.cycle, notice.count)
+        ]
+        await service.mark_stale_orders_notified(delivered)
+        await session.commit()
+    if delivered:
+        logger.info(
+            "Stale-order sweep nudged the owner about %d cycle(s), %d order(s)",
+            len(delivered),
+            sum(notice.count for notice in delivered),
+        )
+
+
 async def _run_cycle_notice_sweep() -> None:
     """Announcements first, then reminders — one job rather than two.
 
@@ -133,6 +164,12 @@ def start() -> None:
         "interval",
         seconds=settings.scheduler_interval_seconds,
         id="deadline_sweep",
+    )
+    scheduler.add_job(
+        _run_stale_order_sweep,
+        "interval",
+        seconds=settings.scheduler_interval_seconds,
+        id="stale_order_sweep",
     )
     scheduler.add_job(
         _run_auth_session_cleanup,

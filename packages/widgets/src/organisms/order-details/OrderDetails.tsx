@@ -29,11 +29,24 @@ import * as styles from './OrderDetails.css'
  * товар, добавленный позже (слот `addItem`), встаёт по цене на момент
  * добавления.
  *
- * Свою отмену покупатель может отозвать, пока сбор открыт (`order.isRestorable`,
- * тот же дедлайн с другой стороны). Отменённая заявка сохраняет состав,
- * поэтому возврат ничего не пересобирает — он меняет только статус. Отмену
- * владельца покупатель не отзывает: `isRestorable` приходит от бэкенда `false`,
- * и карточка объясняет, куда с этим идти, — теми же словами, что и бот
+ * Отмена — не правка, и висит она на своём флаге (`order.isCancellable`): против
+ * неподтверждённой заявки ничего не куплено, поэтому отозвать её можно и из
+ * закрытого сбора, а не только до дедлайна. Пока флаг был один, у такой заявки
+ * не оставалось ни одного действия — бейдж «Ожидает подтверждения» стоял тот
+ * же, что у живой, а под ним было пусто. Почему она ждёт, говорит
+ * `order.pendingStage` — тоже с бэкенда, тоже от часов сбора.
+ *
+ * На `UNFULFILLED` кнопок снова нет, и это уже не молчание: заявку закупка
+ * прошла мимо, отвечать по ней магазину, и подпись раздела прямо это говорит —
+ * вместе с адресом, куда написать. Отменять там нечего, отменяют то, что ещё
+ * может состояться.
+ *
+ * Свою отмену покупатель может отозвать ровно в том же окне
+ * (`order.isRestorable`), иначе промах мышью просто переносил бы тупик на шаг
+ * дальше. Отменённая заявка
+ * сохраняет состав, поэтому возврат ничего не пересобирает — он меняет только
+ * статус. Отмену владельца покупатель не отзывает: `isRestorable` приходит от
+ * бэкенда `false`, и карточка объясняет, куда с этим идти, — теми же словами, что и бот
  * (`_ORDER_STATUS_NEWS` в `apps/api/app/telegram/messages.py`), потому что
  * уведомление и страница читаются подряд. Адрес приходит в `contactLink`.
  *
@@ -129,6 +142,7 @@ export const OrderDetails: FC<IOrderDetailsProps & IBasicStyling> = ({
 
   const isEditable = order.isEditable && onItemQuantityChange !== undefined
   const isRestorable = order.isRestorable && onRestore !== undefined
+  const isCancellable = order.isCancellable && onCancel !== undefined
 
   /*
     Подпись под шапкой отвечает ровно на один вопрос: что с этой заявкой можно
@@ -155,6 +169,51 @@ export const OrderDetails: FC<IOrderDetailsProps & IBasicStyling> = ({
           каталогом.
         </Text>
       )
+    }
+
+    /*
+      Заявка ждёт, а сбор уже закрыт. Раньше здесь не было ничего: карточка
+      возвращала `null`, и человек смотрел на «Ожидает подтверждения» без
+      единого слова о том, чего именно он ждёт и сколько это нормально длится.
+      Ветки идут по стадии, потому что ждать три дня и ждать три месяца — это
+      разные новости, а статус на бэкенде для обеих один.
+    */
+    if (order.status === 'PENDING' && order.pendingStage !== null) {
+      const contact =
+        contactLink === undefined ? (
+          'Instagram магазина'
+        ) : (
+          <AppLink className={styles.contactLink} {...contactLink}>
+            Instagram магазина
+          </AppLink>
+        )
+
+      if (order.pendingStage === 'PURCHASING') {
+        return (
+          <Text size="sm" tone="secondary">
+            Сбор закрыт — владелец закупает заявки. Состав уже не изменить, но пока заявку не
+            подтвердили, её можно отменить.
+          </Text>
+        )
+      }
+
+      if (order.pendingStage === 'DELAYED') {
+        return (
+          <Text size="sm" tone="secondary">
+            Сбор закрылся несколько дней назад, а заявка всё ещё ждёт подтверждения. Если ответа
+            долго нет — напишите в {contact}.
+          </Text>
+        )
+      }
+
+      if (order.pendingStage === 'UNFULFILLED') {
+        return (
+          <Text size="sm" tone="secondary">
+            Заявка не вошла в закупку: сбор закрылся давно, а подтверждения так и не было. Товары не
+            куплены — их можно заказать в следующем сборе. Если это ошибка, напишите в {contact}.
+          </Text>
+        )
+      }
     }
 
     if (isCurrentCycle) {
@@ -317,11 +376,11 @@ export const OrderDetails: FC<IOrderDetailsProps & IBasicStyling> = ({
         <Price priceCents={order.totalCents} size="lg" />
       </div>
 
-      {isEditable && onCancel !== undefined && (
+      {isCancellable && (
         <div className={styles.footer}>
           <Text size="sm" tone="muted">
             Отменённую заявку мы увидим и поймём, что вы передумали. Передумать обратно можно, пока
-            сбор открыт.
+            заявку ещё ждёт закупка.
           </Text>
           <Button variant="danger" disabled={isBusy} onClick={onCancel}>
             Отменить заявку

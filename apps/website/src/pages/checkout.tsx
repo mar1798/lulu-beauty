@@ -26,6 +26,11 @@ import { isOrdersKey } from '@/services/swrKeys'
  * перезагружается — иначе счётчик в шапке остался бы висеть. Список заявок
  * тоже ревалидируется, чтобы новая заявка была видна на `/orders` сразу.
  *
+ * Количество правится здесь же степперами (удаление — только в корзине, см.
+ * `CheckoutPanel`). Перед отправкой ждём `settled()`: количество применяется
+ * оптимистично, а `checkout` идёт мимо очереди изменений корзины — иначе `+`
+ * и сразу «Отправить» дали бы заявку прежнего состава.
+ *
  * Забытый товар добавляется здесь же — тем же `ProductPicker`, что и в уже
  * поданной заявке. Разница только в получателе: до отправки товар кладётся в
  * корзину (заявки ещё нет), после — прямо в заявку (`POST /orders/{id}/items`),
@@ -36,7 +41,7 @@ import { isOrdersKey } from '@/services/swrKeys'
  */
 const CheckoutPage: React.FC = () => {
   const { user, isLoading: isAuthLoading } = useAuth()
-  const { cart, isLoading, reload, addItem } = useCart()
+  const { cart, isLoading, reload, addItem, updateItem, settled } = useCart()
   const { notify } = useToast()
   const search = useProductSearch()
 
@@ -58,6 +63,26 @@ const CheckoutPage: React.FC = () => {
         ? { tone: 'success', title: 'Товар добавлен' }
         : { tone: 'danger', title: 'Не получилось', description: result.error ?? undefined }
     )
+  }
+
+  /**
+   * Правка количества до отправки.
+   *
+   * Экран оформления ошибку корзины нигде не показывает (`error` под формой —
+   * про саму отправку), поэтому осечка уходит тостом, как и у дозаказа. Число
+   * при этом откатывается само: откат оптимистичного слепка делает
+   * `CartContext`.
+   */
+  const handleQuantityChange = async (productId: string, quantity: number): Promise<void> => {
+    const result = await updateItem(productId, quantity)
+
+    if (!result.ok) {
+      notify({
+        tone: 'danger',
+        title: 'Количество не изменилось',
+        description: result.error ?? undefined,
+      })
+    }
   }
 
   /**
@@ -91,6 +116,9 @@ const CheckoutPage: React.FC = () => {
     setError(null)
 
     try {
+      // Сервер снимает заявку с корзины — сперва пусть корзина догонит экран.
+      await settled()
+
       setOrder(await checkout(note ?? undefined))
       await reload()
 
@@ -226,6 +254,14 @@ const CheckoutPage: React.FC = () => {
           buildProductHref={slug => `/catalog/${slug}`}
           cartHref="/cart"
           isLoading={isCartLoading}
+          /*
+            Степперы замирают только под отправкой: под собственный запрос
+            гасить их нельзя — быстрые нажатия должны складываться.
+          */
+          isBusy={isSubmitting}
+          onQuantityChange={(productId, quantity) => {
+            void handleQuantityChange(productId, quantity)
+          }}
           addItem={
             <ProductPicker
               query={search.query}
