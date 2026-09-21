@@ -144,7 +144,7 @@ def test_required_column_without_a_default_is_flagged(tmp_path: Path) -> None:
     assert operations(
         tmp_path,
         'op.add_column("products", sa.Column("sku", sa.String(), nullable=False))',
-    ) == ["add_column (NOT NULL without a server_default)"]
+    ) == ["add_column (NOT NULL the database cannot fill)"]
 
 
 def test_required_column_with_a_server_default_is_allowed(tmp_path: Path) -> None:
@@ -155,6 +155,56 @@ def test_required_column_with_a_server_default_is_allowed(tmp_path: Path) -> Non
             op.add_column(
                 "products",
                 sa.Column("sku", sa.String(), nullable=False, server_default=""),
+            )
+            """,
+        )
+        == []
+    )
+
+
+def test_required_generated_column_is_allowed(tmp_path: Path) -> None:
+    """A `GENERATED ALWAYS … STORED` column the old code neither knows nor may name.
+
+    `products.name_norm` is the live case (c7f2a8d15b40). `NOT NULL` with no
+    `server_default` looks exactly like the flagged shape, but the database
+    computes the value for every row — including the ones the previous release
+    inserts, which could not name the column even if they knew about it.
+    """
+
+    assert (
+        operations(
+            tmp_path,
+            """
+            op.add_column(
+                "products",
+                sa.Column(
+                    "name_norm",
+                    sa.String(255),
+                    sa.Computed("translate(name, ' -.', '')", persisted=True),
+                    nullable=False,
+                ),
+            )
+            """,
+        )
+        == []
+    )
+
+
+def test_required_generated_column_by_keyword_is_allowed(tmp_path: Path) -> None:
+    """The same column written with `computed=` instead of positionally."""
+
+    assert (
+        operations(
+            tmp_path,
+            """
+            op.add_column(
+                "products",
+                sa.Column(
+                    "name_norm",
+                    sa.String(255),
+                    computed=sa.Computed("translate(name, ' -.', '')"),
+                    nullable=False,
+                ),
             )
             """,
         )

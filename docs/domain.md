@@ -79,6 +79,12 @@ account_has_unfinished_orders`, `DELETION_BLOCKING_STATUSES`). The goods behind 
   nameless, with no chat to send to, yet still in the owner fan-out — is a state the table
   cannot reach.
 
+The page says so afterwards rather than navigating away: on a `204` it replaces the
+profile form with a farewell naming what was erased, and the person leaves for the
+catalogue themselves. A silent redirect is indistinguishable from a failure — which is
+what it was taken for. A refusal is shown at the delete button, not at the name field,
+for the same reason: that is where the person is looking.
+
 The session ends with the account: refresh tokens and waiting login sessions are deleted
 rows, and the site posts `/api/auth/logout` straight after the `DELETE`, which clears the
 `lb_at`/`lb_rt` cookies whatever the backend answers. What cannot be taken back is an

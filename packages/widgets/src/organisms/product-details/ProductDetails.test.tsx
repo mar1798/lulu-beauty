@@ -82,6 +82,19 @@ describe('ProductDetails и несколько объёмов', () => {
     expect(screen.queryByRole('radiogroup')).not.toBeInTheDocument()
   })
 
+  it('оба действия стоят в строке — второе не подменяет первое', () => {
+    renderWidget(
+      <ProductDetails
+        {...feedProductDetails()}
+        action={<button type="button">В корзину</button>}
+        secondaryAction={<button type="button">Добавить в избранное</button>}
+      />
+    )
+
+    expect(screen.getByRole('button', { name: 'В корзину' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Добавить в избранное' })).toBeInTheDocument()
+  })
+
   it('показывает объяснение под кнопками, не вместо них', () => {
     // Погашенная «в корзину» говорит, что нельзя, и ничего — почему.
     renderWidget(

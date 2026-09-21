@@ -15,7 +15,9 @@ import * as styles from './ProductDetails.css'
  *
  * Кнопка «в корзину» приходит слотом `action`, «в избранное» —
  * `secondaryAction`: обе завязаны на активный цикл и авторизацию, а это
- * состояние `apps/website`, не виджета.
+ * состояние `apps/website`, не виджета. Стоят они в одной строке, и вторая —
+ * круглой иконкой: два подписанных действия делили строку пополам и читались
+ * равными, хотя равными не являются.
  *
  * Товар, продающийся в нескольких объёмах, показывает переключатель, и цена с
  * наличием читаются уже с выбранного объёма, а не с товара: у товара
@@ -110,9 +112,15 @@ export const ProductDetails: FC<IProductDetailsProps & IBasicStyling> = ({
 
         {(action !== undefined || secondaryAction !== undefined) && (
           <div className={styles.action}>
-            {/* Оба действия — подписанными кнопками в одной строке, вторым «в избранное». */}
-            {action}
-            {secondaryAction}
+            {/*
+              Главное действие — подписанной кнопкой, «в избранное» — круглым
+              сердцем рядом: слоты обёрнуты, потому что раскладка у них разная
+              (одно тянется, второе держит квадрат), а классы слотам не передать.
+            */}
+            {action !== undefined && <div className={styles.actionPrimary}>{action}</div>}
+            {secondaryAction !== undefined && (
+              <div className={styles.actionSecondary}>{secondaryAction}</div>
+            )}
           </div>
         )}
 

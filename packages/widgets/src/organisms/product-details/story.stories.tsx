@@ -2,6 +2,8 @@ import { useState } from 'react'
 import type { StoryFn, Meta } from '@storybook/react'
 import { ProductDetails, ProductDetailsSkeleton } from '.'
 import { Button } from '../../atoms/button'
+import { IconButton } from '../../atoms/icon-button'
+import { IconHeart } from '../../svg/icons'
 import { feedProductDetails, feedProductWithVariants } from '../../stories/feed'
 import { StoryWrapper } from '../../stories/wrapper'
 
@@ -61,5 +63,29 @@ export const SeveralVolumes: StoryFn = () => {
   )
 }
 SeveralVolumes.parameters = {
+  layout: 'padded',
+}
+
+/**
+ * Строка действий так, как её собирает `apps/website`: подписанная «в корзину»
+ * во всю оставшуюся ширину и круглое сердце рядом. Проверять её нужно на узкой
+ * ширине — ради неё раскладка и переделана.
+ */
+export const Actions: StoryFn = () => (
+  <StoryWrapper>
+    <ProductDetails
+      {...feedProductDetails()}
+      action={
+        <Button size="lg" isFullWidth={true}>
+          В корзину
+        </Button>
+      }
+      secondaryAction={
+        <IconButton icon={<IconHeart />} label="Добавить в избранное" variant="solid" size="lg" />
+      }
+    />
+  </StoryWrapper>
+)
+Actions.parameters = {
   layout: 'padded',
 }

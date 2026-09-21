@@ -8,6 +8,7 @@ from sqlalchemy.orm import selectinload
 from app.cart.service import CartService
 from app.catalog.import_service import CatalogImportService
 from app.catalog.models import Category, Product, ProductImage
+from app.catalog.search import NOISE, normalize_search
 from app.catalog.serializers import product_response
 from app.catalog.service import ProductNotFoundError, ProductService
 from app.orders.service import OrdersService
@@ -748,3 +749,136 @@ async def test_import_reprices_only_the_volume_whose_price_moved(
     assert (changes[0].old_price_cents, changes[0].new_price_cents) == (1800, 2000)
     prices = {item.product_volume_ml: item.product_price_cents for item in order.items}
     assert prices == {30: 1000, 50: 2000}
+
+
+async def test_search_ignores_punctuation_on_both_sides(db_session: AsyncSession) -> None:
+    """The whole point of the normalised columns: the query and the data are stripped alike.
+
+    "dral" reaching "Dr.Althea" is the case that could not work before — the dot sat in
+    the data, so no amount of cleaning the query would have bridged it.
+    """
+    await make_product(db_session, name="Dr.Althea 345 Relief Cream")
+    await make_product(db_session, name="Round-Lab Birch Toner")
+    await make_product(db_session, name="Lipstick")
+    service = ProductService(db_session)
+
+    for query in ("dral", "dr.althea", "dr althea", "DR ALTHEA"):
+        found, _ = await service.list_public(None, None, 1, 20, query)
+        assert [product.name for product in found] == ["Dr.Althea 345 Relief Cream"], query
+
+    for query in ("round lab", "roundlab", "Round-Lab", "ROUND.LAB"):
+        found, _ = await service.list_public(None, None, 1, 20, query)
+        assert [product.name for product in found] == ["Round-Lab Birch Toner"], query
+
+
+async def test_search_ignores_punctuation_in_brands_and_categories(
+    db_session: AsyncSession,
+) -> None:
+    """Search is one field over three columns, and all three are normalised."""
+    category = await make_category(db_session, name="Уход за кожей", slug="skin-care")
+    await make_product(db_session, name="Toner", brand="I'm from")
+    await make_product(db_session, name="Cream", category_id=category.id)
+    await make_product(db_session, name="Lipstick")
+    service = ProductService(db_session)
+
+    by_brand, _ = await service.list_public(None, None, 1, 20, "imfrom")
+    assert [product.name for product in by_brand] == ["Toner"]
+
+    by_category, _ = await service.list_public(None, None, 1, 20, "уходзакожей")
+    assert [product.name for product in by_category] == ["Cream"]
+
+
+async def test_search_still_escapes_wildcards_after_normalisation(
+    db_session: AsyncSession,
+) -> None:
+    """Normalisation must not become a way to smuggle a wildcard past the escaping.
+
+    `%` and `_` are kept out of the noise set for exactly this, and the pattern is built
+    in the order that keeps the escaping intact.
+    """
+    await make_product(db_session, name="50% Off Bundle")
+    await make_product(db_session, name="Rose Serum")
+    service = ProductService(db_session)
+
+    found, total = await service.list_public(None, None, 1, 20, "50%")
+    assert [product.name for product in found] == ["50% Off Bundle"]
+    assert total == 1
+
+    nothing, total = await service.list_public(None, None, 1, 20, "%serum")
+    assert nothing == []
+    assert total == 0
+
+
+async def test_suggest_ignores_punctuation_across_all_three_groups(
+    db_session: AsyncSession,
+) -> None:
+    category = await make_category(db_session, name="Уход за кожей", slug="skin-care")
+    await make_product(db_session, name="Dr.Althea Cream", brand="Dr.Althea")
+    await make_product(db_session, name="Уход-за-кожей набор", category_id=category.id)
+    service = ProductService(db_session)
+
+    suggestions = await service.suggest("dralthea")
+    assert suggestions.brands == ["Dr.Althea"]
+    assert [product.name for product in suggestions.products] == ["Dr.Althea Cream"]
+
+    by_category = await service.suggest("уходзакожей")
+    assert [item.slug for item in by_category.categories] == ["skin-care"]
+
+
+async def test_normalisation_matches_the_database(db_session: AsyncSession) -> None:
+    """The guard on the one real risk of this design: two spellings of one rule.
+
+    `normalize_search` strips the query in Python and a generated column strips the data
+    in SQL. They are written out separately — here, and in the migration that created the
+    column — and nothing but this test notices if they stop agreeing.
+
+    The first name is built out of `NOISE` itself rather than written by hand, and that
+    is what makes this a guard rather than a spot check: a character added to the rule in
+    Python without a migration that alters the column lands in this fixture the moment it
+    is added, so the drift fails here. A hand-written list would have gone on passing,
+    never containing the new character. The rest stay as they are — real catalogue
+    spellings, which say what the rule is *for* in a way `f"Dr{NOISE}Althea"` does not.
+    """
+    names = [
+        f"Dr{NOISE}Althea",
+        "Dr.Althea 345",
+        "Round-Lab — Birch",
+        "I'm from «Honey»",
+        "Крем, 50% (50 мл)",
+        "A’pieu Toner",
+    ]
+    # Every character of the rule, gone: the Python half of the comparison below is only
+    # worth as much as the fixture it runs on.
+    assert normalize_search(names[0]) == "DrAlthea"
+    for name in names:
+        await make_product(db_session, name=name, brand=name)
+    # `categories.name_norm` is its own `add_column`, so it gets the exhaustive name
+    # too — the two columns could drift apart as easily as either could from Python.
+    category = await make_category(db_session, name=names[0], slug="norm-check")
+
+    stored = (await db_session.execute(select(Product).where(Product.name.in_(names)))).scalars()
+    for product in stored:
+        assert product.name_norm == normalize_search(product.name)
+        assert product.brand is not None
+        assert product.brand_norm == normalize_search(product.brand)
+
+    fetched = await db_session.get(Category, category.id)
+    assert fetched is not None
+    assert fetched.name_norm == normalize_search(fetched.name)
+
+
+async def test_a_query_of_nothing_but_noise_filters_nothing(db_session: AsyncSession) -> None:
+    """"-" or "..." normalises to an empty string, and an empty query is no query.
+
+    A consequence of normalising rather than a decision taken separately: there is no
+    text left to match on, and the alternative — matching nothing at all — would answer
+    a stray keystroke with an empty catalogue.
+    """
+    await make_product(db_session, name="Rose Serum")
+    await make_product(db_session, name="Dive-In Serum")
+    service = ProductService(db_session)
+
+    for query in ("-", "...", "   "):
+        found, total = await service.list_public(None, None, 1, 20, query)
+        assert total == 2, query
+        assert len(found) == 2

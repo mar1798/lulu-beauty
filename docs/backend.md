@@ -252,12 +252,51 @@ whole disjunction unindexable — the planner then reads every product row, the 
 included. Wildcards the user typed are escaped, not stripped — "50%" means a name containing
 "50%".
 
-Two partial trigram GIN indexes carry it, `ix_products_live_name_trgm` and
-`ix_products_live_brand_trgm`, and with the id list the three arms combine into one
+### Punctuation is ignored on both sides
+
+The pattern does not run against `name`, `brand` and `categories.name` but against
+normalised twins of them — `name_norm`, `brand_norm`, `category.name_norm` — and the query
+is normalised the same way by `like_pattern`. Normalising only the query would have changed
+nothing: the punctuation sits in the **data** too, so `dral` could never have reached
+`Dr.Althea` however clean the query was. With both sides stripped, `dral`, `dr althea`,
+`dr.althea` and `DR-ALTHEA` are one query, and `Round Lab` and `Round-Lab` are one product.
+
+The rule is `app/catalog/search.py`: `NOISE` lists the characters dropped — spaces,
+hyphens and dashes, dots, commas, apostrophes, quotes, brackets, slashes. Two things are
+deliberately **not** in it. `%` and `_` stay, because they are LIKE wildcards that
+`like_pattern` escapes, and dropping them from the data would make a search for "50%" match
+a plain "50". And `ё` stays `ё` — folding it onto `е`, like transliterating "Роунд Лаб"
+onto "Round Lab", is a different decision that this rule does not make.
+
+A query that is _only_ noise — `-`, `...`, a lone space — normalises to an empty string,
+and an empty query filters nothing, so the listing comes back whole. That falls out of the
+rule rather than being decided separately, and it is the better of the two outcomes: the
+alternative is answering a stray keystroke with an empty catalogue.
+
+The columns are **generated** (`translate(...)` stored, no `lower()` — matching is `ILIKE`
+already, and a stored expression must be immutable). That is what keeps them honest: the
+xlsx import and the admin forms both write names, and a column either could leave stale
+would be a search that quietly stops finding things.
+
+The standing risk is that the rule is written twice — in Python for the query, in SQL for
+the columns (and a third time, frozen, in the migration that created them, because a stored
+generated column keeps the expression it was made with). They drift silently; a search that
+returns nothing is the only symptom. `test_normalisation_matches_the_database` is the guard:
+it compares every stored `*_norm` against `normalize_search` of its source.
+
+Two partial trigram GIN indexes carry it, `ix_products_live_name_norm_trgm` and
+`ix_products_live_brand_norm_trgm`, and with the id list the three arms combine into one
 `BitmapOr` (the third uses `ix_products_category_id`). An infix `ILIKE '%…%'` rules out any
 btree, so without them every search read the whole table. Both are partial on
 `deleted_at IS NULL`, the condition every public listing carries. `pg_trgm` is a _trusted_
 extension, so the migration creates it without superuser.
+
+They replaced the pair on the raw columns rather than joining it: nothing does an infix
+match on `name`/`brand` any more, so keeping those would have meant four GIN indexes
+rebuilt on every product write — the whole cost of an xlsx import — for no reader. The
+plain btrees beside them stay; they serve the name ordering and the exact-match brand
+filter, neither of which is a search. `categories.name_norm` gets no index at all: the
+table is tens of rows, and `_search_category_ids` reads all of them by design.
 
 Note also that a query shorter than three characters cannot use a trigram index at all — a
 trigram needs three characters to exist — so one- and two-letter searches are sequential
@@ -303,9 +342,11 @@ tag leaves the new schema in place. A migration that only adds — a nullable co
 an index — stays compatible with the previous release, which makes that rollback safe. Drops,
 renames and `NOT NULL` on an existing column don't: they belong in the _next_ release, once
 the one that stopped writing the old shape has lived in production. A release that breaks
-this rule can only be undone through `deploy/restore.sh`. So does a `NOT NULL` column added
-without a `server_default`, and a uniqueness rule added to an existing table: the previous
-release inserts rows the new schema refuses. The rule is enforced on every release by the
+this rule can only be undone through `deploy/restore.sh`. So does a `NOT NULL` column the
+database cannot fill by itself, and a uniqueness rule added to an existing table: the
+previous release inserts rows the new schema refuses. A `server_default` or a `Computed`
+settles the first — the database supplies the value for the rows the old code inserts, and
+a generated column it could not name even if it knew about it. The rule is enforced on every release by the
 `Migration guard` job, which parses `upgrade()` in each migration the release touches
 (`.github/scripts/check-migrations.py` — runnable by hand before the release PR, and run as a
 warning by the `API` job on every push to `development`). It runs **before** the tag, so a

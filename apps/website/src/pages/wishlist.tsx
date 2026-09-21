@@ -90,7 +90,9 @@ const WishlistPage: React.FC = () => {
             product.inStock ? <AddToCartButton product={product} isCompact={true} /> : null
           }
           // Здесь сердце всегда залито, и нажатие убирает товар из списка.
-          renderMediaAction={product => <WishlistButton productId={product.id} />}
+          renderMediaAction={product => (
+            <WishlistButton productId={product.id} productName={product.name} />
+          )}
           emptyState={
             <EmptyState
               title="Пока пусто"

@@ -525,7 +525,9 @@ const HomePage: React.FC<IHomePageProps> = ({
                             десктопный размер.
                           */
                           isPriority={index === 0}
-                          mediaAction={<WishlistButton productId={product.id} />}
+                          mediaAction={
+                            <WishlistButton productId={product.id} productName={product.name} />
+                          }
                         />
                       </Float>
                     ))
@@ -596,7 +598,9 @@ const HomePage: React.FC<IHomePageProps> = ({
               renderAction={product =>
                 product.inStock ? <AddToCartButton product={product} isCompact={true} /> : null
               }
-              renderMediaAction={product => <WishlistButton productId={product.id} />}
+              renderMediaAction={product => (
+                <WishlistButton productId={product.id} productName={product.name} />
+              )}
             />
           </HomeSection>
         )}

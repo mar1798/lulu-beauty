@@ -817,11 +817,14 @@ of preparing a release.
 
   Contracting is read as "the previous release stops working against this
   schema", which is wider than dropping things, so three more are flagged:
-  `op.add_column` with `nullable=False` and no `server_default` (the old code
-  inserts rows without that column and the database refuses them — the expanding
-  way to add a required field is two releases, nullable now and `NOT NULL` once
-  the old code is gone), `op.create_unique_constraint`, and `op.create_index`
-  with `unique=True` (the old code writes rows that collide). All three are
+  `op.add_column` with `nullable=False` and nothing the database can fill it
+  from (the old code inserts rows without that column and the database refuses
+  them — the expanding way to add a required field is two releases, nullable now
+  and `NOT NULL` once the old code is gone), `op.create_unique_constraint`, and
+  `op.create_index` with `unique=True` (the old code writes rows that collide).
+  A `server_default` lets the first through, and so does a `Computed`: a
+  `GENERATED ALWAYS … STORED` column is filled by the database for every row,
+  including the ones the previous release inserts, which may not name it at all. All three are
   allowed on a table the same migration creates: a rule on data that did not
   exist a minute ago constrains nobody.
 

@@ -183,19 +183,6 @@ export function tableCardCell(): StyleRule {
   }
 }
 
-/**
- * Ячейка с контролом (селект статуса): на карточке подпись встаёт **над**
- * значением, иначе селект сжимается до нечитаемого.
- */
-export function tableCardStackCell(): StyleRule {
-  return {
-    ...tableCardCell(),
-    flexDirection: 'column',
-    alignItems: 'stretch',
-    rowGap: vars.space.xxs,
-  }
-}
-
 /** Ячейка с кнопками: в настоящей таблице прижата вправо, на карточке — строка. */
 export function tableCardActionsCell(): StyleRule {
   return {

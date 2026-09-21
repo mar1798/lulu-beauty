@@ -316,7 +316,9 @@ const CatalogPage: React.FC<ICatalogPageProps> = ({ categories, brands, initial 
               наличии» проходит, а сохранить его на следующий сбор — ровно то,
               зачем избранное и нужно.
             */
-            renderMediaAction={product => <WishlistButton productId={product.id} />}
+            renderMediaAction={product => (
+              <WishlistButton productId={product.id} productName={product.name} />
+            )}
             emptyState={
               <EmptyState
                 title="Ничего не нашлось"
