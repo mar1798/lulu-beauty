@@ -24,7 +24,9 @@ import * as styles from './AdminOrdersTable.css'
  *
  * Ниже `md` та же разметка раскладывается в карточки (см. миксин
  * `styling/mixin/table.ts`): название колонки берётся из `data-label`, а роли
- * проставлены явно — `display: block` снимает встроенные роли таблицы.
+ * проставлены явно — `display: block` снимает встроенные роли таблицы. Статус и
+ * кнопка удаления делят на карточке одну строку: остальные ячейки занимают всю
+ * ширину, эти две — нет.
  */
 
 const DEFAULT_SKELETON_ROWS = 5
@@ -82,7 +84,7 @@ export const AdminOrdersTable: FC<IAdminOrdersTableProps & IBasicStyling> = ({
               Статус
             </th>
             {onDelete !== undefined && (
-              <th className={styles.headCell} scope="col" role="columnheader">
+              <th className={styles.headActionsCell} scope="col" role="columnheader">
                 Действия
               </th>
             )}
@@ -156,7 +158,7 @@ export const AdminOrdersTable: FC<IAdminOrdersTableProps & IBasicStyling> = ({
                       </td>
 
                       {onDelete !== undefined && (
-                        <td className={styles.cell} role="cell">
+                        <td className={styles.actionsCell} role="cell">
                           <IconButton
                             icon={<IconTrash />}
                             label={`Удалить заявку № ${orderNumber(order.id)}`}

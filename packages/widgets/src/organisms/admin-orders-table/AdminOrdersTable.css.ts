@@ -2,6 +2,7 @@ import { style } from '@vanilla-extract/css'
 import { color, font, media, rem, transition } from '../../styling/lib'
 import { flexColumn, flexRow, focusVisibleRing } from '../../styling/mixin'
 import {
+  tableCardActionsCell,
   tableCardBase,
   tableCardBody,
   tableCardCell,
@@ -21,14 +22,49 @@ export const head = style(tableCardHead())
 
 export const body = style(tableCardBody())
 
-export const row = style(tableCardRow())
+/*
+ * На карточке строка — не столбец, а ряд с переносом: статус и кнопка удаления
+ * должны встать в одну строку, а остальные ячейки занимают всю ширину сами
+ * (`flexBasis: 100%` ниже). Выше `md` строка снова `table-row`, и ни
+ * направление, ни перенос, ни `column-gap` на неё не действуют.
+ */
+export const row = style({
+  ...tableCardRow(),
+  flexDirection: 'row',
+  flexWrap: 'wrap',
+  columnGap: vars.space.sm,
+})
 
 export const headCell = style(tableHeadCell())
 
-export const cell = style(tableCardCell())
+export const headActionsCell = style([tableHeadCell(), { textAlign: 'right' }])
+
+export const cell = style({
+  ...tableCardCell(),
+  flexBasis: '100%',
+})
 
 /** Селект статуса: на карточке подпись встаёт над ним, иначе он сжимается. */
-export const statusCell = style(tableCardStackCell())
+export const statusCell = style({
+  ...tableCardStackCell(),
+  /* Делит строку с кнопкой удаления и забирает всю ширину, кроме её. */
+  flexBasis: 'auto',
+  flexGrow: 1,
+  minWidth: 0,
+})
+
+/**
+ * Кнопка удаления стоит рядом со статусом, а не отдельной строкой: одна
+ * иконка на всю ширину карточки — это пустая строка с точкой у края.
+ * `flex-end` равняет её по селекту, под которым подпись «Статус» поднимает
+ * соседнюю ячейку на строку выше.
+ */
+export const actionsCell = style({
+  ...tableCardActionsCell(),
+  flexBasis: 'auto',
+  flexGrow: 0,
+  alignSelf: 'flex-end',
+})
 
 export const order = style(flexColumn(2))
 
@@ -93,6 +129,7 @@ export const detailsRow = style({
  */
 export const detailsCell = style({
   ...tableCardCell(),
+  flexBasis: '100%',
   flexDirection: 'column',
   alignItems: 'stretch',
   rowGap: vars.space.xs,
