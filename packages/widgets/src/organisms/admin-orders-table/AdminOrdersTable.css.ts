@@ -8,7 +8,6 @@ import {
   tableCardCell,
   tableCardHead,
   tableCardRow,
-  tableCardStackCell,
   tableHeadCell,
   tableWrap,
 } from '../../styling/mixin/table'
@@ -44,11 +43,19 @@ export const cell = style({
   flexBasis: '100%',
 })
 
-/** Селект статуса: на карточке подпись встаёт над ним, иначе он сжимается. */
+/**
+ * Селект статуса. Единственная ячейка карточки без `data-label`, кроме главной:
+ * подпись «Статус» над списком статусов ничего не добавляет, а строку с кнопкой
+ * удаления разгоняет по высоте — без неё селект и кнопка стоят вровень.
+ *
+ * Делит строку с кнопкой и забирает всю ширину, кроме её. База ровно `0`, а не
+ * `auto`: перенос flex решает по базовому размеру, а у `StatusSelect` это его
+ * `min-width` в 210px — вместе с кнопкой они не помещались в 375px, и кнопка
+ * уезжала на следующую строку, хотя по факту места хватает.
+ */
 export const statusCell = style({
-  ...tableCardStackCell(),
-  /* Делит строку с кнопкой удаления и забирает всю ширину, кроме её. */
-  flexBasis: 'auto',
+  ...tableCardCell(),
+  flexBasis: 0,
   flexGrow: 1,
   minWidth: 0,
 })
@@ -56,14 +63,13 @@ export const statusCell = style({
 /**
  * Кнопка удаления стоит рядом со статусом, а не отдельной строкой: одна
  * иконка на всю ширину карточки — это пустая строка с точкой у края.
- * `flex-end` равняет её по селекту, под которым подпись «Статус» поднимает
- * соседнюю ячейку на строку выше.
+ * По вертикали она выровнена по центру селекта статуса.
  */
 export const actionsCell = style({
   ...tableCardActionsCell(),
   flexBasis: 'auto',
   flexGrow: 0,
-  alignSelf: 'flex-end',
+  alignSelf: 'center',
 })
 
 export const order = style(flexColumn(2))

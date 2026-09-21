@@ -26,7 +26,7 @@ import * as styles from './AdminOrdersTable.css'
  * `styling/mixin/table.ts`): название колонки берётся из `data-label`, а роли
  * проставлены явно — `display: block` снимает встроенные роли таблицы. Статус и
  * кнопка удаления делят на карточке одну строку: остальные ячейки занимают всю
- * ширину, эти две — нет.
+ * ширину, эти две — нет, и подписи у статуса там тоже нет.
  */
 
 const DEFAULT_SKELETON_ROWS = 5
@@ -145,7 +145,7 @@ export const AdminOrdersTable: FC<IAdminOrdersTableProps & IBasicStyling> = ({
                         <Price priceCents={order.totalCents} size="sm" />
                       </td>
 
-                      <td className={styles.statusCell} role="cell" data-label="Статус">
+                      <td className={styles.statusCell} role="cell">
                         <StatusSelect
                           value={order.status}
                           isLabelHidden={true}
