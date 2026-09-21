@@ -1,15 +1,20 @@
 import { style } from '@vanilla-extract/css'
-import { border, color, rem } from '../../styling/lib'
+import { border, color, min, rem } from '../../styling/lib'
 import { flexColumn } from '../../styling/mixin'
+import { wrapperWidth } from '../../styling/properties.css'
 import { vars } from '../../styling/themes/contract.css'
 
 /**
  * Колонка в 680px, а не во всю ширину контейнера: документ читают строками, а
  * строка в полторы тысячи пикселей теряется на возврате к началу следующей.
+ *
+ * Сужение — через `min` с `wrapperWidth`, а не голым `rem(680)`: поля страницы
+ * зашиты в саму переменную (`min(100vw - 40px, 1200px)`), и плоское число их
+ * затирает — на экране уже 680px текст вставал впритык к краям.
  */
 export const container = style({
   ...flexColumn(32),
-  maxWidth: rem(680),
+  maxWidth: min(wrapperWidth, rem(680)),
   paddingBlock: vars.space.xxl,
 })
 
