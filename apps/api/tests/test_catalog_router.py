@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from app.catalog.models import Category, Product, ProductImage
+from app.catalog.models import Category, Product, ProductImage, ProductVariant
 from app.catalog.results import CatalogSuggestions
 from app.db import get_session
 from app.main import app
@@ -35,6 +35,11 @@ def _product(*, deleted_at: datetime | None = None) -> Product:
         deleted_at=deleted_at,
     )
     product.images = []
+    # A product always has at least one variant — the storefront reads its price and its
+    # stock off that row, not off the product's own columns.
+    product.variants = [
+        ProductVariant(id=uuid.uuid4(), volume_ml=30, price_cents=1000, in_stock=True)
+    ]
     product.created_at = datetime.now(UTC)
     product.updated_at = datetime.now(UTC)
     return product
@@ -136,6 +141,7 @@ async def test_suggest_returns_the_three_groups(client: AsyncClient) -> None:
                 "slug": "rose-serum",
                 "brand": "Anua",
                 "priceCents": 1000,
+                "variantCount": 1,
                 "inStock": True,
                 "imageUrl": "http://x/1.jpg",
                 "imageAlt": "Роза",

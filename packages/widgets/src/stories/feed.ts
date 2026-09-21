@@ -80,6 +80,7 @@ import {
   IProduct,
   IProductCardProps,
   IProductDetailsProps,
+  IVariantSelectorProps,
   IProductGalleryProps,
   IProductGridProps,
   IProductImage,
@@ -562,21 +563,64 @@ export const feedProductImageDto = (isPrimary = false, sortOrder = 0): IProductI
   isPrimary,
 })
 
-export const feedProduct = (overrides: Partial<IProduct> = {}): IProduct => ({
-  id: faker.string.uuid(),
-  name: faker.commerce.productName(),
-  slug: faker.lorem.slug(3),
-  description: faker.commerce.productDescription(),
-  brand: faker.company.name(),
-  priceCents: faker.number.int({ min: PRICE_MIN, max: PRICE_MAX }),
-  volumeMl: faker.helpers.arrayElement([30, 50, 100, 150, 500]),
-  categoryId: faker.string.uuid(),
-  inStock: true,
-  images: [feedProductImageDto(true, 0), feedProductImageDto(false, 1)],
-  deletedAt: null,
-  updatedAt: faker.date.recent({ days: 30 }).toISOString(),
-  ...overrides,
-})
+/**
+ * Товар, продающийся в одном объёме, — таких в каталоге большинство.
+ *
+ * Вариант ровно один и согласован с `priceCents`/`volumeMl`/`inStock`: на
+ * бэкенде эти три поля производные от вариантов, и фикстура, в которой они
+ * расходятся, описывала бы состояние, которого не бывает.
+ */
+export const feedProduct = (overrides: Partial<IProduct> = {}): IProduct => {
+  const priceCents = faker.number.int({ min: PRICE_MIN, max: PRICE_MAX })
+  const volumeMl = faker.helpers.arrayElement([30, 50, 100, 150, 500])
+
+  return {
+    id: faker.string.uuid(),
+    name: faker.commerce.productName(),
+    slug: faker.lorem.slug(3),
+    description: faker.commerce.productDescription(),
+    brand: faker.company.name(),
+    priceCents,
+    volumeMl,
+    categoryId: faker.string.uuid(),
+    inStock: true,
+    images: [feedProductImageDto(true, 0), feedProductImageDto(false, 1)],
+    variants: [{ id: faker.string.uuid(), volumeMl, priceCents, inStock: true }],
+    deletedAt: null,
+    updatedAt: faker.date.recent({ days: 30 }).toISOString(),
+    ...overrides,
+  }
+}
+
+/** Цена большего объёма против меньшего — чтобы переключатель не выглядел сломанным. */
+const LARGER_PRICE_FACTOR = 1.6
+
+/**
+ * Товар в двух объёмах: 30 мл в наличии, 50 мл кончились.
+ *
+ * Именно эта пара и нужна витрине для проверки — «от» в цене, отсутствие
+ * единого объёма у товара и отключённая кнопка в селекторе сразу на одном
+ * экземпляре.
+ */
+export const feedProductWithVariants = (overrides: Partial<IProduct> = {}): IProduct => {
+  const priceCents = faker.number.int({ min: PRICE_MIN, max: PRICE_MAX })
+
+  return feedProduct({
+    priceCents,
+    // Объёмов два, поэтому одним числом товар не описать — как и на бэкенде.
+    volumeMl: null,
+    variants: [
+      { id: faker.string.uuid(), volumeMl: 30, priceCents, inStock: true },
+      {
+        id: faker.string.uuid(),
+        volumeMl: 50,
+        priceCents: Math.round(priceCents * LARGER_PRICE_FACTOR),
+        inStock: false,
+      },
+    ],
+    ...overrides,
+  })
+}
 
 export const feedProductCard = (): IProductCardProps => {
   const product = feedProduct()
@@ -679,6 +723,12 @@ export const feedProductDetails = (): IProductDetailsProps => ({
   categoryName: 'Уход за кожей',
 })
 
+export const feedVariantSelector = (): IVariantSelectorProps => {
+  const { variants } = feedProductWithVariants()
+
+  return { variants, selectedId: variants[0]?.id ?? null, onSelect: noop }
+}
+
 export const feedCatalogTemplate = (): ICatalogTemplateProps => ({
   title: 'Каталог',
   summary: 'Заявки принимаются до ближайшего дедлайна.',
@@ -739,6 +789,7 @@ export const feedCartItem = (quantity = 2): ICartItem => {
   const product = feedProduct()
 
   return {
+    variantId: product.variants[0]?.id ?? faker.string.uuid(),
     productId: product.id,
     productName: product.name,
     productSlug: product.slug,
@@ -814,6 +865,7 @@ export const feedOrderItem = (overrides: Partial<IOrderItem> = {}): IOrderItem =
   return {
     id: faker.string.uuid(),
     productId: product.id,
+    variantId: product.variants[0]?.id ?? null,
     productName: product.name,
     productSlug: product.slug,
     productImageUrl: product.images[0]?.url ?? null,

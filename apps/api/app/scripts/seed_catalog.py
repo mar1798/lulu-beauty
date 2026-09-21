@@ -13,7 +13,8 @@ import sys
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.catalog.models import Category, Product
+from app.catalog.models import Category, Product, ProductVariant
+from app.catalog.service import ProductService
 from app.db import async_session
 
 DEFAULT_COUNT = 50
@@ -110,7 +111,15 @@ MODIFIERS: dict[str, list[tuple[str, str, str]]] = {
 
 BRANDS = ["Lumen", "Bloom", "Aurea", "Nordis", "Velmi", "Sakura Lab", "Botanica", "Mira"]
 
-VOLUMES = ["30 мл", "50 мл", "100 мл", "150 мл", "200 мл", "250 мл"]
+VOLUMES = [30, 50, 100, 150, 200, 250]
+# How often a seeded product is sold in two volumes rather than one. Not a guess about
+# the real catalogue — enough of them, reliably, that the volume selector is on screen
+# the moment a developer opens the site.
+TWO_VOLUME_SHARE = 0.3
+# What the larger volume costs against the smaller, and how much bigger it is. A second
+# volume priced the same as the first would make the selector look broken.
+LARGER_VOLUME_FACTOR = 2
+LARGER_PRICE_FACTOR = 1.6
 
 
 async def _ensure_categories(session: AsyncSession) -> dict[str, Category]:
@@ -164,19 +173,43 @@ async def seed_catalog(count: int = DEFAULT_COUNT) -> None:
             min_price, max_price = price_range
             price_rubles = rng.randrange(min_price, max_price + 1, 10)
             volume = rng.choice(VOLUMES)
+            # A little out-of-stock noise so the catalog filters have something to do.
+            in_stock = rng.random() > 0.15
 
-            session.add(
-                Product(
-                    name=f"{name} {modifier}",
-                    slug=slug,
-                    description=f"{name} {modifier}: {effect}. Объём — {volume}.",
-                    brand=rng.choice(BRANDS),
+            variants = [
+                ProductVariant(
+                    volume_ml=volume,
                     price_cents=price_rubles * 100,
-                    category_id=categories[category_slug].id,
-                    # A little out-of-stock noise so the catalog filters have something to do.
-                    in_stock=rng.random() > 0.15,
+                    in_stock=in_stock,
+                    sort_order=0,
                 )
+            ]
+            if rng.random() < TWO_VOLUME_SHARE:
+                variants.append(
+                    ProductVariant(
+                        volume_ml=volume * LARGER_VOLUME_FACTOR,
+                        price_cents=int(price_rubles * LARGER_PRICE_FACTOR) * 100,
+                        # Sometimes only the big one is out: that is the case the cart and
+                        # the selector have to get right, and it never shows up by chance.
+                        in_stock=in_stock and rng.random() > 0.2,
+                        sort_order=1,
+                    )
+                )
+
+            product = Product(
+                name=f"{name} {modifier}",
+                slug=slug,
+                description=f"{name} {modifier}: {effect}.",
+                brand=rng.choice(BRANDS),
+                category_id=categories[category_slug].id,
+                # Overwritten a line below — the columns are derived from the variants,
+                # and NOT NULL until they are.
+                price_cents=0,
+                in_stock=in_stock,
+                variants=variants,
             )
+            ProductService.refresh_display_fields(product)
+            session.add(product)
             created += 1
 
         await session.commit()

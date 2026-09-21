@@ -143,19 +143,46 @@ export interface IProductImage {
   isPrimary: boolean
 }
 
+/**
+ * Один объём товара — то, что покупатель на самом деле выбирает и кладёт в
+ * корзину. Своя цена и своё наличие: 30 мл могут кончиться, пока 50 мл лежат.
+ */
+export interface IProductVariant {
+  id: string
+  /** Миллилитры; `null` — товару нечего измерять (патчи, тканевые маски). */
+  volumeMl: number | null
+  priceCents: number
+  inStock: boolean
+}
+
 export interface IProduct {
   id: string
   name: string
   slug: string
   description: string | null
   brand: string | null
+  /**
+   * Цена самого дешёвого объёма. У товара с несколькими это «от», а не цена:
+   * поле производное от `variants`, и витрина подписывает его соответственно.
+   */
   priceCents: number
-  /** Объём в миллилитрах; `null` — у товара его нет (патчи, тканевые маски). */
+  /**
+   * Объём в миллилитрах; `null` — либо товару нечего измерять (патчи, тканевые
+   * маски), либо объёмов несколько и одним числом товар не описать. Отличить
+   * одно от другого можно по длине `variants`.
+   */
   volumeMl: number | null
   /** Публичный `GET /products?category=` фильтрует по **слагу**, а не по id — маппинг держит фронт. */
   categoryId: string | null
   inStock: boolean
   images: IProductImage[]
+  /**
+   * Объёмы, в которых товар продаётся, в порядке, заданном владельцем. Пустым
+   * не бывает: у товара всегда есть хотя бы один вариант, и товар «без
+   * объёма» — это ровно один вариант с `volumeMl: null`. Именно поэтому
+   * витрине хватает длины массива, чтобы решить, показывать ли переключатель.
+   */
+  variants: IProductVariant[]
   /**
    * Метка мягкого удаления. В публичных списках всегда `null` — удалённые
    * товары туда не попадают; в админском листинге с `includeDeleted=true`
@@ -190,9 +217,15 @@ export interface IItemRowItem {
 
 /**
  * Позиция корзины. Своего `id` у неё нет: и `PATCH`, и `DELETE`
- * в `/cart/items/{productId}` адресуются идентификатором товара.
+ * в `/cart/items/{variantId}` адресуются идентификатором объёма.
  */
 export interface ICartItem extends IItemRowItem {
+  /**
+   * Объём, а не товар: строка корзины адресуется вариантом
+   * (`PATCH /cart/items/{variantId}`), и двух объёмов одного товара в корзине
+   * теперь может быть две штуки — с разными ценами и количествами.
+   */
+  variantId: string
   productId: string
   productSlug: string
 }
@@ -232,6 +265,8 @@ export interface IOrderItem extends IItemRowItem {
   /** Идентификатор строки заявки: правка и удаление адресуются им, а не товаром. */
   id: string
   productId: string | null
+  /** Объём, который заказали; `null`, если вариант с тех пор удалён насовсем. */
+  variantId: string | null
   productSlug: string
 }
 
@@ -532,6 +567,12 @@ export interface IPriceProps {
   priceCents: number
   currency?: string
   size?: IControlSize
+  /**
+   * Подписать «от»: цена — минимальная из нескольких, а не цена товара.
+   * Нужна карточке товара, продающегося в разных объёмах: без «от» витрина
+   * обещает число, по которому продаётся только меньший из них.
+   */
+  isFrom?: boolean
 }
 
 export interface ISpinnerProps {
@@ -663,6 +704,12 @@ export interface ISearchSuggestItem {
   image?: IImage
   /** Копейки, как отдаёт бэкенд. Есть только у товарных строк. */
   priceCents?: number
+  /**
+   * Цена — минимальная из нескольких объёмов, и подписывается «от». Ровно то
+   * же, что карточка в каталоге говорит про тот же товар: без подписи строка
+   * обещала бы цену, по которой продаётся только меньший из объёмов.
+   */
+  isPriceFrom?: boolean
   /** Товара нет в наличии: строка помечается, но остаётся рабочей ссылкой. */
   isUnavailable?: boolean
 }
@@ -1131,6 +1178,19 @@ export interface ISearchFieldProps {
   isBusy?: boolean
 }
 
+export interface IVariantSelectorProps {
+  /**
+   * Объёмы товара в порядке, заданном владельцем. Кончившиеся входят сюда
+   * наравне с остальными и так же выбираются: цена и наличие показываются
+   * над переключателем и относятся к выбранному объёму — узнать их можно
+   * только выбрав, и отключённая кнопка эту дорогу закрывала бы.
+   */
+  variants: IProductVariant[]
+  /** `null` — не выбрано ничего; бывает только у товара без объёмов вовсе. */
+  selectedId: string | null
+  onSelect: (variantId: string) => void
+}
+
 export interface IProductGalleryProps {
   images: IProductImage[]
   /** Запасной `alt`, когда у картинки его нет. */
@@ -1186,9 +1246,25 @@ export interface IProductDetailsProps {
   product: IProduct
   /** Название категории: у товара приходит только `categoryId`. */
   categoryName?: string | null
+  /**
+   * Выбранный объём. Состояние держит `apps/website` — от него зависит и
+   * кнопка «в корзину», которая приезжает слотом `action`, так что хранить его
+   * здесь означало бы разделить одно решение между двумя местами.
+   *
+   * `undefined` — у товара один объём и выбирать нечего; `null` — выбирать
+   * есть из чего, но нечего выбрать: всё кончилось.
+   */
+  selectedVariantId?: string | null
+  onSelectVariant?: (variantId: string) => void
   action?: ReactNode
   /** Второе действие рядом с основным — «в избранное». */
   secondaryAction?: ReactNode
+  /**
+   * Строка под кнопками: почему основное действие сейчас погашено. Слот, а не
+   * текст виджета, — причина («нет в сборе») принадлежит модели магазина,
+   * а не карточке.
+   */
+  note?: ReactNode
 }
 
 export interface ICatalogTemplateProps {
@@ -1292,8 +1368,10 @@ export interface IQuantityStepperProps {
 export interface ICartPanelProps {
   cart: ICart | null
   buildProductHref: (productSlug: string) => string
-  onQuantityChange: (productId: string, quantity: number) => void
-  onRemove: (productId: string) => void
+  /* Позиция адресуется объёмом: двух объёмов одного товара в корзине может
+     быть две строки, и товар их уже не различает. */
+  onQuantityChange: (variantId: string, quantity: number) => void
+  onRemove: (variantId: string) => void
   onCheckout: () => void
   /**
    * Первая загрузка корзины: рисуются скелетоны в её раскладке. Отличается
@@ -1313,7 +1391,7 @@ export interface ICartPanelProps {
    * Занята ли конкретная позиция. Без этого запрос по одной строке гасил бы
    * контролы всех — на экране это читается как сбой, а не как ожидание.
    */
-  isItemBusy?: (productId: string) => boolean
+  isItemBusy?: (variantId: string) => boolean
   error?: string | null
   /** Показывается и на пустой корзине, и когда корзины ещё нет. */
   emptyState?: ReactNode
@@ -1500,15 +1578,20 @@ export interface IProductPickerProps {
    * и уходом запроса (дебаунс) показывать нечего.
    */
   isSearching?: boolean
-  /** Товары, которые уже есть в заявке: добавление сольётся с их строкой. */
-  addedProductIds?: string[]
+  /**
+   * Объёмы, которые уже есть в заявке: добавление сольётся с их строкой.
+   *
+   * Объёмы, а не товары: товар, продающийся в 30 и 50 мл, даёт здесь две
+   * строки, и «уже в заявке» относится к одной из них.
+   */
+  addedVariantIds?: string[]
   /**
    * Подпись на бейдже такого товара. Меняется вместе с получателем: до
    * оформления подборщик кладёт товар в корзину, а не в заявку, и «уже в
    * заявке» там было бы неправдой.
    */
   addedLabel?: string
-  onAdd: (productId: string) => void
+  onAdd: (variantId: string) => void
   isBusy?: boolean
   /** Поиск не отдался. Отличается от пустого ответа: искать стоит ещё раз. */
   error?: string | null
@@ -1733,13 +1816,32 @@ export interface IAdminProductPendingImage {
   alt: string
 }
 
+/** Одна строка таблицы «Объёмы» в форме товара. */
+export interface IAdminProductVariantValues {
+  /** `null` — объём не указан; бэкенд отвергает ноль, а не считает его пропуском. */
+  volumeMl: number | null
+  priceCents: number
+  inStock: boolean
+}
+
 export interface IAdminProductValues {
   name: string
   slug: string
   description: string
   brand: string
+  /**
+   * Объёмы, в которых продаётся товар, — всегда хотя бы один. Товар без
+   * объёма это одна строка с `volumeMl: null`, а не пустой список: цену
+   * витрине надо откуда-то взять.
+   */
+  variants: IAdminProductVariantValues[]
+  /**
+   * Витринные поля товара, посчитанные по `variants` ровно так же, как их
+   * считает бэкенд: цена — минимальная, объём — только когда он один, наличие
+   * — «хоть один есть». Последнее слово всё равно за сервером; здесь они
+   * потому, что схема создания товара их требует.
+   */
   priceCents: number
-  /** `null` — объём не указан; бэкенд отвергает ноль, а не считает его пропуском. */
   volumeMl: number | null
   categoryId: string | null
   inStock: boolean

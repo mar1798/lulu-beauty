@@ -9,8 +9,9 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.catalog.models import Category, Product, ProductImage
-from app.catalog.results import CatalogSuggestions
+from app.catalog.models import Category, Product, ProductImage, ProductVariant
+from app.catalog.results import CatalogSuggestions, VariantSpec
+from app.common.limits import MAX_PRODUCT_VARIANTS
 from app.orders.models import OrderItem
 
 
@@ -58,6 +59,34 @@ class ProductNotFoundError(Exception):
 
 class ProductImageNotFoundError(Exception):
     pass
+
+
+class EmptyVariantsError(Exception):
+    """A product was asked to have no volumes at all.
+
+    Refused rather than accommodated: every price the shop shows is a variant's price,
+    so a product without one is a catalog entry nobody can order and the storefront has
+    no number to print.
+    """
+
+
+class DuplicateVariantVolumeError(Exception):
+    """The same volume twice in one product's list of volumes."""
+
+
+class TooManyVariantsError(Exception):
+    """Past `MAX_PRODUCT_VARIANTS` volumes on one product."""
+
+
+class ProductHasVariantsError(Exception):
+    """A single price, volume or stock flag was sent to a product that is sold in several.
+
+    `price_cents`, `volume_ml` and `in_stock` on the product are shorthand for "the only
+    variant" and stay writable as long as there is only one — which is what keeps the
+    xlsx import and every older client working. Once the owner adds a second volume,
+    those fields are derived and the only way to move them is the variants list itself;
+    silently applying one price to every volume would undo the split.
+    """
 
 
 class CategoryService:
@@ -199,7 +228,7 @@ class ProductService:
         total = await self._session.scalar(select(func.count()).select_from(query.subquery())) or 0
 
         result = await self._session.execute(
-            query.options(selectinload(Product.images))
+            query.options(selectinload(Product.images), selectinload(Product.variants))
             # Product names are not unique (two volumes of the same toner, a re-imported
             # duplicate), so name alone leaves the order of the equal rows to the planner
             # — and a paginated listing then repeats one product and skips another.
@@ -349,7 +378,9 @@ class ProductService:
                 include_deleted=False,
                 search_category_ids=category_ids,
             )
-            .options(selectinload(Product.images))
+            # Variants too: the row says "от N ₽" for a product sold in several, and
+            # `volume_ml` alone cannot tell that apart from a product with no volume.
+            .options(selectinload(Product.images), selectinload(Product.variants))
             .order_by(Product.name.ilike(pattern, escape="\\").desc(), Product.name, Product.id)
             .limit(product_limit)
         )
@@ -400,7 +431,9 @@ class ProductService:
             conditions.append(Product.deleted_at.is_(None))
 
         result = await self._session.execute(
-            select(Product).where(*conditions).options(selectinload(Product.images))
+            select(Product)
+            .where(*conditions)
+            .options(selectinload(Product.images), selectinload(Product.variants))
         )
         return result.scalar_one_or_none()
 
@@ -408,7 +441,7 @@ class ProductService:
         result = await self._session.execute(
             select(Product)
             .where(Product.id == product_id, Product.deleted_at.is_(None))
-            .options(selectinload(Product.images))
+            .options(selectinload(Product.images), selectinload(Product.variants))
         )
         product = result.scalar_one_or_none()
         if product is None:
@@ -425,10 +458,23 @@ class ProductService:
         category_id: uuid.UUID | None,
         in_stock: bool,
         volume_ml: int | None = None,
+        variants: Sequence[VariantSpec] | None = None,
     ) -> Product:
+        """A new product, with at least one variant — always.
+
+        `variants` omitted means the product is sold in one form, and `price_cents` /
+        `volume_ml` / `in_stock` describe it: that is the shape the xlsx import and the
+        simple half of the admin form send, and the variant is built from them here so
+        that nothing downstream has to know which of the two ways a product arrived.
+        """
         if await self._slug_taken(slug):
             raise SlugAlreadyExistsError
         await self._require_category(category_id)
+        specs = self._require_specs(
+            variants
+            if variants is not None
+            else [VariantSpec(volume_ml=volume_ml, price_cents=price_cents, in_stock=in_stock)]
+        )
         product = Product(
             name=name,
             slug=slug,
@@ -439,12 +485,31 @@ class ProductService:
             category_id=category_id,
             in_stock=in_stock,
         )
+        self._apply_specs(product, specs)
         async with _slug_conflict_as_error(self._session):
             self._session.add(product)
-        await self._session.refresh(product, attribute_names=["images"])
+        await self._session.refresh(product, attribute_names=["images", "variants"])
         return product
 
-    async def update(self, product_id: uuid.UUID, updates: dict[str, Any]) -> Product:
+    # What `price_cents`, `volume_ml` and `in_stock` on a PATCH are shorthand for: the
+    # product's only variant. Named here because two places have to agree on the list —
+    # the guard that refuses them for a multi-variant product, and the code that writes
+    # them through to the variant afterwards.
+    _SINGLE_VARIANT_FIELDS = ("price_cents", "volume_ml", "in_stock")
+
+    async def update(
+        self,
+        product_id: uuid.UUID,
+        updates: dict[str, Any],
+        variants: Sequence[VariantSpec] | None = None,
+    ) -> Product:
+        """Edit a product, and — when `variants` is given — the volumes it is sold in.
+
+        `variants` is a full replacement of the list, not a patch of it: the owner's form
+        shows every volume at once, and a list that only ever grows would leave no way to
+        take one off. Reconciliation is by volume, so the rows (and the carts and pending
+        orders pointing at them) survive a price edit — see `_apply_specs`.
+        """
         product = await self.get_by_id(product_id)
 
         new_slug = updates.get("slug")
@@ -457,12 +522,143 @@ class ProductService:
         if "category_id" in updates:
             await self._require_category(updates["category_id"])
 
+        single_fields = {
+            field: value for field, value in updates.items() if field in self._SINGLE_VARIANT_FIELDS
+        }
+        if variants is None and single_fields and len(product.live_variants) > 1:
+            raise ProductHasVariantsError
+
         for field, value in updates.items():
             setattr(product, field, value)
+
+        if variants is not None:
+            self._apply_specs(product, self._require_specs(variants))
+        elif single_fields:
+            # The only variant follows the product's own fields, which is what makes the
+            # shorthand true rather than merely accepted: an import that moves a price
+            # has to move the price a customer is actually offered.
+            only = product.live_variants[0]
+            for field, value in single_fields.items():
+                setattr(only, field, value)
+
+        self.refresh_display_fields(product)
 
         async with _slug_conflict_as_error(self._session):
             await self._session.flush()
         return product
+
+    async def variant_prices(self, product_id: uuid.UUID) -> dict[uuid.UUID, int]:
+        """What each of this product's variants costs right now, keyed by variant id.
+
+        Read by the admin PATCH *before* it writes, because "which prices moved" is only
+        answerable against the old ones — and afterwards the rows hold the new ones.
+        Withdrawn variants are included: a volume brought back at a different price has
+        moved as surely as one that never left, and the orders quoting it must follow.
+        """
+        result = await self._session.execute(
+            select(ProductVariant.id, ProductVariant.price_cents).where(
+                ProductVariant.product_id == product_id
+            )
+        )
+        return {variant_id: price_cents for variant_id, price_cents in result.all()}
+
+    async def live_variant_ids(self, product_id: uuid.UUID) -> set[uuid.UUID]:
+        """Which of this product's volumes are on the shelf right now.
+
+        Read by the admin PATCH *before* it writes, for the same reason `variant_prices`
+        is: a volume the owner drops from the list is only recognisable against the list
+        that was there a moment earlier — afterwards the row simply looks withdrawn, with
+        nothing to say whether this edit is what withdrew it.
+        """
+        result = await self._session.execute(
+            select(ProductVariant.id).where(
+                ProductVariant.product_id == product_id,
+                ProductVariant.deleted_at.is_(None),
+            )
+        )
+        return set(result.scalars().all())
+
+    @staticmethod
+    def _require_specs(specs: Sequence[VariantSpec]) -> list[VariantSpec]:
+        """The owner's list of volumes, checked before anything is written.
+
+        Both failures are the form's to show, not the database's to discover: an empty
+        list has no price to put on a card, and the same volume twice would hit the
+        partial unique index as a 500 at flush.
+        """
+        specs = list(specs)
+        if not specs:
+            raise EmptyVariantsError
+        if len(specs) > MAX_PRODUCT_VARIANTS:
+            raise TooManyVariantsError
+        volumes = [spec.volume_ml for spec in specs]
+        if len(set(volumes)) != len(volumes):
+            raise DuplicateVariantVolumeError
+        return specs
+
+    def _apply_specs(self, product: Product, specs: Sequence[VariantSpec]) -> None:
+        """Reconcile a product's variants against the list the owner submitted.
+
+        Matched by volume, and that is the whole design: a variant's id is what a cart
+        line and a pending order hold, so a saved price edit must land on the existing
+        row. Replacing the list wholesale — delete all, insert all — would empty every
+        cart in the shop each time the owner corrected a number.
+
+        A volume that disappears from the list is soft-deleted rather than removed: it is
+        still quoted by orders waiting for confirmation, and bringing it back later
+        revives the same row (which is also why the unique index is partial).
+        """
+        existing = {variant.volume_ml: variant for variant in product.live_variants}
+
+        for sort_order, spec in enumerate(specs):
+            variant = existing.pop(spec.volume_ml, None)
+            if variant is None:
+                # A volume the owner had withdrawn earlier comes back as itself, so the
+                # cart lines and orders that still point at it start working again.
+                variant = self._revive_variant(product, spec.volume_ml)
+            if variant is None:
+                variant = ProductVariant(volume_ml=spec.volume_ml)
+                product.variants.append(variant)
+            variant.price_cents = spec.price_cents
+            variant.in_stock = spec.in_stock
+            variant.sort_order = sort_order
+
+        now = datetime.now(UTC)
+        for variant in existing.values():
+            variant.deleted_at = now
+
+        self.refresh_display_fields(product)
+
+    @staticmethod
+    def _revive_variant(product: Product, volume_ml: int | None) -> ProductVariant | None:
+        """A withdrawn variant of this volume, un-withdrawn — or None if there is none."""
+        for variant in product.variants:
+            if variant.deleted_at is not None and variant.volume_ml == volume_ml:
+                variant.deleted_at = None
+                return variant
+        return None
+
+    @staticmethod
+    def refresh_display_fields(product: Product) -> None:
+        """Rewrite the three product columns derived from its variants.
+
+        Kept on the product row because every bulk read of the catalogue uses them and
+        none of those reads wants a join: the price sort and filter, the search, the
+        stock filter, the xlsx export, the sitemap, the JSON-LD and the card.
+
+        - `price_cents` is the cheapest live variant — the "от N ₽" on a card;
+        - `volume_ml` is the volume only while there is exactly one, and NULL after that:
+          no single number describes a product sold in two, and the card shows the
+          volumes themselves instead;
+        - `in_stock` is "any of them is", because that is what the filter means — a serum
+          whose 30 ml ran out is still a serum the shop can sell.
+        """
+        live = product.live_variants
+        if not live:
+            return
+        product.price_cents = min(variant.price_cents for variant in live)
+        product.volume_ml = live[0].volume_ml if len(live) == 1 else None
+        product.in_stock = any(variant.in_stock for variant in live)
 
     async def _require_category(self, category_id: uuid.UUID | None) -> None:
         """Checked here rather than left to the foreign key.
@@ -483,7 +679,9 @@ class ProductService:
     async def restore(self, product_id: uuid.UUID) -> Product:
         """Undo a soft-delete. Mirrors what a catalog re-import already does by slug."""
         result = await self._session.execute(
-            select(Product).where(Product.id == product_id).options(selectinload(Product.images))
+            select(Product)
+            .where(Product.id == product_id)
+            .options(selectinload(Product.images), selectinload(Product.variants))
         )
         product = result.scalar_one_or_none()
         if product is None:

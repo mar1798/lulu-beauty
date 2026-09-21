@@ -18,6 +18,7 @@ from app.export.service import (
 def _row(**overrides: object) -> OrderExportRow:
     defaults: dict[str, object] = {
         "product_name": "Rose Serum",
+        "volume_ml": None,
         "brand": "Lulu",
         "quantity": 2,
         "unit_price_cents": 1500,
@@ -148,7 +149,11 @@ def test_a_product_name_that_looks_like_a_formula_stays_text() -> None:
     forwarded to suppliers — so a catalog row named "=1+1" must not arrive live."""
     rows = [
         OrderExportRow(
-            product_name="=1+1", brand="Round Lab", quantity=1, unit_price_cents=1000
+            product_name="=1+1",
+            volume_ml=None,
+            brand="Round Lab",
+            quantity=1,
+            unit_price_cents=1000,
         )
     ]
 

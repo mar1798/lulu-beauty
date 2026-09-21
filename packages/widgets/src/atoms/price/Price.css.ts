@@ -12,3 +12,12 @@ export const size = styleVariants({
   md: { font: font('16/24', 600) },
   lg: { font: font('24/32', 600), letterSpacing: vars.tracking.display },
 })
+
+/**
+ * «от» перед ценой — приглушённое и нежирное: это оговорка к числу, а не
+ * часть суммы, и набранное тем же весом оно читалось как первое слово цены.
+ */
+export const from = style({
+  font: font('14/20', 500),
+  color: color.text('muted'),
+})

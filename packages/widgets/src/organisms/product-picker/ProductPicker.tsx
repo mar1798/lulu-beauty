@@ -11,6 +11,7 @@ import { Skeleton } from '../../atoms/skeleton'
 import { Text } from '../../atoms/text'
 import { VisuallyHidden } from '../../atoms/visually-hidden'
 import { primaryImage } from '../../molecules/product-card'
+import { formatVolume } from '../../utils/volume'
 import { SearchField } from '../../molecules/search-field'
 import * as styles from './ProductPicker.css'
 
@@ -24,6 +25,11 @@ import * as styles from './ProductPicker.css'
  * Товар, который уже есть в заявке, не прячется: добавление сливается с
  * существующей строкой (у неё своя цена), и подпись кнопки говорит об этом
  * прямо, вместо того чтобы делать вид, что второй строки не будет.
+ *
+ * Строка здесь — объём, а не товар: сыворотка, продающаяся в 30 и 50 мл, даёт
+ * две строки со своими ценами. Выбирать объём тут негде — подборщик это узкий
+ * список с одной кнопкой в строке, — а добавить «сыворотку вообще» нельзя:
+ * покупают конкретный флакон.
  */
 
 const IMAGE_SIZES = { fb: '48px' } as const
@@ -59,7 +65,7 @@ export const ProductPicker: FC<IProductPickerProps & IBasicStyling> = ({
   onQueryChange,
   products,
   isSearching = false,
-  addedProductIds = [],
+  addedVariantIds = [],
   addedLabel = 'Уже в заявке',
   onAdd,
   isBusy = false,
@@ -155,25 +161,33 @@ export const ProductPicker: FC<IProductPickerProps & IBasicStyling> = ({
 
     return (
       <div className={styles.list}>
-        {products.map(product => {
-          const isAdded = addedProductIds.includes(product.id)
+        {products.flatMap(product =>
+          product.variants.map(variant => {
+            const isAdded = addedVariantIds.includes(variant.id)
+            const volume = formatVolume(variant.volumeMl)
+            // Объём в названии — только когда их несколько: у обычного товара
+            // он и так стоит меткой в каталоге, а тут занял бы место зря.
+            const title =
+              product.variants.length > 1 && volume !== null
+                ? `${product.name}, ${volume}`
+                : product.name
 
-          return (
-            <div key={product.id} className={styles.row}>
-              <ProductThumb product={product} />
+            return (
+              <div key={variant.id} className={styles.row}>
+                <ProductThumb product={product} />
 
-              <div className={styles.body}>
-                <Text size="sm" weight="medium" clamp={2}>
-                  {product.name}
-                </Text>
+                <div className={styles.body}>
+                  <Text size="sm" weight="medium" clamp={2}>
+                    {title}
+                  </Text>
 
-                <div className={styles.meta}>
-                  <Price priceCents={product.priceCents} size="sm" />
-                  {isAdded && <Badge tone="neutral">{addedLabel}</Badge>}
+                  <div className={styles.meta}>
+                    <Price priceCents={variant.priceCents} size="sm" />
+                    {isAdded && <Badge tone="neutral">{addedLabel}</Badge>}
+                  </div>
                 </div>
-              </div>
 
-              {/*
+                {/*
                 Одно и то же действие в двух формах: до `sm` — круглая кнопка с
                 плюсом, как в карточке каталога (подписи там некуда встать,
                 строка и так из миниатюры, названия и цены), дальше — кнопка со
@@ -183,54 +197,53 @@ export const ProductPicker: FC<IProductPickerProps & IBasicStyling> = ({
                 Нет в наличии — не повод прятать строку: человек ищет по
                 названию и должен увидеть, что товар нашёлся, но недоступен.
               */}
-              <span className={styles.addCompact}>
-                <IconButton
-                  icon={<IconPlus />}
-                  label={
-                    product.inStock
-                      ? `${addLabel(isAdded)}: ${product.name}`
-                      : `Нет в наличии: ${product.name}`
-                  }
-                  variant="primary"
-                  size="md"
-                  disabled={isBusy || !product.inStock}
-                  onClick={() => {
-                    onAdd(product.id)
-                  }}
-                />
-              </span>
+                <span className={styles.addCompact}>
+                  <IconButton
+                    icon={<IconPlus />}
+                    label={
+                      variant.inStock ? `${addLabel(isAdded)}: ${title}` : `Нет в наличии: ${title}`
+                    }
+                    variant="primary"
+                    size="md"
+                    disabled={isBusy || !variant.inStock}
+                    onClick={() => {
+                      onAdd(variant.id)
+                    }}
+                  />
+                </span>
 
-              <span className={styles.addWide}>
-                <Button
-                  size="sm"
-                  /*
+                <span className={styles.addWide}>
+                  <Button
+                    size="sm"
+                    /*
                     Акцентная, а не вторичная: добавление — единственное
                     действие в строке, и спорить ей тут не с чем.
                   */
-                  variant="primary"
-                  disabled={isBusy || !product.inStock}
-                  onClick={() => {
-                    onAdd(product.id)
-                  }}
-                >
-                  {product.inStock ? (
-                    /*
+                    variant="primary"
+                    disabled={isBusy || !variant.inStock}
+                    onClick={() => {
+                      onAdd(variant.id)
+                    }}
+                  >
+                    {variant.inStock ? (
+                      /*
                       Кнопок в списке много, и вне своей строки «Добавить» ни о чём
                       не говорит: подпись для скринридера несёт и название. Видимая
                       при этом скрыта от него — иначе слово прозвучало бы дважды.
                     */
-                    <>
-                      <span aria-hidden={true}>{addLabel(isAdded)}</span>
-                      <VisuallyHidden>{`${addLabel(isAdded)}: ${product.name}`}</VisuallyHidden>
-                    </>
-                  ) : (
-                    'Нет в наличии'
-                  )}
-                </Button>
-              </span>
-            </div>
-          )
-        })}
+                      <>
+                        <span aria-hidden={true}>{addLabel(isAdded)}</span>
+                        <VisuallyHidden>{`${addLabel(isAdded)}: ${title}`}</VisuallyHidden>
+                      </>
+                    ) : (
+                      'Нет в наличии'
+                    )}
+                  </Button>
+                </span>
+              </div>
+            )
+          })
+        )}
       </div>
     )
   }

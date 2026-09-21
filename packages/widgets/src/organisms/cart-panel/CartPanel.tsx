@@ -93,7 +93,7 @@ export const CartPanel: FC<ICartPanelProps & IBasicStyling> = ({
       <div className={styles.items}>
         {cart.items.map(item => (
           <ItemRow
-            key={item.productId}
+            key={item.variantId}
             item={item}
             href={buildProductHref(item.productSlug)}
             /*
@@ -102,10 +102,10 @@ export const CartPanel: FC<ICartPanelProps & IBasicStyling> = ({
               очереди — быстрые нажатия должны складываться (2 → 3 → 4), а не
               пропадать под курсором вместе с подсветкой кнопок.
             */
-            isBusy={isItemBusy === undefined ? isBusy : isItemBusy(item.productId)}
+            isBusy={isItemBusy === undefined ? isBusy : isItemBusy(item.variantId)}
             removeLabel={`Убрать из корзины: ${item.productName}`}
-            onQuantityChange={quantity => onQuantityChange(item.productId, quantity)}
-            onRemove={() => onRemove(item.productId)}
+            onQuantityChange={quantity => onQuantityChange(item.variantId, quantity)}
+            onRemove={() => onRemove(item.variantId)}
           />
         ))}
       </div>

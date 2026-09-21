@@ -8,6 +8,7 @@ import { Price } from '../../atoms/price'
 import { Skeleton } from '../../atoms/skeleton'
 import { StatusSelect } from '../../molecules/status-select'
 import { formatDateTime } from '../../utils/datetime'
+import { formatVolume } from '../../utils/volume'
 import { pluralize } from '../../utils/plural'
 import * as styles from './AdminOrdersTable.css'
 
@@ -174,28 +175,41 @@ export const AdminOrdersTable: FC<IAdminOrdersTableProps & IBasicStyling> = ({
                       <tr className={clsx(styles.row, styles.detailsRow)} role="row">
                         <td className={styles.detailsCell} role="cell" colSpan={columnCount}>
                           <ul className={styles.items}>
-                            {order.items.map(item => (
-                              <li
-                                key={`${item.productSlug}-${item.productName}`}
-                                className={styles.item}
-                              >
-                                <span className={styles.itemName}>
-                                  {item.productId === null ? (
-                                    item.productName
-                                  ) : (
-                                    <AppLink
-                                      href={buildProductHref(item.productSlug)}
-                                      className={styles.itemLink}
-                                    >
-                                      {item.productName}
-                                    </AppLink>
-                                  )}
-                                </span>
+                            {order.items.map(item => {
+                              /*
+                                Объём отдельной подписью, а не в названии: две
+                                строки одного товара — это два объёма, и без
+                                него владелец видит в закупке дубль. Ключ тоже
+                                по нему: у двух объёмов совпадают и slug, и имя.
+                              */
+                              const volume = formatVolume(item.productVolumeMl)
 
-                                <span className={styles.itemQuantity}>× {item.quantity}</span>
-                                <Price priceCents={item.lineTotalCents} size="sm" />
-                              </li>
-                            ))}
+                              return (
+                                <li
+                                  key={`${item.productSlug}-${item.productVolumeMl ?? 'one'}`}
+                                  className={styles.item}
+                                >
+                                  <span className={styles.itemName}>
+                                    {item.productId === null ? (
+                                      item.productName
+                                    ) : (
+                                      <AppLink
+                                        href={buildProductHref(item.productSlug)}
+                                        className={styles.itemLink}
+                                      >
+                                        {item.productName}
+                                      </AppLink>
+                                    )}
+                                    {volume !== null && (
+                                      <span className={styles.itemVolume}>{volume}</span>
+                                    )}
+                                  </span>
+
+                                  <span className={styles.itemQuantity}>× {item.quantity}</span>
+                                  <Price priceCents={item.lineTotalCents} size="sm" />
+                                </li>
+                              )
+                            })}
                           </ul>
 
                           {order.note !== null && order.note !== '' && (

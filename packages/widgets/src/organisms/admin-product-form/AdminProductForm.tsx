@@ -3,7 +3,9 @@ import { type FC, type FormEvent, useEffect, useId, useMemo, useState } from 're
 import type {
   IAdminProductFormProps,
   IAdminProductValues,
+  IAdminProductVariantValues,
   IBasicStyling,
+  IProduct,
   IProductImage,
   ISelectOption,
 } from '../../types'
@@ -25,6 +27,11 @@ import * as styles from './AdminProductForm.css'
 
 /**
  * Карточка товара в админке: поля товара и, у сохранённого, его фотография.
+ *
+ * Цена и объём живут не на товаре, а в таблице «Объёмы»: одна сыворотка
+ * продаётся и в 30 мл, и в 50 мл, у каждого своя цена и свой остаток. Строка
+ * там всегда хотя бы одна — обычный товар это ровно одна строка, и отдельной
+ * «простой» формы для него нет: две формы разошлись бы в проверках.
  *
  * Цена вводится в сомах, а наружу уходит в копейках — как её хранит бэкенд.
  * Обратное («введите копейки») переложило бы на владельца арифметику,
@@ -74,6 +81,9 @@ const VOLUME_MAX_LENGTH = String(MAX_VOLUME_ML).length
 /** `MAX_PRICE_CENTS` бэкенда, в сомах: дальше не проходит 32-битная колонка. */
 const MAX_PRICE = 20_000_000
 
+/** `MAX_PRODUCT_VARIANTS` бэкенда: столько объёмов у одного товара не бывает. */
+const MAX_VARIANTS = 20
+
 /** Потолок `MAX_IMAGE_BYTES` бэкенда. Файл там пережимается в WebP, поэтому лимит
  * стоит на загрузке, а не на том, что окажется на диске. */
 const IMAGE_MAX_BYTES = 15 * 1024 * 1024
@@ -102,6 +112,40 @@ const parseVolume = (value: string): number | null | undefined => {
   return /^\d+$/.test(normalized) && Number(normalized) > 0 ? Number(normalized) : undefined
 }
 
+/** Знаков после разделителя в цене: копейки, и только они. */
+const PRICE_FRACTION_DIGITS = 2
+
+/**
+ * Что вообще способно попасть в поле объёма — только цифры.
+ *
+ * Поле числовое, но не `type="number"`: браузер пускает туда «e», знак и
+ * экспоненту, а React на таком вводе получает от него пустую строку и молча
+ * стирает уже набранное. Отсекать лишнее на вводе и надёжнее, и заметнее —
+ * буква просто не появляется.
+ */
+const digitsOnly = (value: string): string => value.replace(/\D/g, '')
+
+/**
+ * То же для цены, но с дробной частью: один разделитель и не больше двух
+ * знаков после него — ровно то, что принимает `parsePrice`. Запятая остаётся
+ * запятой: на русской раскладке набирают именно её.
+ */
+const priceOnly = (value: string): string => {
+  const cleaned = value.replace(/[^\d.,]/g, '')
+  const separator = cleaned.search(/[.,]/)
+
+  if (separator === -1) {
+    return cleaned
+  }
+
+  const fraction = cleaned
+    .slice(separator + 1)
+    .replace(/\D/g, '')
+    .slice(0, PRICE_FRACTION_DIGITS)
+
+  return `${cleaned.slice(0, separator)}${cleaned[separator]}${fraction}`
+}
+
 /** «1 250,50» и «1250.5» — одно и то же; `null`, если это не число. */
 const parsePrice = (value: string): number | null => {
   const normalized = value.replace(/\s/g, '').replace(',', '.')
@@ -111,6 +155,48 @@ const parsePrice = (value: string): number | null => {
   }
 
   return Math.round(Number(normalized) * CENTS)
+}
+
+/**
+ * Строка таблицы «Объёмы» как её держит форма — строками, а не числами.
+ *
+ * `id` не приходит с бэкенда и туда не уезжает: он нужен только React'у как
+ * ключ. Сверять строки с вариантами товара сервер будет по объёму (см.
+ * `ProductService._apply_specs`), поэтому переносить сюда настоящий id значило
+ * бы намекать на связь, которой в запросе нет.
+ */
+interface IVariantRow {
+  id: string
+  volume: string
+  price: string
+  inStock: boolean
+}
+
+let nextRowId = 0
+const makeRow = (volume = '', price = '', inStock = true): IVariantRow => {
+  nextRowId += 1
+
+  return { id: `variant-${nextRowId}`, volume, price, inStock }
+}
+
+/**
+ * Объёмы товара строками формы — или одна пустая строка при создании.
+ *
+ * Пустой таблицы не бывает: у товара всегда есть хотя бы один объём, и форма,
+ * начинающаяся с нуля строк, предлагала бы сохранить товар без цены.
+ */
+const toVariantRows = (product?: IProduct): IVariantRow[] => {
+  if (product === undefined || product.variants.length === 0) {
+    return [makeRow()]
+  }
+
+  return product.variants.map(variant =>
+    makeRow(
+      variant.volumeMl === null ? '' : String(variant.volumeMl),
+      priceToInput(variant.priceCents),
+      variant.inStock
+    )
+  )
 }
 
 export const AdminProductForm: FC<IAdminProductFormProps & IBasicStyling> = ({
@@ -133,12 +219,8 @@ export const AdminProductForm: FC<IAdminProductFormProps & IBasicStyling> = ({
   const [isSlugTouched, setIsSlugTouched] = useState(product !== undefined)
   const [description, setDescription] = useState(product?.description ?? '')
   const [brand, setBrand] = useState(product?.brand ?? '')
-  const [price, setPrice] = useState(product === undefined ? '' : priceToInput(product.priceCents))
-  const [volume, setVolume] = useState(
-    product?.volumeMl === undefined || product.volumeMl === null ? '' : String(product.volumeMl)
-  )
+  const [variants, setVariants] = useState<IVariantRow[]>(() => toVariantRows(product))
   const [categoryId, setCategoryId] = useState(product?.categoryId ?? '')
-  const [inStock, setInStock] = useState(product?.inStock ?? true)
   const [isSubmitted, setIsSubmitted] = useState(false)
 
   const [imageAlt, setImageAlt] = useState('')
@@ -163,8 +245,15 @@ export const AdminProductForm: FC<IAdminProductFormProps & IBasicStyling> = ({
     [pendingImagePreview]
   )
 
-  const priceCents = parsePrice(price)
-  const volumeMl = parseVolume(volume)
+  /*
+    Разобранные строки таблицы: пересчитываются на каждый ввод, ровно как
+    раньше пересчитывались одиночные поля цены и объёма.
+  */
+  const parsedVariants = variants.map(row => ({
+    volumeMl: parseVolume(row.volume),
+    priceCents: parsePrice(row.price),
+    inStock: row.inStock,
+  }))
 
   /**
    * Написание бренда, уже принятое в каталоге, если он там есть.
@@ -197,8 +286,10 @@ export const AdminProductForm: FC<IAdminProductFormProps & IBasicStyling> = ({
     return slug.length > SLUG_MAX_LENGTH ? `Адрес длиннее ${SLUG_MAX_LENGTH} символов` : null
   }
 
-  const validatePrice = (): string | null => {
-    if (price.trim() === '') {
+  const validatePrice = (index: number): string | null => {
+    const { priceCents } = parsedVariants[index]
+
+    if (variants[index].price.trim() === '') {
       return 'Укажите цену'
     }
 
@@ -209,12 +300,28 @@ export const AdminProductForm: FC<IAdminProductFormProps & IBasicStyling> = ({
     return priceCents > MAX_PRICE * CENTS ? 'Цена не больше 20 000 000 сом' : null
   }
 
-  const validateVolume = (): string | null => {
+  /**
+   * Объём проверяется не только сам по себе, но и против строк выше: два
+   * одинаковых объёма у одного товара бэкенд отвергает (частичный уникальный
+   * индекс), и поймать это здесь дешевле, чем показать потом ответ сервера над
+   * всей формой, не указав, какая из строк лишняя.
+   */
+  const validateVolume = (index: number): string | null => {
+    const { volumeMl } = parsedVariants[index]
+
     if (volumeMl === undefined) {
       return 'Объём в миллилитрах, целым числом: например, 50'
     }
 
-    return volumeMl !== null && volumeMl > MAX_VOLUME_ML ? 'Объём не больше 10 000 мл' : null
+    if (volumeMl !== null && volumeMl > MAX_VOLUME_ML) {
+      return 'Объём не больше 10 000 мл'
+    }
+
+    const isDuplicate = parsedVariants.some(
+      (other, otherIndex) => otherIndex < index && other.volumeMl === volumeMl
+    )
+
+    return isDuplicate ? 'Такой объём уже есть выше' : null
   }
 
   const errors = {
@@ -225,8 +332,6 @@ export const AdminProductForm: FC<IAdminProductFormProps & IBasicStyling> = ({
           ? `Название длиннее ${NAME_MAX_LENGTH} символов`
           : null,
     slug: validateSlug(),
-    price: validatePrice(),
-    volume: validateVolume(),
     brand:
       brand.trim() === ''
         ? 'Укажите производителя'
@@ -235,10 +340,25 @@ export const AdminProductForm: FC<IAdminProductFormProps & IBasicStyling> = ({
           : null,
   }
 
+  /*
+    Ошибки строк таблицы — своим списком: они рисуются у своих полей, а в общий
+    `errors` их не свести, не потеряв, к какой строке какая относится.
+  */
+  const variantErrors = variants.map((_row, index) => ({
+    price: validatePrice(index),
+    volume: validateVolume(index),
+  }))
+
   const categoryOptions: ISelectOption[] = categories.map(category => ({
     value: category.id,
     label: category.name,
   }))
+
+  const updateRow = (index: number, patch: Partial<IVariantRow>): void => {
+    setVariants(current =>
+      current.map((row, other) => (other === index ? { ...row, ...patch } : row))
+    )
+  }
 
   const handleSubmit = (event: FormEvent): void => {
     event.preventDefault()
@@ -253,9 +373,21 @@ export const AdminProductForm: FC<IAdminProductFormProps & IBasicStyling> = ({
       return
     }
 
-    // Сюда не дойти с непрошедшими проверками — но их сужение типа нужно ниже.
-    if (priceCents === null || volumeMl === undefined) {
+    if (variantErrors.some(row => row.price !== null || row.volume !== null)) {
       return
+    }
+
+    const submittedVariants: IAdminProductVariantValues[] = []
+    for (const row of parsedVariants) {
+      // Сюда не дойти с непрошедшими проверками — но их сужение типа нужно ниже.
+      if (row.priceCents === null || row.volumeMl === undefined) {
+        return
+      }
+      submittedVariants.push({
+        volumeMl: row.volumeMl,
+        priceCents: row.priceCents,
+        inStock: row.inStock,
+      })
     }
 
     const values: IAdminProductValues = {
@@ -268,10 +400,16 @@ export const AdminProductForm: FC<IAdminProductFormProps & IBasicStyling> = ({
         успевает долететь ровно то, что набрано.
       */
       brand: canonicalBrand(brand),
-      priceCents,
-      volumeMl,
+      variants: submittedVariants,
+      /*
+        Те же три правила, по которым бэкенд пересчитывает витринные поля
+        (`refresh_display_fields`): минимум, объём только пока он один, наличие
+        — «хоть один есть». Последнее слово всё равно за сервером.
+      */
+      priceCents: Math.min(...submittedVariants.map(variant => variant.priceCents)),
+      volumeMl: submittedVariants.length === 1 ? submittedVariants[0].volumeMl : null,
       categoryId: categoryId === '' ? null : categoryId,
-      inStock,
+      inStock: submittedVariants.some(variant => variant.inStock),
       image: pendingImage === null ? null : { file: pendingImage, alt: pendingImageAlt.trim() },
     }
 
@@ -316,15 +454,6 @@ export const AdminProductForm: FC<IAdminProductFormProps & IBasicStyling> = ({
         />
 
         <div className={styles.row}>
-          <Input
-            label="Цена, сом"
-            value={price}
-            inputMode="decimal"
-            required={true}
-            error={isSubmitted ? errors.price : null}
-            onChange={setPrice}
-          />
-
           <Combobox
             label="Производитель"
             value={brand}
@@ -346,21 +475,93 @@ export const AdminProductForm: FC<IAdminProductFormProps & IBasicStyling> = ({
             hint="Необязательно. По ней товар отбирают в каталоге."
             onChange={setCategoryId}
           />
-
-          {/*
-            Объём необязателен: у половины каталога (патчи, тканевые маски) его нет,
-            а у флаконов 50 и 500 мл — это вся разница между ними.
-          */}
-          <Input
-            label="Объём, мл"
-            value={volume}
-            inputMode="numeric"
-            maxLength={VOLUME_MAX_LENGTH}
-            hint="Необязательно, до 10 000 мл. Показывается в карточке товара."
-            error={isSubmitted ? errors.volume : null}
-            onChange={setVolume}
-          />
         </div>
+
+        <fieldset className={styles.variants}>
+          {/*
+            Легенда, а не заголовок: строки — это группа полей одной формы, и
+            скринридер должен объявлять «Объём» вместе с ней, а не отдельным
+            разделом страницы.
+          */}
+          <legend className={styles.variantsLegend}>Объёмы и цены</legend>
+
+          <Text tone="secondary" size="sm">
+            Один товар может продаваться в нескольких объёмах — у каждого своя цена и своё наличие.
+            Если объём у товара один или его нет вовсе (патчи, тканевые маски), оставьте одну
+            строку.
+          </Text>
+
+          {variants.map((row, index) => (
+            <div key={row.id} className={styles.variantRow}>
+              <Input
+                label="Объём, мл"
+                value={row.volume}
+                inputMode="numeric"
+                maxLength={VOLUME_MAX_LENGTH}
+                hint={index === 0 ? 'Необязательно, до 10 000 мл' : undefined}
+                error={isSubmitted ? variantErrors[index].volume : null}
+                onChange={next => {
+                  updateRow(index, { volume: digitsOnly(next) })
+                }}
+              />
+
+              <Input
+                label="Цена, сом"
+                value={row.price}
+                inputMode="decimal"
+                required={true}
+                error={isSubmitted ? variantErrors[index].price : null}
+                onChange={next => {
+                  updateRow(index, { price: priceOnly(next) })
+                }}
+              />
+
+              {/*
+                Тумблер и «убрать» — одной ячейкой: у них нет подписи сверху,
+                и порознь они вставали в сетку по её верхнему краю, то есть на
+                уровень подписей соседних полей, а не самих полей. Вместе они
+                же держат одну строку и на телефоне, где поля идут столбцом.
+              */}
+              <div className={styles.variantControls}>
+                <Switch
+                  label="В наличии"
+                  checked={row.inStock}
+                  onChange={next => {
+                    updateRow(index, { inStock: next })
+                  }}
+                />
+
+                {/*
+                  Убрать можно только когда строк больше одной: товар без объёмов
+                  бэкенд отвергает, и кнопка, ведущая в отказ, — не кнопка.
+                */}
+                {variants.length > 1 && (
+                  <IconButton
+                    icon={<IconTrash />}
+                    label={`Убрать объём${row.volume === '' ? '' : ` ${row.volume} мл`}`}
+                    size="sm"
+                    variant="danger"
+                    onClick={() => {
+                      setVariants(current => current.filter((_item, other) => other !== index))
+                    }}
+                  />
+                )}
+              </div>
+            </div>
+          ))}
+
+          <Button
+            variant="secondary"
+            size="sm"
+            type="button"
+            disabled={variants.length >= MAX_VARIANTS}
+            onClick={() => {
+              setVariants(current => [...current, makeRow()])
+            }}
+          >
+            Добавить объём
+          </Button>
+        </fieldset>
 
         <Textarea
           label="Описание"
@@ -369,8 +570,6 @@ export const AdminProductForm: FC<IAdminProductFormProps & IBasicStyling> = ({
           maxLength={2000}
           onChange={setDescription}
         />
-
-        <Switch label="В наличии" checked={inStock} onChange={setInStock} />
 
         <div className={styles.formActions}>
           <Button isFullWidth="mobile" type="submit" isLoading={isSubmitting}>

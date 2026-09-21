@@ -1,7 +1,7 @@
 import type { StoryFn, Meta } from '@storybook/react'
 import { ProductCard } from '.'
 import { IconButton } from '../../atoms/icon-button'
-import { feedProductCard } from '../../stories/feed'
+import { feedProductCard, feedProductWithVariants } from '../../stories/feed'
 import { StoryWrapper } from '../../stories/wrapper'
 import { IconPlus } from '../../svg/icons'
 
@@ -44,3 +44,17 @@ OutOfStock.args = (() => {
 
   return { ...card, product: { ...card.product, inStock: false } }
 })()
+
+/**
+ * Товар продаётся в нескольких объёмах: в сетке выбирать негде, поэтому карточка
+ * говорит «от» и перечисляет объёмы меткой — а выбор происходит на странице товара.
+ */
+export const SeveralVolumes = Template.bind({})
+SeveralVolumes.parameters = {
+  layout: 'padded',
+}
+SeveralVolumes.args = {
+  ...feedProductCard(),
+  product: feedProductWithVariants(),
+  action: <IconButton icon={<IconPlus />} label="Выбрать объём" variant="primary" size="md" />,
+}

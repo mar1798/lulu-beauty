@@ -3,7 +3,7 @@ from datetime import datetime
 
 from pydantic import Field, field_validator
 
-from app.common.limits import MAX_PRICE_CENTS, MAX_VOLUME_ML
+from app.common.limits import MAX_PRICE_CENTS, MAX_PRODUCT_VARIANTS, MAX_VOLUME_ML
 from app.common.schemas import CamelModel, require_not_null
 
 SLUG_PATTERN = r"^[a-z0-9]+(-[a-z0-9]+)*$"
@@ -29,6 +29,31 @@ class ProductImageResponse(CamelModel):
     alt: str | None
     sort_order: int
     is_primary: bool
+
+
+class ProductVariantResponse(CamelModel):
+    """One volume of a product, as the storefront offers it.
+
+    `id` is what the cart is told about — the customer picks a volume, not a product.
+    """
+
+    id: uuid.UUID
+    volume_ml: int | None
+    price_cents: int
+    in_stock: bool
+
+
+class ProductVariantRequest(CamelModel):
+    """One row of the owner's "Объёмы" table.
+
+    No id: the list is reconciled against the product by volume (see
+    `ProductService._apply_specs`), so the form sends what it shows and the server
+    keeps the rows that survive.
+    """
+
+    volume_ml: int | None = Field(default=None, gt=0, le=MAX_VOLUME_ML)
+    price_cents: int = Field(ge=0, le=MAX_PRICE_CENTS)
+    in_stock: bool = True
 
 
 class CategoryResponse(CamelModel):
@@ -73,6 +98,14 @@ class ProductResponse(CamelModel):
     category_id: uuid.UUID | None
     in_stock: bool
     images: list[ProductImageResponse]
+    # Every volume the product is sold in, in the order the owner arranged them
+    # (`sort_order`) — not by price: the selector on the page is read left to right as a
+    # size ladder, and sorting it by price would reshuffle the buttons the moment one of
+    # them is repriced. Never empty: a product always has at least one variant, and a
+    # product sold in one form has exactly one — which is what lets the storefront draw
+    # the selector only when there is something to select, without a second field
+    # telling it so.
+    variants: list[ProductVariantResponse] = []
     # Soft-delete marker. Public listings never surface deleted products, so this is
     # always None there; the admin listing with includeDeleted=true needs it to tell
     # a deleted row from a live one (there is no other signal in the payload).
@@ -96,6 +129,11 @@ class ProductCreateRequest(CamelModel):
     volume_ml: int | None = Field(default=None, gt=0, le=MAX_VOLUME_ML)
     category_id: uuid.UUID | None = None
     in_stock: bool = True
+    # Omitted means "sold in one form", described by price_cents/volume_ml/in_stock
+    # above — the shape the xlsx import sends and the shape most products have.
+    variants: list[ProductVariantRequest] | None = Field(
+        default=None, min_length=1, max_length=MAX_PRODUCT_VARIANTS
+    )
 
     @field_validator("brand")
     @classmethod
@@ -116,6 +154,12 @@ class ProductUpdateRequest(CamelModel):
     volume_ml: int | None = Field(default=None, gt=0, le=MAX_VOLUME_ML)
     category_id: uuid.UUID | None = None
     in_stock: bool | None = None
+    # A full replacement of the volume list when present, omitted to leave it alone.
+    # `null` is not a way to clear it: a product without volumes has no price to show
+    # (409 product_variants_empty says so), so there is nothing to mean by it.
+    variants: list[ProductVariantRequest] | None = Field(
+        default=None, min_length=1, max_length=MAX_PRODUCT_VARIANTS
+    )
 
     @field_validator("brand")
     @classmethod
@@ -160,6 +204,11 @@ class SuggestProductResponse(CamelModel):
     slug: str
     brand: str | None
     price_cents: int
+    # How many volumes the product is sold in. The dropdown needs it for one thing only:
+    # with several, `price_cents` is the cheapest of them, and the row has to say "от" —
+    # the card next to it already does, and two different readings of one number in one
+    # search is worse than either.
+    variant_count: int
     in_stock: bool
     image_url: str | None
     image_alt: str | None

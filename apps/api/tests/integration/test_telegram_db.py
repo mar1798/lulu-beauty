@@ -584,6 +584,7 @@ async def test_repricing_sends_one_notice_per_customer_not_per_order(
             order_id=order_id,
             user_id=user_id,
             product_name="Rose Serum",
+            product_volume_ml=None,
             old_price_cents=1000,
             new_price_cents=1500,
             total_cents=total_cents,

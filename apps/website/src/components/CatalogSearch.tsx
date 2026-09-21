@@ -70,6 +70,7 @@ const buildGroups = (suggestions: ISearchSuggestions): ISearchSuggestGroup[] => 
         hint: product.brand ?? undefined,
         link: { href: `/catalog/${product.slug}` },
         priceCents: product.priceCents,
+        isPriceFrom: product.variantCount > 1,
         isUnavailable: !product.inStock,
         image:
           product.imageUrl === null

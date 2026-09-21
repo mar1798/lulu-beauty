@@ -198,6 +198,9 @@ Client-side fetching is [SWR](https://swr.vercel.app/), configured globally in `
 ## State and layout
 
 - `src/contexts/` — `AuthContext`, `CartContext`, `WishlistContext`, all backed by SWR.
+  **`CartContext` addresses everything by `variantId`** — `addItem`, `updateItem`,
+  `removeItem`, `isItemBusy` — because a cart line is a volume, not a product, and two
+  volumes of one serum are two lines. The wishlist stays product-level.
   `/api/auth/me` returning 401 means "guest", not an error. A 401 from any **other** endpoint
   does mean the session expired, and `AuthProvider` signs the visitor out and sends them to
   `/login` — see `src/services/session.ts` above.
@@ -220,6 +223,10 @@ Client-side fetching is [SWR](https://swr.vercel.app/), configured globally in `
   (`Link`, `Image`) plus components that need API knowledge (`AddToCartButton`,
   `WishlistButton`, `CatalogSearch`, `TelegramLoginWidget`, `TelegramMiniAppSession`, …).
   Anything purely visual belongs in `widgets` instead.
+  `AddToCartButton` takes the whole product plus an optional `variantId`: on the product
+  page the page owns the choice of volume, and in the catalogue grid — where there is no
+  room to choose — a product sold in several volumes turns the button into a link to its
+  page rather than silently adding the cheapest one.
 - `src/hooks/` — `useAdminGate`, `useActiveCycle`, `useEditableOrder`, `useProductSearch`,
   `useTelegramLogin`, `useTelegramMiniApp`, `useQrCode`, `useQueryParams`,
   `usePrefetchRoutes`, `useRedirectIfAuthenticated`.
@@ -234,11 +241,11 @@ Client-side fetching is [SWR](https://swr.vercel.app/), configured globally in `
   for it is no undo, and a timer that cannot be stopped fails WCAG 2.2.1. The tone is `warning`, not `success`:
   something the person had is gone, and the toast is the only way back. Restoring it reports
   `success`. There is no "undelete" on the API: the button
-  re-adds the product (`POST /cart/items`, `POST /orders/{id}/items`, `POST /wishlist/items`)
-  with the quantity read off the row **before** the removal, so it has to be captured in the
-  handler — afterwards the row is already gone from the cache. A line whose product was
-  deleted from the catalogue (`IOrderItem.productId === null`) gets no button: that add would
-  be refused. Restoring reports its own result with a second toast, and pressing the button
+  re-adds the volume (`POST /cart/items`, `POST /orders/{id}/items`) or the product
+  (`POST /wishlist/items`) with the quantity read off the row **before** the removal, so it
+  has to be captured in the handler — afterwards the row is already gone from the cache. A
+  line whose volume was deleted from the catalogue (`IOrderItem.variantId === null`) gets no
+  button: that add would be refused. Restoring reports its own result with a second toast, and pressing the button
   closes the first one immediately. Removals that are a step inside a larger move, not a
   user's decision — `EditableOrderNotice` emptying the cart into an open order — call the
   context directly and stay silent.

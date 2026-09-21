@@ -97,6 +97,7 @@ const AdminProductPage: React.FC = () => {
         slug: values.slug,
         description: values.description === '' ? null : values.description,
         brand: values.brand,
+        variants: values.variants,
         priceCents: values.priceCents,
         volumeMl: values.volumeMl,
         categoryId: values.categoryId,

@@ -20,6 +20,7 @@ from app.catalog.image_compression import (
     compress_image,
 )
 from app.catalog.import_service import CatalogImportService
+from app.catalog.results import VariantSpec
 from app.catalog.schemas import (
     CategoryCreateRequest,
     CategoryResponse,
@@ -29,16 +30,21 @@ from app.catalog.schemas import (
     ProductImageResponse,
     ProductResponse,
     ProductUpdateRequest,
+    ProductVariantRequest,
     SearchSuggestResponse,
 )
 from app.catalog.serializers import category_response, product_response, suggest_response
 from app.catalog.service import (
     CategoryNotFoundError,
     CategoryService,
+    DuplicateVariantVolumeError,
+    EmptyVariantsError,
+    ProductHasVariantsError,
     ProductImageNotFoundError,
     ProductNotFoundError,
     ProductService,
     SlugAlreadyExistsError,
+    TooManyVariantsError,
 )
 from app.common.schemas import PageResponse
 from app.db import get_session
@@ -59,6 +65,40 @@ MAX_IMAGE_BYTES = 15 * 1024 * 1024
 # name like "photo.html" would be stored and later served as a page rather than an image.
 ALLOWED_IMAGE_CONTENT_TYPES = {"image/jpeg", "image/png", "image/webp"}
 MAX_IMPORT_BYTES = 10 * 1024 * 1024
+
+# Everything `ProductService` refuses about a list of volumes, and the code each one
+# reaches the owner's form as. All four are the form's to fix, so all four are 409s the
+# UI can point at a row with — never a 500 out of the unique index at flush.
+_VARIANT_ERRORS = (
+    EmptyVariantsError,
+    DuplicateVariantVolumeError,
+    TooManyVariantsError,
+    ProductHasVariantsError,
+)
+_VARIANT_ERROR_CODES = {
+    EmptyVariantsError: "product_variants_empty",
+    DuplicateVariantVolumeError: "variant_volume_duplicate",
+    TooManyVariantsError: "too_many_variants",
+    ProductHasVariantsError: "product_has_variants",
+}
+
+
+def _variant_specs(variants: list[ProductVariantRequest] | None) -> list[VariantSpec] | None:
+    """The request's volume rows as the service's own shape — None when it sent none."""
+    if variants is None:
+        return None
+    return [
+        VariantSpec(
+            volume_ml=variant.volume_ml,
+            price_cents=variant.price_cents,
+            in_stock=variant.in_stock,
+        )
+        for variant in variants
+    ]
+
+
+def _variant_http_error(error: Exception) -> HTTPException:
+    return HTTPException(status.HTTP_409_CONFLICT, _VARIANT_ERROR_CODES[type(error)])
 
 
 async def _read_within(file: UploadFile, limit: int, code: str) -> bytes:
@@ -268,11 +308,14 @@ async def create_product(
             body.category_id,
             body.in_stock,
             body.volume_ml,
+            _variant_specs(body.variants),
         )
     except SlugAlreadyExistsError as error:
         raise HTTPException(status.HTTP_409_CONFLICT, "slug_already_exists") from error
     except CategoryNotFoundError as error:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "category_not_found") from error
+    except _VARIANT_ERRORS as error:
+        raise _variant_http_error(error) from error
 
     await session.commit()
     return product_response(product)
@@ -287,27 +330,48 @@ async def update_product(
     _admin: CurrentUser = Depends(require_admin),
 ) -> ProductResponse:
     updates = body.model_dump(exclude_unset=True)
+    # `variants` is not a column: it is handled by the service as a list, not assigned.
+    updates.pop("variants", None)
+
+    service = ProductService(session)
+    # Read before the write, because "which prices moved" and "which volumes went" are
+    # only answerable against the old lists — and after the update the rows hold the new
+    # ones. Two cheap queries on a path the owner walks by hand.
+    before = await service.variant_prices(product_id)
+    before_live = await service.live_variant_ids(product_id)
     try:
-        product = await ProductService(session).update(product_id, updates)
+        product = await service.update(product_id, updates, _variant_specs(body.variants))
     except ProductNotFoundError as error:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "product_not_found") from error
     except SlugAlreadyExistsError as error:
         raise HTTPException(status.HTTP_409_CONFLICT, "slug_already_exists") from error
     except CategoryNotFoundError as error:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "category_not_found") from error
+    except _VARIANT_ERRORS as error:
+        raise _variant_http_error(error) from error
 
     # A price edit is not only a catalog edit: orders still awaiting confirmation quote
-    # this product, and leaving them on the old price means the owner charges one number
-    # while the customer sees another. Only PENDING ones move — see `reprice_product`.
-    changes = (
-        await OrdersService(session).reprice_product(product.id, product.price_cents)
-        if "price_cents" in updates
-        else []
-    )
+    # these volumes, and leaving them on the old price means the owner charges one number
+    # while the customer sees another. Only PENDING ones move — see `reprice_variants`.
+    moved = {
+        variant.id: variant.price_cents
+        for variant in product.live_variants
+        if variant.id in before and before[variant.id] != variant.price_cents
+    }
+    orders = OrdersService(session)
+    changes = await orders.reprice_variants(moved)
+
+    # A volume dropped from the list is the same news as a product taken out of the
+    # catalog, and it used to be no news at all: the storefront stopped offering it and
+    # the cart dropped it silently, while orders waiting for an answer kept the line —
+    # leaving the owner to reconcile a request for something they no longer sell.
+    withdrawn = before_live - {variant.id for variant in product.live_variants}
+    drops = await orders.drop_variants(list(withdrawn))
 
     response = product_response(product)
     await session.commit()
     background_tasks.add_task(notify_orders_repriced, changes)
+    background_tasks.add_task(notify_orders_item_dropped, drops)
     return response
 
 

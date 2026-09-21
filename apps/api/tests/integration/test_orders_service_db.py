@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.cart.models import CartItem
 from app.cart.service import CartService
+from app.catalog.models import Product
 from app.cycles.models import CycleStatus, OrderCycle
 from app.db import async_session
 from app.orders.models import OPEN_STATUSES, Order, OrderItem, OrderStatus, PendingStage
@@ -31,6 +32,7 @@ from tests.integration.factories import (
     make_product,
     make_product_image,
     make_user,
+    variant_id,
 )
 
 
@@ -38,7 +40,7 @@ async def test_checkout_snapshots_items_and_clears_cart(db_session: AsyncSession
     user = await make_user(db_session)
     cycle = await make_cycle(db_session)
     product = await make_product(db_session, name="Rose Serum", price_cents=1500)
-    await CartService(db_session).add_item(user.id, product.id, 3)
+    await CartService(db_session).add_item(user.id, variant_id(product), 3)
 
     order = await OrdersService(db_session).checkout(user.id, note="Ring the bell")
 
@@ -60,7 +62,7 @@ async def test_checkout_snapshot_survives_later_product_price_change(
     user = await make_user(db_session)
     await make_cycle(db_session)
     product = await make_product(db_session, price_cents=1000)
-    await CartService(db_session).add_item(user.id, product.id, 1)
+    await CartService(db_session).add_item(user.id, variant_id(product), 1)
 
     order = await OrdersService(db_session).checkout(user.id, note=None)
 
@@ -93,7 +95,7 @@ async def test_checkout_snapshots_slug_and_primary_image(db_session: AsyncSessio
     product = await make_product(db_session, slug="rose-serum")
     await make_product_image(db_session, product, url="secondary.jpg", sort_order=1)
     await make_product_image(db_session, product, url="primary.jpg", sort_order=2, is_primary=True)
-    await CartService(db_session).add_item(user.id, product.id, 1)
+    await CartService(db_session).add_item(user.id, variant_id(product), 1)
 
     order = await OrdersService(db_session).checkout(user.id, note=None)
 
@@ -108,7 +110,7 @@ async def test_order_snapshot_survives_product_slug_and_image_changes(
     await make_cycle(db_session)
     product = await make_product(db_session, slug="original-slug")
     image = await make_product_image(db_session, product, url="original.jpg", is_primary=True)
-    await CartService(db_session).add_item(user.id, product.id, 1)
+    await CartService(db_session).add_item(user.id, variant_id(product), 1)
 
     order = await OrdersService(db_session).checkout(user.id, note=None)
 
@@ -129,7 +131,7 @@ async def test_load_customers_batches_users_for_admin_listing(db_session: AsyncS
     service = OrdersService(db_session)
 
     for user in (first, second):
-        await CartService(db_session).add_item(user.id, product.id, 1)
+        await CartService(db_session).add_item(user.id, variant_id(product), 1)
         await service.checkout(user.id, note=None)
 
     orders = await service.list_admin(None)
@@ -156,7 +158,7 @@ async def test_load_customers_leaves_out_an_erased_account(db_session: AsyncSess
     await make_cycle(db_session)
     product = await make_product(db_session)
     service = OrdersService(db_session)
-    await CartService(db_session).add_item(user.id, product.id, 1)
+    await CartService(db_session).add_item(user.id, variant_id(product), 1)
     await service.checkout(user.id, note=None)
 
     await UsersService(db_session).delete_account(user.id)
@@ -174,7 +176,7 @@ async def test_load_item_tags_reads_the_live_catalog(db_session: AsyncSession) -
         db_session, brand="Round lab", volume_ml=500, category_id=category.id
     )
     service = OrdersService(db_session)
-    await CartService(db_session).add_item(user.id, product.id, 1)
+    await CartService(db_session).add_item(user.id, variant_id(product), 1)
     order = await service.checkout(user.id, note=None)
 
     # A catalog edit after checkout: the labels only describe the product, so unlike the
@@ -186,7 +188,9 @@ async def test_load_item_tags_reads_the_live_catalog(db_session: AsyncSession) -
 
     assert tags[product.id].brand == "Round Lab"
     assert tags[product.id].category_name == "Тонеры"
-    assert tags[product.id].volume_ml == 500
+    # The volume is not among them: it is what the customer chose, so it is snapshotted
+    # on the line rather than read back off a product that may now sell several.
+    assert order.items[0].product_volume_ml == 500
 
 
 async def test_load_item_tags_survives_a_product_without_category_or_volume(
@@ -196,14 +200,14 @@ async def test_load_item_tags_survives_a_product_without_category_or_volume(
     await make_cycle(db_session)
     product = await make_product(db_session, brand=None)
     service = OrdersService(db_session)
-    await CartService(db_session).add_item(user.id, product.id, 1)
+    await CartService(db_session).add_item(user.id, variant_id(product), 1)
     order = await service.checkout(user.id, note=None)
 
     tags = await service.load_item_tags([order])
 
     assert tags[product.id].brand is None
     assert tags[product.id].category_name is None
-    assert tags[product.id].volume_ml is None
+    assert order.items[0].product_volume_ml is None
 
 
 async def test_load_item_tags_on_empty_list_does_not_query(db_session: AsyncSession) -> None:
@@ -220,7 +224,7 @@ async def test_list_admin_page_filters_by_status_and_paginates(
 
     orders = []
     for _ in range(3):
-        await CartService(db_session).add_item(user.id, product.id, 1)
+        await CartService(db_session).add_item(user.id, variant_id(product), 1)
         orders.append(await service.checkout(user.id, note=None))
 
     await service.update_status(orders[0].id, OrderStatus.CONFIRMED)
@@ -241,7 +245,7 @@ async def test_list_admin_filters_by_cycle(db_session: AsyncSession) -> None:
     user = await make_user(db_session)
     cycle_a = await make_cycle(db_session, label="Cycle A")
     product = await make_product(db_session)
-    await CartService(db_session).add_item(user.id, product.id, 1)
+    await CartService(db_session).add_item(user.id, variant_id(product), 1)
     order_a = await OrdersService(db_session).checkout(user.id, note=None)
 
     orders_in_a = await OrdersService(db_session).list_admin(cycle_a.id)
@@ -261,7 +265,7 @@ async def _order_with_items(
     cart = CartService(db_session)
     for index in range(lines):
         product = await make_product(db_session, name=f"Product {index}", price_cents=1000)
-        await cart.add_item(user.id, product.id, quantity)
+        await cart.add_item(user.id, variant_id(product), quantity)
 
     order = await OrdersService(db_session).checkout(user.id, note="original")
     return user.id, order
@@ -299,7 +303,7 @@ async def test_order_is_not_editable_after_the_deadline(db_session: AsyncSession
     user = await make_user(db_session)
     cycle = await make_cycle(db_session)
     product = await make_product(db_session)
-    await CartService(db_session).add_item(user.id, product.id, 1)
+    await CartService(db_session).add_item(user.id, variant_id(product), 1)
     order = await OrdersService(db_session).checkout(user.id, note=None)
 
     cycle.deadline_at = datetime.now(UTC) - timedelta(minutes=1)
@@ -319,7 +323,7 @@ async def _pending_stage_after(db_session: AsyncSession, closed_ago: timedelta) 
     closed_at = datetime.now(UTC) - closed_ago
     cycle = await make_cycle(db_session, deadline_at=datetime.now(UTC) + timedelta(days=1))
     product = await make_product(db_session)
-    await CartService(db_session).add_item(user.id, product.id, 1)
+    await CartService(db_session).add_item(user.id, variant_id(product), 1)
     order = await OrdersService(db_session).checkout(user.id, note=None)
 
     cycle.status = CycleStatus.CLOSED
@@ -347,7 +351,7 @@ async def test_pending_stage_counts_from_an_early_close_not_the_deadline(
     user = await make_user(db_session)
     cycle = await make_cycle(db_session, deadline_at=datetime.now(UTC) + timedelta(days=30))
     product = await make_product(db_session)
-    await CartService(db_session).add_item(user.id, product.id, 1)
+    await CartService(db_session).add_item(user.id, variant_id(product), 1)
     order = await OrdersService(db_session).checkout(user.id, note=None)
 
     cycle.status = CycleStatus.CLOSED
@@ -374,7 +378,7 @@ async def test_set_item_quantity_keeps_the_snapshot_price(db_session: AsyncSessi
     user = await make_user(db_session)
     await make_cycle(db_session)
     product = await make_product(db_session, price_cents=1000)
-    await CartService(db_session).add_item(user.id, product.id, 1)
+    await CartService(db_session).add_item(user.id, variant_id(product), 1)
     service = OrdersService(db_session)
     order = await service.checkout(user.id, note=None)
 
@@ -393,7 +397,7 @@ async def test_add_item_appends_a_line_and_recalculates(db_session: AsyncSession
     await make_product_image(db_session, product, url="http://x/new.jpg", is_primary=True)
     service = OrdersService(db_session)
 
-    updated = await service.add_item(user_id, order.id, product.id, 2)
+    updated = await service.add_item(user_id, order.id, variant_id(product), 2)
 
     assert len(updated.items) == 2
     added = next(item for item in updated.items if item.product_id == product.id)
@@ -411,10 +415,10 @@ async def test_add_item_merges_into_the_line_that_is_already_there(
     """One line per product, as at checkout — a second row would be the owner's problem."""
     user_id, order = await _order_with_items(db_session, lines=1, quantity=2)
     service = OrdersService(db_session)
-    product_id = order.items[0].product_id
-    assert product_id is not None
+    variant = order.items[0].variant_id
+    assert variant is not None
 
-    updated = await service.add_item(user_id, order.id, product_id, 3)
+    updated = await service.add_item(user_id, order.id, variant, 3)
 
     assert len(updated.items) == 1
     assert updated.items[0].quantity == 5
@@ -429,7 +433,7 @@ async def test_add_item_prices_the_new_line_from_the_current_catalog(
     later = await make_product(db_session, name="Later", price_cents=3000)
     service = OrdersService(db_session)
 
-    updated = await service.add_item(user_id, order.id, later.id, 1)
+    updated = await service.add_item(user_id, order.id, variant_id(later), 1)
 
     prices = {item.product_name: item.product_price_cents for item in updated.items}
     assert prices == {"Product 0": 1000, "Later": 3000}
@@ -440,10 +444,10 @@ async def test_add_item_clamps_the_merged_quantity_to_the_ceiling(
 ) -> None:
     user_id, order = await _order_with_items(db_session, lines=1, quantity=998)
     service = OrdersService(db_session)
-    product_id = order.items[0].product_id
-    assert product_id is not None
+    variant = order.items[0].variant_id
+    assert variant is not None
 
-    updated = await service.add_item(user_id, order.id, product_id, 5)
+    updated = await service.add_item(user_id, order.id, variant, 5)
 
     assert updated.items[0].quantity == MAX_ITEM_QUANTITY
 
@@ -453,7 +457,7 @@ async def test_add_item_refuses_a_soft_deleted_product(db_session: AsyncSession)
     gone = await make_product(db_session, name="Gone", deleted_at=datetime.now(UTC))
 
     with pytest.raises(ProductNotFoundError):
-        await OrdersService(db_session).add_item(user_id, order.id, gone.id, 1)
+        await OrdersService(db_session).add_item(user_id, order.id, variant_id(gone), 1)
 
 
 async def test_add_item_refuses_a_product_that_never_existed(db_session: AsyncSession) -> None:
@@ -577,7 +581,7 @@ async def _closed_cycle_order(
     user = await make_user(db_session)
     cycle = await make_cycle(db_session)
     product = await make_product(db_session)
-    await CartService(db_session).add_item(user.id, product.id, 1)
+    await CartService(db_session).add_item(user.id, variant_id(product), 1)
     order = await OrdersService(db_session).checkout(user.id, note=None)
 
     cycle.status = CycleStatus.CLOSED
@@ -729,7 +733,7 @@ async def test_list_for_user_paginates_newest_first_and_reports_the_total(
         cycle = await make_cycle(
             db_session, deadline_at=datetime.now(UTC) + timedelta(hours=index + 1)
         )
-        await CartService(db_session).add_item(user.id, product.id, 1)
+        await CartService(db_session).add_item(user.id, variant_id(product), 1)
         order = await service.checkout(user.id, note=None)
         # Явные метки времени: заявки создаются в одной транзакции, и полагаться
         # на разрешение created_at для проверки порядка нельзя.
@@ -779,7 +783,7 @@ async def test_list_for_user_can_narrow_to_open_statuses(db_session: AsyncSessio
         cycle = await make_cycle(
             db_session, deadline_at=datetime.now(UTC) + timedelta(hours=index + 1)
         )
-        await CartService(db_session).add_item(user.id, product.id, 1)
+        await CartService(db_session).add_item(user.id, variant_id(product), 1)
         order = await service.checkout(user.id, note=None)
         order.status = status
         placed.append(order)
@@ -814,7 +818,7 @@ async def test_two_simultaneous_checkouts_produce_one_order(db_session: AsyncSes
     user = await make_user(db_session)
     await make_cycle(db_session)
     product = await make_product(db_session, price_cents=1500)
-    await CartService(db_session).add_item(user.id, product.id, 2)
+    await CartService(db_session).add_item(user.id, variant_id(product), 2)
     await db_session.commit()
 
     loser_started = asyncio.Event()
@@ -851,20 +855,25 @@ async def test_two_simultaneous_checkouts_produce_one_order(db_session: AsyncSes
 
 async def _order_with(
     session: AsyncSession, *, price_cents: int, quantity: int = 2
-) -> tuple[Order, uuid.UUID]:
-    """A pending order holding one product, plus that product's id."""
+) -> tuple[Order, Product]:
+    """A pending order holding one product, plus the product itself.
+
+    The product rather than an id: repricing addresses the volume it is sold in, dropping
+    it addresses the product, and a helper that returned one of the two ids would only
+    make half its callers happy.
+    """
     user = await make_user(session)
     await make_cycle(session)
     product = await make_product(session, name="Rose Serum", price_cents=price_cents)
-    await CartService(session).add_item(user.id, product.id, quantity)
+    await CartService(session).add_item(user.id, variant_id(product), quantity)
     order = await OrdersService(session).checkout(user.id, note=None)
-    return order, product.id
+    return order, product
 
 
-async def test_reprice_product_updates_pending_orders(db_session: AsyncSession) -> None:
-    order, product_id = await _order_with(db_session, price_cents=1000, quantity=2)
+async def test_reprice_variant_updates_pending_orders(db_session: AsyncSession) -> None:
+    order, product = await _order_with(db_session, price_cents=1000, quantity=2)
 
-    changes = await OrdersService(db_session).reprice_product(product_id, 1500)
+    changes = await OrdersService(db_session).reprice_variant(variant_id(product), 1500)
 
     assert order.items[0].product_price_cents == 1500
     assert order.total_cents == 3000
@@ -877,7 +886,7 @@ async def test_reprice_product_updates_pending_orders(db_session: AsyncSession) 
     assert changes[0].total_cents == 3000
 
 
-async def test_reprice_product_covers_every_pending_order_of_one_customer(
+async def test_reprice_variant_covers_every_pending_order_of_one_customer(
     db_session: AsyncSession,
 ) -> None:
     """One customer, several pending orders holding the product — a person orders in every
@@ -889,7 +898,7 @@ async def test_reprice_product_covers_every_pending_order_of_one_customer(
 
     placed = []
     for index, quantity in enumerate((1, 2, 3)):
-        await CartService(db_session).add_item(user.id, product.id, quantity)
+        await CartService(db_session).add_item(user.id, variant_id(product), quantity)
         order = await orders.checkout(user.id, note=None)
         # created_at defaults to now(), which in Postgres is the *transaction* timestamp —
         # all three checkouts share it here, unlike three separate requests in production.
@@ -897,23 +906,23 @@ async def test_reprice_product_covers_every_pending_order_of_one_customer(
         placed.append(order)
     await db_session.flush()
 
-    changes = await orders.reprice_product(product.id, 1500)
+    changes = await orders.reprice_variant(variant_id(product), 1500)
 
     assert [change.order_id for change in changes] == [order.id for order in reversed(placed)]
     assert [order.total_cents for order in placed] == [1500, 3000, 4500]
 
 
-async def test_reprice_product_reports_nothing_when_price_is_unchanged(
+async def test_reprice_variant_reports_nothing_when_price_is_unchanged(
     db_session: AsyncSession,
 ) -> None:
     """The router calls this on every price field that was *sent*, not every one that
     differs — a PATCH re-submitting the same number must not notify anyone."""
-    _, product_id = await _order_with(db_session, price_cents=1000)
+    _, product = await _order_with(db_session, price_cents=1000)
 
-    assert await OrdersService(db_session).reprice_product(product_id, 1000) == []
+    assert await OrdersService(db_session).reprice_variant(variant_id(product), 1000) == []
 
 
-async def test_reprice_products_moves_several_prices_in_one_pass(
+async def test_reprice_variants_moves_several_prices_in_one_pass(
     db_session: AsyncSession,
 ) -> None:
     """What a price list does: many products at once, several of them in one order.
@@ -930,13 +939,13 @@ async def test_reprice_products_moves_several_prices_in_one_pass(
     untouched = await make_product(db_session, name="Toner", slug="toner", price_cents=300)
 
     cart = CartService(db_session)
-    await cart.add_item(user.id, rose.id, 2)
-    await cart.add_item(user.id, clay.id, 1)
-    await cart.add_item(user.id, untouched.id, 1)
+    await cart.add_item(user.id, variant_id(rose), 2)
+    await cart.add_item(user.id, variant_id(clay), 1)
+    await cart.add_item(user.id, variant_id(untouched), 1)
     order = await OrdersService(db_session).checkout(user.id, note=None)
 
-    changes = await OrdersService(db_session).reprice_products(
-        {rose.id: 1500, clay.id: 400, untouched.id: 300}
+    changes = await OrdersService(db_session).reprice_variants(
+        {variant_id(rose): 1500, variant_id(clay): 400, variant_id(untouched): 300}
     )
 
     prices = {item.product_name: item.product_price_cents for item in order.items}
@@ -947,22 +956,22 @@ async def test_reprice_products_moves_several_prices_in_one_pass(
     assert {change.total_cents for change in changes} == {3700}
 
 
-async def test_reprice_products_reports_nothing_for_an_empty_map(
+async def test_reprice_variants_reports_nothing_for_an_empty_map(
     db_session: AsyncSession,
 ) -> None:
     """An import that changed no price must not cost a query."""
     await _order_with(db_session, price_cents=1000)
 
-    assert await OrdersService(db_session).reprice_products({}) == []
+    assert await OrdersService(db_session).reprice_variants({}) == []
 
 
-async def test_reprice_product_leaves_confirmed_orders_alone(db_session: AsyncSession) -> None:
+async def test_reprice_variant_leaves_confirmed_orders_alone(db_session: AsyncSession) -> None:
     """Past PENDING the owner has already bought against the list: the snapshot stands."""
-    order, product_id = await _order_with(db_session, price_cents=1000, quantity=2)
+    order, product = await _order_with(db_session, price_cents=1000, quantity=2)
     order.status = OrderStatus.CONFIRMED
     await db_session.flush()
 
-    changes = await OrdersService(db_session).reprice_product(product_id, 1500)
+    changes = await OrdersService(db_session).reprice_variant(variant_id(product), 1500)
 
     assert changes == []
     assert order.items[0].product_price_cents == 1000
@@ -977,8 +986,8 @@ async def test_drop_product_removes_the_line_and_recomputes_the_total(
     kept = await make_product(db_session, name="Toner", price_cents=500)
     dropped = await make_product(db_session, name="Rose Serum", price_cents=1000)
     cart = CartService(db_session)
-    await cart.add_item(user.id, kept.id, 1)
-    await cart.add_item(user.id, dropped.id, 2)
+    await cart.add_item(user.id, variant_id(kept), 1)
+    await cart.add_item(user.id, variant_id(dropped), 2)
     order = await OrdersService(db_session).checkout(user.id, note=None)
 
     drops = await OrdersService(db_session).drop_product(dropped.id)
@@ -996,9 +1005,9 @@ async def test_drop_product_cancels_an_order_left_with_nothing(
     db_session: AsyncSession,
 ) -> None:
     """An empty order is not something either side can act on — it's cancelled instead."""
-    order, product_id = await _order_with(db_session, price_cents=1000)
+    order, product = await _order_with(db_session, price_cents=1000)
 
-    drops = await OrdersService(db_session).drop_product(product_id)
+    drops = await OrdersService(db_session).drop_product(product.id)
 
     assert order.items == []
     assert order.status == OrderStatus.CANCELLED_BY_OWNER
@@ -1077,9 +1086,9 @@ async def test_the_owner_cannot_revive_an_order_left_with_nothing(
     """`drop_product` отменяет опустевшую заявку от имени владельца — но возвращать
     в закупку нечего, и «Ожидает» на ней не даёт ничего, кроме пустой строки.
     """
-    order, product_id = await _order_with(db_session, price_cents=1000)
+    order, product = await _order_with(db_session, price_cents=1000)
     service = OrdersService(db_session)
-    await service.drop_product(product_id)
+    await service.drop_product(product.id)
     assert order.status == OrderStatus.CANCELLED_BY_OWNER
 
     with pytest.raises(StatusTransitionError):

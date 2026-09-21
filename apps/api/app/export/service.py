@@ -48,9 +48,15 @@ CellValue = str | float | None
 
 @dataclass(frozen=True)
 class OrderExportRow:
-    """One product line of the purchase list: the same product across every order, summed."""
+    """One line of the purchase list: the same volume of the same product, summed.
+
+    A *volume*, not a product: the shop buys 30 ml and 50 ml of one serum as two separate
+    things, and summing them onto one line would send the owner to the supplier with a
+    number they cannot act on.
+    """
 
     product_name: str
+    volume_ml: int | None
     brand: str
     quantity: int
     unit_price_cents: int
@@ -58,6 +64,19 @@ class OrderExportRow:
     @property
     def total_cents(self) -> int:
         return self.unit_price_cents * self.quantity
+
+    @property
+    def label(self) -> str:
+        """What goes in the name cell: the product, and the volume when it has one.
+
+        In the name rather than in a column of its own because this sheet is read as a
+        shopping list, one line at a time — "Сыворотка Centella, 50 мл" is the thing to
+        pick off the shelf, and the volume in a far-right column is one the eye has to
+        travel to on every row.
+        """
+        if self.volume_ml is None:
+            return self.product_name
+        return f"{self.product_name}, {self.volume_ml} мл"
 
 
 def _money(cents: int) -> float:
@@ -107,7 +126,7 @@ def build_orders_workbook(rows: list[OrderExportRow], *, include_prices: bool = 
     body: list[list[CellValue]] = [
         _visible(
             [
-                row.product_name,
+                row.label,
                 row.brand,
                 row.quantity,
                 _money(row.unit_price_cents),
@@ -234,14 +253,16 @@ class ExportService:
     ) -> list[OrderExportRow]:
         """The purchase list: every ordered product summed across the orders in scope.
 
-        Grouped in SQL rather than in Python, so the sheet is one row per product no matter
-        how many customers asked for it. The grouping key includes the snapshotted price:
+        Grouped in SQL rather than in Python, so the sheet is one row per volume no matter
+        how many customers asked for it — and the volume is in the key for the same reason
+        the name is: two volumes of one serum are two things to buy. The grouping key
+        includes the snapshotted price as well:
         order items keep the price they were bought at, and two orders placed either side of
         a price change are genuinely two lines on the supplier's list, not one line with an
         invented average.
 
         That last part only holds while the price is on the sheet. With include_prices off
-        the price drops out of the grouping key too — otherwise the same product bought at
+        the price drops out of the grouping key too — otherwise the same volume bought at
         two prices would come out as two visually identical lines, which reads as a bug to
         whoever gets the file. The price then stays 0 on the row: it is not written anywhere,
         and carrying one of the two real prices would make the row quietly wrong.
@@ -255,6 +276,7 @@ class ExportService:
         query = (
             select(
                 OrderItem.product_name,
+                OrderItem.product_volume_ml,
                 Product.brand,
                 price.label("unit_price_cents"),
                 quantity,
@@ -262,8 +284,12 @@ class ExportService:
             .select_from(OrderItem)
             .join(Order, Order.id == OrderItem.order_id)
             .outerjoin(Product, Product.id == OrderItem.product_id)
-            .group_by(OrderItem.product_name, Product.brand)
-            .order_by(Product.brand.nulls_last(), OrderItem.product_name)
+            .group_by(OrderItem.product_name, OrderItem.product_volume_ml, Product.brand)
+            .order_by(
+                Product.brand.nulls_last(),
+                OrderItem.product_name,
+                OrderItem.product_volume_ml.nulls_first(),
+            )
         )
         if include_prices:
             query = query.group_by(OrderItem.product_price_cents)
@@ -276,11 +302,18 @@ class ExportService:
         return [
             OrderExportRow(
                 product_name=product_name,
+                volume_ml=volume_ml,
                 brand=brand if brand else "—",
                 quantity=int(total_quantity),
                 unit_price_cents=unit_price_cents,
             )
-            for (product_name, brand, unit_price_cents, total_quantity) in result.all()
+            for (
+                product_name,
+                volume_ml,
+                brand,
+                unit_price_cents,
+                total_quantity,
+            ) in result.all()
         ]
 
     async def _filename(self, cycle_id: uuid.UUID | None) -> str:

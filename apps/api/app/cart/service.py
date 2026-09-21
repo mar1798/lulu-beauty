@@ -8,7 +8,7 @@ from sqlalchemy.orm import selectinload
 from app.cart.models import Cart, CartItem
 from app.cart.schemas import CartItemResponse, CartResponse
 from app.catalog.images import primary_image_url
-from app.catalog.models import Category, Product
+from app.catalog.models import Category, Product, ProductVariant
 from app.common.limits import MAX_ITEM_QUANTITY
 from app.cycles.models import OrderCycle
 from app.cycles.service import CyclesService
@@ -19,7 +19,12 @@ class NoActiveCycleError(Exception):
 
 
 class ProductNotFoundError(Exception):
-    pass
+    """No live, in-stock variant at this id.
+
+    Still named after the product because that is what the customer was looking at, and
+    what `product_not_found` tells them on the site: a volume that has gone is a volume
+    they cannot buy, whatever the row behind it is called.
+    """
 
 
 class CartItemNotFoundError(Exception):
@@ -37,45 +42,73 @@ class CartService:
         return await self._build_response(cycle, cart)
 
     async def add_item(
-        self, user_id: uuid.UUID, product_id: uuid.UUID, quantity: int
+        self, user_id: uuid.UUID, variant_id: uuid.UUID, quantity: int
     ) -> CartResponse:
+        """Put one volume of a product into the cart.
+
+        Addressed by variant throughout: the customer chose "30 мл", and the two volumes
+        of one serum are two lines with two prices and two quantities.
+        """
         cycle = await self._require_active_cycle()
 
-        product = await self._session.get(Product, product_id)
-        if product is None or product.deleted_at is not None or not product.in_stock:
+        variant = await self._live_variant(variant_id)
+        if variant is None:
             # Out of stock is refused here rather than only hidden in the UI: the site
-            # already treats such a product as unorderable, and until this check existed
+            # already treats such a volume as unorderable, and until this check existed
             # the API happily took it — through a stale tab, or a card opened before the
             # owner unticked the box — and carried it into the order and the purchase sheet.
             raise ProductNotFoundError
 
         cart = await self._find_or_create_cart(user_id, cycle.id)
 
-        await self._add_or_increment(cart, product_id, quantity)
+        await self._add_or_increment(cart, variant, quantity)
 
         await self._session.flush()
         return await self._build_response(cycle, cart)
 
-    async def _add_or_increment(self, cart: Cart, product_id: uuid.UUID, quantity: int) -> None:
-        """One line per product in a cart, whether it is new or already there.
+    async def _live_variant(self, variant_id: uuid.UUID) -> ProductVariant | None:
+        """The variant, if it is one a customer may actually order right now.
+
+        Both rows have to be checked: the variant carries its own stock, and the product
+        behind it may have been withdrawn from the catalogue since the page was opened.
+        """
+        result = await self._session.execute(
+            select(ProductVariant)
+            .join(Product, Product.id == ProductVariant.product_id)
+            .where(
+                ProductVariant.id == variant_id,
+                ProductVariant.deleted_at.is_(None),
+                ProductVariant.in_stock.is_(True),
+                Product.deleted_at.is_(None),
+            )
+        )
+        return result.scalar_one_or_none()
+
+    async def _add_or_increment(self, cart: Cart, variant: ProductVariant, quantity: int) -> None:
+        """One line per variant in a cart, whether it is new or already there.
 
         Racy in exactly the way `_find_or_create_cart` is, and for the same reason:
-        (cart_id, product_id) is UNIQUE, and a double press on "в корзину" is two parallel
+        (cart_id, variant_id) is UNIQUE, and a double press on "в корзину" is two parallel
         requests that both find no line and both insert one. The loser surfaced as a 500 on
         an action the customer had every right to perform — so the insert goes into a
         savepoint, and on the conflict the row the winner committed is incremented instead.
         """
-        item = await self._find_item(cart, product_id)
+        item = await self._find_item(cart, variant.id)
 
         if item is None:
             try:
                 async with self._session.begin_nested():
                     self._session.add(
-                        CartItem(cart_id=cart.id, product_id=product_id, quantity=quantity)
+                        CartItem(
+                            cart_id=cart.id,
+                            product_id=variant.product_id,
+                            variant_id=variant.id,
+                            quantity=quantity,
+                        )
                     )
                 return
             except IntegrityError:
-                item = await self._find_item(cart, product_id)
+                item = await self._find_item(cart, variant.id)
                 if item is None:
                     raise
 
@@ -84,27 +117,27 @@ class CartService:
         # per-request limit means nothing — it would just take a few more presses.
         item.quantity = min(item.quantity + quantity, MAX_ITEM_QUANTITY)
 
-    async def _find_item(self, cart: Cart, product_id: uuid.UUID) -> CartItem | None:
+    async def _find_item(self, cart: Cart, variant_id: uuid.UUID) -> CartItem | None:
         result = await self._session.execute(
-            select(CartItem).where(CartItem.cart_id == cart.id, CartItem.product_id == product_id)
+            select(CartItem).where(CartItem.cart_id == cart.id, CartItem.variant_id == variant_id)
         )
         return result.scalar_one_or_none()
 
     async def set_item_quantity(
-        self, user_id: uuid.UUID, product_id: uuid.UUID, quantity: int
+        self, user_id: uuid.UUID, variant_id: uuid.UUID, quantity: int
     ) -> CartResponse:
         cycle = await self._require_active_cycle()
         cart = await self._find_cart(user_id, cycle.id)
-        item = await self._get_item(cart, product_id)
+        item = await self._get_item(cart, variant_id)
         item.quantity = quantity
 
         await self._session.flush()
         return await self._build_response(cycle, cart)
 
-    async def remove_item(self, user_id: uuid.UUID, product_id: uuid.UUID) -> CartResponse:
+    async def remove_item(self, user_id: uuid.UUID, variant_id: uuid.UUID) -> CartResponse:
         cycle = await self._cycles.get_active_cycle()
         cart = await self._find_cart(user_id, cycle.id) if cycle is not None else None
-        item = await self._get_item(cart, product_id)
+        item = await self._get_item(cart, variant_id)
 
         await self._session.delete(item)
         await self._session.flush()
@@ -125,14 +158,9 @@ class CartService:
             raise NoActiveCycleError
         return cycle
 
-    async def _get_item(self, cart: Cart | None, product_id: uuid.UUID) -> CartItem:
+    async def _get_item(self, cart: Cart | None, variant_id: uuid.UUID) -> CartItem:
         if cart is not None:
-            result = await self._session.execute(
-                select(CartItem).where(
-                    CartItem.cart_id == cart.id, CartItem.product_id == product_id
-                )
-            )
-            item = result.scalar_one_or_none()
+            item = await self._find_item(cart, variant_id)
             if item is not None:
                 return item
         raise CartItemNotFoundError
@@ -173,9 +201,9 @@ class CartService:
                 total_cents=0,
             )
 
-        # Discontinued products — and ones the owner has taken out of stock — drop out of
-        # the cart. The rows themselves are left alone (a re-import by slug revives the
-        # product, and stock comes back the same way, so the line returns with it), but
+        # Discontinued products and volumes — and ones the owner has taken out of stock —
+        # drop out of the cart. The rows themselves are left alone (a re-import by slug
+        # revives the product, and stock comes back the same way, so the line returns), but
         # they must not be shown or counted: adding such a product is refused everywhere
         # else, and checkout reads this same join — so a line the customer can see is
         # exactly a line they can order.
@@ -183,35 +211,43 @@ class CartService:
         # its name is one of the labels under the line, and reading it per row would be a
         # round trip per position.
         result = await self._session.execute(
-            select(CartItem, Product, Category.name)
+            select(CartItem, Product, ProductVariant, Category.name)
             .join(Product, Product.id == CartItem.product_id)
+            .join(ProductVariant, ProductVariant.id == CartItem.variant_id)
             .outerjoin(Category, Category.id == Product.category_id)
             .where(
                 CartItem.cart_id == cart.id,
                 Product.deleted_at.is_(None),
-                Product.in_stock.is_(True),
+                # The *variant's* stock, not the product's: a product counts as in stock
+                # while any of its volumes is, so filtering on it would leave a sold-out
+                # 30 ml sitting in the cart because the 50 ml is still available.
+                ProductVariant.deleted_at.is_(None),
+                ProductVariant.in_stock.is_(True),
             )
-            .order_by(Product.name)
+            # Volumes of one product keep the order the owner gave them, so the cart does
+            # not reshuffle two lines that share a name.
+            .order_by(Product.name, ProductVariant.sort_order)
             .options(selectinload(Product.images))
         )
 
         items: list[CartItemResponse] = []
         total_cents = 0
-        for cart_item, product, category_name in result.all():
-            line_total_cents = product.price_cents * cart_item.quantity
+        for cart_item, product, variant, category_name in result.all():
+            line_total_cents = variant.price_cents * cart_item.quantity
             total_cents += line_total_cents
             items.append(
                 CartItemResponse(
                     product_id=product.id,
+                    variant_id=variant.id,
                     product_name=product.name,
                     product_slug=product.slug,
                     product_image_url=primary_image_url(product.images),
-                    product_price_cents=product.price_cents,
+                    product_price_cents=variant.price_cents,
                     quantity=cart_item.quantity,
                     line_total_cents=line_total_cents,
                     product_brand=product.brand,
                     product_category_name=category_name,
-                    product_volume_ml=product.volume_ml,
+                    product_volume_ml=variant.volume_ml,
                 )
             )
 

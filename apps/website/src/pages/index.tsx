@@ -594,7 +594,7 @@ const HomePage: React.FC<IHomePageProps> = ({
               isStaggered={true}
               buildHref={product => `/catalog/${product.slug}`}
               renderAction={product =>
-                product.inStock ? <AddToCartButton productId={product.id} isCompact={true} /> : null
+                product.inStock ? <AddToCartButton product={product} isCompact={true} /> : null
               }
               renderMediaAction={product => <WishlistButton productId={product.id} />}
             />

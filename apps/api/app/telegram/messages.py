@@ -15,7 +15,7 @@ from datetime import datetime
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from app.auth.models import User
-from app.cart.schemas import CartResponse
+from app.cart.schemas import CartItemResponse, CartResponse
 from app.common.limits import MAX_WISHLIST_ITEMS
 from app.config import settings
 from app.cycles.models import OrderCycle
@@ -276,6 +276,19 @@ def order_deleted(order_id: uuid.UUID, status: OrderStatus) -> str | None:
     )
 
 
+def product_label(product_name: str, volume_ml: int | None) -> str:
+    """The product, and the volume when it has one — "Сыворотка Centella, 50 мл".
+
+    Один текст на все сообщения о позиции: у товара, который продаётся в 30 и 50 мл,
+    название само по себе не называет ничего. Без объёма два уведомления об одной
+    заявке — «цена выросла» и «цена снизилась» — читались бы как про один и тот же
+    товар и противоречили друг другу.
+    """
+    if volume_ml is None:
+        return product_name
+    return f"{product_name}, {volume_ml} мл"
+
+
 def order_item_repriced(
     order_id: uuid.UUID,
     product_name: str,
@@ -309,7 +322,7 @@ def orders_repriced(changes: Sequence[OrderPriceChange]) -> str:
         change = changes[0]
         return order_item_repriced(
             change.order_id,
-            change.product_name,
+            product_label(change.product_name, change.product_volume_ml),
             change.old_price_cents,
             change.new_price_cents,
             change.total_cents,
@@ -317,7 +330,8 @@ def orders_repriced(changes: Sequence[OrderPriceChange]) -> str:
 
     lines = [f"Изменились цены в {len(changes)} ваших заявках."]
     lines.extend(
-        f"{order_reference(change.order_id)} — {change.product_name}: "
+        f"{order_reference(change.order_id)} — "
+        f"{product_label(change.product_name, change.product_volume_ml)}: "
         f"{_price_direction(change.old_price_cents, change.new_price_cents)} "
         f"с {format_price(change.old_price_cents)} до {format_price(change.new_price_cents)}. "
         f"Сумма заявки теперь {format_price(change.total_cents)}."
@@ -338,17 +352,20 @@ def orders_items_dropped(drops: Sequence[OrderItemDrop]) -> str:
 
     if len(drops) == 1:
         drop = drops[0]
+        label = product_label(drop.product_name, drop.product_volume_ml)
         return (
-            order_cancelled_last_item_removed(drop.order_id, drop.product_name)
+            order_cancelled_last_item_removed(drop.order_id, label)
             if drop.is_cancelled
-            else order_item_removed(drop.order_id, drop.product_name, drop.total_cents)
+            else order_item_removed(drop.order_id, label, drop.total_cents)
         )
 
     count = len(by_order)
     affected = plural(count, "заявку", "заявки", "заявок")
     lines = [f"Мы сняли товары с продажи — это затронуло {count} ваших {affected}."]
     for order_id, order_drops in by_order.items():
-        names = ", ".join(drop.product_name for drop in order_drops)
+        names = ", ".join(
+            product_label(drop.product_name, drop.product_volume_ml) for drop in order_drops
+        )
         removed = plural(len(order_drops), "товар", "товара", "товаров")
         tail = (
             "заявка отменена, в ней больше не осталось позиций"
@@ -721,6 +738,11 @@ def my_orders(orders: list[Order], total: int | None = None) -> str:
     return "\n".join(lines)
 
 
+def cart_item_label(item: CartItemResponse) -> str:
+    """The product, and the volume when it has one — "Сыворотка Centella, 50 мл"."""
+    return product_label(item.product_name, item.product_volume_ml)
+
+
 def my_cart(cart: CartResponse) -> str:
     if not cart.items:
         # Two different empties, and the difference matters: with no cycle open there is
@@ -731,8 +753,10 @@ def my_cart(cart: CartResponse) -> str:
 
     lines = ["В корзине:"]
     shown = cart.items[:MAX_LISTED_CART_ITEMS]
+    # The volume goes in the line: a cart may hold two volumes of one product, and
+    # without it they read as the same line listed twice at different prices.
     lines += [
-        f"• {item.product_name} × {item.quantity} — {format_price(item.line_total_cents)}"
+        f"• {cart_item_label(item)} × {item.quantity} — {format_price(item.line_total_cents)}"
         for item in shown
     ]
     if len(cart.items) > len(shown):
@@ -758,7 +782,14 @@ def my_wishlist(wishlist: WishlistResponse) -> str:
 
     shown = wishlist.items[:MAX_LISTED_WISHLIST_ITEMS]
     lines = ["В избранном:"]
-    lines += [f"• {item.product.name} — {format_price(item.product.price_cents)}" for item in shown]
+    # "от" when the product is sold in several volumes: `price_cents` is the cheapest of
+    # them, and printing it flat would quote a price the bigger one is not sold at.
+    lines += [
+        f"• {item.product.name} — "
+        f"{'от ' if len(item.product.variants) > 1 else ''}"
+        f"{format_price(item.product.price_cents)}"
+        for item in shown
+    ]
     hidden = len(wishlist.items) - len(shown)
     if hidden > 0:
         lines.append(f"…и ещё {hidden} — весь список на сайте.")

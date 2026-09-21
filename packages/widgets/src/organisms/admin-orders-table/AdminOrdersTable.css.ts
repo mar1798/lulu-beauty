@@ -115,6 +115,18 @@ export const itemName = style({
   }),
 })
 
+/**
+ * Объём приглушённой подписью после названия: он различает две строки одного
+ * товара, но названием не является — набранный тем же тоном, он читался бы как
+ * часть имени.
+ */
+export const itemVolume = style({
+  marginLeft: rem(6),
+  font: font('14/20', 500),
+  color: color.text('muted'),
+  whiteSpace: 'nowrap',
+})
+
 export const itemLink = style([
   {
     color: color.text('primary'),

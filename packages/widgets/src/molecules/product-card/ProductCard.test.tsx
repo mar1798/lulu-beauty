@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { screen } from '@testing-library/react'
 import { ProductCard, primaryImage } from '.'
-import { feedProduct, feedProductImageDto } from '../../stories/feed'
+import { feedProduct, feedProductImageDto, feedProductWithVariants } from '../../stories/feed'
 import { renderWidget } from '../../testing/render'
 
 describe('primaryImage', () => {
@@ -80,5 +80,16 @@ describe('ProductCard', () => {
     renderWidget(<ProductCard product={feedProduct({ images: [] })} href="/catalog/x" />)
 
     expect(screen.queryByRole('img')).toBeNull()
+  })
+})
+
+describe('ProductCard и несколько объёмов', () => {
+  it('говорит «от» и перечисляет объёмы: цена товара — это цена самого дешёвого', () => {
+    const product = feedProductWithVariants()
+
+    renderWidget(<ProductCard product={product} href="/catalog/serum" />)
+
+    expect(screen.getByText('от')).toBeInTheDocument()
+    expect(screen.getByText('30 / 50 мл')).toBeInTheDocument()
   })
 })

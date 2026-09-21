@@ -85,7 +85,7 @@ describe('CheckoutPanel', () => {
     const increase = getAllByRole('button', { name: /Увеличить количество/ })
     fireEvent.click(increase[0] as HTMLButtonElement)
 
-    expect(onQuantityChange).toHaveBeenCalledWith(first?.productId, (first?.quantity ?? 0) + 1)
+    expect(onQuantityChange).toHaveBeenCalledWith(first?.variantId, (first?.quantity ?? 0) + 1)
   })
 
   /*

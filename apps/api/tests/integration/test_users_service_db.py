@@ -20,7 +20,7 @@ from app.users.service import (
 )
 from app.wishlist.models import WishlistItem
 from app.wishlist.service import WishlistService
-from tests.integration.factories import make_cycle, make_product, make_user
+from tests.integration.factories import make_cycle, make_product, make_user, variant_id
 
 
 async def test_get_returns_the_user_behind_an_access_token(db_session: AsyncSession) -> None:
@@ -99,7 +99,7 @@ async def test_delete_account_erases_the_person_but_keeps_the_orders(
     user = await make_user(db_session, phone="+996700555111", name="Аида")
     await make_cycle(db_session)
     product = await make_product(db_session, name="Rose Serum", price_cents=1500)
-    await CartService(db_session).add_item(user.id, product.id, 2)
+    await CartService(db_session).add_item(user.id, variant_id(product), 2)
     order = await OrdersService(db_session).checkout(user.id, note=None)
     order.status = OrderStatus.COMPLETED
     await db_session.flush()
@@ -128,7 +128,7 @@ async def test_delete_account_withdraws_open_orders_and_names_them(
     user = await make_user(db_session)
     await make_cycle(db_session)
     product = await make_product(db_session)
-    await CartService(db_session).add_item(user.id, product.id, 1)
+    await CartService(db_session).add_item(user.id, variant_id(product), 1)
     order = await OrdersService(db_session).checkout(user.id, note=None)
 
     withdrawn = await UsersService(db_session).delete_account(user.id)
@@ -144,7 +144,7 @@ async def test_delete_account_leaves_finished_orders_alone(db_session: AsyncSess
     user = await make_user(db_session)
     await make_cycle(db_session)
     product = await make_product(db_session)
-    await CartService(db_session).add_item(user.id, product.id, 1)
+    await CartService(db_session).add_item(user.id, variant_id(product), 1)
     done = await OrdersService(db_session).checkout(user.id, note=None)
     done.status = OrderStatus.COMPLETED
     await db_session.flush()
@@ -164,7 +164,7 @@ async def test_delete_account_removes_everything_that_is_not_an_order(
     user = await make_user(db_session, telegram_chat_id=4242)
     await make_cycle(db_session)
     product = await make_product(db_session)
-    await CartService(db_session).add_item(user.id, product.id, 1)
+    await CartService(db_session).add_item(user.id, variant_id(product), 1)
     await WishlistService(db_session).add_item(user.id, product.id)
     db_session.add(
         RefreshToken(
@@ -281,7 +281,7 @@ async def test_an_erased_account_keeps_its_orders_out_of_the_cycle_fan_out(
     user = await make_user(db_session, telegram_chat_id=5151)
     cycle = await make_cycle(db_session)
     product = await make_product(db_session)
-    await CartService(db_session).add_item(user.id, product.id, 1)
+    await CartService(db_session).add_item(user.id, variant_id(product), 1)
     await OrdersService(db_session).checkout(user.id, note=None)
 
     await UsersService(db_session).delete_account(user.id)
@@ -300,7 +300,7 @@ async def test_delete_account_refuses_while_the_shop_still_owes_goods(
     user = await make_user(db_session)
     await make_cycle(db_session)
     product = await make_product(db_session)
-    await CartService(db_session).add_item(user.id, product.id, 1)
+    await CartService(db_session).add_item(user.id, variant_id(product), 1)
     order = await OrdersService(db_session).checkout(user.id, note=None)
     order.status = status
     await db_session.flush()
@@ -327,7 +327,7 @@ async def test_deletion_blockers_answers_the_same_rule_the_erasure_enforces(
     product = await make_product(db_session)
     service = UsersService(db_session)
 
-    await CartService(db_session).add_item(user.id, product.id, 1)
+    await CartService(db_session).add_item(user.id, variant_id(product), 1)
     pending = await OrdersService(db_session).checkout(user.id, note=None)
 
     # Nothing is bought against a PENDING order, so it blocks nothing.
@@ -350,12 +350,12 @@ async def test_delete_account_withdraws_only_what_nobody_bought_against(
     cart = CartService(db_session)
     orders = OrdersService(db_session)
 
-    await cart.add_item(user.id, product.id, 1)
+    await cart.add_item(user.id, variant_id(product), 1)
     done = await orders.checkout(user.id, note=None)
     done.status = OrderStatus.COMPLETED
     await db_session.flush()
 
-    await cart.add_item(user.id, product.id, 1)
+    await cart.add_item(user.id, variant_id(product), 1)
     pending = await orders.checkout(user.id, note=None)
 
     withdrawn = await UsersService(db_session).delete_account(user.id)

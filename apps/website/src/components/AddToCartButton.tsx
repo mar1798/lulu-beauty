@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/router'
-import type { IControlSize } from 'widgets/types'
+import type { IControlSize, IProduct } from 'widgets/types'
 import { Button, IconButton, Tooltip } from 'widgets/atoms'
 import { useToast } from 'widgets/contexts'
 import { IconCart, IconCheck, IconPlus } from 'widgets/svg'
@@ -27,6 +27,13 @@ import * as styles from '@/styles/cartButton.css'
  * (`WishlistButton`). Ответ приходит за те же ~200 мс, что кнопка успевает
  * показать спиннер и тут же сменить его на «в корзине»: читалось это не как
  * «идёт запрос», а как мигание. Двойной клик закрыт замком в `add`.
+ *
+ * В корзину кладётся **объём**, а не товар. У товара, который продаётся в
+ * нескольких, кнопка в сетке каталога не кладёт ничего: выбрать объём там
+ * негде — в строке с ценой нет места ни на одной ширине, — и она ведёт на
+ * страницу товара, где переключатель есть. Молча класть самый дешёвый было бы
+ * решением за покупателя, а прятать кнопку — терять единственное действие
+ * карточки.
  */
 
 /**
@@ -51,7 +58,16 @@ const CLOSED_REASON = 'Сейчас нет открытого сбора — т�
 const CONFIRMATION_MS = 1200
 
 export const AddToCartButton: React.FC<{
-  productId: string
+  /**
+   * Товар целиком: кнопке нужно знать не только, что класть, но и сколько у
+   * него объёмов — от этого зависит, кладёт она или ведёт выбирать.
+   */
+  product: IProduct
+  /**
+   * Выбранный объём. Задаётся на странице товара, где есть переключатель; в
+   * сетке каталога опущен — там объём выбирают не здесь.
+   */
+  variantId?: string | null
   size?: IControlSize
   isFullWidth?: boolean
   disabled?: boolean
@@ -60,7 +76,14 @@ export const AddToCartButton: React.FC<{
    * каталога: в строке с ценой на текст места нет ни на одной ширине.
    */
   isCompact?: boolean
-}> = ({ productId, size = 'sm', isFullWidth = false, disabled = false, isCompact = false }) => {
+}> = ({
+  product,
+  variantId,
+  size = 'sm',
+  isFullWidth = false,
+  disabled = false,
+  isCompact = false,
+}) => {
   const router = useRouter()
   const { user, isLoading: isAuthLoading, reload: reloadSession } = useAuth()
   const { cart, addItem, isItemBusy } = useCart()
@@ -73,6 +96,14 @@ export const AddToCartButton: React.FC<{
    * только вернула бы мигание.
    */
   const isRunning = useRef(false)
+
+  /*
+    Что именно кладём. Явно выбранный объём, иначе единственный — а у товара с
+    несколькими объёмами без выбора класть нечего, и это `null`.
+  */
+  const target =
+    product.variants.find(variant => variant.id === variantId) ??
+    (product.variants.length === 1 ? product.variants[0] : null)
 
   /**
    * Товар положили прямо сейчас — кнопка держит галочку подтверждения. Через
@@ -99,7 +130,7 @@ export const AddToCartButton: React.FC<{
       Второй клик по неответившей кнопке добавил бы товар повторно: `cart` в
       этот момент ещё без него, и до ветки «уже в корзине» дело не доходит.
     */
-    if (isRunning.current || isItemBusy(productId)) {
+    if (target === null || isRunning.current || isItemBusy(target.id)) {
       return
     }
 
@@ -120,7 +151,7 @@ export const AddToCartButton: React.FC<{
         return
       }
 
-      const result = await addItem(productId)
+      const result = await addItem(target.id)
 
       if (result.ok) {
         setIsConfirming(true)
@@ -139,9 +170,32 @@ export const AddToCartButton: React.FC<{
     } finally {
       isRunning.current = false
     }
-  }, [user, isAuthLoading, reloadSession, router, addItem, isItemBusy, productId, notify])
+  }, [user, isAuthLoading, reloadSession, router, addItem, isItemBusy, target, notify])
 
-  const isInCart = cart?.items.some(item => item.productId === productId) === true
+  /*
+    Объём не выбран, а выбирать есть из чего: кнопка ведёт на страницу товара.
+    Ссылкой, а не обработчиком, — по тем же четырём признакам перехода, что и
+    «в корзине» ниже: курсор, адрес в статусной строке, Cmd+клик, средняя кнопка.
+  */
+  if (target === null) {
+    const href = `/catalog/${encodeURIComponent(product.slug)}`
+
+    return isCompact ? (
+      <IconButton
+        icon={<IconPlus />}
+        label={`Выбрать объём: ${product.name}`}
+        variant="primary"
+        size="md"
+        link={{ href }}
+      />
+    ) : (
+      <Button size={size} isFullWidth={isFullWidth} link={{ href }}>
+        Выбрать объём
+      </Button>
+    )
+  }
+
+  const isInCart = cart?.items.some(item => item.variantId === target.id) === true
 
   if (isInCart) {
     /*

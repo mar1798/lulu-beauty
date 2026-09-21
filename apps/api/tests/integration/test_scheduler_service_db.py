@@ -25,7 +25,7 @@ from app.telegram.notify import (
 from app.telegram.service import BroadcastResult
 from app.wishlist.models import WishlistItem
 from app.wishlist.service import WishlistService
-from tests.integration.factories import make_cycle, make_product, make_user
+from tests.integration.factories import make_cycle, make_product, make_user, variant_id
 
 
 async def test_reminders_are_planned_once_per_stage_and_stamping_closes_them(
@@ -34,7 +34,7 @@ async def test_reminders_are_planned_once_per_stage_and_stamping_closes_them(
     user = await make_user(db_session)
     cycle = await make_cycle(db_session, deadline_at=datetime.now(UTC) + timedelta(hours=20))
     product = await make_product(db_session)
-    await CartService(db_session).add_item(user.id, product.id, 1)
+    await CartService(db_session).add_item(user.id, variant_id(product), 1)
 
     service = CycleSchedulerService(db_session)
 
@@ -78,7 +78,7 @@ async def test_a_reminder_that_was_not_stamped_is_planned_again(
     user = await make_user(db_session)
     await make_cycle(db_session, deadline_at=datetime.now(UTC) + timedelta(hours=1))
     product = await make_product(db_session)
-    await CartService(db_session).add_item(user.id, product.id, 1)
+    await CartService(db_session).add_item(user.id, variant_id(product), 1)
     service = CycleSchedulerService(db_session)
 
     assert len(await service.plan_reminders()) == 1
@@ -95,7 +95,7 @@ async def test_reminders_plan_only_the_last_chance_for_a_late_cycle(
     user = await make_user(db_session)
     cycle = await make_cycle(db_session, deadline_at=datetime.now(UTC) + timedelta(hours=1))
     product = await make_product(db_session)
-    await CartService(db_session).add_item(user.id, product.id, 1)
+    await CartService(db_session).add_item(user.id, variant_id(product), 1)
 
     service = CycleSchedulerService(db_session)
     reminders = await service.plan_reminders()
@@ -120,7 +120,7 @@ async def test_reminders_skip_users_who_already_checked_out(db_session: AsyncSes
     user = await make_user(db_session)
     cycle = await make_cycle(db_session, deadline_at=datetime.now(UTC) + timedelta(hours=1))
     product = await make_product(db_session)
-    await CartService(db_session).add_item(user.id, product.id, 1)
+    await CartService(db_session).add_item(user.id, variant_id(product), 1)
     await OrdersService(db_session).checkout(user.id, note=None)
 
     service = CycleSchedulerService(db_session)
@@ -146,7 +146,7 @@ async def test_planning_sends_nothing_and_an_empty_audience_is_not_broadcast(
     user = await make_user(db_session)
     await make_cycle(db_session, deadline_at=datetime.now(UTC) + timedelta(hours=1))
     product = await make_product(db_session)
-    await CartService(db_session).add_item(user.id, product.id, 1)
+    await CartService(db_session).add_item(user.id, variant_id(product), 1)
 
     reminders = await CycleSchedulerService(db_session).plan_reminders()
     broadcast.assert_not_awaited()
@@ -169,7 +169,7 @@ async def _cycle_with_pending_order(
     user = await make_user(db_session)
     cycle = await make_cycle(db_session)
     product = await make_product(db_session)
-    await CartService(db_session).add_item(user.id, product.id, 1)
+    await CartService(db_session).add_item(user.id, variant_id(product), 1)
     order = await OrdersService(db_session).checkout(user.id, note=None)
 
     cycle.status = CycleStatus.CLOSED
@@ -258,8 +258,8 @@ async def test_sweep_deadlines_closes_cycle_and_clears_abandoned_carts_only(
     cycle = await make_cycle(db_session, deadline_at=datetime.now(UTC) + timedelta(seconds=1))
     product = await make_product(db_session)
 
-    await CartService(db_session).add_item(abandoned_user.id, product.id, 1)
-    await CartService(db_session).add_item(checked_out_user.id, product.id, 1)
+    await CartService(db_session).add_item(abandoned_user.id, variant_id(product), 1)
+    await CartService(db_session).add_item(checked_out_user.id, variant_id(product), 1)
     order = await OrdersService(db_session).checkout(checked_out_user.id, note=None)
 
     # Simulate the deadline having passed (rather than sleeping in the test).
@@ -293,9 +293,9 @@ async def test_sweep_deadlines_moves_abandoned_carts_into_wishlists(
     serum = await make_product(db_session, name="Сыворотка")
 
     cart = CartService(db_session)
-    await cart.add_item(abandoned_user.id, cream.id, 2)
-    await cart.add_item(abandoned_user.id, serum.id, 1)
-    await cart.add_item(checked_out_user.id, cream.id, 1)
+    await cart.add_item(abandoned_user.id, variant_id(cream), 2)
+    await cart.add_item(abandoned_user.id, variant_id(serum), 1)
+    await cart.add_item(checked_out_user.id, variant_id(cream), 1)
     await OrdersService(db_session).checkout(checked_out_user.id, note=None)
 
     cycle.deadline_at = datetime.now(UTC) - timedelta(seconds=1)
@@ -320,8 +320,8 @@ async def test_cart_rescue_counts_what_was_already_hearted_once(db_session: Asyn
     serum = await make_product(db_session, name="Сыворотка")
 
     await WishlistService(db_session).add_item(user.id, cream.id)
-    await CartService(db_session).add_item(user.id, cream.id, 1)
-    await CartService(db_session).add_item(user.id, serum.id, 1)
+    await CartService(db_session).add_item(user.id, variant_id(cream), 1)
+    await CartService(db_session).add_item(user.id, variant_id(serum), 1)
 
     cycle.deadline_at = datetime.now(UTC) - timedelta(seconds=1)
     await db_session.flush()
@@ -345,8 +345,8 @@ async def test_cart_rescue_skips_discontinued_products(db_session: AsyncSession)
     live = await make_product(db_session, name="Крем")
     gone = await make_product(db_session, name="Снятый")
 
-    await CartService(db_session).add_item(user.id, live.id, 1)
-    await CartService(db_session).add_item(user.id, gone.id, 1)
+    await CartService(db_session).add_item(user.id, variant_id(live), 1)
+    await CartService(db_session).add_item(user.id, variant_id(gone), 1)
     gone.deleted_at = datetime.now(UTC)
     cycle.deadline_at = datetime.now(UTC) - timedelta(seconds=1)
     await db_session.flush()
@@ -372,7 +372,7 @@ async def test_cart_rescue_respects_the_wishlist_ceiling(
     cycle = await make_cycle(db_session, deadline_at=datetime.now(UTC) + timedelta(seconds=1))
     for name in ("Крем", "Сыворотка", "Тоник"):
         product = await make_product(db_session, name=name)
-        await CartService(db_session).add_item(user.id, product.id, 1)
+        await CartService(db_session).add_item(user.id, variant_id(product), 1)
 
     cycle.deadline_at = datetime.now(UTC) - timedelta(seconds=1)
     await db_session.flush()
@@ -431,9 +431,9 @@ async def test_sweep_deadlines_tallies_what_the_owner_has_to_buy(
     product = await make_product(db_session, price_cents=1000)
 
     orders = OrdersService(db_session)
-    await CartService(db_session).add_item(buyer.id, product.id, 3)
+    await CartService(db_session).add_item(buyer.id, variant_id(product), 3)
     await orders.checkout(buyer.id, note=None)
-    await CartService(db_session).add_item(quitter.id, product.id, 5)
+    await CartService(db_session).add_item(quitter.id, variant_id(product), 5)
     cancelled = await orders.checkout(quitter.id, note=None)
     await orders.cancel(quitter.id, cancelled.id)
 
@@ -489,9 +489,9 @@ async def test_cart_rescue_covers_someone_who_kept_shopping_after_ordering(
     later = await make_product(db_session, name="Сыворотка")
 
     cart = CartService(db_session)
-    await cart.add_item(user.id, ordered.id, 1)
+    await cart.add_item(user.id, variant_id(ordered), 1)
     await OrdersService(db_session).checkout(user.id, note=None)
-    await cart.add_item(user.id, later.id, 2)
+    await cart.add_item(user.id, variant_id(later), 2)
 
     cycle.deadline_at = datetime.now(UTC) - timedelta(seconds=1)
     await db_session.flush()
@@ -511,7 +511,7 @@ async def test_close_now_does_everything_the_deadline_would_have(
     user = await make_user(db_session)
     cycle = await make_cycle(db_session, deadline_at=datetime.now(UTC) + timedelta(days=3))
     product = await make_product(db_session, name="Крем", price_cents=1500)
-    await CartService(db_session).add_item(user.id, product.id, 2)
+    await CartService(db_session).add_item(user.id, variant_id(product), 2)
 
     service = CycleSchedulerService(db_session)
     closure = await service.close_now(cycle.id)

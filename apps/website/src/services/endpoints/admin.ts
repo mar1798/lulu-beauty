@@ -94,14 +94,38 @@ export interface IAdminProductListParams {
 export const listAdminBrands = (includeDeleted = false): Promise<string[]> =>
   api.get('/admin/brands', { query: { includeDeleted } })
 
+/** Один объём товара в запросе: список заменяет объёмы целиком. */
+export interface IProductVariantInput {
+  /** Миллилитры; `null` — товару нечего измерять (патчи, тканевые маски). */
+  volumeMl: number | null
+  priceCents: number
+  inStock: boolean
+}
+
 export interface IProductInput {
   name: string
   slug: string
   description?: string | null
   /** Обязателен: бэкенд не примет ни создание, ни изменение товара без бренда. */
   brand: string
+  /**
+   * Объёмы товара. Присланный список заменяет прежний целиком: форма
+   * показывает все объёмы сразу, и список, который умеет только расти, не
+   * дал бы снять ни один. Сверяет их бэкенд по объёму, а не по порядку, —
+   * поэтому правка цены не трогает строку, на которую ссылаются чужие
+   * корзины (`ProductService._apply_specs`).
+   */
+  variants?: IProductVariantInput[]
+  /**
+   * Витринные поля товара. Бэкенд всё равно пересчитает их по `variants`;
+   * `priceCents` тут потому, что схема создания товара его требует, а
+   * `volumeMl`/`inStock` — чтобы запрос описывал одно и то же состояние
+   * целиком, а не наполовину.
+   *
+   * Без `variants` они означают единственный объём товара — так ходит
+   * импорт и так по-прежнему можно поправить цену обычного товара.
+   */
   priceCents: number
-  /** Объём в миллилитрах; `null` стирает его у товара, где он был. */
   volumeMl?: number | null
   categoryId?: string | null
   inStock?: boolean

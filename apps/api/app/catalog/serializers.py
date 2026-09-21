@@ -12,6 +12,7 @@ from app.catalog.schemas import (
     CategoryResponse,
     ProductImageResponse,
     ProductResponse,
+    ProductVariantResponse,
     SearchSuggestResponse,
     SuggestCategoryResponse,
     SuggestProductResponse,
@@ -35,6 +36,17 @@ def product_response(product: Product) -> ProductResponse:
         volume_ml=product.volume_ml,
         category_id=product.category_id,
         in_stock=product.in_stock,
+        # Only the live ones: a withdrawn volume still has a row (orders quote it), but
+        # it is not something the storefront may offer or the admin form may show back.
+        variants=[
+            ProductVariantResponse(
+                id=variant.id,
+                volume_ml=variant.volume_ml,
+                price_cents=variant.price_cents,
+                in_stock=variant.in_stock,
+            )
+            for variant in product.live_variants
+        ],
         deleted_at=product.deleted_at,
         updated_at=product.updated_at,
         images=[
@@ -64,6 +76,7 @@ def suggest_response(suggestions: CatalogSuggestions) -> SearchSuggestResponse:
                 slug=product.slug,
                 brand=product.brand,
                 price_cents=product.price_cents,
+                variant_count=len(product.live_variants),
                 in_stock=product.in_stock,
                 image_url=None if (image := primary_image(product.images)) is None else image.url,
                 image_alt=None if image is None else image.alt,

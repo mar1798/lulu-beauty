@@ -103,7 +103,7 @@ What each page carries:
 | every page (`_app`) | `OnlineStore`: `logo`/`image`, and `sameAs` to the Instagram and the bot  |
 | `/`                 | `FAQPage`, built from the same `FAQ_ITEMS` array that renders the section |
 | `/catalog`          | `ItemList` of the products currently on screen                            |
-| `/catalog/[slug]`   | `Product` + `Offer`, `BreadcrumbList`                                     |
+| `/catalog/[slug]`   | `Product` + `Offer` (or `AggregateOffer`), `BreadcrumbList`               |
 
 The rule the whole file is written around: **markup states only what the same page shows a
 visitor.** So there is no `aggregateRating` or `review` (the shop has no real reviews), no
@@ -121,6 +121,12 @@ Details that are decisions, not accidents:
   next one.
 - **The price is in som, not cents.** The database and API keep integer `*_cents`; `Offer`
   wants the unit amount, and `priceUnits` converts, dropping `.00`.
+- **A product sold in several volumes gets `AggregateOffer`**, with `lowPrice`/`highPrice`
+  and `offerCount`, instead of one `Offer`. There are as many prices as volumes, and quoting
+  the cheapest as _the_ price would state something the page itself does not: the visible
+  price is "от N ₽" and changes with the volume selector. The `<title>` and the meta
+  description say "от" for the same reason, and carry the volumes ("30 / 50 мл") in place of
+  the single one such a product no longer has.
 - **The store node has an `@id`** (`<siteUrl>/#store`), and each `Offer` refers to it instead
   of repeating the organisation — one seller entity across the whole site.
 - **The `Product` description** is the owner's text when it exists, otherwise the same string

@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { ProductPicker } from '.'
-import { feedProduct, feedProductPicker } from '../../stories/feed'
+import { feedProduct, feedProductPicker, feedProductWithVariants } from '../../stories/feed'
 import { renderWidget } from '../../testing/render'
 
 /**
@@ -69,14 +69,19 @@ describe('ProductPicker', () => {
 
     await user.click(add)
 
-    expect(onAdd).toHaveBeenCalledWith(product.id)
+    // Наверх уезжает объём, а не товар: покупают конкретный флакон.
+    expect(onAdd).toHaveBeenCalledWith(product.variants[0].id)
   })
 
   it('товар из заявки не прячет, но говорит, что добавление сольётся с его строкой', () => {
     const product = feedProduct({ name: 'Крем для рук' })
 
     renderWidget(
-      <ProductPicker {...feedProductPicker()} products={[product]} addedProductIds={[product.id]} />
+      <ProductPicker
+        {...feedProductPicker()}
+        products={[product]}
+        addedVariantIds={[product.variants[0].id]}
+      />
     )
 
     expect(screen.getByText('Уже в заявке')).toBeInTheDocument()
@@ -87,11 +92,28 @@ describe('ProductPicker', () => {
 
   it('товар не в наличии показывает, но добавить не даёт', () => {
     const product = feedProduct({ name: 'Тушь', inStock: false })
+    product.variants[0].inStock = false
 
     renderWidget(<ProductPicker {...feedProductPicker()} products={[product]} />)
 
     expect(screen.getByText('Тушь')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Нет в наличии' })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Нет в наличии: Тушь' })).toBeDisabled()
+  })
+})
+
+describe('ProductPicker и несколько объёмов', () => {
+  it('товар в двух объёмах даёт строку на каждый — со своей ценой', () => {
+    const product = feedProductWithVariants({ name: 'Сыворотка Centella' })
+
+    renderWidget(<ProductPicker {...feedProductPicker()} products={[product]} />)
+
+    // Объём в названии, потому что их несколько: «сыворотку вообще» не купить.
+    expect(screen.getByText('Сыворотка Centella, 30 мл')).toBeInTheDocument()
+    expect(screen.getByText('Сыворотка Centella, 50 мл')).toBeInTheDocument()
+    // 50 мл в фикстуре кончились — строка остаётся, кнопка гаснет.
+    expect(
+      screen.getByRole('button', { name: 'Нет в наличии: Сыворотка Centella, 50 мл' })
+    ).toBeDisabled()
   })
 })

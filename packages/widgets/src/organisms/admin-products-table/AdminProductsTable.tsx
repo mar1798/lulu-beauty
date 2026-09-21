@@ -133,7 +133,16 @@ export const AdminProductsTable: FC<IAdminProductsTableProps & IBasicStyling> = 
                     </td>
 
                     <td className={styles.cell} role="cell" data-label="Цена">
-                      <Price priceCents={product.priceCents} size="sm" />
+                      {/*
+                        «от» у товара в нескольких объёмах — то же, что на
+                        витрине: в колонке стоит цена самого дешёвого, и без
+                        оговорки владелец читал бы её как цену товара.
+                      */}
+                      <Price
+                        priceCents={product.priceCents}
+                        size="sm"
+                        isFrom={product.variants.length > 1}
+                      />
                     </td>
 
                     <td className={styles.cell} role="cell" data-label="Наличие">

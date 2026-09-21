@@ -44,13 +44,14 @@ from app.telegram.notify import (
 router = APIRouter(tags=["orders"])
 
 
-_NO_TAGS = ProductTags(brand=None, category_name=None, volume_ml=None)
+_NO_TAGS = ProductTags(brand=None, category_name=None)
 
 
 def _order_item(item: OrderItem, tags: ProductTags) -> OrderItemResponse:
     return OrderItemResponse(
         id=item.id,
         product_id=item.product_id,
+        variant_id=item.variant_id,
         product_name=item.product_name,
         product_slug=item.product_slug,
         product_image_url=item.product_image_url,
@@ -59,7 +60,7 @@ def _order_item(item: OrderItem, tags: ProductTags) -> OrderItemResponse:
         line_total_cents=item.product_price_cents * item.quantity,
         product_brand=tags.brand,
         product_category_name=tags.category_name,
-        product_volume_ml=tags.volume_ml,
+        product_volume_ml=item.product_volume_ml,
     )
 
 
@@ -235,7 +236,7 @@ async def add_my_order_item(
     """
     service = OrdersService(session)
     try:
-        order = await service.add_item(current_user.id, order_id, body.product_id, body.quantity)
+        order = await service.add_item(current_user.id, order_id, body.variant_id, body.quantity)
     except (OrderNotFoundError, OrderNotEditableError, ProductNotFoundError) as error:
         raise _editing_error(error) from error
 

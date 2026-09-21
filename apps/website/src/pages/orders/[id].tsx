@@ -285,10 +285,10 @@ const OrderPage: React.FC = () => {
             Состав строки известен только до удаления — после неё заявка
             приедет уже без него. Возврат идёт добавлением товара
             (`POST /orders/{id}/items`), поэтому у позиции удалённого из
-            каталога товара (`productId === null`) его нет: такую строку
+            каталога объёма (`variantId === null`) его нет: такую строку
             бэкенд заново не примет, и обещать «Вернуть» нельзя.
           */
-          const productId = item?.productId ?? null
+          const variantId = item?.variantId ?? null
           const quantity = item?.quantity ?? 1
 
           // Названием, а не «позицией»: тост об удалении читают, когда уже
@@ -303,11 +303,11 @@ const OrderPage: React.FC = () => {
             {
               tone: 'warning',
               undo:
-                productId === null
+                variantId === null
                   ? undefined
                   : () => {
                       void runAction(
-                        () => addMyOrderItem(order.id, productId, quantity),
+                        () => addMyOrderItem(order.id, variantId, quantity),
                         'Вернулся в заявку',
                         'order.item.add'
                       )
@@ -326,12 +326,12 @@ const OrderPage: React.FC = () => {
             products={search.products}
             isSearching={search.isSearching}
             error={search.error}
-            addedProductIds={order.items
-              .map(item => item.productId)
-              .filter((productId): productId is string => productId !== null)}
-            onAdd={productId => {
+            addedVariantIds={order.items
+              .map(item => item.variantId)
+              .filter((variantId): variantId is string => variantId !== null)}
+            onAdd={variantId => {
               void runAction(
-                () => addMyOrderItem(order.id, productId),
+                () => addMyOrderItem(order.id, variantId),
                 'Товар добавлен',
                 'order.item.add'
               )

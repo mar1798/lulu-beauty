@@ -36,8 +36,8 @@ const CartPage: React.FC = () => {
    * та же, что и у любого другого товара в корзине, снимок снимается только
    * при подтверждении заявки.
    */
-  const restore = async (productId: string, quantity: number): Promise<void> => {
-    const result = await addItem(productId, quantity)
+  const restore = async (variantId: string, quantity: number): Promise<void> => {
+    const result = await addItem(variantId, quantity)
 
     notify(
       result.ok
@@ -56,9 +56,9 @@ const CartPage: React.FC = () => {
    * назад: строка исчезает мгновенно (оптимистично), и промах по крестику на
    * телефоне иначе стоил бы похода в каталог за тем же товаром.
    */
-  const remove = async (productId: string): Promise<void> => {
-    const item = cart?.items.find(cartItem => cartItem.productId === productId)
-    const result = await removeItem(productId)
+  const remove = async (variantId: string): Promise<void> => {
+    const item = cart?.items.find(cartItem => cartItem.variantId === variantId)
+    const result = await removeItem(variantId)
 
     if (!result.ok) {
       notify({
@@ -81,7 +81,7 @@ const CartPage: React.FC = () => {
       action: {
         label: 'Вернуть',
         onAction: () => {
-          void restore(productId, quantity)
+          void restore(variantId, quantity)
         },
       },
     })
@@ -123,11 +123,11 @@ const CartPage: React.FC = () => {
           isItemBusy={isItemBusy}
           error={error}
           buildProductHref={slug => `/catalog/${slug}`}
-          onQuantityChange={(productId, quantity) => {
-            void updateItem(productId, quantity)
+          onQuantityChange={(variantId, quantity) => {
+            void updateItem(variantId, quantity)
           }}
-          onRemove={productId => {
-            void remove(productId)
+          onRemove={variantId => {
+            void remove(variantId)
           }}
           onCheckout={() => {
             void router.push('/checkout')

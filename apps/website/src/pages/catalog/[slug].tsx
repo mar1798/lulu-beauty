@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useState } from 'react'
 import type { GetStaticPaths, GetStaticProps } from 'next'
 import type { IProduct } from 'widgets/types'
 import { Text } from 'widgets/atoms'
@@ -189,6 +189,35 @@ const ProductPage: React.FC<IProductPageProps> = ({ product, categoryName }) => 
   const path = `/catalog/${product.slug}`
 
   /*
+    Выбранный объём. Состояние страницы, а не виджета: от него зависит и цена
+    в `ProductDetails`, и то, что положит «в корзину», — держать это решение
+    в двух местах значит рано или поздно разойтись.
+
+    В состоянии лежит только явный выбор человека, а не «текущий объём»:
+    выбранный вычисляется из него и товара. Поэтому сбрасывать ничего не надо
+    при переходе на другой товар клиентской навигацией — чужой id просто не
+    найдётся среди его объёмов, — и не нужен эффект, который на первом кадре
+    показывал бы цену не того объёма.
+
+    По умолчанию — первый объём в наличии, иначе просто первый: открывать
+    страницу на кончившихся 30 мл, когда рядом есть 50, значит показывать
+    товар недоступным, хотя он продаётся.
+  */
+  const [chosenVariantId, setChosenVariantId] = useState<string | null>(null)
+  const selected =
+    product.variants.find(variant => variant.id === chosenVariantId) ??
+    product.variants.find(variant => variant.inStock) ??
+    product.variants[0] ??
+    null
+  const selectedVariantId = selected?.id ?? null
+
+  /*
+    Наличие выбранного объёма. `product.inStock` — запасной ответ для товара
+    без объёмов вовсе: у него самого есть и цена, и остаток.
+  */
+  const isAvailable = selected?.inStock ?? product.inStock
+
+  /*
     Одна цепочка на видимые крошки и на разметку: список в `BreadcrumbList`
     обязан совпадать с нарисованным звено в звено, а два отдельных массива
     рано или поздно разъезжаются. Уровня категории тут пока нет — своей
@@ -228,29 +257,48 @@ const ProductPage: React.FC<IProductPageProps> = ({ product, categoryName }) => 
         <ProductDetails
           product={product}
           categoryName={categoryName}
+          selectedVariantId={selectedVariantId}
+          onSelectVariant={setChosenVariantId}
           action={
-            product.inStock ? (
-              <AddToCartButton productId={product.id} size="lg" />
-            ) : (
-              /*
-                Не «нет в наличии», а «нет в сборе»: товар не кончился на складе,
-                его просто нет в текущем заказе — так устроен магазин, и человеку
-                честнее сказать это словами модели.
+            /*
+              Наличие — свойство выбранного объёма, а не товара: у товара
+              `inStock` значит «хоть один объём есть», и на кончившихся 30 мл
+              кнопка обещала бы то, чего сейчас не купить.
 
-                Вторая фраза — не обещание, а описание того, что и так работает:
-                открытие сбора бот объявляет всем, кто с ним связан
-                (`notify_cycle_opened`), а избранное к этому моменту ждёт рядом.
-                Отдельной кнопки «сообщить, когда появится» из плана нет
-                намеренно: подписки на товар в бэкенде не существует, и рисовать
-                кнопку под несуществующее уведомление — врать интерфейсом.
-              */
-              <Text tone="muted">
+              Кнопка при этом остаётся на месте погашенной, а не подменяется
+              текстом: переключатель объёма выше даёт выбрать и кончившийся
+              размер, и человек должен видеть, что именно поменялось от его
+              выбора, — а исчезающее и возвращающееся действие читается как
+              сломавшаяся страница.
+            */
+            <AddToCartButton
+              product={product}
+              variantId={selectedVariantId}
+              size="lg"
+              disabled={!isAvailable}
+            />
+          }
+          secondaryAction={<WishlistButton productId={product.id} withLabel={true} size="lg" />}
+          note={
+            /*
+              Не «нет в наличии», а «нет в сборе»: товар не кончился на складе,
+              его просто нет в текущем заказе — так устроен магазин, и человеку
+              честнее сказать это словами модели.
+
+              Вторая фраза — не обещание, а описание того, что и так работает:
+              открытие сбора бот объявляет всем, кто с ним связан
+              (`notify_cycle_opened`), а избранное к этому моменту ждёт рядом.
+              Отдельной кнопки «сообщить, когда появится» из плана нет
+              намеренно: подписки на товар в бэкенде не существует, и рисовать
+              кнопку под несуществующее уведомление — врать интерфейсом.
+            */
+            isAvailable ? undefined : (
+              <Text tone="muted" size="sm">
                 Сейчас товара нет в сборе. Добавьте в избранное — бот напишет, когда откроется
                 следующий.
               </Text>
             )
           }
-          secondaryAction={<WishlistButton productId={product.id} withLabel={true} size="lg" />}
         />
       </ProductTemplate>
     </SiteLayout>

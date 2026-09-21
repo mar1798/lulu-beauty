@@ -21,6 +21,7 @@ from tests.integration.factories import (
     make_product,
     make_product_image,
     make_user,
+    variant_id,
 )
 
 
@@ -42,8 +43,8 @@ async def test_add_item_creates_cart_lazily_and_merges_quantity(db_session: Asyn
     await make_cycle(db_session)
     product = await make_product(db_session, price_cents=1500)
 
-    await CartService(db_session).add_item(user.id, product.id, 2)
-    response = await CartService(db_session).add_item(user.id, product.id, 1)
+    await CartService(db_session).add_item(user.id, variant_id(product), 2)
+    response = await CartService(db_session).add_item(user.id, variant_id(product), 1)
 
     assert len(response.items) == 1
     assert response.items[0].quantity == 3
@@ -57,7 +58,7 @@ async def test_add_item_without_active_cycle_raises(db_session: AsyncSession) ->
     product = await make_product(db_session)
 
     with pytest.raises(NoActiveCycleError):
-        await CartService(db_session).add_item(user.id, product.id, 1)
+        await CartService(db_session).add_item(user.id, variant_id(product), 1)
 
 
 async def test_add_item_unknown_product_raises(db_session: AsyncSession) -> None:
@@ -73,7 +74,7 @@ async def test_empty_cart_clears_items_but_keeps_cart_row(db_session: AsyncSessi
     await make_cycle(db_session)
     product = await make_product(db_session)
     service = CartService(db_session)
-    await service.add_item(user.id, product.id, 1)
+    await service.add_item(user.id, variant_id(product), 1)
 
     response = await service.empty_cart(user.id)
 
@@ -97,7 +98,7 @@ async def test_cart_items_carry_slug_and_primary_image(db_session: AsyncSession)
     await make_product_image(db_session, product, url="secondary.jpg", sort_order=1)
     await make_product_image(db_session, product, url="primary.jpg", sort_order=2, is_primary=True)
 
-    response = await CartService(db_session).add_item(user.id, product.id, 1)
+    response = await CartService(db_session).add_item(user.id, variant_id(product), 1)
 
     assert response.items[0].product_slug == "rose-serum"
     assert response.items[0].product_image_url == "primary.jpg"
@@ -110,7 +111,7 @@ async def test_cart_item_image_is_none_for_product_without_images(
     await make_cycle(db_session)
     product = await make_product(db_session)
 
-    response = await CartService(db_session).add_item(user.id, product.id, 1)
+    response = await CartService(db_session).add_item(user.id, variant_id(product), 1)
 
     assert response.items[0].product_image_url is None
 
@@ -136,8 +137,8 @@ async def test_add_item_clamps_the_running_quantity_to_the_ceiling(
     product = await make_product(db_session)
     service = CartService(db_session)
 
-    await service.add_item(user.id, product.id, MAX_ITEM_QUANTITY)
-    response = await service.add_item(user.id, product.id, 5)
+    await service.add_item(user.id, variant_id(product), MAX_ITEM_QUANTITY)
+    response = await service.add_item(user.id, variant_id(product), 5)
 
     assert response.items[0].quantity == MAX_ITEM_QUANTITY
 
@@ -152,8 +153,8 @@ async def test_a_discontinued_product_drops_out_of_the_cart(db_session: AsyncSes
     gone = await make_product(db_session, slug="gone", price_cents=5000)
     service = CartService(db_session)
 
-    await service.add_item(user.id, live.id, 1)
-    await service.add_item(user.id, gone.id, 1)
+    await service.add_item(user.id, variant_id(live), 1)
+    await service.add_item(user.id, variant_id(gone), 1)
     gone.deleted_at = datetime.now(UTC)
     await db_session.flush()
 
@@ -176,19 +177,23 @@ async def test_concurrent_add_item_creates_one_cart(db_session: AsyncSession) ->
     cycle = await make_cycle(db_session)
     first_product = await make_product(db_session, slug="p-1")
     second_product = await make_product(db_session, slug="p-2")
+    # Read before the commit expires them: the tasks below run in sessions of their own,
+    # and a lazy refresh from this one inside them is a different event loop.
+    first_variant = variant_id(first_product)
+    second_variant = variant_id(second_product)
     await db_session.commit()
 
     barrier = asyncio.Barrier(2)
 
-    async def add(product_id: uuid.UUID) -> None:
+    async def add(variant: uuid.UUID) -> None:
         async with async_session() as session:
             service = CartService(session)
             await service._find_cart(user.id, cycle.id)
             await barrier.wait()
-            await service.add_item(user.id, product_id, 1)
+            await service.add_item(user.id, variant, 1)
             await session.commit()
 
-    await asyncio.gather(add(first_product.id), add(second_product.id))
+    await asyncio.gather(add(first_variant), add(second_variant))
 
     carts = (await db_session.execute(select(Cart).where(Cart.user_id == user.id))).scalars().all()
     assert len(carts) == 1
@@ -210,14 +215,18 @@ async def test_two_simultaneous_adds_of_one_product_merge_into_one_line(
     other = await make_product(db_session)
     product = await make_product(db_session)
     # The cart itself exists already, so this test is about the item row and nothing else.
-    await CartService(db_session).add_item(user.id, other.id, 1)
+    await CartService(db_session).add_item(user.id, variant_id(other), 1)
+    # Read before the commit expires the product: the two tasks below run in sessions of
+    # their own, and a lazy refresh from this one inside them is a different event loop.
+    contested = variant_id(product)
+    product_id = product.id
     await db_session.commit()
 
     loser_started = asyncio.Event()
 
     async def winner() -> None:
         async with async_session() as session:
-            await CartService(session).add_item(user.id, product.id, 1)
+            await CartService(session).add_item(user.id, contested, 1)
             await loser_started.wait()
             await asyncio.sleep(0.3)
             await session.commit()
@@ -225,14 +234,14 @@ async def test_two_simultaneous_adds_of_one_product_merge_into_one_line(
     async def loser() -> None:
         async with async_session() as session:
             loser_started.set()
-            await CartService(session).add_item(user.id, product.id, 1)
+            await CartService(session).add_item(user.id, contested, 1)
             await session.commit()
 
     await asyncio.gather(winner(), loser())
 
     cart = await CartService(db_session).get_cart(user.id)
     lines = {item.product_id: item.quantity for item in cart.items}
-    assert lines[product.id] == 2
+    assert lines[product_id] == 2
 
 
 async def test_cart_line_carries_the_catalog_labels(db_session: AsyncSession) -> None:
@@ -254,8 +263,8 @@ async def test_cart_line_carries_the_catalog_labels(db_session: AsyncSession) ->
     bare = await make_product(db_session, name="B Nothing")
 
     service = CartService(db_session)
-    await service.add_item(user.id, labelled.id, 1)
-    cart = await service.add_item(user.id, bare.id, 1)
+    await service.add_item(user.id, variant_id(labelled), 1)
+    cart = await service.add_item(user.id, variant_id(bare), 1)
 
     lines = {item.product_id: item for item in cart.items}
     assert lines[labelled.id].product_brand == "Round lab"

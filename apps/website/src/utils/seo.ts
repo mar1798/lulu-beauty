@@ -1,6 +1,6 @@
 import type { IProduct } from 'widgets/types'
 import { formatPrice } from 'widgets/atoms'
-import { formatVolume } from 'widgets/utils'
+import { formatVolume, formatVolumes } from 'widgets/utils'
 import { publicConfig } from '@/сonfig'
 
 /**
@@ -98,9 +98,9 @@ export function productFullName(product: IProduct): string {
  */
 export function productTitle(product: IProduct): string {
   const name = productFullName(product)
-  const volume = formatVolume(product.volumeMl)
+  const volume = productVolumeLabel(product)
   const withVolume = volume === null ? name : `${name}, ${volume}`
-  const price = formatPrice(product.priceCents)
+  const price = productPriceLabel(product)
 
   const variants = [
     `${withVolume} — купить в ${CITY}, ${price} | ${SITE_NAME}`,
@@ -113,6 +113,28 @@ export function productTitle(product: IProduct): string {
   // слово, ради которого этот заголовок вообще переписан, и терять его, лишь бы
   // уложиться в 60 знаков, значит выкинуть весь смысл правки.
   return variants.find(variant => variant.length <= TITLE_LIMIT) ?? variants[variants.length - 1]
+}
+
+/**
+ * Объём товара для заголовка: «50 мл» у обычного, «30 / 50 мл» у того, что
+ * продаётся в нескольких. У второго `volumeMl` пуст — одним числом его не
+ * описать, — и без этого из заголовка пропало бы то, по чему товар ищут.
+ */
+function productVolumeLabel(product: IProduct): string | null {
+  return product.variants.length > 1
+    ? formatVolumes(product.variants)
+    : formatVolume(product.volumeMl)
+}
+
+/**
+ * Цена для заголовка и описания. «от» у товара в нескольких объёмах:
+ * `priceCents` там — цена самого дешёвого, и без оговорки выдача обещала бы
+ * её за любой из них.
+ */
+function productPriceLabel(product: IProduct): string {
+  const price = formatPrice(product.priceCents)
+
+  return product.variants.length > 1 ? `от ${price}` : price
 }
 
 /** Первое предложение описания — ровно та «краткая польза», которой в БД отдельного поля нет. */
@@ -143,7 +165,7 @@ export function productDescription(product: IProduct): string {
   const benefit = product.description == null ? null : firstSentence(product.description)
 
   const head = [
-    `${productFullName(product)} по цене закупки — ${formatPrice(product.priceCents)}.`,
+    `${productFullName(product)} по цене закупки — ${productPriceLabel(product)}.`,
     benefit,
   ]
     .filter((part): part is string => part !== null)

@@ -51,10 +51,10 @@ const CheckoutPage: React.FC = () => {
   /** Идёт добавление: подборщик блокируется целиком, чтобы не задвоить товар. */
   const [isAdding, setIsAdding] = useState(false)
 
-  const handleAdd = async (productId: string): Promise<void> => {
+  const handleAdd = async (variantId: string): Promise<void> => {
     setIsAdding(true)
 
-    const result = await addItem(productId)
+    const result = await addItem(variantId)
 
     setIsAdding(false)
 
@@ -73,8 +73,8 @@ const CheckoutPage: React.FC = () => {
    * при этом откатывается само: откат оптимистичного слепка делает
    * `CartContext`.
    */
-  const handleQuantityChange = async (productId: string, quantity: number): Promise<void> => {
-    const result = await updateItem(productId, quantity)
+  const handleQuantityChange = async (variantId: string, quantity: number): Promise<void> => {
+    const result = await updateItem(variantId, quantity)
 
     if (!result.ok) {
       notify({
@@ -89,14 +89,14 @@ const CheckoutPage: React.FC = () => {
    * Добавление в уже поданную заявку — с экрана успеха.
    *
    * Ручка возвращает заявку целиком, поэтому состав и номер на экране берутся
-   * из ответа: количество позиций пересчитывает сервер (товар, который в
+   * из ответа: количество позиций пересчитывает сервер (объём, который в
    * заявке уже есть, сливается со своей строкой, а не заводит вторую).
    */
-  const handleAddToOrder = async (orderId: string, productId: string): Promise<void> => {
+  const handleAddToOrder = async (orderId: string, variantId: string): Promise<void> => {
     setIsAdding(true)
 
     try {
-      setOrder(await addMyOrderItem(orderId, productId))
+      setOrder(await addMyOrderItem(orderId, variantId))
       // Список заявок показывает состав — там та же заявка уже другая.
       void globalMutate(isOrdersKey)
       notify({ tone: 'success', title: 'Товар добавлен в заявку' })
@@ -175,11 +175,11 @@ const CheckoutPage: React.FC = () => {
               products={search.products}
               isSearching={search.isSearching}
               error={search.error}
-              addedProductIds={order.items
-                .map(item => item.productId)
-                .filter((productId): productId is string => productId !== null)}
-              onAdd={productId => {
-                void handleAddToOrder(order.id, productId)
+              addedVariantIds={order.items
+                .map(item => item.variantId)
+                .filter((variantId): variantId is string => variantId !== null)}
+              onAdd={variantId => {
+                void handleAddToOrder(order.id, variantId)
               }}
               isBusy={isAdding}
               label="Забыли что-то? Добавьте в эту же заявку"
@@ -259,8 +259,8 @@ const CheckoutPage: React.FC = () => {
             гасить их нельзя — быстрые нажатия должны складываться.
           */
           isBusy={isSubmitting}
-          onQuantityChange={(productId, quantity) => {
-            void handleQuantityChange(productId, quantity)
+          onQuantityChange={(variantId, quantity) => {
+            void handleQuantityChange(variantId, quantity)
           }}
           addItem={
             <ProductPicker
@@ -269,10 +269,10 @@ const CheckoutPage: React.FC = () => {
               products={search.products}
               isSearching={search.isSearching}
               error={search.error}
-              addedProductIds={cart?.items.map(item => item.productId) ?? []}
+              addedVariantIds={cart?.items.map(item => item.variantId) ?? []}
               addedLabel="Уже в корзине"
-              onAdd={productId => {
-                void handleAdd(productId)
+              onAdd={variantId => {
+                void handleAdd(variantId)
               }}
               isBusy={isAdding || isSubmitting}
               label="Проверьте — возможно, вы что-то забыли"

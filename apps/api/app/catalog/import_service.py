@@ -4,16 +4,18 @@ import re
 import uuid
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from pathlib import Path
+from typing import cast
 
 import anyio.to_thread
 import openpyxl
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
-from app.catalog.models import Category, Product
+from app.catalog.models import Category, Product, ProductVariant
 from app.catalog.schemas import SLUG_PATTERN, ImportRowErrorResponse, ImportSummaryResponse
-from app.catalog.service import UNIQUE_VIOLATION
+from app.catalog.service import UNIQUE_VIOLATION, ProductService
 from app.common.limits import MAX_PRICE_CENTS, MAX_VOLUME_ML
 from app.orders.service import OrderPriceChange, OrdersService
 
@@ -46,6 +48,10 @@ MAX_IMPORT_ROWS = 50_000
 MAX_REPORTED_ERRORS = 200
 # How many slugs are looked up per round-trip when resolving a file against the catalogue.
 _SLUG_CHUNK = 5000
+# The columns of a row that describe the *volume* rather than the product. A file carries
+# one row per volume, repeating the slug, so these three are the only ones two rows of one
+# product are expected to disagree about.
+_VARIANT_FIELDS = ("price_cents", "volume_ml", "in_stock")
 TRUTHY_VALUES = {"true", "1", "yes", "y", "да"}
 FALSY_VALUES = {"false", "0", "no", "n", "нет"}
 
@@ -354,18 +360,60 @@ class CatalogImportService:
         # per-row SELECT also forced an autoflush each time, so a 2 000-row upload cost
         # ~4 000 round-trips and grew linearly (2.2s, and a full catalogue far worse).
         existing = await self._load_products_by_slug(
-            [str(fields["slug"]) for fields in validated]
+            [str(fields["slug"]) for _, fields in validated]
         )
 
         # Taken before `_upsert` overwrites them: after the loop the ORM objects carry the
         # file's prices, and "did this row change anything" is no longer answerable.
-        previous_prices = {slug: product.price_cents for slug, product in existing.items()}
+        # Keyed by variant, because that is what holds a price now — and what a pending
+        # order line points at.
+        previous_prices = {
+            variant.id: variant.price_cents
+            for product in existing.values()
+            for variant in product.variants
+        }
 
-        for fields in validated:
-            if self._upsert(existing, fields):
-                created += 1
-            else:
-                updated += 1
+        # A file carries one row per volume and repeats the slug, so the counters count
+        # *products*: two rows for one serum are one product created, not one created and
+        # one updated.
+        touched: dict[str, Product] = {}
+        # Whether the file says which volume each row is about. Without the column a row
+        # is a price for "the product", which only means something while the product has
+        # a single volume — see `_upsert_variant`.
+        has_volume_column = "volume" in columns
+        seen_volumes: set[tuple[str, int | None]] = set()
+
+        for row_number, fields in validated:
+            slug = str(fields["slug"])
+            raw_volume = fields.get("volume_ml")
+            volume_ml = raw_volume if isinstance(raw_volume, int) else None
+            # Only when the file names volumes: without the column a repeated slug is the
+            # long-standing "last line wins", and files that relied on it still work.
+            if has_volume_column:
+                if (slug, volume_ml) in seen_volumes:
+                    self._report(errors, row_number, "этот объём у товара уже был выше в файле")
+                    continue
+                seen_volumes.add((slug, volume_ml))
+
+            was_known = slug in existing
+            try:
+                product = self._upsert(existing, fields, has_volume_column)
+            except ImportRowError as error:
+                self._report(errors, row_number, str(error))
+                continue
+
+            if slug not in touched:
+                touched[slug] = product
+                if was_known:
+                    updated += 1
+                else:
+                    created += 1
+
+        # The three display columns on the product follow its variants — see
+        # `ProductService.refresh_display_fields`. Done for the whole file at once, after
+        # the last row that could move them.
+        for product in touched.values():
+            ProductService.refresh_display_fields(product)
 
         try:
             await self._session.flush()
@@ -394,22 +442,23 @@ class CatalogImportService:
             ), []
 
         # A price list is not only a catalog edit. Orders still awaiting confirmation
-        # quote these products, and until this ran, the mass path silently left them on
+        # quote these volumes, and until this ran, the mass path silently left them on
         # the old price while the hand-edit path (`PATCH /admin/products/{id}`) pulled it
         # through — the owner paid one number and saw another. Only prices that actually
-        # moved, and only for products that existed before this file.
+        # moved, and only for variants that existed before this file: a volume the file
+        # has just invented cannot be in anybody's order.
         moved: dict[uuid.UUID, int] = {}
-        for slug in dict.fromkeys(str(fields["slug"]) for fields in validated):
-            product = existing.get(slug)
-            was = previous_prices.get(slug)
-            if product is None or was is None or was == product.price_cents:
-                continue
-            moved[product.id] = product.price_cents
+        for product in touched.values():
+            for variant in product.live_variants:
+                was = previous_prices.get(variant.id)
+                if was is None or was == variant.price_cents:
+                    continue
+                moved[variant.id] = variant.price_cents
 
         # One call for the whole file, not one per product: a price list moves thousands
         # of prices, and a round trip each would hold this process — which also runs the
         # bot and the scheduler — for the length of the import.
-        changes = await OrdersService(self._session).reprice_products(moved)
+        changes = await OrdersService(self._session).reprice_variants(moved)
 
         return ImportSummaryResponse(created=created, updated=updated, errors=errors), changes
 
@@ -419,20 +468,27 @@ class CatalogImportService:
         columns: set[str],
         categories: CategoryIndex,
         brands_by_key: dict[str, str],
-    ) -> tuple[list[dict[str, object]], list[ImportRowErrorResponse]]:
-        """Every row's fields, and the report for the ones that have none.
+    ) -> tuple[list[tuple[int, dict[str, object]]], list[ImportRowErrorResponse]]:
+        """Every row's fields with the line it came from, and the report for the rest.
+
+        The line number travels with the fields because the upsert that follows can fail
+        per row too — on a repeated volume, or on a price list that cannot tell which
+        volume of a multi-volume product it means — and an error without a line number is
+        one the owner cannot act on.
 
         The error list is capped: a file whose every line is wrong (a mis-mapped column,
         a price list in another currency) would otherwise put one message per line into a
         single JSON response. The tail is summarised rather than dropped silently.
         """
-        validated: list[dict[str, object]] = []
+        validated: list[tuple[int, dict[str, object]]] = []
         errors: list[ImportRowErrorResponse] = []
         suppressed = 0
 
         for row_number, row in rows:
             try:
-                validated.append(self._validate_row(row, columns, categories, brands_by_key))
+                validated.append(
+                    (row_number, self._validate_row(row, columns, categories, brands_by_key))
+                )
             except ImportRowError as error:
                 if len(errors) < MAX_REPORTED_ERRORS:
                     errors.append(ImportRowErrorResponse(row=row_number, message=str(error)))
@@ -514,26 +570,128 @@ class CatalogImportService:
 
         return fields
 
-    def _upsert(self, existing: dict[str, Product], fields: dict[str, object]) -> bool:
-        """Upserts by slug; returns True if a new product was created, False if updated.
+    @staticmethod
+    def _report(errors: list[ImportRowErrorResponse], row: int, message: str) -> None:
+        """One more line in the report, under the same cap `_validate_rows` honours."""
+        if len(errors) < MAX_REPORTED_ERRORS:
+            errors.append(ImportRowErrorResponse(row=row, message=message))
+
+    def _upsert(
+        self, existing: dict[str, Product], fields: dict[str, object], has_volume_column: bool
+    ) -> Product:
+        """Applies one row: the product it names, and the volume that row is about.
+
+        A row is a *volume*, and a file repeats the slug once per volume — that is how a
+        supplier's price list is already written, and how the export writes it back.
+        So the product-level columns (name, description, brand, category) come from the
+        first row of a slug and are simply reasserted by the rest, while price, volume
+        and stock land on a variant of their own.
 
         `existing` is both the lookup table and the record of what this file has already
         created: a slug repeated inside one upload has to update the row the earlier line
         produced, not insert a second one against a UNIQUE column.
+
+        Volumes the file does not mention are left alone rather than withdrawn. A price
+        list is usually partial — half the catalogue, one brand, one supplier — and
+        reading silence as "take it off the shelf" would empty the shop from a file that
+        was only ever meant to move a few numbers. Taking a volume off is done in the
+        admin form, where it is visibly one product's list.
         """
         slug = str(fields["slug"])
+        product_fields = {
+            field: value for field, value in fields.items() if field not in _VARIANT_FIELDS
+        }
+        variant_fields = {
+            field: value for field, value in fields.items() if field in _VARIANT_FIELDS
+        }
         product = existing.get(slug)
 
         if product is None:
-            product = Product(**fields)
+            # price_cents on the product is a display field filled from the variants once
+            # the file is through (`refresh_display_fields`); the column is NOT NULL, so
+            # it needs *some* value now, and this row's price is the truest one available.
+            product = Product(
+                **product_fields, price_cents=cast(int, variant_fields["price_cents"])
+            )
             self._session.add(product)
             existing[slug] = product
-            return True
+        else:
+            for field, value in product_fields.items():
+                setattr(product, field, value)
+            # Re-importing revives a previously discontinued product.
+            product.deleted_at = None
 
-        for field, value in fields.items():
-            setattr(product, field, value)
-        product.deleted_at = None  # re-importing revives a previously discontinued product
-        return False
+        self._upsert_variant(product, variant_fields, has_volume_column)
+        return product
+
+    @staticmethod
+    def _upsert_variant(
+        product: Product, variant_fields: dict[str, object], has_volume_column: bool
+    ) -> None:
+        """The volume this row is about, created or updated in place.
+
+        Matched by volume, and updated rather than replaced, because a variant's id is
+        what carts and pending orders hold: a price list that replaced the rows would
+        empty every cart in the shop on its way through.
+
+        Without a `volume` column the row is a price for "the product", which is only
+        answerable while the product is sold in one volume. For a product sold in several
+        it is refused per row instead of guessed — writing one price onto every volume
+        would quietly undo the split, and picking one of them at random is worse.
+
+        An empty `volume` cell for a product that already has volumes is refused for the
+        same reason: "no volume" is a real variant (pads, a sheet mask), so an empty cell
+        in a file that names volumes would add a third, nameless one next to 30 ml and
+        50 ml — a "Один размер" button on the product page out of what is in practice a
+        missed cell. A volumeless variant the product already has is still updated: the
+        rule is about *creating* one, not about refusing to price a row that exists.
+        """
+        raw_volume = variant_fields.get("volume_ml")
+        volume_ml = raw_volume if isinstance(raw_volume, int) else None
+        live = product.live_variants
+
+        if has_volume_column:
+            variant = next((row for row in live if row.volume_ml == volume_ml), None)
+            if (
+                variant is None
+                and volume_ml is None
+                and any(row.volume_ml is not None for row in live)
+            ):
+                raise ImportRowError("у товара есть объёмы — укажите объём в строке")
+            if variant is None:
+                # A volume withdrawn earlier comes back as itself, so the carts and
+                # pending orders still pointing at it start working again.
+                variant = next(
+                    (
+                        row
+                        for row in product.variants
+                        if row.deleted_at is not None and row.volume_ml == volume_ml
+                    ),
+                    None,
+                )
+                if variant is not None:
+                    variant.deleted_at = None
+        elif len(live) > 1:
+            raise ImportRowError("у товара несколько объёмов — добавьте в файл колонку «объём»")
+        else:
+            variant = live[0] if live else None
+
+        if variant is None:
+            product.variants.append(
+                ProductVariant(
+                    volume_ml=volume_ml,
+                    price_cents=cast(int, variant_fields["price_cents"]),
+                    in_stock=bool(variant_fields.get("in_stock", True)),
+                    sort_order=len(product.variants),
+                )
+            )
+            return
+
+        variant.price_cents = cast(int, variant_fields["price_cents"])
+        if "in_stock" in variant_fields:
+            variant.in_stock = bool(variant_fields["in_stock"])
+        if has_volume_column:
+            variant.volume_ml = volume_ml
 
     async def _load_products_by_slug(self, slugs: list[str]) -> dict[str, Product]:
         """The products these rows will update, keyed by slug — chunked, not one big IN.
@@ -545,7 +703,11 @@ class CatalogImportService:
         unique = list(dict.fromkeys(slugs))
         for start in range(0, len(unique), _SLUG_CHUNK):
             result = await self._session.execute(
-                select(Product).where(Product.slug.in_(unique[start : start + _SLUG_CHUNK]))
+                select(Product)
+                .where(Product.slug.in_(unique[start : start + _SLUG_CHUNK]))
+                # Eagerly, because `_upsert_variant` walks them row by row and a lazy load
+                # inside the loop is a MissingGreenlet in an async session, not a query.
+                .options(selectinload(Product.variants))
             )
             products.update({product.slug: product for product in result.scalars().all()})
         return products

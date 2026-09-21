@@ -6,6 +6,7 @@ import { Heading } from '../../atoms/heading'
 import { Price } from '../../atoms/price'
 import { Text } from '../../atoms/text'
 import { ProductGallery } from '../../molecules/product-gallery'
+import { VariantSelector } from '../../molecules/variant-selector'
 import { formatVolume } from '../../utils/volume'
 import * as styles from './ProductDetails.css'
 
@@ -15,17 +16,41 @@ import * as styles from './ProductDetails.css'
  * Кнопка «в корзину» приходит слотом `action`, «в избранное» —
  * `secondaryAction`: обе завязаны на активный цикл и авторизацию, а это
  * состояние `apps/website`, не виджета.
+ *
+ * Товар, продающийся в нескольких объёмах, показывает переключатель, и цена с
+ * наличием читаются уже с выбранного объёма, а не с товара: у товара
+ * `priceCents` — это минимум («от»), а `inStock` — «хоть один объём есть», и
+ * оба обещали бы не то, что покупатель сейчас положит в корзину. Строка с
+ * ценой и меткой наличия — единственное место, где они названы: на самих
+ * кнопках объёма их нет, и меняются они в ответ на выбор.
  * Описание выводится с `white-space: pre-line`: в импорте из xlsx переносы
  * строк осмысленные, и схлопывать их нельзя.
  */
 export const ProductDetails: FC<IProductDetailsProps & IBasicStyling> = ({
   product,
   categoryName,
+  selectedVariantId,
+  onSelectVariant,
   action,
   secondaryAction,
+  note,
   className,
 }) => {
-  const volume = formatVolume(product.volumeMl)
+  /*
+    Выбранный объём — источник цены и наличия. Товар с одним вариантом
+    проходит через ту же ветку: у него выбирать нечего, но вариант есть
+    всегда, и отдельного пути для «товара без объёмов» в коде не заводится.
+  */
+  const selected =
+    product.variants.find(variant => variant.id === selectedVariantId) ??
+    product.variants[0] ??
+    null
+  const hasChoice = product.variants.length > 1
+  const priceCents = selected?.priceCents ?? product.priceCents
+  const inStock = selected?.inStock ?? product.inStock
+  // Метка объёма стоит рядом с маркой только тогда, когда он один: иначе объём
+  // выбирают, и говорить о нём в справочной строке значит называть неверный.
+  const volume = hasChoice ? null : formatVolume(selected?.volumeMl ?? product.volumeMl)
 
   return (
     <div className={clsx(styles.container, className)}>
@@ -55,9 +80,9 @@ export const ProductDetails: FC<IProductDetailsProps & IBasicStyling> = ({
         </Heading>
 
         <div className={styles.priceRow}>
-          <Price priceCents={product.priceCents} size="lg" />
+          <Price priceCents={priceCents} size="lg" />
 
-          {product.inStock ? (
+          {inStock ? (
             <Badge tone="success" withDot={true}>
               В наличии
             </Badge>
@@ -67,6 +92,15 @@ export const ProductDetails: FC<IProductDetailsProps & IBasicStyling> = ({
             </Badge>
           )}
         </div>
+
+        {hasChoice && onSelectVariant !== undefined && (
+          <VariantSelector
+            className={styles.variants}
+            variants={product.variants}
+            selectedId={selected?.id ?? null}
+            onSelect={onSelectVariant}
+          />
+        )}
 
         {product.description !== null && product.description !== '' && (
           <Text className={styles.description} tone="secondary">
@@ -81,6 +115,12 @@ export const ProductDetails: FC<IProductDetailsProps & IBasicStyling> = ({
             {secondaryAction}
           </div>
         )}
+
+        {/*
+          Объяснение под кнопками, а не вместо них: погашенная «в корзину»
+          говорит, что нельзя, и ничего — почему.
+        */}
+        {note !== undefined && <div className={styles.note}>{note}</div>}
       </div>
     </div>
   )

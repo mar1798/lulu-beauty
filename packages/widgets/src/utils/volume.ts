@@ -1,3 +1,5 @@
+import type { IProductVariant } from '../types'
+
 /**
  * Объём товара словами.
  *
@@ -14,3 +16,25 @@
  */
 export const formatVolume = (volumeMl: number | null | undefined): string | null =>
   volumeMl === null || volumeMl === undefined || volumeMl <= 0 ? null : `${volumeMl} мл`
+
+/**
+ * Объёмы товара одной подписью: «50 мл» для одного, «30 / 50 мл» для двух.
+ *
+ * Для карточки в сетке, где переключателя нет и стоять ему негде: подпись
+ * сообщает, что товар бывает в двух размерах, а выбор происходит на странице
+ * товара. Единица пишется один раз в конце — «30 мл / 50 мл» в узкой колонке
+ * занимает две строки ради одного и того же слова.
+ *
+ * `null`, когда измерять нечего: у товара без объёма (патчи, тканевые маски)
+ * вариант один и он без числа.
+ */
+export const formatVolumes = (variants: IProductVariant[]): string | null => {
+  const volumes = variants
+    .map(variant => variant.volumeMl)
+    .filter((volume): volume is number => volume !== null && volume > 0)
+
+  if (volumes.length === 0) {
+    return null
+  }
+  return `${volumes.join(' / ')} мл`
+}

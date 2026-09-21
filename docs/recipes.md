@@ -106,6 +106,33 @@ removes its line from every PENDING order and cancels any order left empty. Conf
 later orders keep their snapshots. Copy must therefore say "snapshot as of confirmation", not
 "as of checkout". See [domain.md](domain.md#price-snapshots).
 
+A price belongs to a **volume**, so the rewrite is keyed by variant: an order for 30 ml does
+not move because the 50 ml did. Adding a volume to a product is `PATCH /admin/products/{id}`
+with the whole `variants` list — it replaces the old one, matched by volume, so the rows that
+survive keep their ids and nobody's cart empties. Dropping a volume from that list is the
+same event as deleting a product, scoped to one volume: its lines leave every PENDING order,
+an order left empty is cancelled, and the customer is told. See
+[domain.md](domain.md#a-product-is-sold-in-volumes).
+
+## Add a field to a product's volumes
+
+The volume (`ProductVariant`) is what a cart line, an order line and the storefront selector
+all point at, so a field on it travels further than one on the product:
+
+1. `app/catalog/models.py`, then a migration. Everything about the new table is free of the
+   release guard, but a column on `cart_items`/`order_items` is not — see
+   [backend.md](backend.md#migrations).
+2. `ProductVariantResponse`/`ProductVariantRequest` in `app/catalog/schemas.py`,
+   `VariantSpec` in `app/catalog/results.py`, and `ProductService._apply_specs`, which is
+   where a submitted list is reconciled against the stored one.
+3. If the field can change what the storefront shows about the _product_, add it to
+   `ProductService.refresh_display_fields` — that is the one place those columns are written.
+4. `IProductVariant` in `packages/widgets/src/types.ts`, the `feedProduct*` fixtures, then
+   `VariantSelector` / `AdminProductForm`.
+5. The xlsx import and export both carry a row per volume: `_upsert_variant` in
+   `app/catalog/import_service.py` and `_rows` in `app/export/products.py` have to agree, or
+   a downloaded file stops reading back.
+
 ## Add an admin action that changes the catalog
 
 1. The endpoint goes in `src/services/endpoints/admin.ts`, the SWR keys it invalidates in

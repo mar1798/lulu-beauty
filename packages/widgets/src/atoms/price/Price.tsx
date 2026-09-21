@@ -33,9 +33,16 @@ export const Price: FC<IPriceProps & IBasicStyling> = ({
   priceCents,
   currency = DEFAULT_CURRENCY,
   size = 'md',
+  isFrom = false,
   className,
 }) => (
   <span className={clsx(styles.container, styles.size[size], className)}>
+    {/*
+      «от» отдельным элементом, а не частью строки цены: оно относится к
+      товару, а не к числу, и `formatPrice` используется ещё и там, где
+      цена одна, — в корзине и в заявке.
+    */}
+    {isFrom && <span className={styles.from}>от </span>}
     {formatPrice(priceCents, currency)}
   </span>
 )
