@@ -275,10 +275,21 @@ const ProductPage: React.FC<IProductPageProps> = ({ product, categoryName }) => 
               product={product}
               variantId={selectedVariantId}
               size="lg"
+              /*
+                Во всю ширину слота: на узком экране кнопка занимает строку за
+                вычетом сердца, на десктопе слот сам сжат по содержимому.
+              */
+              isFullWidth={true}
               disabled={!isAvailable}
             />
           }
-          secondaryAction={<WishlistButton productId={product.id} withLabel={true} size="lg" />}
+          secondaryAction={
+            <WishlistButton
+              productId={product.id}
+              withTooltip={true}
+              size="lg"
+            />
+          }
           note={
             /*
               Не «нет в наличии», а «нет в сборе»: товар не кончился на складе,
