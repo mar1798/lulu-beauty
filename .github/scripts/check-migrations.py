@@ -101,15 +101,41 @@ def new_tables(upgrade: ast.FunctionDef) -> set[str]:
     }
 
 
+def database_fills_it(column: ast.Call) -> bool:
+    """Whether the database supplies this column's value without being asked.
+
+    Two ways it does. A `server_default` fills in the rows the old code inserts
+    without naming the column. A `Computed` goes further: the column is
+    `GENERATED ALWAYS … STORED`, so the old code not only may leave it out, it
+    *must* — naming a generated column in an INSERT is an error. Either way the
+    previous release keeps inserting rows, which is the whole question.
+
+    `Computed` is looked for positionally as well as by keyword, because that is
+    how `sa.Column("x", sa.String(), sa.Computed(…))` is written and how Alembic
+    renders it.
+    """
+
+    keywords = {keyword.arg: keyword.value for keyword in column.keywords}
+    if "server_default" in keywords or "computed" in keywords:
+        return True
+
+    return any(
+        isinstance(argument, ast.Call)
+        and isinstance(argument.func, ast.Attribute)
+        and argument.func.attr == "Computed"
+        for argument in column.args
+    )
+
+
 def added_column_not_null(node: ast.Call) -> bool:
-    """``op.add_column(t, sa.Column(..., nullable=False))`` with no default.
+    """``op.add_column(t, sa.Column(..., nullable=False))`` the old code can't fill.
 
     Not a drop, but contracting all the same: the previous release doesn't know
     the column, so every insert it makes lacks a value for it and the database
-    refuses the row. With a `server_default` the database fills it in and the old
-    code keeps working — which is why that one case is let through, and why the
-    expanding way to add a required field is two releases: nullable now, `NOT
-    NULL` once the old code is gone.
+    refuses the row. When the database fills the value itself the old code keeps
+    working — see `database_fills_it` — which is why that case is let through,
+    and why the expanding way to add a required field it *can't* fill is two
+    releases: nullable now, `NOT NULL` once the old code is gone.
     """
 
     for argument in node.args:
@@ -119,7 +145,7 @@ def added_column_not_null(node: ast.Call) -> bool:
             and argument.func.attr == "Column"
         ):
             keywords = {keyword.arg: keyword.value for keyword in argument.keywords}
-            if is_false(keywords.get("nullable")) and "server_default" not in keywords:
+            if is_false(keywords.get("nullable")) and not database_fills_it(argument):
                 return True
 
     return False
@@ -193,7 +219,7 @@ def findings(path: str) -> list[str]:
         elif name == "add_column" and added_column_not_null(node):
             if const_str(positional(node, 0)) in created:
                 continue
-            operation = "add_column (NOT NULL without a server_default)"
+            operation = "add_column (NOT NULL the database cannot fill)"
         elif name == "create_unique_constraint":
             if const_str(positional(node, 1)) in created:
                 continue

@@ -342,9 +342,11 @@ tag leaves the new schema in place. A migration that only adds — a nullable co
 an index — stays compatible with the previous release, which makes that rollback safe. Drops,
 renames and `NOT NULL` on an existing column don't: they belong in the _next_ release, once
 the one that stopped writing the old shape has lived in production. A release that breaks
-this rule can only be undone through `deploy/restore.sh`. So does a `NOT NULL` column added
-without a `server_default`, and a uniqueness rule added to an existing table: the previous
-release inserts rows the new schema refuses. The rule is enforced on every release by the
+this rule can only be undone through `deploy/restore.sh`. So does a `NOT NULL` column the
+database cannot fill by itself, and a uniqueness rule added to an existing table: the
+previous release inserts rows the new schema refuses. A `server_default` or a `Computed`
+settles the first — the database supplies the value for the rows the old code inserts, and
+a generated column it could not name even if it knew about it. The rule is enforced on every release by the
 `Migration guard` job, which parses `upgrade()` in each migration the release touches
 (`.github/scripts/check-migrations.py` — runnable by hand before the release PR, and run as a
 warning by the `API` job on every push to `development`). It runs **before** the tag, so a
