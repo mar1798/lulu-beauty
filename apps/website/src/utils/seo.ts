@@ -27,10 +27,10 @@ export const SITE_NAME = 'Sululu'
  * Заголовок и описание главной. Гео здесь не для красоты: «Бишкек» — половина
  * запроса, по которому этот магазин вообще можно найти.
  */
-export const SITE_TITLE = 'Sululu — корейская косметика в Бишкеке по ценам закупки'
+export const SITE_TITLE = 'Sululu — корейская косметика в Бишкеке по самым низким ценам'
 
 export const SITE_DESCRIPTION =
-  'Корейская косметика и уход в Бишкеке по ценам закупки: берём напрямую и общим заказом. Соберите заявку до закрытия сбора — подтвердим её в Telegram.'
+  'Корейская косметика и уход в Бишкеке по самым низким ценам: берём напрямую и общим заказом. Соберите заявку до закрытия сбора — подтвердим её в Telegram.'
 
 /**
  * Адрес страницы, каким его видит внешний мир. Относительный путь тут не
@@ -165,7 +165,7 @@ export function productDescription(product: IProduct): string {
   const benefit = product.description == null ? null : firstSentence(product.description)
 
   const head = [
-    `${productFullName(product)} по цене закупки — ${productPriceLabel(product)}.`,
+    `${productFullName(product)} по низкой цене — ${productPriceLabel(product)}.`,
     benefit,
   ]
     .filter((part): part is string => part !== null)
@@ -182,5 +182,5 @@ export function productDescription(product: IProduct): string {
 export const CATALOG_TITLE = `Каталог корейской косметики — купить в ${CITY} | ${SITE_NAME}`
 
 export const CATALOG_DESCRIPTION =
-  'Корейская косметика в Бишкеке по ценам закупки: уход за лицом и волосами, ' +
+  'Корейская косметика в Бишкеке по самым низким ценам: уход за лицом и волосами, ' +
   'наборы, гаджеты. Доставка по Кыргызстану, заявка через Telegram.'
