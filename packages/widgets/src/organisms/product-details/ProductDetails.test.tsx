@@ -95,6 +95,23 @@ describe('ProductDetails и несколько объёмов', () => {
     expect(screen.getByRole('button', { name: 'Добавить в избранное' })).toBeInTheDocument()
   })
 
+  it('количество показывается только у позиции, которая уже в корзине', () => {
+    const details = {
+      ...feedProductDetails(),
+      quantity: <button type="button">Количество</button>,
+      action: <button type="button">В корзину</button>,
+    }
+
+    const { rerender } = renderWidget(<ProductDetails {...details} />)
+
+    expect(screen.queryByRole('button', { name: 'Количество' })).not.toBeInTheDocument()
+
+    rerender(<ProductDetails {...details} isInCart={true} />)
+
+    expect(screen.getByRole('button', { name: 'Количество' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'В корзину' })).toBeInTheDocument()
+  })
+
   it('показывает объяснение под кнопками, не вместо них', () => {
     // Погашенная «в корзину» говорит, что нельзя, и ничего — почему.
     renderWidget(

@@ -11,6 +11,11 @@ import * as styles from './QuantityStepper.css'
  * `quantity >= 1`, а свободный ввод пришлось бы валидировать и защищать от
  * пустого значения ради сценария, которого в корзине почти не бывает.
  * Уменьшение ниже `min` не блокируется молча — кнопка отключается.
+ *
+ * `min = 0` — не «ноль штук», а выход за нижнюю границу: так степпер на
+ * странице товара убирает позицию из корзины шагом вниз с единицы. Подпись
+ * кнопки тогда задаётся через `decreaseLabel`: «уменьшить» на кнопке,
+ * которая убирает, — неправда.
  */
 
 const DEFAULT_MIN = 1
@@ -23,6 +28,7 @@ export const QuantityStepper: FC<IQuantityStepperProps & IBasicStyling> = ({
   max = DEFAULT_MAX,
   disabled = false,
   label = 'Количество',
+  decreaseLabel = 'Уменьшить количество',
   className,
 }) => (
   <div className={clsx(styles.container, className)} role="group" aria-label={label}>
@@ -32,7 +38,7 @@ export const QuantityStepper: FC<IQuantityStepperProps & IBasicStyling> = ({
       disabled={disabled || value <= min}
       onClick={() => onChange(value - 1)}
     >
-      −<VisuallyHidden>Уменьшить количество</VisuallyHidden>
+      −<VisuallyHidden>{decreaseLabel}</VisuallyHidden>
     </button>
 
     <span className={styles.value} aria-live="polite">

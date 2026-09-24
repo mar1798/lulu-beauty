@@ -150,6 +150,27 @@ tile and filled with a conic gradient. The pause is always a class, never an inl
 `animation-play-state` — inline would outrank the `animation: none` that
 `prefers-reduced-motion` sets.
 
+**Animating a size is an exception, and it is spelled out where it is made.** Motion is
+transform and opacity; `FaqAccordion` (height) and `ProductDetails`'s row of actions (width,
+when "в корзину" shrinks into the cart circle) animate a layout property because `scale`
+would stretch the text and the round button inside them. Both are one element, both move in
+answer to a press, and neither runs in a scrolling frame. The width case needs four things
+that are easy to get wrong and are commented in place. The expanded width is **measured**
+rather than left to `auto` or `100%`, neither of which equals what the flex row actually
+hands the button — and the measurement first undoes everything that lies about the expanded
+row (the animation's own inline width, the class that switched `flex-grow` off, the quantity
+slot that has not finished collapsing), or the button re-expands to the width of the circle
+it came from. A measurement also goes stale: a `ResizeObserver` watches the row — not the
+button's own box, whose width the animation itself keeps changing — and only drops the value,
+leaving the re-measurement to the layout effect that already does it before paint. Both
+pixel sizes come from the DOM for the same reason the width does: the circle's diameter is
+the row's measured height, since that height is written in `rem` and a reader's larger font
+would otherwise turn the circle into an oval next to a heart that did scale. `flex-grow`
+stays off for as long as the animation owns the width, or the row overrules it in a single
+frame. And the label is clipped by the button itself rather than by the box around it,
+because `Tooltip`'s bubble is drawn in that box; the clipping lasts exactly as long as the
+movement, so a button at rest keeps its shadow and focus ring.
+
 **A reduced-motion branch must state its final visual state.** `useReducedMotion()` is always
 `false` on the server, so the markup carries motion's initial frame; React does not reconcile
 that attribute during hydration, so a branch that simply renders "the same node without
