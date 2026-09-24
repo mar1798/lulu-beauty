@@ -664,24 +664,18 @@ const HomePage: React.FC<IHomePageProps> = ({
                 description="Бот заводит аккаунт, подтверждает вход и присылает решение по заявке. Больше он ничего не делает и никуда не пишет."
                 note="Оплата и доставка обсуждаются лично"
                 actions={
-                  <>
-                    {/*
-                      Чистая ссылка на бота, без `?start=`. Без настроенного имени
-                      бота кнопке вести некуда, и она не рендерится.
-                    */}
-                    {botUsername !== '' && (
-                      <Button
-                        link={{ href: `https://t.me/${botUsername}`, target: '_blank' }}
-                        isFullWidth="mobile"
-                      >
-                        Открыть бота
-                      </Button>
-                    )}
-
-                    <Button link={{ href: '/catalog' }} variant="secondary" isFullWidth="mobile">
-                      Смотреть каталог
+                  /*
+                    Чистая ссылка на бота, без `?start=`. Без настроенного имени
+                    бота кнопке вести некуда, и она не рендерится.
+                  */
+                  botUsername !== '' && (
+                    <Button
+                      link={{ href: `https://t.me/${botUsername}`, target: '_blank' }}
+                      isFullWidth="mobile"
+                    >
+                      Открыть бота
                     </Button>
-                  </>
+                  )
                 }
               />
             </Parallax>
