@@ -39,7 +39,7 @@ ServerError.parameters = LAYOUT
 ServerError.args = {
   code: '500',
   title: 'Что-то сломалось на нашей стороне',
-  description: 'Мы уже знаем об этом. Попробуйте обновить страницу через минуту.',
+  description: 'Попробуйте обновить страницу через минуту.',
   actions: <Button>Обновить страницу</Button>,
   details: (
     <Text size="sm" tone="muted">
