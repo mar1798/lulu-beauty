@@ -123,12 +123,12 @@ Cyrillic is one line in `tokens.ts` rather than two dozen style files.
 
 ## Animation
 
-`motion` (formerly Framer Motion) **is installed** here and used by `Reveal`, `Parallax`,
-`DecorField`, `Float`, `HomeHero`, `MobileMenu`, `ToastViewport`, `Modal` and
-`ConfirmDialog`. Always import from `motion/react`, never the deprecated `framer-motion`
-package. Shared timings and
-easings live in `src/utils/motion.ts` — reuse them instead of inlining new values, and use the
-`/motion` skill rather than guessing. Details in
+`motion` (formerly Framer Motion) **is installed** here and used by some twenty components —
+`Reveal` and `Parallax` through to `ProductDetails`. The list is deliberately not written out:
+one kept by hand drifts, and `grep -rl "from 'motion/react'" src` answers the question exactly.
+Always import from `motion/react`, never the deprecated `framer-motion` package. Shared timings
+and easings live in `src/utils/motion.ts` — reuse them instead of inlining new values, and use
+the `/motion` skill rather than guessing. Details in
 [conventions.md](conventions.md#building-new-ui).
 
 **Anything that can appear in server-rendered markup animates in CSS, not motion.** motion

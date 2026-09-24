@@ -210,9 +210,10 @@ styling system.
 `.claude/skills/` on this machine — `.claude/` is git-ignored, so the skill is per-machine
 and not shipped with the repo) and the `motion` MCP server (`https://mcp.motion.dev`) rather
 than guessing timing/easing values; `best-practices/` under the skill works offline. The library **is installed** in
-`packages/widgets` and used by `Appear`, `Alert`, `MobileMenu`, `ToastViewport`, `Modal` and
-`ConfirmDialog` — always import from `motion/react`, never the deprecated `framer-motion`, and
-reuse the shared timings in `src/utils/motion.ts`. The paid `motion-plus` server is
+`packages/widgets` and used across it, from `Reveal` to `ProductDetails`
+(`grep -rl "from 'motion/react'" packages/widgets/src` for the current list) — always import
+from `motion/react`, never the deprecated `framer-motion`, and reuse the shared timings in
+`src/utils/motion.ts`. The paid `motion-plus` server is
 intentionally not registered.
 
 ## Keeping the docs honest
