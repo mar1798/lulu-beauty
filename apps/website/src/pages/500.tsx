@@ -14,14 +14,14 @@ import { SiteLayout } from '@/layouts/SiteLayout'
 const ServerErrorPage: React.FC = () => (
   <SiteLayout>
     <Head>
-      <title>Ошибка на сервере — Sululu</title>
+      <title>Ошибка на сервере - Sululu</title>
       <meta name="robots" content="noindex" />
     </Head>
 
     <ErrorTemplate
       code="500"
       title="Что-то сломалось на нашей стороне"
-      description="Страница не собралась. Обычно это ненадолго — попробуйте обновить через минуту."
+      description="Страница не собралась. Обычно это ненадолго - попробуйте обновить через минуту."
       actions={
         <>
           <Button
@@ -40,7 +40,7 @@ const ServerErrorPage: React.FC = () => (
       }
       details={
         <Text size="sm" tone="muted">
-          Заявки и корзина при этом не теряются — они хранятся на сервере, а не в браузере
+          Заявки и корзина при этом не теряются - они хранятся на сервере, а не в браузере
         </Text>
       }
     />

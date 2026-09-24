@@ -279,7 +279,7 @@ def test_cart_moved_to_wishlist_counts_in_russian_and_owns_up_to_the_overflow() 
     # Молчать о том, что часть корзины не влезла, — значит соврать про «сохранили».
     assert "не поместилось" not in saved_only
     assert "1 товар " in with_overflow
-    assert f"5 товаров не поместилось — в избранном уже {MAX_WISHLIST_ITEMS}" in with_overflow
+    assert f"5 товаров не поместилось - в избранном уже {MAX_WISHLIST_ITEMS}" in with_overflow
 
 
 def test_new_order_for_owner_carries_customer_total_and_note() -> None:
@@ -298,7 +298,7 @@ def test_new_order_for_owner_carries_customer_total_and_note() -> None:
 def test_new_order_for_owner_survives_a_missing_customer_and_cycle() -> None:
     text = messages.new_order_for_owner(_order(), None, None)
 
-    assert "—" in text
+    assert "-" in text
 
 
 def test_my_orders_truncates_and_says_so() -> None:
@@ -313,7 +313,7 @@ def test_my_orders_truncates_and_says_so() -> None:
 def test_my_orders_on_an_empty_list() -> None:
     # «Активных», not «нет заявок»: the caller filters to OPEN_STATUSES, so someone
     # whose orders are all handed over lands here too.
-    assert messages.my_orders([]) == "Активных заявок нет — всё, что было раньше, осталось на сайте"
+    assert messages.my_orders([]) == "Активных заявок нет - всё, что было раньше, осталось на сайте"
 
 
 def _cart(*, items: list[CartItemResponse], deadline: datetime | None) -> CartResponse:
@@ -464,7 +464,7 @@ def test_customer_cancellation_for_owner_survives_a_deleted_customer() -> None:
         _order(status=OrderStatus.CANCELLED_BY_CUSTOMER), None, restored=False
     )
 
-    assert "Покупатель: —" in text
+    assert "Покупатель: -" in text
 
 
 def test_consent_names_the_button_it_is_about() -> None:

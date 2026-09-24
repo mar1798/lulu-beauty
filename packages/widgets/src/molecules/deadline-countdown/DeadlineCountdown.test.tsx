@@ -43,7 +43,7 @@ describe('DeadlineCountdown', () => {
     expect(container.textContent).toContain('2 д 03 ч 04 мин 05 с')
   })
 
-  it('в варианте `blocks` секунды — всегда четвёртый блок', () => {
+  it('в варианте `blocks` секунды - всегда четвёртый блок', () => {
     const { container } = renderWidget(
       <DeadlineCountdown
         deadlineAt={inFuture(2 * 24 * 3600_000)}

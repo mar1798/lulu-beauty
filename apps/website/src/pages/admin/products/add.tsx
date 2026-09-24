@@ -105,7 +105,7 @@ const AdminProductCreatePage: React.FC = () => {
   return (
     <AdminShell
       title="Новый товар"
-      summary="После сохранения форма очищается — можно сразу добавить следующий товар"
+      summary="После сохранения форма очищается - можно сразу добавить следующий товар"
       actions={
         <Button isFullWidth="mobile" variant="secondary" link={{ href: '/admin/products' }}>
           К списку
@@ -118,7 +118,7 @@ const AdminProductCreatePage: React.FC = () => {
         <>
           {categories === undefined && (
             <Alert tone="warning" title="Категории не загрузились">
-              Товар можно создать и без категории — добавите её позже
+              Товар можно создать и без категории - добавите её позже
             </Alert>
           )}
 

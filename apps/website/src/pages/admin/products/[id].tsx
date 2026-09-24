@@ -254,7 +254,7 @@ const AdminProductPage: React.FC = () => {
       <>
         {product.deletedAt !== null && (
           <Alert tone="warning" title="Товар удалён">
-            Покупатели его не видят. Восстановите — и он вернётся в каталог.
+            Покупатели его не видят. Восстановите - и он вернётся в каталог.
           </Alert>
         )}
 

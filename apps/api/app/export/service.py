@@ -303,7 +303,7 @@ class ExportService:
             OrderExportRow(
                 product_name=product_name,
                 volume_ml=volume_ml,
-                brand=brand if brand else "—",
+                brand=brand if brand else "-",
                 quantity=int(total_quantity),
                 unit_price_cents=unit_price_cents,
             )

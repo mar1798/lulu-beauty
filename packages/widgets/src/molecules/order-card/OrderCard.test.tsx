@@ -24,13 +24,13 @@ describe('OrderCard', () => {
     const { rerender } = renderWidget(
       <OrderCard {...feedOrderCard()} order={feedOrder({ pendingStage: 'COLLECTING' })} />
     )
-    expect(screen.getByText('Сбор открыт — состав ещё можно менять')).toBeInTheDocument()
+    expect(screen.getByText('Сбор открыт - состав ещё можно менять')).toBeInTheDocument()
 
     rerender(<OrderCard {...feedOrderCard()} order={feedOrder({ pendingStage: 'UNFULFILLED' })} />)
     expect(screen.getByText('Заявка не вошла в закупку')).toBeInTheDocument()
   })
 
-  it('у заявки не в ожидании приписки нет — статус уже всё сказал', () => {
+  it('у заявки не в ожидании приписки нет - статус уже всё сказал', () => {
     renderWidget(
       <OrderCard
         {...feedOrderCard()}

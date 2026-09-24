@@ -17,14 +17,14 @@ import { SiteLayout } from '@/layouts/SiteLayout'
 const NotFoundPage: React.FC = () => (
   <SiteLayout>
     <Head>
-      <title>Страница не найдена — Sululu</title>
+      <title>Страница не найдена - Sululu</title>
       <meta name="robots" content="noindex" />
     </Head>
 
     <ErrorTemplate
       code="404"
       title="Такой страницы нет"
-      description="Возможно, ссылка устарела или товар убрали из каталога — состав меняется перед каждым сбором"
+      description="Возможно, ссылка устарела или товар убрали из каталога - состав меняется перед каждым сбором"
       actions={
         <>
           <Button link={{ href: '/catalog' }} isFullWidth="mobile">

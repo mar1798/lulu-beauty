@@ -124,7 +124,7 @@ const AccountPage: React.FC = () => {
     const confirmed = await confirm({
       title: 'Удалить аккаунт?',
       description:
-        'Номер, имя и привязка к боту будут стёрты, корзина и избранное — удалены, ' +
+        'Номер, имя и привязка к боту будут стёрты, корзина и избранное - удалены, ' +
         'а заявки, ожидающие подтверждения, отменены: мы перестанем закупать ' +
         'по ним товар. Отменить это нельзя. Вернуться можно будет только заведя ' +
         'аккаунт заново.',
@@ -185,7 +185,7 @@ const AccountPage: React.FC = () => {
       return (
         <EmptyState
           title="Аккаунт удалён"
-          description="Номер, имя и привязка к боту стёрты, корзина и избранное — удалены, заявки, ожидавшие подтверждения, отменены. Согласие на обработку данных отозвано. Вернуться можно, заведя аккаунт заново."
+          description="Номер, имя и привязка к боту стёрты, корзина и избранное - удалены, заявки, ожидавшие подтверждения, отменены. Согласие на обработку данных отозвано. Вернуться можно, заведя аккаунт заново."
           action={
             <Button link={{ href: '/catalog' }} isFullWidth="mobile">
               В каталог
@@ -216,7 +216,7 @@ const AccountPage: React.FC = () => {
       return (
         <EmptyState
           title="Профиль виден после входа"
-          description="Войдите — и здесь можно будет поправить имя и привязать Telegram"
+          description="Войдите - и здесь можно будет поправить имя и привязать Telegram"
           action={
             <Button link={{ href: '/login' }} isFullWidth="mobile">
               Войти
@@ -291,11 +291,11 @@ const AccountPage: React.FC = () => {
                       сделать невозможное хуже, чем отсутствие совета.
                     */
                     <Text size="sm" tone="muted">
-                      {`Сейчас аккаунт удалить нельзя: товар по ${plural(blockingOrders.length, ORDER_REFERENCE_FORMS)} уже куплен — `}
+                      {`Сейчас аккаунт удалить нельзя: товар по ${plural(blockingOrders.length, ORDER_REFERENCE_FORMS)} уже куплен - `}
                       {blockingOrders.map(orderNumber).join(', ')}
                       {'. '}
                       <AppLink href="/orders">Заберите товары</AppLink>
-                      {' или попросите нас изменить их статус — и удаление станет доступно.'}
+                      {' или попросите нас изменить их статус - и удаление станет доступно.'}
                     </Text>
                   ) : (
                     <Text size="sm" tone="muted">
@@ -341,7 +341,7 @@ const AccountPage: React.FC = () => {
   return (
     <SiteLayout>
       <Head>
-        <title>Профиль — Sululu</title>
+        <title>Профиль - Sululu</title>
         <meta name="robots" content="noindex" />
       </Head>
 

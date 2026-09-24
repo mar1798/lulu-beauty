@@ -76,13 +76,13 @@ describe('ProductDetails и несколько объёмов', () => {
     expect(onSelectVariant).toHaveBeenCalledWith(product.variants[0].id)
   })
 
-  it('у товара с одним объёмом переключателя нет — выбирать нечего', () => {
+  it('у товара с одним объёмом переключателя нет - выбирать нечего', () => {
     renderWidget(<ProductDetails {...feedProductDetails()} onSelectVariant={vi.fn()} />)
 
     expect(screen.queryByRole('radiogroup')).not.toBeInTheDocument()
   })
 
-  it('оба действия стоят в строке — второе не подменяет первое', () => {
+  it('оба действия стоят в строке - второе не подменяет первое', () => {
     renderWidget(
       <ProductDetails
         {...feedProductDetails()}

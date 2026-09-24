@@ -155,7 +155,7 @@ export const OrderDetails: FC<IOrderDetailsProps & IBasicStyling> = ({
       return (
         <Text size="sm" tone="secondary">
           Состав можно поменять, пока сбор открыт и заявка не подтверждена. Цены пока не
-          зафиксированы: они идут вслед за каталогом — окончательными они станут в момент
+          зафиксированы: они идут вслед за каталогом - окончательными они станут в момент
           подтверждения.
         </Text>
       )
@@ -164,7 +164,7 @@ export const OrderDetails: FC<IOrderDetailsProps & IBasicStyling> = ({
     if (isRestorable) {
       return (
         <Text size="sm" tone="secondary">
-          Заявка отменена, но сбор ещё открыт — её можно вернуть тем же составом. Оформлять заново
+          Заявка отменена, но сбор ещё открыт - её можно вернуть тем же составом. Оформлять заново
           не нужно: она снова встанет в очередь на подтверждение, а цены до него идут вслед за
           каталогом.
         </Text>
@@ -191,7 +191,7 @@ export const OrderDetails: FC<IOrderDetailsProps & IBasicStyling> = ({
       if (order.pendingStage === 'PURCHASING') {
         return (
           <Text size="sm" tone="secondary">
-            Сбор закрыт — владелец закупает заявки. Состав уже не изменить, но пока заявку не
+            Сбор закрыт - владелец закупает заявки. Состав уже не изменить, но пока заявку не
             подтвердили, её можно отменить.
           </Text>
         )
@@ -201,7 +201,7 @@ export const OrderDetails: FC<IOrderDetailsProps & IBasicStyling> = ({
         return (
           <Text size="sm" tone="secondary">
             Сбор закрылся несколько дней назад, а заявка всё ещё ждёт подтверждения. Если ответа
-            долго нет — напишите в {contact}.
+            долго нет - напишите в {contact}.
           </Text>
         )
       }
@@ -210,7 +210,7 @@ export const OrderDetails: FC<IOrderDetailsProps & IBasicStyling> = ({
         return (
           <Text size="sm" tone="secondary">
             Заявка не вошла в закупку: сбор закрылся давно, а подтверждения так и не было. Товары не
-            куплены — их можно заказать в следующем сборе. Если это ошибка, напишите в {contact}.
+            куплены - их можно заказать в следующем сборе. Если это ошибка, напишите в {contact}.
           </Text>
         )
       }
@@ -229,7 +229,7 @@ export const OrderDetails: FC<IOrderDetailsProps & IBasicStyling> = ({
       if (order.status === 'CANCELLED_BY_OWNER') {
         return (
           <Text size="sm" tone="secondary">
-            Заявка отменена магазином. Если это ошибка — напишите в{' '}
+            Заявка отменена магазином. Если это ошибка - напишите в{' '}
             {contactLink === undefined ? (
               'Instagram магазина'
             ) : (
@@ -244,7 +244,7 @@ export const OrderDetails: FC<IOrderDetailsProps & IBasicStyling> = ({
 
       return (
         <Text size="sm" tone="secondary">
-          Заявка относится к текущему сбору. Изменить её уже нельзя — напишите нам.
+          Заявка относится к текущему сбору. Изменить её уже нельзя - напишите нам.
         </Text>
       )
     }

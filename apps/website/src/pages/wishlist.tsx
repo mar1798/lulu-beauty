@@ -63,7 +63,7 @@ const WishlistPage: React.FC = () => {
       return (
         <EmptyState
           title="Избранное у каждого своё"
-          description="Войдите, чтобы сохранять товары — список дождётся следующего сбора"
+          description="Войдите, чтобы сохранять товары - список дождётся следующего сбора"
           action={
             <Button link={{ href: '/login' }} isFullWidth="mobile">
               Войти
@@ -106,7 +106,7 @@ const WishlistPage: React.FC = () => {
                     товаре».
                   */}
                   Нажмите на <IconHeart className={styles.inlineIcon} />
-                  <VisuallyHidden>сердце</VisuallyHidden> на товаре в каталоге — он сохранится здесь
+                  <VisuallyHidden>сердце</VisuallyHidden> на товаре в каталоге - он сохранится здесь
                   до следующего сбора
                 </>
               }
@@ -125,7 +125,7 @@ const WishlistPage: React.FC = () => {
   return (
     <SiteLayout>
       <Head>
-        <title>Избранное — Sululu</title>
+        <title>Избранное - Sululu</title>
         <meta name="robots" content="noindex" />
       </Head>
 

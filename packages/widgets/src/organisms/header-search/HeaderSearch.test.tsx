@@ -59,7 +59,7 @@ describe('HeaderSearch', () => {
     expect(onSubmit).not.toHaveBeenCalled()
   })
 
-  it('пустой ответ — это «ничего не нашлось», а не отсутствие ответа', async () => {
+  it('пустой ответ - это «ничего не нашлось», а не отсутствие ответа', async () => {
     const user = userEvent.setup()
     renderWidget(<HeaderSearch {...feedHeaderSearch()} groups={[]} allResults={undefined} />)
 
@@ -111,7 +111,7 @@ describe('HeaderSearch', () => {
     expect(screen.getByRole('combobox')).toHaveAttribute('maxlength', '255')
   })
 
-  it('лупа открывает панель — с полем и выдачей внутри', async () => {
+  it('лупа открывает панель - с полем и выдачей внутри', async () => {
     const user = userEvent.setup()
     renderWidget(<HeaderSearch {...feedHeaderSearch()} />)
 

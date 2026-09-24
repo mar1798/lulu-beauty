@@ -52,7 +52,7 @@ const STATUS_OPTIONS: ISelectOption[] = [
 ]
 
 const cycleLabel = (cycle: IOrderCycle): string =>
-  `${cycle.label ?? 'Без подписи'} — ${formatDate(cycle.deadlineAt)}`
+  `${cycle.label ?? 'Без подписи'} - ${formatDate(cycle.deadlineAt)}`
 
 /**
  * Какой сбор стоит в фильтре при первом открытии страницы: открытый сейчас, а
@@ -177,7 +177,7 @@ const AdminOrdersPage: React.FC = () => {
     const confirmed = await confirm({
       title: 'Удалить заявку?',
       description:
-        'Заявка исчезнет вместе с составом и не попадёт в выгрузки. Если покупатель просто передумал, ему хватит отмены — там заявка остаётся видна.',
+        'Заявка исчезнет вместе с составом и не попадёт в выгрузки. Если покупатель просто передумал, ему хватит отмены - там заявка остаётся видна.',
       confirmLabel: 'Удалить',
       tone: 'danger',
     })
@@ -244,7 +244,7 @@ const AdminOrdersPage: React.FC = () => {
   return (
     <AdminShell
       title="Заявки"
-      summary="Состав и цены закрепляются в момент подтверждения — дальше они не меняются вслед за каталогом"
+      summary="Состав и цены закрепляются в момент подтверждения - дальше они не меняются вслед за каталогом"
       actions={
         <div className={styles.row}>
           <Switch

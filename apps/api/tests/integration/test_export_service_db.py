@@ -41,7 +41,7 @@ async def test_export_rows_sum_one_product_across_orders(db_session: AsyncSessio
     assert by_name["Крем"].unit_price_cents == 15000
     assert by_name["Крем"].total_cents == 6 * 15000
     # Бренд не проставлен — в лист уходит прочерк, а не пустая ячейка.
-    assert by_name["Тоник"].brand == "—"
+    assert by_name["Тоник"].brand == "-"
     assert by_name["Тоник"].quantity == 3
 
 

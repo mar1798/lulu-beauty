@@ -81,7 +81,7 @@ export interface ICartResult {
 const OK: ICartResult = { ok: true, error: null }
 
 /** Корзины у гостя не существует — на бэкенде она привязана к пользователю. */
-const GUEST_ERROR = 'Корзина привязана к аккаунту — войдите, чтобы собрать заявку'
+const GUEST_ERROR = 'Корзина привязана к аккаунту - войдите, чтобы собрать заявку'
 
 export interface ICartContextValue {
   cart: ICart | null

@@ -37,7 +37,7 @@ export const IconButton: FC<IIconButtonProps & IBasicStyling> = ({
   className,
 }) => {
   const isUnavailable = unavailableReason !== null && unavailableReason !== ''
-  const accessibleLabel = isUnavailable ? `${label} — ${unavailableReason}` : label
+  const accessibleLabel = isUnavailable ? `${label} - ${unavailableReason}` : label
   const classes = clsx(styles.container, styles.variant[variant], styles.size[size], className)
   const content = (
     <>

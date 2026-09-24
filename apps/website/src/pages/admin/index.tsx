@@ -126,7 +126,7 @@ const AdminOverviewPage: React.FC = () => {
             {STATUSES.map(status => (
               <div key={status} className={styles.counter}>
                 {/* Прочерк, а не ноль: неизвестное число нельзя рисовать как «ни одной». */}
-                <span className={styles.counterValue}>{counts?.[status] ?? '—'}</span>
+                <span className={styles.counterValue}>{counts?.[status] ?? '-'}</span>
                 <span className={styles.counterLabel}>{orderStatusLabel(status)}</span>
               </div>
             ))}

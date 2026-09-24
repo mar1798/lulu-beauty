@@ -306,7 +306,7 @@ const ProductPage: React.FC<IProductPageProps> = ({ product, categoryName }) => 
             */
             isAvailable ? undefined : (
               <Text tone="muted" size="sm">
-                Сейчас товара нет в сборе. Добавьте в избранное — бот напишет, когда откроется
+                Сейчас товара нет в сборе. Добавьте в избранное - бот напишет, когда откроется
                 следующий.
               </Text>
             )

@@ -30,7 +30,7 @@ WithAddItem.args = {
   addItem: (
     <ProductPicker
       {...feedProductPicker()}
-      label="Проверьте — возможно, вы что-то забыли"
+      label="Проверьте - возможно, вы что-то забыли"
       hint="Найденный товар попадёт в корзину и уйдёт в эту же заявку."
       addedLabel="Уже в корзине"
     />

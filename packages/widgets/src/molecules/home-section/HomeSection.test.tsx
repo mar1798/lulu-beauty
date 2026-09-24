@@ -33,7 +33,7 @@ describe('HomeSection', () => {
     expect(container.querySelector('section')?.children).toHaveLength(1)
   })
 
-  it('прокидывает id — по нему на секцию ссылаются якорем', () => {
+  it('прокидывает id - по нему на секцию ссылаются якорем', () => {
     const { container } = renderWidget(<HomeSection id="faq">Контент</HomeSection>)
 
     expect(container.querySelector('section')).toHaveAttribute('id', 'faq')

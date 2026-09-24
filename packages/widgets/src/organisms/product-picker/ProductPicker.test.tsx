@@ -24,7 +24,7 @@ describe('ProductPicker', () => {
     expect(screen.queryByText(/Ничего не нашлось/)).not.toBeInTheDocument()
   })
 
-  it('пустой ответ на непустой запрос — это «ничего не нашлось»', () => {
+  it('пустой ответ на непустой запрос - это «ничего не нашлось»', () => {
     renderWidget(<ProductPicker {...feedProductPicker()} products={[]} />)
 
     expect(screen.getByText(/Ничего не нашлось/)).toBeInTheDocument()
@@ -103,7 +103,7 @@ describe('ProductPicker', () => {
 })
 
 describe('ProductPicker и несколько объёмов', () => {
-  it('товар в двух объёмах даёт строку на каждый — со своей ценой', () => {
+  it('товар в двух объёмах даёт строку на каждый - со своей ценой', () => {
     const product = feedProductWithVariants({ name: 'Сыворотка Centella' })
 
     renderWidget(<ProductPicker {...feedProductPicker()} products={[product]} />)

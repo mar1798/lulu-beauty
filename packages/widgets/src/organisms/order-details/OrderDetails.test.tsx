@@ -125,7 +125,7 @@ describe('OrderDetails', () => {
     expect(onItemRemove).toHaveBeenCalledWith(order.items[0].id)
   })
 
-  it('единственную позицию убрать не даёт — на это есть отмена заявки', () => {
+  it('единственную позицию убрать не даёт - на это есть отмена заявки', () => {
     const order = feedOrder({ isEditable: true, items: [feedOrderItem()] })
 
     renderWidget(
@@ -140,7 +140,7 @@ describe('OrderDetails', () => {
 
     expect(
       screen.getByRole('button', {
-        name: 'Последнюю позицию убрать нельзя — отмените заявку целиком',
+        name: 'Последнюю позицию убрать нельзя - отмените заявку целиком',
       })
     ).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Отменить заявку' })).toBeEnabled()
@@ -193,7 +193,7 @@ describe('OrderDetails', () => {
     expect(onRestore).toHaveBeenCalledTimes(1)
   })
 
-  it('после дедлайна возврата не предлагает — и не зовёт обсудить правку', () => {
+  it('после дедлайна возврата не предлагает - и не зовёт обсудить правку', () => {
     renderWidget(
       <OrderDetails
         {...feedOrderDetails()}
