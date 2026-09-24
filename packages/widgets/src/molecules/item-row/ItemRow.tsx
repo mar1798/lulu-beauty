@@ -36,7 +36,7 @@ export const ItemRow: FC<IItemRowProps & IBasicStyling> = ({
   onRemove,
   canRemove = true,
   removeLabel,
-  removeBlockedLabel = 'Последнюю позицию убрать нельзя — отмените заявку целиком',
+  removeBlockedLabel = 'Последнюю позицию убрать нельзя - отмените заявку целиком',
   isBusy = false,
   isQuantityBusy = false,
   className,

@@ -61,7 +61,7 @@ export const AdminImportPanel: FC<IAdminImportPanelProps & IBasicStyling> = ({
           <code className={styles.code}>category</code> (слаг или название),{' '}
           <code className={styles.code}>volume</code> (объём в мл),{' '}
           <code className={styles.code}>inStock</code>. Товар с уже существующим slug обновляется,
-          новый — создаётся; незнакомая категория заводится сама.
+          новый - создаётся; незнакомая категория заводится сама.
         </Text>
 
         {/*
@@ -70,11 +70,11 @@ export const AdminImportPanel: FC<IAdminImportPanelProps & IBasicStyling> = ({
           объём файлом, и будет плодить товары с разными slug.
         */}
         <Text tone="secondary" size="sm">
-          Строка — это <b>объём</b>, а не товар: чтобы продавать одно и то же в 30 и 50 мл,
+          Строка - это <b>объём</b>, а не товар: чтобы продавать одно и то же в 30 и 50 мл,
           поставьте две строки с одним <code className={styles.code}>slug</code> и разным{' '}
-          <code className={styles.code}>volume</code> — у каждой своя цена и своё наличие. Объёмы,
+          <code className={styles.code}>volume</code> - у каждой своя цена и своё наличие. Объёмы,
           которых в файле нет, остаются как были: снять объём можно в карточке товара. Файл без
-          колонки <code className={styles.code}>volume</code> — обычный прайс: он меняет цену там,
+          колонки <code className={styles.code}>volume</code> - обычный прайс: он меняет цену там,
           где объём у товара один.
         </Text>
 
@@ -83,7 +83,7 @@ export const AdminImportPanel: FC<IAdminImportPanelProps & IBasicStyling> = ({
           accept=".xlsx,.xlsm,.csv"
           allowedExtensions={IMPORT_EXTENSIONS}
           maxBytes={IMPORT_MAX_BYTES}
-          hint="До 10 МБ. Первая строка — заголовки колонок."
+          hint="До 10 МБ. Первая строка - заголовки колонок."
           disabled={isImporting}
           buttonLabel="Выбрать файл"
           onSelect={onImport}
@@ -105,9 +105,9 @@ export const AdminImportPanel: FC<IAdminImportPanelProps & IBasicStyling> = ({
           </Heading>
 
           <Text tone="secondary" size="sm">
-            Все товары в xlsx с теми же колонками, что читает импорт, — файл можно поправить в Excel
+            Все товары в xlsx с теми же колонками, что читает импорт, - файл можно поправить в Excel
             и залить обратно сюда же. Колонок <code className={styles.code}>description</code> и
-            фотографий в листе нет: и описания, и снимки при обратной загрузке останутся как есть —
+            фотографий в листе нет: и описания, и снимки при обратной загрузке останутся как есть -
             они правятся в карточке товара.
           </Text>
 

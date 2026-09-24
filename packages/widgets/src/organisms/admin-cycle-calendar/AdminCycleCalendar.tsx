@@ -49,7 +49,7 @@ const TIME_HINT = `Время по магазину, UTC${storeOffsetLabel()}`
  * мыши) и обычным текстом под ней.
  */
 const SECOND_CYCLE_REASON =
-  'Открытый сбор уже есть. Измените его дату и время вместо того, чтобы назначать второй, — ' +
+  'Открытый сбор уже есть. Измените его дату и время вместо того, чтобы назначать второй, - ' +
   'иначе корзины покупателей останутся в первом'
 
 /**
@@ -61,7 +61,7 @@ const SECOND_CYCLE_REASON =
  * за бэкендом.
  */
 const PAST_DAY_REASON =
-  'Этот день уже прошёл. Дедлайн должен быть в будущем — иначе сбор закроется сразу.'
+  'Этот день уже прошёл. Дедлайн должен быть в будущем - иначе сбор закроется сразу.'
 
 const STATUS_LABELS: Record<IOrderCycle['status'], string> = {
   UPCOMING: 'Запланирован',
@@ -370,7 +370,7 @@ export const AdminCycleCalendar: FC<IAdminCycleCalendarProps & IBasicStyling> = 
                 <div className={styles.fact}>
                   <dt className={styles.factLabel}>Время закрытия</dt>
                   <dd className={styles.factValue}>
-                    {toStoreParts(selectedCycle.deadlineAt)?.time ?? '—'} ({TIME_HINT})
+                    {toStoreParts(selectedCycle.deadlineAt)?.time ?? '-'} ({TIME_HINT})
                   </dd>
                 </div>
 
@@ -481,13 +481,13 @@ export const AdminCycleCalendar: FC<IAdminCycleCalendarProps & IBasicStyling> = 
             {isPastCycle && (
               <Text tone="muted" size="xs">
                 Сбор уже прошёл: заявки в нём посчитаны, а корзины разъехались по избранному. Менять
-                и удалять здесь нечего — запись остаётся в истории сборов.
+                и удалять здесь нечего - запись остаётся в истории сборов.
               </Text>
             )}
 
             {selectedCycle !== null && !isPastCycle && (
               <Text tone="muted" size="xs">
-                Сбор с оформленными заявками удалить нельзя — бэкенд ответит отказом
+                Сбор с оформленными заявками удалить нельзя - бэкенд ответит отказом
               </Text>
             )}
           </>

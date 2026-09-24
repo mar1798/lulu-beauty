@@ -18,7 +18,7 @@ describe('Button', () => {
   })
 
   describe('unavailableReason', () => {
-    it('оставляет кнопку в табуляции — иначе причину не увидеть с клавиатуры', () => {
+    it('оставляет кнопку в табуляции - иначе причину не увидеть с клавиатуры', () => {
       renderWidget(<Button unavailableReason="Сбор закрыт">В корзину</Button>)
 
       const button = screen.getByRole('button')

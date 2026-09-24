@@ -58,7 +58,7 @@ describe('CheckoutPanel', () => {
     expect(getByText('Подборщик')).toBeTruthy()
   })
 
-  it('состав правится в корзине — ссылка ведёт туда', () => {
+  it('состав правится в корзине - ссылка ведёт туда', () => {
     const { getByText } = renderWidget(
       <CheckoutPanel {...feedCheckoutPanel()} form={<p>Форма</p>} />
     )

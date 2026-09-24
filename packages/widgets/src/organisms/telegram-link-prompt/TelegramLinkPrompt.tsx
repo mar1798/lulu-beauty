@@ -42,7 +42,7 @@ export const TelegramLinkPrompt: FC<ITelegramLinkPromptProps & IBasicStyling> = 
       <ol className={styles.steps}>
         <li>Откройте бота по кнопке ниже</li>
         <li>
-          Нажмите «Start». Если чат с ботом уже открывали, кнопки не будет — отправьте /start
+          Нажмите «Start». Если чат с ботом уже открывали, кнопки не будет - отправьте /start
           сообщением.
         </li>
         <li>Поделитесь номером: бот попросит об этом сам, кнопкой под полем ввода</li>

@@ -5,8 +5,10 @@ import { Text } from 'widgets/atoms'
 import { Breadcrumbs } from 'widgets/molecules'
 import { ProductDetails } from 'widgets/organisms'
 import { ProductTemplate } from 'widgets/templates'
+import { useCart } from '@/contexts/CartContext'
 import { SiteLayout } from '@/layouts/SiteLayout'
 import { AddToCartButton } from '@/components/AddToCartButton'
+import { CartQuantityStepper } from '@/components/CartQuantityStepper'
 import { ClosedCycleNotice } from '@/components/ClosedCycleNotice'
 import { JsonLd } from '@/components/JsonLd'
 import { PageMeta } from '@/components/PageMeta'
@@ -187,6 +189,7 @@ function previewImage(product: IProduct): { url: string; alt: string } | undefin
 */
 const ProductPage: React.FC<IProductPageProps> = ({ product, categoryName }) => {
   const path = `/catalog/${product.slug}`
+  const { cart } = useCart()
 
   /*
     Выбранный объём. Состояние страницы, а не виджета: от него зависит и цена
@@ -216,6 +219,15 @@ const ProductPage: React.FC<IProductPageProps> = ({ product, categoryName }) => 
     без объёмов вовсе: у него самого есть и цена, и остаток.
   */
   const isAvailable = selected?.inStock ?? product.inStock
+
+  /*
+    Выбранный объём уже в заявке. Знать об этом должна страница, а не одна
+    кнопка: от этого зависит вся строка действий — и кнопка, и выезжающее
+    рядом количество.
+  */
+  const isInCart =
+    selectedVariantId !== null &&
+    cart?.items.some(item => item.variantId === selectedVariantId) === true
 
   /*
     Одна цепочка на видимые крошки и на разметку: список в `BreadcrumbList`
@@ -259,6 +271,15 @@ const ProductPage: React.FC<IProductPageProps> = ({ product, categoryName }) => 
           categoryName={categoryName}
           selectedVariantId={selectedVariantId}
           onSelectVariant={setChosenVariantId}
+          /*
+            Объём в корзине — не товар: у товара с несколькими объёмами один
+            может лежать в заявке, а показанный сейчас — нет, и строка
+            действий обязана говорить про выбранный.
+          */
+          isInCart={isInCart}
+          quantity={
+            <CartQuantityStepper variantId={selectedVariantId} productName={product.name} />
+          }
           action={
             /*
               Наличие — свойство выбранного объёма, а не товара: у товара
@@ -306,7 +327,7 @@ const ProductPage: React.FC<IProductPageProps> = ({ product, categoryName }) => 
             */
             isAvailable ? undefined : (
               <Text tone="muted" size="sm">
-                Сейчас товара нет в сборе. Добавьте в избранное — бот напишет, когда откроется
+                Сейчас товара нет в сборе. Добавьте в избранное - бот напишет, когда откроется
                 следующий.
               </Text>
             )

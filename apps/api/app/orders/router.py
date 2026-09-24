@@ -124,8 +124,8 @@ def _admin_order_response(
         note=order.note,
         created_at=order.created_at,
         items=_order_items(order, tags),
-        customer_name=customer.name if customer is not None else "—",
-        customer_phone=customer.phone if customer is not None else "—",
+        customer_name=customer.name if customer is not None else "-",
+        customer_phone=customer.phone if customer is not None else "-",
     )
 
 

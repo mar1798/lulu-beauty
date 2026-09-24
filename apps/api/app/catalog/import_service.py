@@ -240,7 +240,7 @@ def _read_xlsx_rows(content: bytes) -> list[tuple[int, dict[str, str]]]:
 
 def _too_many_rows() -> ImportFileError:
     return ImportFileError(
-        f"в файле больше {MAX_IMPORT_ROWS} строк — разделите его на несколько файлов"
+        f"в файле больше {MAX_IMPORT_ROWS} строк - разделите его на несколько файлов"
     )
 
 
@@ -435,7 +435,7 @@ class CatalogImportService:
                         row=0,
                         message=(
                             "во время импорта кто-то создал товар или категорию с таким же "
-                            "slug — повторите импорт"
+                            "slug - повторите импорт"
                         ),
                     )
                 ],
@@ -530,7 +530,7 @@ class CatalogImportService:
         if len(slug) > MAX_TEXT_LENGTH:
             raise ImportRowError(f"slug длиннее {MAX_TEXT_LENGTH} символов")
         if not re.fullmatch(SLUG_PATTERN, slug):
-            raise ImportRowError(f"недопустимый slug: {slug!r} — только латиница, цифры и дефис")
+            raise ImportRowError(f"недопустимый slug: {slug!r} - только латиница, цифры и дефис")
 
         fields: dict[str, object] = {
             "name": name,
@@ -657,7 +657,7 @@ class CatalogImportService:
                 and volume_ml is None
                 and any(row.volume_ml is not None for row in live)
             ):
-                raise ImportRowError("у товара есть объёмы — укажите объём в строке")
+                raise ImportRowError("у товара есть объёмы - укажите объём в строке")
             if variant is None:
                 # A volume withdrawn earlier comes back as itself, so the carts and
                 # pending orders still pointing at it start working again.
@@ -672,7 +672,7 @@ class CatalogImportService:
                 if variant is not None:
                     variant.deleted_at = None
         elif len(live) > 1:
-            raise ImportRowError("у товара несколько объёмов — добавьте в файл колонку «объём»")
+            raise ImportRowError("у товара несколько объёмов - добавьте в файл колонку «объём»")
         else:
             variant = live[0] if live else None
 

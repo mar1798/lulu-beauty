@@ -25,7 +25,7 @@ describe('AdminImportPanel', () => {
     expect(onExport).toHaveBeenCalled()
   })
 
-  it('без onExport блока выгрузки нет — панель остаётся только импортом', () => {
+  it('без onExport блока выгрузки нет - панель остаётся только импортом', () => {
     renderWidget(<AdminImportPanel {...feedAdminImportPanel()} onExport={undefined} />)
 
     expect(screen.queryByRole('button', { name: 'Выгрузить в Excel' })).toBeNull()

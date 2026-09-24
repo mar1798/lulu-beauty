@@ -92,7 +92,7 @@ describe('ToastProvider', () => {
     expect(count()).toBe('0')
   })
 
-  it('под курсором отсчёт стоит, после ухода — продолжается', async () => {
+  it('под курсором отсчёт стоит, после ухода - продолжается', async () => {
     renderWidget(
       <ToastProvider>
         <Trigger />

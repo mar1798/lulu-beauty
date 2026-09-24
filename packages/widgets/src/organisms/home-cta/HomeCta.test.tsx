@@ -5,7 +5,7 @@ import { feedHomeCta } from '../../stories/feed'
 import { renderWidget } from '../../testing/render'
 
 describe('HomeCta', () => {
-  it('набирает заголовок вторым уровнем — h1 занят героем', () => {
+  it('набирает заголовок вторым уровнем - h1 занят героем', () => {
     const feed = feedHomeCta()
 
     renderWidget(<HomeCta {...feed} />)

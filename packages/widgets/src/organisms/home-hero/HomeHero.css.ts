@@ -262,7 +262,7 @@ export const actions = style({
   }),
 })
 
-/** Приписка под кнопками: «списаний не будет», счётчики каталога. */
+/** Приписка под кнопками: счётчики каталога. */
 export const note = style({
   font: font('13/18'),
   color: color.text('muted'),

@@ -30,7 +30,7 @@ describe('StatusSelect', () => {
     expect(screen.getByRole('option', { name: 'Отменена магазином' })).toBeTruthy()
   })
 
-  it('показывает уже стоящую отмену покупателем — иначе поле выглядело бы пустым', async () => {
+  it('показывает уже стоящую отмену покупателем - иначе поле выглядело бы пустым', async () => {
     renderWidget(<StatusSelect {...feedStatusSelect()} value="CANCELLED_BY_CUSTOMER" />)
     await userEvent.click(screen.getByRole('combobox'))
 

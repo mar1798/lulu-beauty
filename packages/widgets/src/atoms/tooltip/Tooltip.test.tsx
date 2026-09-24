@@ -22,7 +22,7 @@ describe('Tooltip', () => {
     expect(screen.getByRole('button')).toBeInTheDocument()
   })
 
-  it('прячет пузырь от скринридера — причину озвучивает сам триггер', () => {
+  it('прячет пузырь от скринридера - причину озвучивает сам триггер', () => {
     const { container } = renderWidget(
       <Tooltip content="Сейчас нет открытого сбора">
         <Button unavailableReason="Сейчас нет открытого сбора">В корзину</Button>

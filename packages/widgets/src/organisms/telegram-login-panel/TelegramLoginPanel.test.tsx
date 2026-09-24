@@ -28,7 +28,7 @@ describe('TelegramLoginPanel', () => {
     expect(screen.getByRole('link', { name: /Войти через Telegram/ })).toBeInTheDocument()
   })
 
-  it('не крутит спиннер в ожидании — работы, которая идёт, тут нет', () => {
+  it('не крутит спиннер в ожидании - работы, которая идёт, тут нет', () => {
     const { container } = renderWidget(
       <TelegramLoginPanel {...feedTelegramLoginPanel()} status="waiting" />
     )

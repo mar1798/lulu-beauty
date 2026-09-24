@@ -27,7 +27,7 @@ describe('ErrorTemplate', () => {
     expect(screen.getByText('404')).toHaveAttribute('aria-hidden', 'true')
   })
 
-  it('рисуется и без кода — тем же шаблоном показывается «раздел недоступен»', () => {
+  it('рисуется и без кода - тем же шаблоном показывается «раздел недоступен»', () => {
     renderWidget(<ErrorTemplate title="Каталог сейчас недоступен" />)
 
     expect(screen.getByRole('heading', { level: 1 })).toBeInTheDocument()

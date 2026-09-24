@@ -28,7 +28,7 @@ describe('IconButton', () => {
 
     expect(button).not.toBeDisabled()
     expect(button).toHaveAttribute('aria-disabled', 'true')
-    expect(button).toHaveAccessibleName('В корзину — Сбор закрыт')
+    expect(button).toHaveAccessibleName('В корзину - Сбор закрыт')
     expect(onClick).not.toHaveBeenCalled()
   })
 })

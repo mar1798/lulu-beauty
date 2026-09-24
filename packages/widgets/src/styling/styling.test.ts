@@ -25,7 +25,7 @@ describe('тема', () => {
     )
   })
 
-  it('каждый цвет хранится каналами "R, G, B" — этого требует геттер color()', () => {
+  it('каждый цвет хранится каналами "R, G, B" - этого требует геттер color()', () => {
     const CHANNELS = /^\d{1,3}, \d{1,3}, \d{1,3}$/
 
     for (const [group, shades] of Object.entries(lightTokens.color)) {

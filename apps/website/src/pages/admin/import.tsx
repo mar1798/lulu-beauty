@@ -68,7 +68,7 @@ const AdminImportPage: React.FC = () => {
           ? {
               tone: 'danger',
               title: 'Файл не разобран',
-              description: 'Ни одна строка не применена — подробности ниже',
+              description: 'Ни одна строка не применена - подробности ниже',
             }
           : {
               tone: result.errors.length === 0 ? 'success' : 'info',

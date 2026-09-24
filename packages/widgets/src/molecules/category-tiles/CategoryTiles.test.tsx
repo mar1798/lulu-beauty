@@ -30,7 +30,7 @@ describe('CategoryTiles', () => {
     expect(screen.getAllByRole('listitem')).toHaveLength(feed.categories.length)
   })
 
-  it('ничего не рендерит на пустом списке — секцию прячет страница', () => {
+  it('ничего не рендерит на пустом списке - секцию прячет страница', () => {
     const { container } = renderWidget(<CategoryTiles {...feedCategoryTiles()} categories={[]} />)
 
     expect(screen.queryAllByRole('link')).toHaveLength(0)

@@ -49,7 +49,7 @@ const VIEWS: Record<OrderStatus, IStatusView> = {
  * странице читались бы как два разных положения дел.
  */
 const PENDING_STAGE_HINTS: Record<PendingStage, string> = {
-  COLLECTING: 'Сбор открыт — состав ещё можно менять',
+  COLLECTING: 'Сбор открыт - состав ещё можно менять',
   PURCHASING: 'Сбор закрыт, владелец закупает',
   DELAYED: 'Закупка идёт дольше обычного',
   UNFULFILLED: 'Заявка не вошла в закупку',

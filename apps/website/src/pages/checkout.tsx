@@ -150,11 +150,11 @@ const CheckoutPage: React.FC = () => {
           </Text>
 
           <Alert tone="success" title="Заявка принята">
-            Мы её получили. После закрытия сбора подтвердим заявку — уведомление придёт в Telegram,
+            Мы её получили. После закрытия сбора подтвердим заявку - уведомление придёт в Telegram,
             а о выдаче договоримся лично.
             {order.isEditable && (
               <>
-                {' Пока сбор открыт, заявку можно дополнить — добавьте товар прямо здесь или на '}
+                {' Пока сбор открыт, заявку можно дополнить - добавьте товар прямо здесь или на '}
                 <AppLink href={`/orders/${order.id}`} className={styles.alertLink}>
                   странице заявки
                 </AppLink>
@@ -206,7 +206,7 @@ const CheckoutPage: React.FC = () => {
       return (
         <EmptyState
           title="Нужен вход"
-          description="Заявка оформляется на аккаунт — в привязанный к нему чат придёт подтверждение"
+          description="Заявка оформляется на аккаунт - в привязанный к нему чат придёт подтверждение"
           action={
             <Button link={{ href: '/login' }} isFullWidth="mobile">
               Войти
@@ -220,7 +220,7 @@ const CheckoutPage: React.FC = () => {
       return (
         <EmptyState
           title="Оформлять нечего"
-          description="Соберите корзину — и возвращайтесь сюда"
+          description="Соберите корзину - и возвращайтесь сюда"
           action={
             <Button link={{ href: '/catalog' }} isFullWidth="mobile">
               В каталог
@@ -275,7 +275,7 @@ const CheckoutPage: React.FC = () => {
                 void handleAdd(variantId)
               }}
               isBusy={isAdding || isSubmitting}
-              label="Проверьте — возможно, вы что-то забыли"
+              label="Проверьте - возможно, вы что-то забыли"
               hint="Найденный товар попадёт в корзину и уйдёт в эту же заявку"
             />
           }
@@ -309,14 +309,14 @@ const CheckoutPage: React.FC = () => {
     }
 
     return order.isEditable
-      ? 'Пока сбор открыт и заявка не подтверждена, в неё можно добавить товар — новая заявка не нужна'
+      ? 'Пока сбор открыт и заявка не подтверждена, в неё можно добавить товар - новая заявка не нужна'
       : undefined
   }
 
   return (
     <SiteLayout>
       <Head>
-        <title>Оформление заявки — Sululu</title>
+        <title>Оформление заявки - Sululu</title>
         <meta name="robots" content="noindex" />
       </Head>
 

@@ -75,7 +75,7 @@ the whole budget on its own, and about a quarter of titles come out longer than 
 result. That is deliberate: a search engine truncates the tail of a long title but still reads
 all of it, whereas a name chopped mid-word is wrong in the result list itself.
 
-Descriptions are `{brand} {name} по цене закупки — {price}.`, then the first sentence of the
+Descriptions are `{brand} {name} по низкой цене — {price}.`, then the first sentence of the
 product's `description` if the owner wrote one, then the delivery line — value first, because
 the tail is what gets cut. The delivery line is appended only when it fits whole: half of it
 reads worse than none of it.

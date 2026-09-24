@@ -463,7 +463,7 @@ export const AdminProductForm: FC<IAdminProductFormProps & IBasicStyling> = ({
             placeholder="Начните вводить название"
             hint="Показывается тэгом в каталоге и на странице товара, например Round Lab"
             error={isSubmitted ? errors.brand : null}
-            emptyLabel="Такого производителя ещё нет — он заведётся сам"
+            emptyLabel="Такого производителя ещё нет - он заведётся сам"
             onChange={setBrand}
           />
 
@@ -486,7 +486,7 @@ export const AdminProductForm: FC<IAdminProductFormProps & IBasicStyling> = ({
           <legend className={styles.variantsLegend}>Объёмы и цены</legend>
 
           <Text tone="secondary" size="sm">
-            Один товар может продаваться в нескольких объёмах — у каждого своя цена и своё наличие.
+            Один товар может продаваться в нескольких объёмах - у каждого своя цена и своё наличие.
             Если объём у товара один или его нет вовсе (патчи, тканевые маски), оставьте одну
             строку.
           </Text>
@@ -591,7 +591,7 @@ export const AdminProductForm: FC<IAdminProductFormProps & IBasicStyling> = ({
               accept={IMAGE_TYPES.join(',')}
               allowedTypes={IMAGE_TYPES}
               maxBytes={IMAGE_MAX_BYTES}
-              hint="JPEG, PNG или WebP, до 15 МБ. Необязательно — можно добавить и позже."
+              hint="JPEG, PNG или WebP, до 15 МБ. Необязательно - можно добавить и позже."
               buttonLabel="Выбрать фотографию"
               onSelect={setPendingImage}
             />
@@ -623,7 +623,7 @@ export const AdminProductForm: FC<IAdminProductFormProps & IBasicStyling> = ({
               <Input
                 label="Описание фотографии (alt)"
                 value={pendingImageAlt}
-                hint="Что на снимке — необязательно"
+                hint="Что на снимке - необязательно"
                 onChange={setPendingImageAlt}
               />
             </>
@@ -639,7 +639,7 @@ export const AdminProductForm: FC<IAdminProductFormProps & IBasicStyling> = ({
 
           {images.length === 0 ? (
             <Text tone="secondary" size="sm">
-              Пока без фотографии — в каталоге у товара будет заглушка
+              Пока без фотографии - в каталоге у товара будет заглушка
             </Text>
           ) : (
             <ul className={styles.gallery}>
@@ -671,7 +671,7 @@ export const AdminProductForm: FC<IAdminProductFormProps & IBasicStyling> = ({
           <Input
             label="Описание фотографии (alt)"
             value={imageAlt}
-            hint="Что на снимке — текст читают поисковики и скринридеры"
+            hint="Что на снимке - текст читают поисковики и скринридеры"
             onChange={setImageAlt}
           />
 

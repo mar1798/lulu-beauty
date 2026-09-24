@@ -56,7 +56,7 @@ const OrdersPage: React.FC = () => {
       return (
         <EmptyState
           title="Заявки видны после входа"
-          description="Войдите — и здесь появится история ваших заявок по сборам"
+          description="Войдите - и здесь появится история ваших заявок по сборам"
           action={
             <Button link={{ href: '/login' }} isFullWidth="mobile">
               Войти
@@ -99,7 +99,7 @@ const OrdersPage: React.FC = () => {
           emptyState={
             <EmptyState
               title="Заявок пока нет"
-              description="Соберите корзину и оформите заявку — она появится здесь"
+              description="Соберите корзину и оформите заявку - она появится здесь"
               action={
                 <Button link={{ href: '/catalog' }} isFullWidth="mobile">
                   В каталог
@@ -124,13 +124,13 @@ const OrdersPage: React.FC = () => {
   return (
     <SiteLayout>
       <Head>
-        <title>Мои заявки — Sululu</title>
+        <title>Мои заявки - Sululu</title>
         <meta name="robots" content="noindex" />
       </Head>
 
       <AccountTemplate
         title="Мои заявки"
-        summary="Состав и цены закрепляются в момент подтверждения — дальше они не меняются вслед за каталогом"
+        summary="Состав и цены закрепляются в момент подтверждения - дальше они не меняются вслед за каталогом"
         navigation={ACCOUNT_NAVIGATION}
         currentHref="/orders"
       >

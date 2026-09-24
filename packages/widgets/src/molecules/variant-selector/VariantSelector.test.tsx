@@ -14,7 +14,7 @@ describe('VariantSelector', () => {
     expect(container.firstElementChild).not.toBeNull()
   })
 
-  it('объявляет себя радиогруппой, а выбранный объём — отмеченным', () => {
+  it('объявляет себя радиогруппой, а выбранный объём - отмеченным', () => {
     const props = feedVariantSelector()
 
     renderWidget(<VariantSelector {...props} />)
@@ -80,7 +80,7 @@ describe('VariantSelector', () => {
     { id: 'v100', volumeMl: 100, priceCents: 260_000, inStock: true },
   ]
 
-  it('стрелкой переключается на следующий объём — и уводит за ним фокус', () => {
+  it('стрелкой переключается на следующий объём - и уводит за ним фокус', () => {
     const variants = threeVolumes()
     const onSelect = vi.fn()
 

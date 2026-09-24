@@ -9,7 +9,7 @@ import { renderWidget } from '../../testing/render'
  * поэтому ошибка в округлении сразу отрезает последнюю страницу каталога.
  */
 describe('pageCountOf', () => {
-  it('округляет вверх — хвост тоже страница', () => {
+  it('округляет вверх - хвост тоже страница', () => {
     expect(pageCountOf(147, 20)).toBe(8)
     expect(pageCountOf(20, 20)).toBe(1)
     expect(pageCountOf(21, 20)).toBe(2)

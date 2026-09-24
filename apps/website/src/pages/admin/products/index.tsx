@@ -221,7 +221,7 @@ const AdminProductsPage: React.FC = () => {
   const handleDelete = async (product: IProduct): Promise<void> => {
     const confirmed = await confirm({
       title: 'Удалить товар?',
-      description: `«${product.name}» пропадёт из каталога. В уже оформленных заявках он останется — там состав и цены закреплены на момент заказа.`,
+      description: `«${product.name}» пропадёт из каталога. В уже оформленных заявках он останется - там состав и цены закреплены на момент заказа.`,
       confirmLabel: 'Удалить',
     })
 
@@ -314,7 +314,7 @@ const AdminProductsPage: React.FC = () => {
         emptyState={
           <EmptyState
             title="Товаров не нашлось"
-            description="Измените фильтры или добавьте первый товар — вручную либо импортом из xlsx"
+            description="Измените фильтры или добавьте первый товар - вручную либо импортом из xlsx"
             action={
               <Button isFullWidth="mobile" link={{ href: '/admin/products/add' }}>
                 Добавить товар

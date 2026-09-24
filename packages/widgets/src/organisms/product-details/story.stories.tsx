@@ -3,7 +3,8 @@ import type { StoryFn, Meta } from '@storybook/react'
 import { ProductDetails, ProductDetailsSkeleton } from '.'
 import { Button } from '../../atoms/button'
 import { IconButton } from '../../atoms/icon-button'
-import { IconHeart } from '../../svg/icons'
+import { QuantityStepper } from '../../molecules/quantity-stepper'
+import { IconCart, IconHeart } from '../../svg/icons'
 import { feedProductDetails, feedProductWithVariants } from '../../stories/feed'
 import { StoryWrapper } from '../../stories/wrapper'
 
@@ -67,25 +68,95 @@ SeveralVolumes.parameters = {
 }
 
 /**
- * Строка действий так, как её собирает `apps/website`: подписанная «в корзину»
- * во всю оставшуюся ширину и круглое сердце рядом. Проверять её нужно на узкой
- * ширине — ради неё раскладка и переделана.
+ * Строка действий так, как её собирает `apps/website`, — и переход между её
+ * двумя видами, ради которого она и устроена так.
+ *
+ * Нажатие на «В корзину» ужимает кнопку в круг со знаком корзины и выпускает
+ * количество на освободившееся место; шаг вниз с единицы убирает позицию, и
+ * строка разворачивается обратно. В бою оба состояния приходят из корзины
+ * (`isInCart`), здесь — из локального `useState`: виджету всё равно, откуда
+ * ему сказали.
+ *
+ * Проверять нужно на узкой ширине: там круг, количество и сердце помещаются
+ * в строку впритык.
  */
-export const Actions: StoryFn = () => (
-  <StoryWrapper>
-    <ProductDetails
-      {...feedProductDetails()}
-      action={
-        <Button size="lg" isFullWidth={true}>
-          В корзину
-        </Button>
-      }
-      secondaryAction={
-        <IconButton icon={<IconHeart />} label="Добавить в избранное" variant="solid" size="lg" />
-      }
-    />
-  </StoryWrapper>
-)
+export const Actions: StoryFn = () => {
+  const [quantity, setQuantity] = useState(0)
+
+  return (
+    <StoryWrapper>
+      <ProductDetails
+        {...feedProductDetails()}
+        isInCart={quantity > 0}
+        quantity={
+          <QuantityStepper
+            value={Math.max(quantity, 1)}
+            min={0}
+            onChange={setQuantity}
+            decreaseLabel={quantity === 1 ? 'Убрать из корзины' : 'Уменьшить количество'}
+          />
+        }
+        action={
+          quantity > 0 ? (
+            <IconButton icon={<IconCart />} label="В корзине" variant="solid" size="lg" />
+          ) : (
+            <Button size="lg" isFullWidth={true} onClick={() => setQuantity(1)}>
+              В корзину
+            </Button>
+          )
+        }
+        secondaryAction={
+          <IconButton icon={<IconHeart />} label="Добавить в избранное" variant="solid" size="lg" />
+        }
+      />
+    </StoryWrapper>
+  )
+}
+
 Actions.parameters = {
+  layout: 'padded',
+}
+
+/**
+ * Та же строка, но страницу открыли с товаром, который уже лежит в корзине, —
+ * обычное дело для вернувшегося покупателя.
+ *
+ * Отдельная стори не ради полноты: развёрнутой кнопки виджет в этом случае
+ * ещё не видел, и ширину, в которую разворачиваться, ему взять неоткуда.
+ * Проверять надо именно здесь — первым же нажатием на `−`.
+ */
+export const ActionsInCart: StoryFn = () => {
+  const [quantity, setQuantity] = useState(1)
+
+  return (
+    <StoryWrapper>
+      <ProductDetails
+        {...feedProductDetails()}
+        isInCart={quantity > 0}
+        quantity={
+          <QuantityStepper
+            value={Math.max(quantity, 1)}
+            min={0}
+            onChange={setQuantity}
+            decreaseLabel={quantity === 1 ? 'Убрать из корзины' : 'Уменьшить количество'}
+          />
+        }
+        action={
+          quantity > 0 ? (
+            <IconButton icon={<IconCart />} label="В корзине" variant="solid" size="lg" />
+          ) : (
+            <Button size="lg" isFullWidth={true} onClick={() => setQuantity(1)}>
+              В корзину
+            </Button>
+          )
+        }
+        secondaryAction={
+          <IconButton icon={<IconHeart />} label="Добавить в избранное" variant="solid" size="lg" />
+        }
+      />
+    </StoryWrapper>
+  )
+}
+ActionsInCart.parameters = {
   layout: 'padded',
 }

@@ -32,7 +32,7 @@ import { useDemand } from './useDemand'
 const WHOLE_LIST = '*'
 
 /** Избранного у гостя не существует — на бэкенде оно привязано к пользователю. */
-const GUEST_ERROR = 'Избранное привязано к аккаунту — войдите, чтобы сохранять товары'
+const GUEST_ERROR = 'Избранное привязано к аккаунту - войдите, чтобы сохранять товары'
 
 export interface IWishlistResult {
   ok: boolean

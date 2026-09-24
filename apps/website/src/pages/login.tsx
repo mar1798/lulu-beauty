@@ -38,7 +38,7 @@ const LoginPage: React.FC = () => {
   return (
     <SiteLayout>
       <Head>
-        <title>Вход — Sululu</title>
+        <title>Вход - Sululu</title>
         <meta name="robots" content="noindex" />
       </Head>
 
@@ -52,7 +52,7 @@ const LoginPage: React.FC = () => {
       <AuthTemplate
         className={layout.sessionArea}
         title="Вход"
-        subtitle="Через Telegram — регистрация не нужна, аккаунт заведётся сам"
+        subtitle="Через Telegram - регистрация не нужна, аккаунт заведётся сам"
         /*
           Согласие — под карточкой, но на экране одновременно с кнопкой входа:
           вход здесь и есть регистрация, аккаунт заводится в тот же момент, и
@@ -69,8 +69,8 @@ const LoginPage: React.FC = () => {
         footer={
           <Text size="sm" tone="muted">
             Входя, вы соглашаетесь на обработку персональных данных: магазин сохранит ваш номер, имя
-            из профиля Telegram и чат с ботом — чтобы принимать заявки и писать вам о них. Подробнее
-            — в{' '}
+            из профиля Telegram и чат с ботом - чтобы принимать заявки и писать вам о них. Подробнее
+            - в{' '}
             <AppLink href="/privacy" className={styles.inlineLink}>
               политике обработки данных
             </AppLink>

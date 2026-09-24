@@ -76,13 +76,13 @@ describe('ProductDetails и несколько объёмов', () => {
     expect(onSelectVariant).toHaveBeenCalledWith(product.variants[0].id)
   })
 
-  it('у товара с одним объёмом переключателя нет — выбирать нечего', () => {
+  it('у товара с одним объёмом переключателя нет - выбирать нечего', () => {
     renderWidget(<ProductDetails {...feedProductDetails()} onSelectVariant={vi.fn()} />)
 
     expect(screen.queryByRole('radiogroup')).not.toBeInTheDocument()
   })
 
-  it('оба действия стоят в строке — второе не подменяет первое', () => {
+  it('оба действия стоят в строке - второе не подменяет первое', () => {
     renderWidget(
       <ProductDetails
         {...feedProductDetails()}
@@ -93,6 +93,23 @@ describe('ProductDetails и несколько объёмов', () => {
 
     expect(screen.getByRole('button', { name: 'В корзину' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Добавить в избранное' })).toBeInTheDocument()
+  })
+
+  it('количество показывается только у позиции, которая уже в корзине', () => {
+    const details = {
+      ...feedProductDetails(),
+      quantity: <button type="button">Количество</button>,
+      action: <button type="button">В корзину</button>,
+    }
+
+    const { rerender } = renderWidget(<ProductDetails {...details} />)
+
+    expect(screen.queryByRole('button', { name: 'Количество' })).not.toBeInTheDocument()
+
+    rerender(<ProductDetails {...details} isInCart={true} />)
+
+    expect(screen.getByRole('button', { name: 'Количество' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'В корзину' })).toBeInTheDocument()
   })
 
   it('показывает объяснение под кнопками, не вместо них', () => {

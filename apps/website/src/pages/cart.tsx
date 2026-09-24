@@ -94,7 +94,7 @@ const CartPage: React.FC = () => {
       return (
         <EmptyState
           title="Корзина у каждого своя"
-          description="Войдите, чтобы собрать заявку — она сохранится до закрытия сбора"
+          description="Войдите, чтобы собрать заявку - она сохранится до закрытия сбора"
           action={
             <Button link={{ href: '/login' }} isFullWidth="mobile">
               Войти
@@ -139,7 +139,7 @@ const CartPage: React.FC = () => {
               // выбор»: корзину закрывшегося сбора туда переносит планировщик
               // (apps/api/app/cycles/scheduler_service.py), и человек, пропустивший
               // уведомление бота, узнаёт об этом только здесь.
-              description="Загляните в каталог — товары появляются перед каждым сбором. То, что вы не успели оформить в прошлом сборе, ждёт в избранном."
+              description="Загляните в каталог - товары появляются перед каждым сбором. То, что вы не успели оформить в прошлом сборе, ждёт в избранном."
               action={
                 <Button link={{ href: '/catalog' }} isFullWidth="mobile">
                   В каталог
@@ -155,7 +155,7 @@ const CartPage: React.FC = () => {
   return (
     <SiteLayout>
       <Head>
-        <title>Корзина — Sululu</title>
+        <title>Корзина - Sululu</title>
         <meta name="robots" content="noindex" />
       </Head>
 

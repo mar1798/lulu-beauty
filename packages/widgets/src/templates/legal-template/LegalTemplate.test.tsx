@@ -23,7 +23,7 @@ describe('LegalTemplate', () => {
     expect(second.id).toBe('section-2')
   })
 
-  it('рисует массив строк списком, а строку — абзацем', () => {
+  it('рисует массив строк списком, а строку - абзацем', () => {
     renderWidget(<LegalTemplate {...feedLegalTemplate()} />)
 
     expect(screen.getAllByRole('listitem')).toHaveLength(3)

@@ -16,7 +16,7 @@ describe('CatalogTemplate', () => {
     expect(container.firstElementChild).not.toBeNull()
   })
 
-  it('показывает слот `aside` в шапке — рядом с заголовком, а не под сеткой', () => {
+  it('показывает слот `aside` в шапке - рядом с заголовком, а не под сеткой', () => {
     renderWidget(<CatalogTemplate {...feedCatalogTemplate()} aside="Таймер" />)
 
     const heading = screen.getByRole('heading', { level: 1 })

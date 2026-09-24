@@ -23,7 +23,7 @@ describe('ToastViewport', () => {
     expect(screen.getAllByRole('button', { name: 'Вернуть' })).toHaveLength(1)
   })
 
-  it('ошибку объявляет как alert, остальное — как status', () => {
+  it('ошибку объявляет как alert, остальное - как status', () => {
     renderWidget(<ToastViewport {...feedToastViewport()} />)
 
     expect(screen.getByRole('alert')).toHaveTextContent('Не удалось удалить сбор')

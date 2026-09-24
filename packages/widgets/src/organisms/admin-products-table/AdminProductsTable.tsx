@@ -128,8 +128,8 @@ export const AdminProductsTable: FC<IAdminProductsTableProps & IBasicStyling> = 
 
                     <td className={styles.cell} role="cell" data-label="Категория">
                       {product.categoryId === null
-                        ? '—'
-                        : (categoryNames[product.categoryId] ?? '—')}
+                        ? '-'
+                        : (categoryNames[product.categoryId] ?? '-')}
                     </td>
 
                     <td className={styles.cell} role="cell" data-label="Цена">

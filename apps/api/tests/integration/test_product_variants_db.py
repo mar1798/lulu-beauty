@@ -389,7 +389,7 @@ async def test_import_refuses_an_empty_volume_cell_for_a_product_that_has_volume
     await db_session.flush()
 
     assert [error.message for error in summary.errors] == [
-        "у товара есть объёмы — укажите объём в строке"
+        "у товара есть объёмы - укажите объём в строке"
     ]
     loaded = (
         await db_session.execute(

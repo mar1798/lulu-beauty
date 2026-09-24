@@ -226,7 +226,28 @@ Client-side fetching is [SWR](https://swr.vercel.app/), configured globally in `
   `AddToCartButton` takes the whole product plus an optional `variantId`: on the product
   page the page owns the choice of volume, and in the catalogue grid — where there is no
   room to choose — a product sold in several volumes turns the button into a link to its
-  page rather than silently adding the cheapest one.
+  page rather than silently adding the cheapest one. It always adds one: the quantity is set
+  afterwards, not before.
+  On the product page the row of actions has two states, switched by `ProductDetails`'s
+  `isInCart` (the page derives it from the cart for the _selected volume_). Out of the
+  cart it is the labelled button as before; in it, the button shrinks into a circle
+  carrying the cart glyph — still a link to `/cart` — and `CartQuantityStepper` slides
+  in on the freed space through the widget's `quantity` slot. That stepper edits the cart
+  line directly (`updateItem`/`removeItem`), exactly as the one inside `/cart` does, and
+  its `−` at one removes the line (`min={0}` on `QuantityStepper`, with `decreaseLabel`
+  saying so), which plays the whole row back to the labelled button. The catalogue card is
+  deliberately untouched: its footer has no room for a stepper on a narrow screen.
+  The morph animates width — a documented exception to transform-only motion, same as
+  `FaqAccordion`'s height — and `ProductDetails` owns the four details that make it
+  behave: the expanded width is **measured** rather than `auto` or `100%`, since neither
+  equals what the layout actually gives the button, and a `ResizeObserver` on the row
+  throws that measurement away whenever the row changes size, so the next one is taken
+  fresh (before paint, in a layout effect) instead of replaying a width from before the
+  rotation; the circle's diameter is the row's **measured height**, not the constant 52,
+  because that height is authored in `rem` and a larger system font would otherwise make
+  an oval; `flex-grow` is off for as long as the width is animated, or flex would
+  overrule it; and while it moves, the button clips its own label — the clipping is on
+  the button, never on the box around it, since `Tooltip`'s bubble is drawn in that box.
 - `src/hooks/` — `useAdminGate`, `useActiveCycle`, `useEditableOrder`, `useProductSearch`,
   `useTelegramLogin`, `useTelegramMiniApp`, `useQrCode`, `useQueryParams`,
   `usePrefetchRoutes`, `useRedirectIfAuthenticated`.
