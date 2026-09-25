@@ -1,4 +1,5 @@
 import { globalStyle, style } from '@vanilla-extract/css'
+import { color } from '../../styling/lib/color'
 import { font } from '../../styling/lib/font'
 import { rem } from '../../styling/lib/rem'
 import { media } from '../../styling/lib/media'
@@ -51,6 +52,16 @@ export const description = style({
 })
 
 /**
+ * То же описание из редактора: кегль и цвет — как у простого текста выше
+ * (`Text` md, `secondary`), чтобы товар с оформлением и без читались одной
+ * страницей. Остальное — `richTextContent` внутри `RichText`.
+ */
+export const descriptionRich = style({
+  font: font('16/24'),
+  color: color.text('secondary'),
+})
+
+/**
  * Строка действий: подписанная «в корзину» во всю оставшуюся ширину и круглое
  * сердце рядом.
  *
@@ -76,8 +87,13 @@ export const action = style({
 
 /**
  * Количество. Появляется у позиции, которая уже в корзине, выездом по
- * ширине — поэтому `overflow: hidden`: содержимое обязано держать свой
- * размер, пока коробка вокруг него едет от нуля.
+ * ширине — поэтому содержимое подрезается: оно обязано держать свой размер,
+ * пока коробка вокруг него едет от нуля.
+ *
+ * Подрезает `clip-path`, а не `overflow: hidden`: тот режет ровно по краю
+ * коробки и срезал бы степперу тень со всех сторон — и в покое, не только
+ * в движении. Здесь же режет только правый край, по которому и идёт выезд;
+ * сверху, снизу и слева область отодвинута наружу, на тень с запасом.
  *
  * Отдельный слот, а не часть `actionPrimary`, намеренно: тот ужимает поля и
  * кегль любой кнопке внутри себя (`globalStyle` ниже), а кнопки степпера
@@ -85,7 +101,7 @@ export const action = style({
  */
 export const actionQuantity = style({
   flex: '0 0 auto',
-  overflow: 'hidden',
+  clipPath: `inset(calc(-1 * ${vars.space.sm}) 0 calc(-1 * ${vars.space.sm}) calc(-1 * ${vars.space.sm}))`,
 })
 
 /**

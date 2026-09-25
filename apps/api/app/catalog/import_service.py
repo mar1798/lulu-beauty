@@ -544,6 +544,10 @@ class CatalogImportService:
             fields["in_stock"] = parse_in_stock(row.get("in_stock"))
         if "description" in columns:
             fields["description"] = row.get("description", "").strip() or None
+            # The file's text replaces the one written in the admin editor, formatting
+            # and all: left in place, the old HTML would go on showing on the product
+            # page over the description the file has just put in (see `rich_text.py`).
+            fields["description_html"] = None
 
         if "brand" in columns:
             # Optional, unlike in the product form: a file is what the shop is stocked

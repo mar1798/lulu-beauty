@@ -52,7 +52,9 @@ person; what stays is a nameless row and the order history hanging off it:
 - `phone` is overwritten with a per-row placeholder (the column is UNIQUE and NOT NULL, so
   erasing it means filling it), `name` becomes "Удалённый аккаунт", `telegram_chat_id` is
   cleared and `deleted_at` is stamped.
-- Cart, wishlist, refresh tokens and any waiting login session are deleted outright.
+- Cart, wishlist, refresh tokens and any waiting login session are deleted outright, and
+  so are the account's wanted-product wishes: those carry their own copy of the name and
+  the number, which is the one thing this erasure is about.
 - **`CONFIRMED` and `READY` orders refuse the erasure** (`409
 account_has_unfinished_orders`, `DELETION_BLOCKING_STATUSES`). The goods behind them
   were already bought and are still the customer's to collect; erasing would cancel a
@@ -152,6 +154,32 @@ send: for a deadline nudge a duplicate is a nuisance and a miss is a lost order.
 `Category` → `Product` → `ProductImage`, and `Product` → `ProductVariant`. A product carries
 `name`, `slug` (unique), `brand`, `description`, a category and images; a **variant** carries
 `volume_ml`, `price_cents` and `in_stock`.
+
+### A description has two forms
+
+The owner writes the description in a rich-text editor in the admin panel (Tiptap), with a
+deliberately short vocabulary: paragraphs, bold, italic, bulleted and numbered lists, one
+subheading level (`h2`) and links. No colours, fonts or images — the site sets how a
+description looks, not the product. The same list of tags is enforced in three places: the
+editor's extensions, `app/catalog/rich_text.py` on save, and the storefront's `RichText`
+on the way out.
+
+- **`description_html`** is what the product page renders. The API cleans it on every save
+  (`nh3`, the tag list above, links limited to `http(s)`/`mailto`/`tel` and marked
+  `nofollow`), so whatever the editor sent, only that vocabulary is stored.
+- **`description`** stays plain text, one line per paragraph, heading or list item, and is
+  **derived** from the HTML in the same write. Everything that is not the product page reads
+  it: `<meta name="description">`, the JSON-LD, the import.
+- **The import writes `description` alone and clears `description_html`** — otherwise the
+  page would keep showing the old formatted text over the one the file just put in.
+- A product whose description never went through the editor has `description_html = NULL`,
+  and the page shows `description` with its line breaks, as it always did. The editor opens
+  such a text as paragraphs, and the first save moves the product onto HTML. No data
+  migration was needed.
+- **The limit is 2 000 visible characters** (`MAX_DESCRIPTION_LENGTH`) — counted without
+  markup and without the breaks between blocks, identically by the editor's counter, the
+  form's check and the API. The raw HTML has its own ceiling
+  (`MAX_DESCRIPTION_HTML_LENGTH`), which bounds the request rather than the owner.
 
 ### A product is sold in volumes
 
@@ -392,13 +420,35 @@ and where closed cycles' carts land. Capped at `MAX_WISHLIST_ITEMS = 200` (`wish
 it is returned whole on every call, including after each add, so an unbounded one turns a
 heart press into an ever-growing response.
 
+## Wanted products
+
+A wish for something the catalog does not have, typed where the search came back empty:
+under the header suggestions when nothing matched at all, and under the catalog grid when
+it found fewer than three products (`WANTED_PROMPT_MAX_RESULTS`). `POST /wanted-products`
+stores a row and the owner is told over Telegram
+(`messages.wanted_product_for_owner`); there is no admin screen, because what this turns
+into is a line on the next cycle's shopping list.
+
+**No account is needed** — the catalog and its search work without one, and asking a guest
+to sign in before they may say what is missing would collect nothing. A guest leaves a name
+and a number in the form; a signed-in customer leaves neither, because the server takes both
+off the account and ignores what the form sent (`contact_required` when there is nothing to
+take). **The cycle is irrelevant on purpose**: the wish is worth most between cycles, when
+adding a product is still possible.
+
+The row keeps its own copy of the name and the phone rather than reading them back through
+`user_id`, so **erasing an account deletes its wishes outright** (see "Erasing an account") —
+that copy is precisely the personal data the erasure is about. Guests' rows have no account
+behind them and stay.
+
 ## Shared limits
 
 All in `app/common/limits.py`, shared rather than duplicated per schema:
 
-| Limit                | Value         | Why                                          |
-| -------------------- | ------------- | -------------------------------------------- |
-| `MAX_ITEM_QUANTITY`  | 999           | Nobody means a thousand of anything here.    |
-| `MAX_WISHLIST_ITEMS` | 200           | Wishlist is returned whole on every call.    |
-| `MAX_PRICE_CENTS`    | 2 000 000 000 | 32-bit `INTEGER` column.                     |
-| `MAX_VOLUME_ML`      | 10 000        | No five-litre cosmetics; same 32-bit column. |
+| Limit                       | Value         | Why                                          |
+| --------------------------- | ------------- | -------------------------------------------- |
+| `MAX_ITEM_QUANTITY`         | 999           | Nobody means a thousand of anything here.    |
+| `MAX_WISHLIST_ITEMS`        | 200           | Wishlist is returned whole on every call.    |
+| `MAX_PRICE_CENTS`           | 2 000 000 000 | 32-bit `INTEGER` column.                     |
+| `MAX_VOLUME_ML`             | 10 000        | No five-litre cosmetics; same 32-bit column. |
+| `MAX_WANTED_MESSAGE_LENGTH` | 1 000         | A wish stays one readable Telegram message.  |

@@ -231,3 +231,46 @@ export const IconInstagram: FC<IBasicStyling> = ({ className }) => (
     <circle cx="17.2" cy="6.8" r="1.1" fill="currentColor" stroke="none" />
   </svg>
 )
+
+/*
+  Панель редактора описания. Рисунки — по мотивам Lucide (ISC), в той же
+  системе, что остальной набор: штрих `currentColor`, сетка 24.
+*/
+
+export const IconBold: FC<IBasicStyling> = ({ className }) => (
+  <svg {...base} className={className} strokeWidth={2.25}>
+    <path d="M7 5h6.5a3.5 3.5 0 0 1 0 7H7zM7 12h7.5a3.5 3.5 0 0 1 0 7H7z" />
+  </svg>
+)
+
+export const IconItalic: FC<IBasicStyling> = ({ className }) => (
+  <svg {...base} className={className}>
+    <path d="M19 5h-9M14 19H5M15 5 9 19" />
+  </svg>
+)
+
+export const IconHeading: FC<IBasicStyling> = ({ className }) => (
+  <svg {...base} className={className}>
+    <path d="M4 12h8M4 18V6M12 18V6M21 18h-4c0-4 4-3 4-6 0-1.5-2-2.5-4-1" />
+  </svg>
+)
+
+export const IconListBullets: FC<IBasicStyling> = ({ className }) => (
+  <svg {...base} className={className}>
+    <path d="M9 6h11M9 12h11M9 18h11" />
+    <path d="M4.5 6h.01M4.5 12h.01M4.5 18h.01" strokeWidth={2.75} />
+  </svg>
+)
+
+export const IconListNumbers: FC<IBasicStyling> = ({ className }) => (
+  <svg {...base} className={className}>
+    <path d="M10 6h11M10 12h11M10 18h11M4 6h1v4M4 10h2M6 18H4c0-1 2-2 2-3s-1-1.5-2-1" />
+  </svg>
+)
+
+export const IconLink: FC<IBasicStyling> = ({ className }) => (
+  <svg {...base} className={className}>
+    <path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7" />
+    <path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7" />
+  </svg>
+)

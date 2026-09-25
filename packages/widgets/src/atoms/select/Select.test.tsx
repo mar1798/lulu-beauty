@@ -170,6 +170,12 @@ describe('Select · раскладка списка', () => {
     expect(anchor.style.maxHeight).toBe(288)
   })
 
+  it('потолок можно поднять — для попапа с формой под строками', () => {
+    const anchor = anchorTo(triggerAt({ top: 20, bottom: 64 }), 560)
+
+    expect(anchor.style.maxHeight).toBe(560)
+  })
+
   it('обрезает высоту по остатку места, когда его меньше потолка', () => {
     // Низкое окно (телефон в альбомной ориентации): потолок недостижим с любой стороны.
     const innerHeight = window.innerHeight

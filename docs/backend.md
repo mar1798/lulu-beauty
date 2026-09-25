@@ -59,11 +59,12 @@ Each domain module under `app/` is roughly `router.py` / `service.py` / `schemas
 | ----------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
 | `auth/`     | Telegram sign-in (session/claim/widget/mini-app), refresh, logout, JWT issuing, `telegram_identity.py` HMAC verification, role dependencies. |
 | `users/`    | `/users/me`, admin user list and role changes.                                                                                               |
-| `catalog/`  | Categories, products and their variants (volumes), images, xlsx/csv import, serializers.                                                     |
+| `catalog/`  | Categories, products and their variants (volumes), images, xlsx/csv import, serializers, `rich_text.py` (description HTML cleaning).         |
 | `cart/`     | Cart and lines — one per variant. Every mutation needs an open cycle.                                                                        |
 | `orders/`   | Checkout, customer edit/cancel/restore, admin status changes, repricing.                                                                     |
 | `cycles/`   | Cycle CRUD, `reminders.py` (stage definitions), `scheduler_service.py` (sweeps).                                                             |
 | `wishlist/` | Saved products, cycle-independent.                                                                                                           |
+| `wanted/`   | Wishes for products the catalog does not stock, written under an empty search. Write-only.                                                   |
 | `export/`   | xlsx purchase list (`service.py`) and the catalogue export (`products.py`).                                                                  |
 | `telegram/` | Bot, handlers, keyboards, Russian messages, notifications, throttling, webhook.                                                              |
 | `storage/`  | Local disk file storage for images.                                                                                                          |
@@ -98,6 +99,7 @@ Public and customer-facing:
 | `GET`                         | `/users/me/deletion`                          | Whether the caller may erase, and what blocks it.                                                                                |
 | `GET`/`POST`/`PATCH`/`DELETE` | `/cart`, `/cart/items[/{variant_id}]`         | 409 `no_active_cycle` without an open cycle. A line is a **volume**: `POST` takes `variantId`, and `PATCH`/`DELETE` address one. |
 | `GET`/`POST`/`DELETE`         | `/wishlist`, `/wishlist/items[/{product_id}]` | Cycle-independent.                                                                                                               |
+| `POST`                        | `/wanted-products`                            | A wish for something the catalog lacks. **No account needed**; strict rate-limit budget.                                         |
 | `POST`                        | `/orders/checkout`                            |                                                                                                                                  |
 | `GET`                         | `/orders`, `/orders/{id}`                     |                                                                                                                                  |
 | `PATCH`                       | `/orders/{id}`                                | Note only.                                                                                                                       |
@@ -322,8 +324,8 @@ since it is NULL both for a product with no volume and for one sold in several.
 
 `app/common/rate_limit.py` — an in-process token bucket with two budgets:
 `RATE_LIMIT_PER_MINUTE` for everything and the stricter `RATE_LIMIT_AUTH_PER_MINUTE` for the
-`/auth/` prefix, the only anonymous surface that writes rows. `/health` and
-`/telegram/webhook` are exempt.
+anonymous surfaces that write rows: the `/auth/` prefix (`STRICT_PREFIX`) and
+`POST /wanted-products` (`STRICT_PATHS`). `/health` and `/telegram/webhook` are exempt.
 
 Authenticated callers are keyed by the `sub` in their access token, anonymous ones by address
 — taken from `X-Forwarded-For` only when `RATE_LIMIT_TRUST_FORWARDED_FOR` is on. State is

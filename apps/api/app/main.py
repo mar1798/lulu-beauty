@@ -20,6 +20,7 @@ from app.orders.router import router as orders_router
 from app.telegram import bot as telegram_bot
 from app.telegram.webhook import router as telegram_webhook_router
 from app.users.router import router as users_router
+from app.wanted.router import router as wanted_router
 from app.wishlist.router import router as wishlist_router
 
 
@@ -63,6 +64,7 @@ def create_app() -> FastAPI:
     app.include_router(catalog_router)
     app.include_router(cycles_router)
     app.include_router(cart_router)
+    app.include_router(wanted_router)
     app.include_router(wishlist_router)
     app.include_router(orders_router)
     app.include_router(export_router)

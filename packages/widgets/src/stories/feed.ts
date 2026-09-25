@@ -75,6 +75,7 @@ import {
   IShowcaseMoreProps,
   IProfileFormProps,
   IPhoneInputProps,
+  IWantedProductFormProps,
   IPortalProps,
   IPriceProps,
   IProduct,
@@ -87,6 +88,8 @@ import {
   IProductPickerProps,
   IProductTemplateProps,
   IQuantityStepperProps,
+  IRichTextEditorProps,
+  IRichTextProps,
   ISearchFieldProps,
   ISectionHeadingProps,
   ISelectProps,
@@ -172,6 +175,31 @@ export const feedTextarea = (): ITextareaProps => ({
   value: '',
   onChange: noop,
   label: 'Комментарий к заявке',
+  maxLength: 2000,
+})
+
+/**
+ * Описание в том виде, в каком его пишет владелец: абзац, подзаголовок, список
+ * и ссылка — весь набор, который умеет редактор, чтобы в Storybook было видно
+ * каждый элемент.
+ */
+const RICH_DESCRIPTION =
+  '<p>Лёгкий тонер с <strong>5% ниацинамида</strong> выравнивает тон и сужает поры. ' +
+  'Подходит для <em>чувствительной</em> кожи.</p>' +
+  '<h2>Как применять</h2>' +
+  '<ol><li>Очистите кожу.</li><li>Нанесите тонер ватным диском.</li><li>Дайте впитаться.</li></ol>' +
+  '<h2>Чем хорош</h2>' +
+  '<ul><li>Без спирта и отдушек</li><li>Не липнет</li></ul>' +
+  '<p>Состав - на <a href="https://example.com" rel="noopener noreferrer nofollow">сайте бренда</a>.</p>'
+
+export const feedRichText = (): IRichTextProps => ({
+  html: RICH_DESCRIPTION,
+})
+
+export const feedRichTextEditor = (): IRichTextEditorProps => ({
+  value: RICH_DESCRIPTION,
+  onChange: noop,
+  label: 'Описание',
   maxLength: 2000,
 })
 
@@ -579,6 +607,7 @@ export const feedProduct = (overrides: Partial<IProduct> = {}): IProduct => {
     name: faker.commerce.productName(),
     slug: faker.lorem.slug(3),
     description: faker.commerce.productDescription(),
+    descriptionHtml: null,
     brand: faker.company.name(),
     priceCents,
     volumeMl,
@@ -678,6 +707,10 @@ export const feedCategoryFilterMany = (): ICategoryFilterProps => ({
 export const feedEmptyState = (): IEmptyStateProps => ({
   title: 'Ничего не нашлось',
   description: 'Попробуйте изменить запрос или выбрать другую категорию.',
+})
+
+export const feedWantedProductForm = (): IWantedProductFormProps => ({
+  onSubmit: noop,
 })
 
 export const feedSearchField = (): ISearchFieldProps => ({

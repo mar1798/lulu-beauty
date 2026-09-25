@@ -105,7 +105,12 @@ export interface IProductVariantInput {
 export interface IProductInput {
   name: string
   slug: string
-  description?: string | null
+  /**
+   * HTML из редактора описания; `null` — описания нет. Простой текст
+   * (`IProduct.description`) бэкенд выводит из него сам, поэтому отдельно он
+   * не отправляется.
+   */
+  descriptionHtml?: string | null
   /** Обязателен: бэкенд не примет ни создание, ни изменение товара без бренда. */
   brand: string
   /**

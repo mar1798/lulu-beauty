@@ -31,6 +31,7 @@ def product_response(product: Product) -> ProductResponse:
         name=product.name,
         slug=product.slug,
         description=product.description,
+        description_html=product.description_html,
         brand=product.brand,
         price_cents=product.price_cents,
         volume_ml=product.volume_ml,

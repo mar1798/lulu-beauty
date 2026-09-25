@@ -12,6 +12,7 @@ import {
 } from '@/services/endpoints/catalog'
 import { searchSuggestKey } from '@/services/swrKeys'
 import { INSTAGRAM_URL } from '@/utils/contacts'
+import { WantedProductPrompt } from './WantedProductPrompt'
 
 /**
  * Поиск в шапке, подключённый к каталогу.
@@ -176,6 +177,15 @@ export const CatalogSearch: React.FC = () => {
         (`INSTAGRAM_URL`), — второго публичного контакта у магазина нет.
       */
       contact={{ label: 'Instagram', link: { href: INSTAGRAM_URL, target: '_blank' } }}
+      /*
+        И форма пожелания - под тем же «ничего не нашлось». Instagram рядом с
+        ней не лишний: это разговор сейчас, а форма - строка в закупке через
+        неделю, и человеку нужны оба.
+
+        Тесная раскладка: внутри выпадающего списка своя карточка выглядела бы
+        чужим блоком, случайно попавшим в подсказки.
+      */
+      emptyAction={<WantedProductPrompt isCompact={true} />}
       onSubmit={submit}
       onSelect={select}
     />

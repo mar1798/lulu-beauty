@@ -86,6 +86,9 @@
     "barrels": "barrelsby -DqS --exclude=stories --exclude=\\.test\\. --config ./.barrelsby.json"
   },
   "dependencies": {
+    "@tiptap/pm": "^3.31.3",
+    "@tiptap/react": "^3.31.3",
+    "@tiptap/starter-kit": "^3.31.3",
     "clsx": "^2.1.1",
     "html-react-parser": "^6.1.4",
     "motion": "^12.43.0",

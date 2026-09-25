@@ -67,8 +67,14 @@ const isSameAnchor = (current: IAnchor | null, next: IAnchor): boolean =>
   current.style.top === next.style.top &&
   current.style.bottom === next.style.bottom
 
-/** Координаты списка по прямоугольнику поля. Экспортируется ради тестов. */
-export const anchorTo = (trigger: HTMLElement): IAnchor => {
+/**
+ * Координаты списка по прямоугольнику поля. Экспортируется ради тестов.
+ *
+ * `maxHeight` — потолок для списков, у которых под строками стоит что-то
+ * крупнее строки (форма пожелания в `HeaderSearch`): 288px на неё не хватает,
+ * и кнопка отправки уезжает под прокрутку.
+ */
+export const anchorTo = (trigger: HTMLElement, maxHeight = MAX_HEIGHT): IAnchor => {
   const rect = trigger.getBoundingClientRect()
   const below = window.innerHeight - rect.bottom - ANCHOR_GAP - VIEWPORT_MARGIN
   const above = rect.top - ANCHOR_GAP - VIEWPORT_MARGIN
@@ -78,7 +84,7 @@ export const anchorTo = (trigger: HTMLElement): IAnchor => {
     у нижнего края экрана должен раскрываться вверх, а не прижиматься к нему
     полоской в две строки.
   */
-  const isBelow = below >= Math.min(MAX_HEIGHT, above)
+  const isBelow = below >= Math.min(maxHeight, above)
   const available = isBelow ? below : above
 
   return {
@@ -86,7 +92,7 @@ export const anchorTo = (trigger: HTMLElement): IAnchor => {
     style: {
       left: rect.left,
       width: rect.width,
-      maxHeight: Math.max(0, Math.min(MAX_HEIGHT, available)),
+      maxHeight: Math.max(0, Math.min(maxHeight, available)),
       ...(isBelow
         ? { top: rect.bottom + ANCHOR_GAP }
         : { bottom: window.innerHeight - rect.top + ANCHOR_GAP }),

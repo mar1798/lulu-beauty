@@ -5,6 +5,7 @@ import type { IBasicStyling, IProductDetailsProps } from '../../types'
 import { Badge } from '../../atoms/badge'
 import { Heading } from '../../atoms/heading'
 import { Price } from '../../atoms/price'
+import { RichText } from '../../atoms/rich-text'
 import { Text } from '../../atoms/text'
 import { ProductGallery } from '../../molecules/product-gallery'
 import { VariantSelector } from '../../molecules/variant-selector'
@@ -303,10 +304,19 @@ export const ProductDetails: FC<IProductDetailsProps & IBasicStyling> = ({
           />
         )}
 
-        {product.description !== null && product.description !== '' && (
-          <Text className={styles.description} tone="secondary">
-            {product.description}
-          </Text>
+        {/*
+          С оформлением — если описание писали в редакторе; иначе простой
+          текст с переносами, как было до него (импорт, старые товары).
+        */}
+        {product.descriptionHtml !== null ? (
+          <RichText className={styles.descriptionRich} html={product.descriptionHtml} />
+        ) : (
+          product.description !== null &&
+          product.description !== '' && (
+            <Text className={styles.description} tone="secondary">
+              {product.description}
+            </Text>
+          )
         )}
 
         {(quantity !== undefined || action !== undefined || secondaryAction !== undefined) && (

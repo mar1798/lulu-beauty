@@ -366,6 +366,7 @@ def _wishlist(names: list[str]) -> WishlistResponse:
                     name=name,
                     slug=f"slug-{index}",
                     description=None,
+                    description_html=None,
                     brand=None,
                     price_cents=125_000,
                     volume_ml=None,

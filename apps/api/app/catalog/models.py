@@ -83,7 +83,15 @@ class Product(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     name: Mapped[str] = mapped_column(String(255))
     name_norm: Mapped[str] = mapped_column(String(255), _norm("name"))
     slug: Mapped[str] = mapped_column(String(255), unique=True, index=True)
+    # Plain text, always: the meta description, the JSON-LD and the import read it. When
+    # the owner wrote the description in the admin editor, it is derived from
+    # `description_html` on save (see `catalog/rich_text.py`) and the two change together;
+    # an import writes this one alone and clears the HTML, so they never disagree.
     description: Mapped[str | None] = mapped_column(Text)
+    # The same description with its formatting, as the product page renders it. NULL for
+    # a product whose description never went through the editor — the page then shows
+    # `description` with its line breaks, which is what it always did.
+    description_html: Mapped[str | None] = mapped_column(Text)
     brand: Mapped[str | None] = mapped_column(String(255))
     # NULL when `brand` is, which is what keeps the search arm behaving exactly as it did
     # against the raw column: a product with no brand matches no brand query.

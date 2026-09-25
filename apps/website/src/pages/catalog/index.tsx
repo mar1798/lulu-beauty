@@ -3,7 +3,7 @@ import useSWR from 'swr'
 import type { GetStaticProps } from 'next'
 import type { ICategory, IPage, IProduct, ISelectOption } from 'widgets/types'
 import { Alert, Button, Select } from 'widgets/atoms'
-import { CategoryFilter, EmptyState, Pagination, SearchField } from 'widgets/molecules'
+import { CategoryFilter, Pagination, SearchField } from 'widgets/molecules'
 import { ProductGrid } from 'widgets/organisms'
 import { CatalogTemplate } from 'widgets/templates'
 import { SiteLayout } from '@/layouts/SiteLayout'
@@ -12,6 +12,7 @@ import { ClosedCycleNotice } from '@/components/ClosedCycleNotice'
 import { CycleCountdown } from '@/components/CycleCountdown'
 import { JsonLd } from '@/components/JsonLd'
 import { PageMeta } from '@/components/PageMeta'
+import { WantedProductPrompt } from '@/components/WantedProductPrompt'
 import { WishlistButton } from '@/components/WishlistButton'
 import {
   optionalTextParam,
@@ -63,6 +64,17 @@ const PRIORITY_CARDS = 4
 
 /** Каталог меняется импортом xlsx, минута устаревания приемлема. */
 const REVALIDATE_SECONDS = 60
+
+/**
+ * До скольких товаров в выдаче витрина предлагает рассказать, чего не хватает.
+ *
+ * Не только на пустой выдаче: три карточки вместо каталога — это тот же ответ
+ * «у нас этого нет», просто с двумя случайными совпадениями по названию, и
+ * молчать в этот момент значит отпустить человека ни с чем. Порог держится
+ * низким намеренно — форма под полной страницей товаров читалась бы как
+ * жалоба на ассортимент, которой никто не подавал повода.
+ */
+const WANTED_PROMPT_MAX_RESULTS = 3
 
 interface ICatalogPageProps {
   categories: ICategory[]
@@ -319,10 +331,15 @@ const CatalogPage: React.FC<ICatalogPageProps> = ({ categories, brands, initial 
             renderMediaAction={product => (
               <WishlistButton productId={product.id} productName={product.name} />
             )}
+            /*
+              Пустая выдача — сразу форма пожелания, без отдельного «ничего не
+              нашлось» над ней: заголовок формы говорит то же самое, и два
+              блока подряд с одной мыслью читались бы как повтор.
+            */
             emptyState={
-              <EmptyState
-                title="Ничего не нашлось"
-                description="Попробуйте изменить запрос или выбрать другую категорию или бренд"
+              <WantedProductPrompt
+                className={styles.wanted}
+                description="Попробуйте изменить запрос, категорию или бренд - или расскажите, что вы ищете, и мы постараемся добавить это в следующий сбор"
               />
             }
           />
@@ -344,6 +361,19 @@ const CatalogPage: React.FC<ICatalogPageProps> = ({ categories, brands, initial 
           >
             {error}
           </Alert>
+        )}
+
+        {/*
+          Пожелание к следующему сбору под короткой выдачей. Пустую закрывает
+          `emptyState` сетки, здесь — случай «что-то нашлось, но мало», и
+          заголовок у него свой: «ничего не удалось найти» над найденными
+          карточками было бы неправдой.
+
+          `isFirstLoad` держит его до первого ответа, ошибка загрузки — тоже не
+          отсутствие товара, и форму под ней не показываем.
+        */}
+        {error === null && !isFirstLoad && total > 0 && total < WANTED_PROMPT_MAX_RESULTS && (
+          <WantedProductPrompt className={styles.wanted} title="Это не то, что вы искали?" />
         )}
       </CatalogTemplate>
     </SiteLayout>

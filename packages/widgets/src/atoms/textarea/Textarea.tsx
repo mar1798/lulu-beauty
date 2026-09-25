@@ -9,6 +9,10 @@ import * as styles from './Textarea.css'
  * Со счётчиком символов, когда задан `maxLength` — у `note` на бэке жёсткий
  * лимит 2000, и упереться в него молча (браузер просто перестаёт печатать)
  * хуже, чем видеть остаток.
+ *
+ * Без видимой подписи имя полю даёт `ariaLabel`, как у `Input`: в выпадающем
+ * списке поиска на подпись нет высоты, а безымянное поле скринридер читает как
+ * «текстовое поле» и ничего больше.
  */
 export const Textarea: FC<ITextareaProps & IBasicStyling> = ({
   value,
@@ -16,6 +20,7 @@ export const Textarea: FC<ITextareaProps & IBasicStyling> = ({
   id,
   name,
   label,
+  ariaLabel,
   hint,
   error,
   placeholder,
@@ -54,6 +59,7 @@ export const Textarea: FC<ITextareaProps & IBasicStyling> = ({
         maxLength={maxLength}
         disabled={disabled}
         required={required}
+        aria-label={label === undefined ? ariaLabel : undefined}
         aria-invalid={hasError}
         aria-describedby={describedBy}
         onChange={event => onChange(event.target.value)}

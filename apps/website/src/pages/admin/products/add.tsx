@@ -48,7 +48,7 @@ const AdminProductCreatePage: React.FC = () => {
       const product = await createProduct({
         name: values.name,
         slug: values.slug,
-        description: values.description === '' ? null : values.description,
+        descriptionHtml: values.descriptionHtml === '' ? null : values.descriptionHtml,
         brand: values.brand,
         variants: values.variants,
         priceCents: values.priceCents,
