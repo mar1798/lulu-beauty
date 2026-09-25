@@ -219,9 +219,23 @@ Client-side fetching is [SWR](https://swr.vercel.app/), configured globally in `
   row leads to: `/catalog?category=…`, `/catalog?brand=…`, `/catalog/<slug>`, and
   `/catalog?q=…` for Enter. The field empties itself on `routeChangeComplete`, since a row
   opened with the mouse is an ordinary link and passes through no callback.
+
+  When nothing matched, the dropdown also carries `WantedProductPrompt` through the widget's
+  `emptyAction` slot — the form for a wish about a product the shop does not stock (see
+  [domain.md](domain.md#wanted-products)). The catalog page uses the same form as its grid's
+  `emptyState` (there is no separate `EmptyState` above it), and under the grid when one or
+  two products were found — then titled "Это не то, что вы искали?", since "nothing found"
+  over visible cards would be false. While the form is shown the popover's height cap rises
+  from `anchorTo`'s 288px to `EMPTY_ACTION_MAX_HEIGHT` (560px), so the guest form fits
+  without an inner scroll; the form is also `isCompact` there (no title, a two-row
+  textarea) for short windows. The slot is also the one place in the list where focus may
+  leave the search field — the list normally holds it so a click on a row reaches the link,
+  which in a form would mean fields nobody can type into.
+
 - `src/components/` — the website-side adapters injected into `widgets` via `ServicesContext`
   (`Link`, `Image`) plus components that need API knowledge (`AddToCartButton`,
-  `WishlistButton`, `CatalogSearch`, `TelegramLoginWidget`, `TelegramMiniAppSession`, …).
+  `WishlistButton`, `CatalogSearch`, `WantedProductPrompt`, `TelegramLoginWidget`,
+  `TelegramMiniAppSession`, …).
   Anything purely visual belongs in `widgets` instead.
   `AddToCartButton` takes the whole product plus an optional `variantId`: on the product
   page the page owns the choice of volume, and in the catalogue grid — where there is no

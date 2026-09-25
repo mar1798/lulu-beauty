@@ -56,6 +56,11 @@ WEBHOOK_SECRET_HEADER = "x-telegram-bot-api-secret-token"
 # The anonymous, row-writing surface. Prefix match, so it covers every /auth/* endpoint.
 STRICT_PREFIX = "/auth/"
 
+# The other one: `POST /wanted-products` stores a wish typed into the catalog search, and
+# asks for no account either (see app/wanted/router.py). Same budget for the same reason —
+# a loop against it fills a table nothing else prunes.
+STRICT_PATHS = frozenset({"/wanted-products"})
+
 # Polled, not called: the waiting tab asks this one every couple of seconds for as long as
 # the sign-in is open, so the strict budget — sized for endpoints that create rows on an
 # anonymous request — empties inside two minutes and locks the person out of their own
@@ -178,7 +183,9 @@ class RateLimitMiddleware:
             await self._app(scope, receive, send)
             return
 
-        is_strict = path.startswith(STRICT_PREFIX) and path not in STRICT_EXEMPT_PATHS
+        is_strict = path in STRICT_PATHS or (
+            path.startswith(STRICT_PREFIX) and path not in STRICT_EXEMPT_PATHS
+        )
         rule = self._auth if is_strict else self._general
 
         if not rule.allows(_caller(headers, scope), time.monotonic()):

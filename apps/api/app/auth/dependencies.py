@@ -35,6 +35,27 @@ async def get_current_user(
     return CurrentUser(id=user_id, role=payload.role)
 
 
+async def get_optional_user(
+    credentials: HTTPAuthorizationCredentials | None = Depends(_bearer_scheme),
+) -> CurrentUser | None:
+    """Who is calling, when the endpoint works either way.
+
+    For the public surface that behaves differently once signed in — `/wanted-products`,
+    where an account supplies the name and number the guest form has to ask for. A missing
+    *or* unusable token answers None rather than 401: the caller did not claim to be
+    anybody, and an expired token on a page that never required a login is the same
+    situation as no token at all.
+    """
+    if credentials is None:
+        return None
+
+    try:
+        payload = token_service.decode_access_token(credentials.credentials)
+        return CurrentUser(id=uuid.UUID(payload.sub), role=payload.role)
+    except (token_service.InvalidTokenError, ValueError):
+        return None
+
+
 async def require_admin(current_user: CurrentUser = Depends(get_current_user)) -> CurrentUser:
     """The admin panel: ADMIN and SUPER_ADMIN alike, they see the same sections."""
     if current_user.role not in ADMIN_ROLES:

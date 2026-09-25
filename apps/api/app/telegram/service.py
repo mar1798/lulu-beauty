@@ -14,6 +14,7 @@ from app.auth.models import User
 from app.cycles.models import OrderCycle
 from app.orders.models import Order, OrderStatus
 from app.telegram import keyboards, messages
+from app.wanted.models import WantedProduct
 
 logger = logging.getLogger("app.telegram")
 
@@ -185,6 +186,19 @@ class NotificationsService:
             self._fallback_reason(owner),
             len(order_ids),
         )
+
+    async def send_wanted_product(self, owner: User, wanted: WantedProduct) -> None:
+        """A wish for something the catalog does not have, on its way to the owner.
+
+        Without a keyboard, and it is the only owner-facing notice here that has none:
+        there is no row in the panel to open and nothing to confirm. What it asks for is
+        done in the next import, or in a reply to the number in the message.
+        """
+        message = messages.wanted_product_for_owner(wanted)
+        if await self._try_send(owner.telegram_chat_id, message):
+            logger.info("Notified owner %s about wish %s", owner.phone, wanted.id)
+            return
+        logger.warning("%s; wish %s not passed on", self._fallback_reason(owner), wanted.id)
 
     async def send_cycle_closed(
         self, owner: User, cycle: OrderCycle, orders_count: int, total_cents: int

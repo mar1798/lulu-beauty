@@ -21,6 +21,7 @@ from app.config import settings
 from app.cycles.models import OrderCycle
 from app.orders.models import CANCELLED_STATUSES, Order, OrderStatus
 from app.orders.service import OrderItemDrop, OrderPriceChange
+from app.wanted.models import WantedProduct
 from app.wishlist.schemas import WishlistResponse
 
 logger = logging.getLogger("app.telegram.messages")
@@ -202,6 +203,27 @@ def customer_cancellation_for_owner(order: Order, customer: User | None, *, rest
             f"Покупатель: {customer.name}, {customer.phone}" if customer else "Покупатель: -",
             f"Позиций: {len(order.items)}",
             f"Сумма: {format_price(order.total_cents)}",
+        ]
+    )
+
+
+def wanted_product_for_owner(wanted: WantedProduct) -> str:
+    """Покупатель поискал, не нашёл и написал, что ему нужно.
+
+    Единственное уведомление владельцу, у которого нет ни заявки, ни сбора, ни товара, —
+    поэтому в нём есть всё, что о нём вообще известно: имя, номер и текст. Номер здесь не
+    справка, а единственный способ ответить: половина этих сообщений приходит от гостей,
+    которым написать в личном кабинете попросту некуда.
+
+    Текст отделён пустой строкой и идёт последним: он свободной длины (до 1000 символов),
+    и контакт, оказавшийся под ним, пришлось бы искать прокруткой.
+    """
+    return "\n".join(
+        [
+            "💡 Пожелание к следующему сбору",
+            f"От кого: {wanted.name}, {wanted.phone}",
+            "",
+            wanted.message,
         ]
     )
 

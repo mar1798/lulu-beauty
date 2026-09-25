@@ -75,6 +75,16 @@ import * as styles from './HeaderSearch.css'
 /** Тот же `lg`, на котором в шапке появляется поле вместо лупы. */
 const WIDE_SCREEN_QUERY = '(min-width: 1024px)'
 
+/**
+ * Потолок попапа, когда под «ничего не нашлось» стоит форма пожелания.
+ *
+ * Обычные 288px (`anchorTo`) рассчитаны на строки подсказок; форма гостя —
+ * имя, телефон, текст и кнопка — в них не влезает, и попап превращался в
+ * окно с прокруткой, где кнопку отправки приходилось искать. Выше окна он
+ * всё равно не вырастет: `anchorTo` режет по доступному месту.
+ */
+const EMPTY_ACTION_MAX_HEIGHT = 560
+
 /** Плоский список строк в порядке обхода стрелками. */
 const flatten = (
   groups: ISearchSuggestGroup[] | null,
@@ -97,6 +107,7 @@ export const HeaderSearch: FC<IHeaderSearchProps & IBasicStyling> = ({
   expandLabel = 'Найти товар',
   maxLength = 255,
   contact,
+  emptyAction,
   className,
 }) => {
   const fieldId = useId()
@@ -137,12 +148,16 @@ export const HeaderSearch: FC<IHeaderSearchProps & IBasicStyling> = ({
   /* Пустой массив групп — это ответ «не нашли», и его надо показать; `null` —
      что подсказок ещё не спрашивали, и показывать нечего. */
   const hasAnswer = groups !== null
+  /* «Не нашлось» — про ответ, а не про число строк: «показать всё» при пустых
+     группах оставило бы одинокую строку вместо объяснения. */
+  const isNothingFound = (groups ?? []).every(group => group.items.length === 0)
+  const hasEmptyAction = hasAnswer && isNothingFound && emptyAction !== undefined
 
   const reanchor = useCallback(() => {
     if (shellRef.current !== null) {
-      setAnchor(anchorTo(shellRef.current))
+      setAnchor(anchorTo(shellRef.current, hasEmptyAction ? EMPTY_ACTION_MAX_HEIGHT : undefined))
     }
-  }, [])
+  }, [hasEmptyAction])
 
   const open = useCallback(() => {
     reanchor()
@@ -259,12 +274,14 @@ export const HeaderSearch: FC<IHeaderSearchProps & IBasicStyling> = ({
   }
 
   /* Прокрутка и смена размера окна список не закрывают, а пересчитывают его
-     положение — как у `Combobox` и `Select`. */
+     положение — как у `Combobox` и `Select`. Пересчёт и сразу: потолок высоты
+     меняется, когда при открытом списке ответ становится «не нашлось». */
   useEffect(() => {
     if (!isOpen) {
       return
     }
 
+    reanchor()
     window.addEventListener('scroll', reanchor, { capture: true, passive: true })
     window.addEventListener('resize', reanchor)
 
@@ -548,20 +565,28 @@ export const HeaderSearch: FC<IHeaderSearchProps & IBasicStyling> = ({
           {allResultsItem !== null && row(allResultsItem, true)}
         </ul>
 
-        {/* «Не нашлось» — про ответ, а не про число строк: «показать всё» при пустых
-            группах оставило бы одинокую строку вместо объяснения. */}
-        {(groups ?? []).every(group => group.items.length === 0) && (
-          <div className={styles.empty}>
-            <p>Извините, ничего не нашлось</p>
-            {contact !== undefined && (
-              <p>
-                Напишите нам напрямую в{' '}
-                <AppLink className={styles.emptyLink} {...contact.link}>
-                  {contact.label}
-                </AppLink>
-              </p>
+        {isNothingFound && (
+          <>
+            <div className={styles.empty}>
+              <p>Извините, ничего не нашлось</p>
+              {contact !== undefined && (
+                <p>
+                  Напишите нам напрямую в{' '}
+                  <AppLink className={styles.emptyLink} {...contact.link}>
+                    {contact.label}
+                  </AppLink>
+                </p>
+              )}
+            </div>
+
+            {/* `data-interactive` читает `onMouseDown` попапа: внутри слота стоит
+                форма, и фокус обязан уходить в её поля. */}
+            {emptyAction !== undefined && (
+              <div className={styles.emptySlot} data-interactive={true}>
+                {emptyAction}
+              </div>
             )}
-          </div>
+          </>
         )}
       </>
     )
@@ -603,8 +628,17 @@ export const HeaderSearch: FC<IHeaderSearchProps & IBasicStyling> = ({
               transition={POPOVER_TRANSITION}
               /* Фокус живёт в поле всё время, пока список открыт: иначе клик по
                  строке увёл бы его в `body`, и список закрылся бы раньше, чем
-                 `click` дошёл бы до ссылки. */
-              onMouseDown={event => event.preventDefault()}
+                 `click` дошёл бы до ссылки.
+
+                 Кроме слота под «ничего не нашлось»: там стоит форма, и поле,
+                 которое нельзя сфокусировать мышью, — это поле, в которое
+                 нельзя написать. Список от этого не закрывается: закрывает его
+                 нажатие *мимо* попапа, а не уход фокуса. */
+              onMouseDown={event => {
+                if ((event.target as HTMLElement).closest('[data-interactive]') === null) {
+                  event.preventDefault()
+                }
+              }}
             >
               {list('bar')}
             </motion.div>

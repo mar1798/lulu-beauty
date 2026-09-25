@@ -470,6 +470,8 @@ export interface ITextareaProps {
   id?: string
   name?: string
   label?: string
+  /** Имя поля для скринридера, когда видимой подписи нет. Игнорируется при `label`. */
+  ariaLabel?: string
   hint?: string
   error?: string | null
   placeholder?: string
@@ -752,6 +754,43 @@ export interface IHeaderSearchProps {
    * «ничего не нашлось» и ведёт наружу. Адрес знает сайт, не виджет.
    */
   contact?: ILinkedLabel
+  /**
+   * Блок под «ничего не нашлось» - форма пожелания к следующему сбору
+   * (`WantedProductForm`). Слот, а не готовая форма: отправлять её в API умеет
+   * только сайт.
+   *
+   * Внутри слота фокус ведёт себя иначе, чем в остальном списке: список
+   * удерживает его в поле, чтобы клик по строке успел дойти до ссылки, а в
+   * форму иначе нельзя было бы напечатать.
+   */
+  emptyAction?: ReactNode
+}
+
+/** Что покупатель написал в форме пожелания, и как с ним связаться. */
+export interface IWantedProductValues {
+  message: string
+  /** Пусто у вошедшего покупателя: контакт бэкенд берёт с аккаунта, а не отсюда. */
+  name: string
+  /** E.164 - в этом виде его отдаёт `PhoneInput` и ждёт бэкенд. */
+  phone: string
+}
+
+export interface IWantedProductFormProps {
+  title?: string
+  description?: string
+  /**
+   * Покупатель вошёл: имени и телефона форма не спрашивает - их и так знает
+   * аккаунт, а поле, которое можно заполнить чужим номером, только уводит
+   * владельца не туда.
+   */
+  isSignedIn?: boolean
+  onSubmit: (values: IWantedProductValues) => void
+  isSubmitting?: boolean
+  error?: string | null
+  /** Пожелание ушло: форма сменяется благодарностью. */
+  isSent?: boolean
+  /** Форма стоит в выпадающем списке поиска, а не на странице: без своей карточки. */
+  isCompact?: boolean
 }
 
 export interface IHeaderProps {

@@ -31,6 +31,7 @@ from app.orders.service import OrderItemDrop, OrderPriceChange
 from app.telegram import messages, recipients
 from app.telegram.client import notifications_service
 from app.telegram.service import CartRescueNotice
+from app.wanted.models import WantedProduct
 
 logger = logging.getLogger("app.telegram.notify")
 
@@ -118,6 +119,31 @@ async def notify_order_cancelled_by_customer(order_id: uuid.UUID, *, restored: b
                 )
     except Exception:  # noqa: BLE001 - the order is already changed; see module docstring
         logger.exception("Failed to announce the customer's own change to order %s", order_id)
+
+
+async def notify_wanted_product(wanted_id: uuid.UUID) -> None:
+    """Passes on a wish for something the shop does not stock.
+
+    The one notification here about a row nothing else in the shop reads: `wanted_products`
+    exists so the wish survives a Telegram outage, and this is the only thing that ever
+    looks at it. Which is also why the row is re-read rather than travelling by value — the
+    task runs after the response is out, like every other one in this module.
+    """
+    try:
+        async with async_session() as session:
+            wanted = await session.get(WantedProduct, wanted_id)
+            if wanted is None:  # the writer erased their account between the commit and now
+                return
+
+            owners = await recipients.get_owners(session)
+            if not owners:
+                logger.warning("No ADMIN user to notify about wish %s", wanted_id)
+                return
+
+            for owner in owners:
+                await notifications_service.send_wanted_product(owner, wanted)
+    except Exception:  # noqa: BLE001 - the wish is already stored; see module docstring
+        logger.exception("Failed to pass on wish %s", wanted_id)
 
 
 async def notify_account_deleted(order_ids: Sequence[uuid.UUID]) -> None:

@@ -75,6 +75,7 @@ import {
   IShowcaseMoreProps,
   IProfileFormProps,
   IPhoneInputProps,
+  IWantedProductFormProps,
   IPortalProps,
   IPriceProps,
   IProduct,
@@ -678,6 +679,10 @@ export const feedCategoryFilterMany = (): ICategoryFilterProps => ({
 export const feedEmptyState = (): IEmptyStateProps => ({
   title: 'Ничего не нашлось',
   description: 'Попробуйте изменить запрос или выбрать другую категорию.',
+})
+
+export const feedWantedProductForm = (): IWantedProductFormProps => ({
+  onSubmit: noop,
 })
 
 export const feedSearchField = (): ISearchFieldProps => ({

@@ -27,3 +27,8 @@ MAX_VOLUME_ML = 10_000
 # in practice two or three ("30 мл" and "50 мл"): it exists so that a bad import or a
 # stuck form cannot grow a product page into a wall of buttons, not to police the shop.
 MAX_PRODUCT_VARIANTS = 20
+
+# A wish written where the search came back empty ("нужен крем такой-то"). Long enough for
+# a few products with shades, short enough to stay one readable Telegram message — which is
+# where the owner actually reads it.
+MAX_WANTED_MESSAGE_LENGTH = 1000

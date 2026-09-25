@@ -7,4 +7,5 @@ from app.cart.models import Cart, CartItem  # noqa: F401
 from app.catalog.models import Category, Product, ProductImage, ProductVariant  # noqa: F401
 from app.cycles.models import OrderCycle  # noqa: F401
 from app.orders.models import Order, OrderItem  # noqa: F401
+from app.wanted.models import WantedProduct  # noqa: F401
 from app.wishlist.models import WishlistItem  # noqa: F401

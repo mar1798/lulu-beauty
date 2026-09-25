@@ -72,6 +72,40 @@ describe('HeaderSearch', () => {
     )
   })
 
+  it('слот под пустой выдачей показывается только когда не нашлось', async () => {
+    const user = userEvent.setup()
+    const slot = <button type="button">Расскажите, что искали</button>
+
+    const { rerender } = renderWidget(
+      <HeaderSearch {...feedHeaderSearch()} groups={[]} allResults={undefined} emptyAction={slot} />
+    )
+
+    await user.click(screen.getByRole('combobox'))
+    expect(screen.getByRole('button', { name: 'Расскажите, что искали' })).toBeInTheDocument()
+
+    rerender(<HeaderSearch {...feedHeaderSearch()} emptyAction={slot} />)
+    expect(screen.queryByRole('button', { name: 'Расскажите, что искали' })).toBeNull()
+  })
+
+  it('поле внутри слота можно сфокусировать мышью', async () => {
+    const user = userEvent.setup()
+    renderWidget(
+      <HeaderSearch
+        {...feedHeaderSearch()}
+        groups={[]}
+        allResults={undefined}
+        emptyAction={<input aria-label="Что вы искали" />}
+      />
+    )
+
+    await user.click(screen.getByRole('combobox'))
+    await user.click(screen.getByLabelText('Что вы искали'))
+
+    /* Попап удерживает фокус в поле поиска, чтобы клик по строке дошёл до
+       ссылки; в форме это означало бы поле, в которое нельзя написать. */
+    expect(screen.getByLabelText('Что вы искали')).toHaveFocus()
+  })
+
   it('«показать всё» при пустых группах не подменяет «ничего не нашлось»', async () => {
     const user = userEvent.setup()
     renderWidget(

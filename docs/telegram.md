@@ -154,6 +154,7 @@ with admin rights — `ADMIN` and `SUPER_ADMIN` alike (`recipients.get_owners`).
 | Cycle closed                                                          | Customers with orders in it     |
 | Account erased, withdrawing its pending orders                        | Owner (one message naming them) |
 | Closed cycle still holding unanswered orders (once per cycle)         | Owner                           |
+| Wish for a product the catalog lacks, left under an empty search      | Owner (name, phone and text)    |
 
 **Three rules that the code is shaped around:**
 

@@ -52,7 +52,9 @@ person; what stays is a nameless row and the order history hanging off it:
 - `phone` is overwritten with a per-row placeholder (the column is UNIQUE and NOT NULL, so
   erasing it means filling it), `name` becomes "Удалённый аккаунт", `telegram_chat_id` is
   cleared and `deleted_at` is stamped.
-- Cart, wishlist, refresh tokens and any waiting login session are deleted outright.
+- Cart, wishlist, refresh tokens and any waiting login session are deleted outright, and
+  so are the account's wanted-product wishes: those carry their own copy of the name and
+  the number, which is the one thing this erasure is about.
 - **`CONFIRMED` and `READY` orders refuse the erasure** (`409
 account_has_unfinished_orders`, `DELETION_BLOCKING_STATUSES`). The goods behind them
   were already bought and are still the customer's to collect; erasing would cancel a
@@ -392,13 +394,35 @@ and where closed cycles' carts land. Capped at `MAX_WISHLIST_ITEMS = 200` (`wish
 it is returned whole on every call, including after each add, so an unbounded one turns a
 heart press into an ever-growing response.
 
+## Wanted products
+
+A wish for something the catalog does not have, typed where the search came back empty:
+under the header suggestions when nothing matched at all, and under the catalog grid when
+it found fewer than three products (`WANTED_PROMPT_MAX_RESULTS`). `POST /wanted-products`
+stores a row and the owner is told over Telegram
+(`messages.wanted_product_for_owner`); there is no admin screen, because what this turns
+into is a line on the next cycle's shopping list.
+
+**No account is needed** — the catalog and its search work without one, and asking a guest
+to sign in before they may say what is missing would collect nothing. A guest leaves a name
+and a number in the form; a signed-in customer leaves neither, because the server takes both
+off the account and ignores what the form sent (`contact_required` when there is nothing to
+take). **The cycle is irrelevant on purpose**: the wish is worth most between cycles, when
+adding a product is still possible.
+
+The row keeps its own copy of the name and the phone rather than reading them back through
+`user_id`, so **erasing an account deletes its wishes outright** (see "Erasing an account") —
+that copy is precisely the personal data the erasure is about. Guests' rows have no account
+behind them and stay.
+
 ## Shared limits
 
 All in `app/common/limits.py`, shared rather than duplicated per schema:
 
-| Limit                | Value         | Why                                          |
-| -------------------- | ------------- | -------------------------------------------- |
-| `MAX_ITEM_QUANTITY`  | 999           | Nobody means a thousand of anything here.    |
-| `MAX_WISHLIST_ITEMS` | 200           | Wishlist is returned whole on every call.    |
-| `MAX_PRICE_CENTS`    | 2 000 000 000 | 32-bit `INTEGER` column.                     |
-| `MAX_VOLUME_ML`      | 10 000        | No five-litre cosmetics; same 32-bit column. |
+| Limit                       | Value         | Why                                          |
+| --------------------------- | ------------- | -------------------------------------------- |
+| `MAX_ITEM_QUANTITY`         | 999           | Nobody means a thousand of anything here.    |
+| `MAX_WISHLIST_ITEMS`        | 200           | Wishlist is returned whole on every call.    |
+| `MAX_PRICE_CENTS`           | 2 000 000 000 | 32-bit `INTEGER` column.                     |
+| `MAX_VOLUME_ML`             | 10 000        | No five-litre cosmetics; same 32-bit column. |
+| `MAX_WANTED_MESSAGE_LENGTH` | 1 000         | A wish stays one readable Telegram message.  |

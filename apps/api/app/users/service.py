@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth.models import ADMIN_ROLES, RefreshToken, Role, TelegramAuthSession, User
 from app.cart.models import Cart
 from app.orders.models import Order, OrderStatus
+from app.wanted.models import WantedProduct
 from app.wishlist.models import WishlistItem
 
 #: What replaces the name of an account that asked to be forgotten. Russian, because it
@@ -246,6 +247,12 @@ class UsersService:
         # cart_items.cart_id), so the rows go even though this never loads them.
         await self._session.execute(delete(Cart).where(Cart.user_id == user_id))
         await self._session.execute(delete(WishlistItem).where(WishlistItem.user_id == user_id))
+        # Wishes for products the shop does not stock carry their own copy of the name and
+        # the number (app/wanted/models.py) — the one thing this erasure is about — and
+        # nothing anywhere reads them back except the notification that already went out.
+        await self._session.execute(
+            delete(WantedProduct).where(WantedProduct.user_id == user_id)
+        )
         # Revoking would have been enough to end the sessions, but a revoked token row is
         # still a record that this account existed and when it last signed in.
         await self._session.execute(delete(RefreshToken).where(RefreshToken.user_id == user_id))
