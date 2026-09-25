@@ -59,7 +59,7 @@ Each domain module under `app/` is roughly `router.py` / `service.py` / `schemas
 | ----------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
 | `auth/`     | Telegram sign-in (session/claim/widget/mini-app), refresh, logout, JWT issuing, `telegram_identity.py` HMAC verification, role dependencies. |
 | `users/`    | `/users/me`, admin user list and role changes.                                                                                               |
-| `catalog/`  | Categories, products and their variants (volumes), images, xlsx/csv import, serializers.                                                     |
+| `catalog/`  | Categories, products and their variants (volumes), images, xlsx/csv import, serializers, `rich_text.py` (description HTML cleaning).         |
 | `cart/`     | Cart and lines — one per variant. Every mutation needs an open cycle.                                                                        |
 | `orders/`   | Checkout, customer edit/cancel/restore, admin status changes, repricing.                                                                     |
 | `cycles/`   | Cycle CRUD, `reminders.py` (stage definitions), `scheduler_service.py` (sweeps).                                                             |

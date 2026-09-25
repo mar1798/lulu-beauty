@@ -159,7 +159,18 @@ export interface IProduct {
   id: string
   name: string
   slug: string
+  /**
+   * Описание простым текстом, по строке на абзац. Его читают всё, что показывает
+   * описание не на странице товара: `<meta name="description">`, JSON-LD.
+   */
   description: string | null
+  /**
+   * То же описание с оформлением, как его написали в редакторе админки.
+   * `null` — описание в редактор не попадало (завели импортом или до
+   * редактора), и страница товара показывает `description` с его переносами.
+   * HTML уже очищен бэкендом, а `RichText` ещё раз пропускает только свои теги.
+   */
+  descriptionHtml: string | null
   brand: string | null
   /**
    * Цена самого дешёвого объёма. У товара с несколькими это «от», а не цена:
@@ -481,6 +492,28 @@ export interface ITextareaProps {
   disabled?: boolean
   required?: boolean
   onBlur?: React.FocusEventHandler<HTMLTextAreaElement>
+}
+
+export interface IRichTextProps {
+  /** HTML описания товара из `IProduct.descriptionHtml`. */
+  html: string
+}
+
+export interface IRichTextEditorProps {
+  /** HTML — то, что уходит в `descriptionHtml` товара. */
+  value: string
+  onChange: (value: string) => void
+  id?: string
+  label?: string
+  hint?: string
+  /** Непустая строка включает состояние ошибки и `aria-invalid`. */
+  error?: string | null
+  /**
+   * Потолок видимого текста — без разметки и без переносов между абзацами,
+   * ровно как считает бэкенд (`MAX_DESCRIPTION_LENGTH`). Включает счётчик.
+   */
+  maxLength?: number
+  disabled?: boolean
 }
 
 export interface ISelectOption {
@@ -1884,7 +1917,8 @@ export interface IAdminProductVariantValues {
 export interface IAdminProductValues {
   name: string
   slug: string
-  description: string
+  /** HTML из редактора. Пустой редактор — пустая строка: бэкенд сохранит «без описания». */
+  descriptionHtml: string
   brand: string
   /**
    * Объёмы, в которых продаётся товар, — всегда хотя бы один. Товар без

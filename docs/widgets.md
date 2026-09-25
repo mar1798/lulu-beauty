@@ -26,8 +26,8 @@ populated.
 
 | Tier            | Examples                                                                                                                                                                                                                                                                                                                                                            |
 | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `src/atoms`     | `Button`, `Input`, `Price`, `Badge`, `Chip`, `Select`, `Combobox`, `Tooltip`, `Skeleton`, `Appear`, `Reveal`, `Parallax`, `AppLink`, `AppImage`                                                                                                                                                                                                                     |
-| `src/molecules` | `ProductCard`, `VariantSelector`, `QuantityStepper`, `SearchField`, `Pagination`, `OrderCard`, `OrderStatusBadge`, `DeadlineCountdown`, `Toast`, `EmptyState`, `FileDropzone`                                                                                                                                                                                       |
+| `src/atoms`     | `Button`, `Input`, `Price`, `Badge`, `Chip`, `Select`, `Combobox`, `Tooltip`, `Skeleton`, `Appear`, `Reveal`, `Parallax`, `AppLink`, `AppImage`, `RichText`                                                                                                                                                                                                         |
+| `src/molecules` | `ProductCard`, `VariantSelector`, `QuantityStepper`, `SearchField`, `Pagination`, `OrderCard`, `OrderStatusBadge`, `DeadlineCountdown`, `Toast`, `EmptyState`, `FileDropzone`, `RichTextEditor`                                                                                                                                                                     |
 | `src/organisms` | `Header`, `HeaderSearch`, `Footer`, `CartPanel`, `CheckoutForm`, `ProductGrid`, `ProductDetails`, `OrderDetails`, `Modal`, `ConfirmDialog`, `ToastViewport`, `MobileMenu`, `TelegramLoginPanel`, `AdminOrdersTable`, `AdminProductsTable`, `AdminProductForm`, `AdminCycleCalendar`, `AdminUsersTable`, `AdminImportPanel`, `AdminCategoriesPanel`, `ProductPicker` |
 | `src/templates` | `BaseLayout`, `AdminLayout`, `HomeTemplate`, `CatalogTemplate`, `ProductTemplate`, `CartTemplate`, `AccountTemplate`, `AuthTemplate`, `LegalTemplate`, `ErrorTemplate`                                                                                                                                                                                              |
 
@@ -37,7 +37,8 @@ Supporting directories:
 - `src/hooks` — `useCountdown`, `useDebouncedValue`, `useDisclosure`, `useFocusTrap`,
   `useLockBodyScroll`, `useParallaxOffset`.
 - `src/utils` — non-styling shared utilities: `motion.ts`, `datetime.ts`, `plural.ts`,
-  `validation.ts`, `slug.ts`, `volume.ts`, `responsive.ts`, `sizes.ts`, `tags.ts`.
+  `validation.ts`, `slug.ts`, `volume.ts`, `responsive.ts`, `sizes.ts`, `tags.ts`,
+  `richText.ts`.
 - `src/types.ts` — shared, JSON-serializable types meant for consumers (`IProduct`, `IOrder`,
   `IOrderCycle`, …). This is what `apps/website` imports from `widgets/types`.
 - `src/svg` — icons. `src/testing` — test/Storybook helpers. `src/stories` — story wrapper,
@@ -93,7 +94,9 @@ All shared styling lives in `src/styling`, never inline in a component:
 - `lib/` — style-_writing_ utilities: `color.ts`, `media.ts`, `font.ts`, `shadow.ts`,
   `rem.ts`, `border.ts`, `transition.ts`, `linearGradient.ts`, `nested.ts`, …
 - `mixin/` — composable style objects: `flex.ts`, `grid.ts`, `focusRing.ts`, `field.ts`,
-  `panel.ts`, `table.ts`, `tag.ts`, `truncate.ts`, `container.ts`, `visuallyHidden.ts`.
+  `panel.ts`, `table.ts`, `tag.ts`, `truncate.ts`, `container.ts`, `visuallyHidden.ts`,
+  `richText.ts` (the one mixin that registers `globalStyle`s under a scope class instead of
+  returning a style object — description HTML has no classes of its own to hang styles on).
 - `themes/` — `tokens.ts` → `contract.css.ts` → `light.css.ts`.
 - `global.css.ts`, `preflight.css.ts`, `properties.css.ts` (registered CSS properties).
 
@@ -120,6 +123,28 @@ right now — the accent face it used to point at (Eloquia Display) shipped **no
 all**, so every Russian heading, which is every heading here, quietly fell back to a different
 system font on each machine. The role kept its own token so that swapping in a face with
 Cyrillic is one line in `tokens.ts` rather than two dozen style files.
+
+## Rich text
+
+The product description is written in `RichTextEditor` (Tiptap — `@tiptap/react` +
+`@tiptap/starter-kit`, trimmed to the vocabulary in
+[domain.md](domain.md#a-description-has-two-forms)) and shown by `RichText`. Both carry the
+same `richTextContent` typography, so the admin sees the page the customer will.
+
+- **`RichText` never uses `dangerouslySetInnerHTML`.** It parses the HTML with
+  `html-react-parser` and rebuilds every allowed tag itself, with no attributes from the
+  source except a link's `href` (and only `http(s)`/`mailto`/`tel`). The API already cleaned
+  the HTML; this is the second lock, not the only one.
+- **Tiptap registers its callbacks once**, at creation — `onChange` reaches it through a ref.
+  The extension list is a module constant, because `useEditor` compares extensions by
+  reference and would otherwise reconfigure the editor on every keystroke.
+- **The length limit is a field error, not a hard stop.** Tiptap's `CharacterCount` with a
+  `limit` silently trims a longer text on load, and a description written before the editor
+  can be longer. The counter uses `doc.textContent`, the form uses `richTextLength`, and the
+  API counts the same way.
+- **Tiptap is only on the admin pages.** The package's `sideEffects` list lets the website's
+  bundler drop `RichTextEditor` from every page that does not render it; keep it that way —
+  a side-effecting import next to it in a barrel would drag ProseMirror onto the storefront.
 
 ## Animation
 

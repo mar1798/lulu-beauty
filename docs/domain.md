@@ -155,6 +155,32 @@ send: for a deadline nudge a duplicate is a nuisance and a miss is a lost order.
 `name`, `slug` (unique), `brand`, `description`, a category and images; a **variant** carries
 `volume_ml`, `price_cents` and `in_stock`.
 
+### A description has two forms
+
+The owner writes the description in a rich-text editor in the admin panel (Tiptap), with a
+deliberately short vocabulary: paragraphs, bold, italic, bulleted and numbered lists, one
+subheading level (`h2`) and links. No colours, fonts or images — the site sets how a
+description looks, not the product. The same list of tags is enforced in three places: the
+editor's extensions, `app/catalog/rich_text.py` on save, and the storefront's `RichText`
+on the way out.
+
+- **`description_html`** is what the product page renders. The API cleans it on every save
+  (`nh3`, the tag list above, links limited to `http(s)`/`mailto`/`tel` and marked
+  `nofollow`), so whatever the editor sent, only that vocabulary is stored.
+- **`description`** stays plain text, one line per paragraph, heading or list item, and is
+  **derived** from the HTML in the same write. Everything that is not the product page reads
+  it: `<meta name="description">`, the JSON-LD, the import.
+- **The import writes `description` alone and clears `description_html`** — otherwise the
+  page would keep showing the old formatted text over the one the file just put in.
+- A product whose description never went through the editor has `description_html = NULL`,
+  and the page shows `description` with its line breaks, as it always did. The editor opens
+  such a text as paragraphs, and the first save moves the product onto HTML. No data
+  migration was needed.
+- **The limit is 2 000 visible characters** (`MAX_DESCRIPTION_LENGTH`) — counted without
+  markup and without the breaks between blocks, identically by the editor's counter, the
+  form's check and the API. The raw HTML has its own ceiling
+  (`MAX_DESCRIPTION_HTML_LENGTH`), which bounds the request rather than the owner.
+
 ### A product is sold in volumes
 
 The same serum is sold as 30 ml and as 50 ml. Those differ in exactly two things a customer

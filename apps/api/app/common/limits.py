@@ -32,3 +32,13 @@ MAX_PRODUCT_VARIANTS = 20
 # a few products with shades, short enough to stay one readable Telegram message — which is
 # where the owner actually reads it.
 MAX_WANTED_MESSAGE_LENGTH = 1000
+
+# A product description, counted in the characters a reader sees — not in the HTML the
+# admin editor sends, whose tags would make the same text "longer" the more it is
+# formatted. The form counts the same way and shows the owner the remainder.
+MAX_DESCRIPTION_LENGTH = 2000
+
+# The HTML itself, counted raw: a ceiling on the request, not on the owner. Ten times the
+# text leaves room for any formatting a real description has, and stops a pasted page of
+# markup from being parsed at all.
+MAX_DESCRIPTION_HTML_LENGTH = 20_000

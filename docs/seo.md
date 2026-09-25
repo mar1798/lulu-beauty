@@ -84,6 +84,13 @@ Nothing in these formulas is invented. A product with no description simply gets
 one, built from brand, name and price. Filling `description` for the catalogue is the owner's
 task and the single biggest lever left (`SEO_PLAN.md`, phase 4).
 
+`description` is plain text even though the owner writes it with formatting: the API derives
+it from the editor's HTML on save, one line per paragraph, heading or list item
+([domain.md](domain.md#a-description-has-two-forms)). So neither the meta tag nor the
+JSON-LD ever sees markup. The first-sentence rule splits on sentence punctuation, not on
+lines, so a description that _opens_ with a subheading or a list folds its first line into
+the sentence after it.
+
 Two claims in the copy are facts about the catalogue, not slogans, and stop being true if the
 catalogue changes: that everything in it is Korean, and that the four sections are face care,
 hair care, sets and gadgets.

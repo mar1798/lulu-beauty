@@ -882,3 +882,55 @@ async def test_a_query_of_nothing_but_noise_filters_nothing(db_session: AsyncSes
         found, total = await service.list_public(None, None, 1, 20, query)
         assert total == 2, query
         assert len(found) == 2
+
+
+async def test_create_derives_the_plain_description_from_the_editor_html(
+    db_session: AsyncSession,
+) -> None:
+    product = await ProductService(db_session).create(
+        "Toner",
+        "toner",
+        None,
+        "Round Lab",
+        1000,
+        None,
+        True,
+        description_html=(
+            "<h2>Как применять</h2><p onclick='x'>Утром <strong>и</strong> вечером</p>"
+        ),
+    )
+
+    assert (
+        product.description_html == "<h2>Как применять</h2><p>Утром <strong>и</strong> вечером</p>"
+    )
+    assert product.description == "Как применять\nУтром и вечером"
+
+
+async def test_update_keeps_both_descriptions_in_step(db_session: AsyncSession) -> None:
+    product = await make_product(db_session, slug="toner", description="Старое")
+    service = ProductService(db_session)
+
+    updated = await service.update(
+        product.id, {"description_html": "<p>Новое <em>описание</em></p>"}
+    )
+    assert (updated.description, updated.description_html) == (
+        "Новое описание",
+        "<p>Новое <em>описание</em></p>",
+    )
+
+    cleared = await service.update(product.id, {"description_html": "<p></p>"})
+    assert (cleared.description, cleared.description_html) == (None, None)
+
+
+async def test_a_plain_description_drops_the_html_it_replaces(db_session: AsyncSession) -> None:
+    """The import writes `description` alone; the page must not keep the old formatted one."""
+    product = await make_product(db_session, slug="toner")
+    service = ProductService(db_session)
+    await service.update(product.id, {"description_html": "<p>Из редактора</p>"})
+
+    content = "name,slug,price,brand,description\nToner,toner,10.00,Round Lab,Из файла\n".encode()
+    summary, _ = await CatalogImportService(db_session).import_file("catalog.csv", content)
+
+    assert summary.errors == []
+    await db_session.refresh(product)
+    assert (product.description, product.description_html) == ("Из файла", None)

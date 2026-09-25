@@ -20,8 +20,9 @@ import { Input } from '../../atoms/input'
 import { Select } from '../../atoms/select'
 import { Switch } from '../../atoms/switch'
 import { Text } from '../../atoms/text'
-import { Textarea } from '../../atoms/textarea'
 import { FileDropzone } from '../../molecules/file-dropzone'
+import { RichTextEditor } from '../../molecules/rich-text-editor'
+import { plainTextToHtml, richTextLength } from '../../utils/richText'
 import { slugify } from '../../utils/slug'
 import * as styles from './AdminProductForm.css'
 
@@ -71,6 +72,12 @@ import * as styles from './AdminProductForm.css'
 const BRAND_MAX_LENGTH = 255
 const NAME_MAX_LENGTH = 255
 const SLUG_MAX_LENGTH = 255
+
+/**
+ * `MAX_DESCRIPTION_LENGTH` бэкенда — в видимых символах, без разметки: как
+ * считают и счётчик редактора, и сервер.
+ */
+const DESCRIPTION_MAX_LENGTH = 2000
 
 /** `MAX_VOLUME_ML` бэкенда: пятилитровой косметики не бывает. */
 const MAX_VOLUME_ML = 10_000
@@ -217,7 +224,14 @@ export const AdminProductForm: FC<IAdminProductFormProps & IBasicStyling> = ({
   const [name, setName] = useState(product?.name ?? '')
   const [slug, setSlug] = useState(product?.slug ?? '')
   const [isSlugTouched, setIsSlugTouched] = useState(product !== undefined)
-  const [description, setDescription] = useState(product?.description ?? '')
+  /*
+    Описание, заведённое до редактора (или импортом), есть только простым
+    текстом — редактор получает его абзацами. Сохранение переведёт товар на
+    HTML, а текст на бэкенде выведется из него тот же самый.
+  */
+  const [descriptionHtml, setDescriptionHtml] = useState(
+    () => product?.descriptionHtml ?? plainTextToHtml(product?.description ?? '')
+  )
   const [brand, setBrand] = useState(product?.brand ?? '')
   const [variants, setVariants] = useState<IVariantRow[]>(() => toVariantRows(product))
   const [categoryId, setCategoryId] = useState(product?.categoryId ?? '')
@@ -338,6 +352,10 @@ export const AdminProductForm: FC<IAdminProductFormProps & IBasicStyling> = ({
         : brand.trim().length > BRAND_MAX_LENGTH
           ? `Название производителя длиннее ${BRAND_MAX_LENGTH} символов`
           : null,
+    description:
+      richTextLength(descriptionHtml) > DESCRIPTION_MAX_LENGTH
+        ? `Описание длиннее ${DESCRIPTION_MAX_LENGTH} символов`
+        : null,
   }
 
   /*
@@ -393,7 +411,7 @@ export const AdminProductForm: FC<IAdminProductFormProps & IBasicStyling> = ({
     const values: IAdminProductValues = {
       name: name.trim(),
       slug: slug.trim(),
-      description: description.trim(),
+      descriptionHtml,
       /*
         Ещё раз, хотя это же делает и само поле: сабмит по Enter уходит в том же
         такте, в котором `Combobox` только просит поменять значение, и сюда
@@ -563,12 +581,12 @@ export const AdminProductForm: FC<IAdminProductFormProps & IBasicStyling> = ({
           </Button>
         </fieldset>
 
-        <Textarea
+        <RichTextEditor
           label="Описание"
-          value={description}
-          rows={5}
-          maxLength={2000}
-          onChange={setDescription}
+          value={descriptionHtml}
+          maxLength={DESCRIPTION_MAX_LENGTH}
+          error={isSubmitted ? errors.description : null}
+          onChange={setDescriptionHtml}
         />
 
         <div className={styles.formActions}>

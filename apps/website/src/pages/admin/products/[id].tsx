@@ -95,7 +95,7 @@ const AdminProductPage: React.FC = () => {
       const saved = await updateProduct(productId, {
         name: values.name,
         slug: values.slug,
-        description: values.description === '' ? null : values.description,
+        descriptionHtml: values.descriptionHtml === '' ? null : values.descriptionHtml,
         brand: values.brand,
         variants: values.variants,
         priceCents: values.priceCents,

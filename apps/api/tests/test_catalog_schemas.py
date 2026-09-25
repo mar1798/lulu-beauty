@@ -82,3 +82,29 @@ def test_page_response_serializes_camel_case() -> None:
     page = PageResponse[str](items=["a", "b"], total=2, page=1, page_size=20)
     dumped = page.model_dump(by_alias=True)
     assert dumped == {"items": ["a", "b"], "total": 2, "page": 1, "pageSize": 20}
+
+
+def test_description_html_is_limited_by_its_text_not_its_markup() -> None:
+    # 2000 characters of text in a pile of tags is still a description that fits.
+    text = "а" * 2000
+    formatted = "".join(f"<p><strong>{text[i : i + 100]}</strong></p>" for i in range(0, 2000, 100))
+
+    request = ProductUpdateRequest(description_html=formatted)
+
+    assert request.description_html == formatted
+
+
+def test_description_html_refuses_text_past_the_limit() -> None:
+    with pytest.raises(ValidationError):
+        ProductUpdateRequest(description_html=f"<p>{'а' * 2001}</p>")
+
+
+def test_description_html_refuses_a_raw_payload_past_its_ceiling() -> None:
+    with pytest.raises(ValidationError):
+        ProductCreateRequest(
+            name="Toner",
+            slug="toner",
+            brand="Round Lab",
+            price_cents=100,
+            description_html="<p></p>" * 3000,
+        )

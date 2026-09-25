@@ -1,4 +1,5 @@
 import { globalStyle, style } from '@vanilla-extract/css'
+import { color } from '../../styling/lib/color'
 import { font } from '../../styling/lib/font'
 import { rem } from '../../styling/lib/rem'
 import { media } from '../../styling/lib/media'
@@ -48,6 +49,16 @@ export const variants = style({
 
 export const description = style({
   whiteSpace: 'pre-line',
+})
+
+/**
+ * То же описание из редактора: кегль и цвет — как у простого текста выше
+ * (`Text` md, `secondary`), чтобы товар с оформлением и без читались одной
+ * страницей. Остальное — `richTextContent` внутри `RichText`.
+ */
+export const descriptionRich = style({
+  font: font('16/24'),
+  color: color.text('secondary'),
 })
 
 /**

@@ -3,7 +3,14 @@ from datetime import datetime
 
 from pydantic import Field, field_validator
 
-from app.common.limits import MAX_PRICE_CENTS, MAX_PRODUCT_VARIANTS, MAX_VOLUME_ML
+from app.catalog.rich_text import html_to_text
+from app.common.limits import (
+    MAX_DESCRIPTION_HTML_LENGTH,
+    MAX_DESCRIPTION_LENGTH,
+    MAX_PRICE_CENTS,
+    MAX_PRODUCT_VARIANTS,
+    MAX_VOLUME_ML,
+)
 from app.common.schemas import CamelModel, require_not_null
 
 SLUG_PATTERN = r"^[a-z0-9]+(-[a-z0-9]+)*$"
@@ -21,6 +28,20 @@ def require_brand(value: str | None) -> str:
     if not brand:
         raise ValueError("brand is required")
     return brand
+
+
+def require_description_length(value: str | None) -> str | None:
+    """The editor's HTML, refused when the text in it is longer than a description may be.
+
+    Counted on the text rather than the markup, and without the line breaks between
+    blocks — exactly the way the form's counter counts it. A limit on the HTML would let a
+    plain description be longer than a formatted one, and counting the breaks would make
+    the two sides disagree over how a list or a heading splits into lines. The raw size is
+    capped separately by `max_length` on the field, before this parses it.
+    """
+    if value is not None and len(html_to_text(value).replace("\n", "")) > MAX_DESCRIPTION_LENGTH:
+        raise ValueError(f"description is longer than {MAX_DESCRIPTION_LENGTH} characters")
+    return value
 
 
 class ProductImageResponse(CamelModel):
@@ -91,7 +112,11 @@ class ProductResponse(CamelModel):
     id: uuid.UUID
     name: str
     slug: str
+    # Plain text, for anything that shows the description outside the product page.
     description: str | None
+    # The formatted description the product page renders; None when it was never written
+    # in the editor, and the page falls back to `description`.
+    description_html: str | None
     brand: str | None
     price_cents: int
     volume_ml: int | None
@@ -120,6 +145,9 @@ class ProductCreateRequest(CamelModel):
     name: str = Field(min_length=1, max_length=255)
     slug: str = Field(min_length=1, max_length=255, pattern=SLUG_PATTERN)
     description: str | None = None
+    # What the admin editor sends. When present it wins over `description`, which the
+    # server then derives from it — see `catalog/rich_text.py`.
+    description_html: str | None = Field(default=None, max_length=MAX_DESCRIPTION_HTML_LENGTH)
     brand: str = Field(min_length=1, max_length=255)
     # Upper bound is the 32-bit column behind it: without it a fat-fingered price is a
     # 500 out of the driver instead of a field error the form can point at.
@@ -140,11 +168,19 @@ class ProductCreateRequest(CamelModel):
     def _validate_brand(cls, value: str) -> str:
         return require_brand(value)
 
+    @field_validator("description_html")
+    @classmethod
+    def _validate_description_html(cls, value: str | None) -> str | None:
+        return require_description_length(value)
+
 
 class ProductUpdateRequest(CamelModel):
     name: str | None = Field(default=None, min_length=1, max_length=255)
     slug: str | None = Field(default=None, min_length=1, max_length=255, pattern=SLUG_PATTERN)
     description: str | None = None
+    # As on create: present means the editor wrote the description, and `description` is
+    # derived from it. `null` clears both.
+    description_html: str | None = Field(default=None, max_length=MAX_DESCRIPTION_HTML_LENGTH)
     # None is the "field omitted" default, not a permitted value: a product that has a
     # brand can be given another one, never left without.
     brand: str | None = Field(default=None, max_length=255)
@@ -165,6 +201,11 @@ class ProductUpdateRequest(CamelModel):
     @classmethod
     def _validate_brand(cls, value: str | None) -> str:
         return require_brand(value)
+
+    @field_validator("description_html")
+    @classmethod
+    def _validate_description_html(cls, value: str | None) -> str | None:
+        return require_description_length(value)
 
     # The columns behind these four are NOT NULL — unlike description/volume_ml/category_id
     # just above, which a PATCH may legitimately clear.

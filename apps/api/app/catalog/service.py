@@ -11,6 +11,7 @@ from sqlalchemy.orm import selectinload
 
 from app.catalog.models import Category, Product, ProductImage, ProductVariant
 from app.catalog.results import CatalogSuggestions, VariantSpec
+from app.catalog.rich_text import Description, description_from_html
 from app.catalog.search import normalize_search
 from app.common.limits import MAX_PRODUCT_VARIANTS
 from app.orders.models import OrderItem
@@ -468,6 +469,7 @@ class ProductService:
         in_stock: bool,
         volume_ml: int | None = None,
         variants: Sequence[VariantSpec] | None = None,
+        description_html: str | None = None,
     ) -> Product:
         """A new product, with at least one variant — always.
 
@@ -475,6 +477,9 @@ class ProductService:
         `volume_ml` / `in_stock` describe it: that is the shape the xlsx import and the
         simple half of the admin form send, and the variant is built from them here so
         that nothing downstream has to know which of the two ways a product arrived.
+
+        `description_html` is what the admin editor sends; when given, it replaces
+        `description`, which becomes its plain-text form.
         """
         if await self._slug_taken(slug):
             raise SlugAlreadyExistsError
@@ -484,10 +489,16 @@ class ProductService:
             if variants is not None
             else [VariantSpec(volume_ml=volume_ml, price_cents=price_cents, in_stock=in_stock)]
         )
+        rich = (
+            description_from_html(description_html)
+            if description_html is not None
+            else Description(html=None, text=description)
+        )
         product = Product(
             name=name,
             slug=slug,
-            description=description,
+            description=rich.text,
+            description_html=rich.html,
             brand=await self.canonical_brand(brand),
             price_cents=price_cents,
             volume_ml=volume_ml,
@@ -527,6 +538,16 @@ class ProductService:
 
         if "brand" in updates:
             updates["brand"] = await self.canonical_brand(updates["brand"])
+
+        # The two descriptions move together. The editor's HTML rewrites the plain text; a
+        # plain text arriving alone — the catalogue import — drops the HTML, which would
+        # otherwise keep showing on the product page the description the import replaced.
+        if "description_html" in updates:
+            rich = description_from_html(updates["description_html"])
+            updates["description_html"] = rich.html
+            updates["description"] = rich.text
+        elif "description" in updates:
+            updates["description_html"] = None
 
         if "category_id" in updates:
             await self._require_category(updates["category_id"])
