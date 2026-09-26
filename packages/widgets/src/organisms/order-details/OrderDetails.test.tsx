@@ -299,4 +299,24 @@ describe('OrderDetails', () => {
     await user.click(screen.getByRole('button', { name: 'Сохранить комментарий' }))
     expect(onNoteSave).toHaveBeenLastCalledWith(null)
   })
+
+  it('не закрывает редактор, если комментарий не сохранился', async () => {
+    const onNoteSave = vi.fn().mockResolvedValue(false)
+    const user = userEvent.setup()
+
+    renderWidget(
+      <OrderDetails
+        {...feedOrderDetails()}
+        order={feedOrder({ isEditable: true, note: null })}
+        onItemQuantityChange={vi.fn()}
+        onNoteSave={onNoteSave}
+      />
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Добавить комментарий' }))
+    await user.type(screen.getByRole('textbox'), 'позвоните вечером')
+    await user.click(screen.getByRole('button', { name: 'Сохранить комментарий' }))
+
+    expect(screen.getByRole('textbox')).toHaveValue('позвоните вечером')
+  })
 })

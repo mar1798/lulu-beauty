@@ -12,6 +12,7 @@ import { messageForError } from '@/services/apiErrors'
 import { listMyOrders, MY_ORDERS_PAGE_SIZE } from '@/services/endpoints/orders'
 import { ordersKey } from '@/services/swrKeys'
 import { scrollToTop } from '@/utils/scroll'
+import { useLoginHref } from '@/hooks/useLoginHref'
 
 /**
  * Мои заявки.
@@ -22,6 +23,7 @@ import { scrollToTop } from '@/utils/scroll'
  */
 const OrdersPage: React.FC = () => {
   const { user, isLoading: isAuthLoading } = useAuth()
+  const loginHref = useLoginHref()
   const userId = user?.id ?? null
   const [page, setPage] = useState(1)
 
@@ -58,7 +60,7 @@ const OrdersPage: React.FC = () => {
           title="Заявки видны после входа"
           description="Войдите - и здесь появится история ваших заявок по сборам"
           action={
-            <Button link={{ href: '/login' }} isFullWidth="mobile">
+            <Button link={{ href: loginHref }} isFullWidth="mobile">
               Войти
             </Button>
           }

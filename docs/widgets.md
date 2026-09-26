@@ -33,7 +33,13 @@ populated.
 
 Supporting directories:
 
-- `src/contexts` — `ServicesContext` (dependency injection), `ToastContext`, `ConfirmContext`.
+- `src/contexts` — `ServicesContext` (dependency injection), `ToastContext`, `ConfirmContext`,
+  `MotionProvider`. Toasts are voiced through two permanent hidden live regions in
+  `ToastViewport` (polite and assertive) rather than a role on each toast — a region inserted
+  already filled is skipped by screen readers; `useToast().announce()` speaks without a toast.
+  A `danger` toast lives 10s, and its description is never clamped. The title says what
+  happened ("Товар убран из корзины"); a product name goes in `subject`, its own line clamped
+  at two — inside the title the ellipsis ate the event instead of the name.
 - `src/hooks` — `useCountdown`, `useDebouncedValue`, `useDisclosure`, `useFocusTrap`,
   `useLockBodyScroll`, `useParallaxOffset`.
 - `src/utils` — non-styling shared utilities: `motion.ts`, `datetime.ts`, `plural.ts`,
@@ -156,13 +162,26 @@ and easings live in `src/utils/motion.ts` — reuse them instead of inlining new
 the `/motion` skill rather than guessing. Details in
 [conventions.md](conventions.md#building-new-ui).
 
+**Components render `m.*`, never `motion.*`.** The engine is loaded by `LazyMotion`: on the site
+through `MotionProvider` (`contexts/MotionProvider.tsx`), which fetches `src/motion/features.ts`
+(`domMax`) as its own chunk after hydration, and in Storybook and tests through `StoryWrapper`,
+which passes `domMax` directly. Both are `strict`, so a stray `motion.div` throws instead of
+quietly putting ~30 KB gzip back into every page's `_app`. `src/motion/` sits outside the barrel
+directories on purpose — a barrel re-export would import `domMax` statically. Until the chunk
+arrives an `m.*` node simply stays at its initial state.
+
 **Anything that can appear in server-rendered markup animates in CSS, not motion.** motion
 serializes `initial` into the SSR output, so a block that ships inside static HTML arrives at
 `opacity: 0` and stays invisible until hydration — measured at 1.2 s on a mid-range phone
 before `Alert` was moved to CSS, and it cost `/catalog` its LCP. `Appear`, `Alert` and
 `HomeHero`'s entrance are CSS for exactly this reason. motion is for what mounts in response
 to an action (`Modal`, `ToastViewport`, `MobileMenu`, dropdowns) and for what is driven by
-scroll (`Reveal`, `Parallax`, `DecorField`).
+scroll (`Reveal`, `Parallax`, `DecorField`). `Reveal` itself renders `initial={false}`, so it
+ships **visible** and hides itself in the browser only when it is below the fold — a failed
+chunk leaves the section readable, not blank. The measurement runs in a
+`requestAnimationFrame` scheduled from `useLayoutEffect`: Next restores the scroll position
+(and resets it on navigation) in its root's layout effect, which fires after the children's,
+so measuring directly saw the page at the top and replayed the entrance on «назад».
 
 **Continuous levitation is CSS, and motion is only asked whether it is on screen.** Both the
 decorative jars (`DecorField`) and the hero's showcase cards (`Float`) breathe through an

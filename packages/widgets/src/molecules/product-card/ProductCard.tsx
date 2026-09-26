@@ -110,7 +110,12 @@ export const ProductCard: FC<IProductCardProps & IBasicStyling> = ({
         </AppLink>
 
         <div className={styles.footer}>
-          <Price size="md" priceCents={product.priceCents} isFrom={hasSeveralVolumes} />
+          <Price
+            className={styles.price}
+            size="md"
+            priceCents={product.priceCents}
+            isFrom={hasSeveralVolumes}
+          />
           {action !== undefined && action !== null && (
             <span className={styles.action}>{action}</span>
           )}

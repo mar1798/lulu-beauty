@@ -28,8 +28,8 @@ export interface ITelegramLoginPoll {
 export const startTelegramLogin = (): Promise<ITelegramLoginSession> =>
   nextApi.post('/auth/telegram/session')
 
-export const pollTelegramLogin = (): Promise<ITelegramLoginPoll> =>
-  nextApi.post('/auth/telegram/poll')
+export const pollTelegramLogin = (signal?: AbortSignal): Promise<ITelegramLoginPoll> =>
+  nextApi.post('/auth/telegram/poll', { signal })
 
 /**
  * Вход, подтверждённый подписью Telegram, а не ожиданием в боте: виджет на странице

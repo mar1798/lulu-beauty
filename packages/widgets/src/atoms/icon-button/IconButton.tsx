@@ -34,6 +34,8 @@ export const IconButton: FC<IIconButtonProps & IBasicStyling> = ({
   link,
   onClick,
   unavailableReason = null,
+  isExpanded,
+  hasPopup,
   className,
 }) => {
   const isUnavailable = unavailableReason !== null && unavailableReason !== ''
@@ -67,6 +69,8 @@ export const IconButton: FC<IIconButtonProps & IBasicStyling> = ({
       disabled={isUnavailable ? undefined : disabled || isLoading}
       aria-disabled={isUnavailable ? true : undefined}
       aria-busy={isLoading}
+      aria-expanded={isExpanded}
+      aria-haspopup={hasPopup}
       aria-label={accessibleLabel}
       onClick={isUnavailable ? undefined : onClick}
     >

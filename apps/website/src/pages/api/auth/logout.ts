@@ -33,7 +33,7 @@ const handler = async (req: NextApiRequest, res: NextApiResponse): Promise<void>
     }
   }
 
-  clearAuthCookies(res)
+  clearAuthCookies(res, req)
   res.status(204).end()
 }
 

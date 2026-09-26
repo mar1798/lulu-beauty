@@ -65,12 +65,6 @@ export const CheckoutForm: FC<ICheckoutFormProps & IBasicStyling> = ({
 
   return (
     <form className={clsx(styles.form, className)} onSubmit={handleSubmit} noValidate={true}>
-      {error !== undefined && error !== null && (
-        <Alert tone="danger" title="Заявка не оформилась">
-          {error}
-        </Alert>
-      )}
-
       {deadlineAt !== null && <DeadlineCountdown deadlineAt={deadlineAt} />}
 
       <div className={styles.totalRow}>
@@ -89,6 +83,17 @@ export const CheckoutForm: FC<ICheckoutFormProps & IBasicStyling> = ({
         rows={4}
         disabled={isSubmitting}
       />
+
+      {/*
+        Ошибка — вплотную к кнопке, а не над формой: на телефоне верх формы в
+        этот момент за краем экрана, и после «Отправить заявку» не было видно
+        ничего — ни ошибки, ни того, ушла ли заявка.
+      */}
+      {error !== undefined && error !== null && (
+        <Alert tone="danger" title="Заявка не оформилась">
+          {error}
+        </Alert>
+      )}
 
       <Button type="submit" className={styles.submit} isLoading={isSubmitting}>
         Отправить заявку

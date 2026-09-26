@@ -10,6 +10,7 @@ import {
   unauthenticated,
 } from '@/server/apiFetch'
 import { readAuthTokens } from '@/server/cookies'
+import { rejectCrossOrigin } from '@/server/sameOrigin'
 
 /**
  * Прозрачный прокси к бэкенду для браузера. Единственное, что он добавляет, —
@@ -23,6 +24,9 @@ export const config = { api: { bodyParser: false } }
 
 /** Методы без тела — только их можно безопасно повторить после обновления токена. */
 const BODYLESS_METHODS = new Set(['GET', 'HEAD', 'DELETE'])
+
+/** Методы, которые ничего не меняют: происхождение у них не проверяется. */
+const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS'])
 
 /** Заголовки запроса, которые имеет смысл донести до бэкенда. */
 const FORWARDED_REQUEST_HEADERS = ['content-type', 'content-length', 'accept', 'accept-language']
@@ -87,6 +91,15 @@ const handler = async (req: NextApiRequest, res: NextApiResponse): Promise<void>
 
   const method = req.method ?? 'GET'
   const bodyless = BODYLESS_METHODS.has(method)
+
+  /*
+    Изменяющий запрос — только со своей страницы. В обычной вкладке это
+    страховал и `SameSite=Lax`, но во фрейме Telegram Web cookie стоят с
+    `SameSite=None` (`server/cookies.ts`), и держит защиту уже эта проверка.
+  */
+  if (!SAFE_METHODS.has(method) && rejectCrossOrigin(req, res)) {
+    return
+  }
   const search = req.url?.split('?')[1] ?? ''
 
   let response: Response

@@ -46,6 +46,12 @@ export const control = style([
   },
 ])
 
+/** Нативный `<select>` на тач-экране — та же пилюля, без системной стрелки. */
+export const native = style({
+  width: '100%',
+  appearance: 'none',
+})
+
 export const invalid = style(fieldInvalid())
 
 /** Выбранное значение; обрезается многоточием — длинные названия категорий не редкость. */

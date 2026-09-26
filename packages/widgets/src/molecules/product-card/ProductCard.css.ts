@@ -79,9 +79,14 @@ export const media = style({
 
 export const image = style({
   transition: transition('transform'),
-  selectors: {
-    [`${container}:hover &`]: { transform: 'scale(1.04)' },
-  },
+  ...mediaQuery({
+    // Как подъём карточки: на тапе наведение залипает, и фото оставалось увеличенным.
+    hoverAnimatable: {
+      selectors: {
+        [`${container}:hover &`]: { transform: 'scale(1.04)' },
+      },
+    },
+  }),
 })
 
 /** Заглушка, когда у товара ещё нет ни одной картинки (частый случай после импорта xlsx). */
@@ -119,12 +124,24 @@ export const tags = style(tagRow())
 
 export const tag = style(tagSeparator())
 
-/** Цена и действие в одну строку, прижатые к низу карточки. */
+/**
+ * Цена и действие в одну строку, прижатые к низу карточки.
+ *
+ * С переносом: на экранах 320-375px в двухколоночной сетке длинная цена
+ * («от 1 250 сом») и круглая кнопка в одну строку не помещаются, и кнопка вылезала
+ * за карточку. Кнопка тогда уходит на свою строку, к правому краю.
+ */
 export const footer = style({
   ...flexRow(8),
+  flexWrap: 'wrap',
   alignItems: 'center',
   justifyContent: 'space-between',
   marginTop: 'auto',
+})
+
+/** Цена может сжиматься — иначе flex не даст ей уступить место кнопке. */
+export const price = style({
+  minWidth: 0,
 })
 
 /**
@@ -136,6 +153,7 @@ export const action = style({
   position: 'relative',
   zIndex: 1,
   display: 'flex',
+  marginLeft: 'auto',
 })
 
 /**

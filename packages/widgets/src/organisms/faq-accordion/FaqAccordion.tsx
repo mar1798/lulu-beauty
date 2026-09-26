@@ -1,6 +1,6 @@
 import clsx from 'clsx'
 import { useId, useState, type FC, type ReactNode } from 'react'
-import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
+import { AnimatePresence, m, useReducedMotion } from 'motion/react'
 import type { IBasicStyling, IFaqAccordionProps, IFaqItem } from '../../types'
 import { IconChevronDown } from '../../svg/icons'
 import { Reveal } from '../../atoms/reveal'
@@ -121,7 +121,7 @@ export const FaqAccordion: FC<IFaqAccordionProps & IBasicStyling> = ({
             ) : (
               <AnimatePresence initial={false}>
                 {isOpen && (
-                  <motion.div
+                  <m.div
                     id={panelId}
                     role="region"
                     aria-labelledby={buttonId}
@@ -132,7 +132,7 @@ export const FaqAccordion: FC<IFaqAccordionProps & IBasicStyling> = ({
                     transition={FAQ_TRANSITION}
                   >
                     {answer}
-                  </motion.div>
+                  </m.div>
                 )}
               </AnimatePresence>
             )}

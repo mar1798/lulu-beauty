@@ -51,6 +51,23 @@ const hintFloat = keyframes({
 const reducedOff = media({ preferReducedMotion: { animation: 'none' } })
 
 /**
+ * Выход текста — только от `SPLIT`. На телефоне лесенка держала заголовок,
+ * описание и кнопку невидимыми до 0.6 с после первой отрисовки: LCP сдвигался на
+ * полсекунды-секунду, и CTA появлялся не сразу. Там текст стоит на месте с
+ * первого кадра; задержки `animationDelay` инлайном без анимации ни на что не
+ * влияют.
+ */
+const splitEntrance = (
+  name: string,
+  extra: Parameters<typeof media>[0] = {}
+): ReturnType<typeof media> =>
+  media({
+    ...extra,
+    [SPLIT]: { animationName: name },
+    preferReducedMotion: { animation: 'none' },
+  })
+
+/**
  * Ширина, с которой герой раскладывается в две колонки. `lg`, а не `md`: в
  * правой колонке стоит ряд из трёх карточек с названием, маркой и ценой, и на
  * 768px каждой досталось бы около 110px — товар на такой карточке уже не
@@ -99,6 +116,11 @@ export const container = style({
       }),
     },
   },
+})
+
+/** Шапка в потоке, а не поверх героя: отступ под неё не нужен. */
+export const containerFlush = style({
+  paddingTop: `calc(env(safe-area-inset-top) + ${vars.space.xl})`,
 })
 
 export const background = style({
@@ -162,11 +184,10 @@ export const top = style({
 /** Метка состояния сбора над заголовком. */
 export const badge = style({
   display: 'flex',
-  animationName: fadeUp,
   animationDuration: `${HERO_LINE_DURATION_MS}ms`,
   animationTimingFunction: 'ease-out',
   animationFillMode: 'both',
-  ...reducedOff,
+  ...splitEntrance(fadeUp),
 })
 
 /**
@@ -206,11 +227,10 @@ export const lineMask = style({
 
 export const line = style({
   display: 'block',
-  animationName: lineRise,
   animationDuration: `${HERO_LINE_DURATION_MS}ms`,
   animationTimingFunction: HERO_LINE_EASING,
   animationFillMode: 'both',
-  ...reducedOff,
+  ...splitEntrance(lineRise),
 })
 
 /** 44ch, а не 52: в половинной колонке строка длиннее уже не дочитывается. */
@@ -218,25 +238,20 @@ export const description = style({
   font: font('16/24'),
   color: color.text('secondary'),
   maxWidth: '44ch',
-  animationName: fadeUp,
   animationDuration: `${HERO_LINE_DURATION_MS}ms`,
   animationTimingFunction: 'ease-out',
   animationFillMode: 'both',
-  ...media({
-    md: { font: font('18/28') },
-    preferReducedMotion: { animation: 'none' },
-  }),
+  ...splitEntrance(fadeUp, { md: { font: font('18/28') } }),
 })
 
 /** Таймер, кнопки и приписка выходят вместе, последней ступенью лесенки. */
 export const bottom = style({
   ...flexColumn(24),
   alignItems: 'flex-start',
-  animationName: fadeUp,
   animationDuration: `${HERO_LINE_DURATION_MS}ms`,
   animationTimingFunction: 'ease-out',
   animationFillMode: 'both',
-  ...reducedOff,
+  ...splitEntrance(fadeUp),
 })
 
 /**

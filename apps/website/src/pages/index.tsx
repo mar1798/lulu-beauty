@@ -25,6 +25,7 @@ import { JsonLd } from '@/components/JsonLd'
 import { PageMeta } from '@/components/PageMeta'
 import { WishlistButton } from '@/components/WishlistButton'
 import { useCycleExpiryRefresh } from '@/hooks/useCycleExpiryRefresh'
+import { useTelegramWebview } from '@/hooks/useTelegramWebview'
 import { getActiveCycleOrNull } from '@/services/endpoints/cycles'
 import { listBrands, listCategories, listProducts } from '@/services/endpoints/catalog'
 import { activeCycleFallback, type ISwrFallback } from '@/services/swrFallback'
@@ -366,6 +367,7 @@ const HeroCycle: React.FC<{
   showcaseMore?: React.ReactNode
 }> = ({ cycle, note, background, showcase, showcaseMore }) => {
   const { days, hours, isExpired, isReady } = useCountdown(cycle?.deadlineAt ?? null)
+  const isTelegramWebview = useTelegramWebview()
 
   /*
     Приведение ниже чинит только героя, а витрина подборки с кнопками «в
@@ -392,6 +394,11 @@ const HeroCycle: React.FC<{
   return (
     <HomeHero
       title={['Корейская косметика', 'по самым низким ценам']}
+      /*
+        Во встроенном браузере Telegram шапка стоит в потоке (`isPinned` в
+        `SiteLayout`), и отступ под неё над заголовком был бы пустотой.
+      */
+      hasOverlayHeader={!isTelegramWebview}
       description="Заказываем общим объёмом и напрямую - поэтому и цены самые низкие. Оплаты на сайте нет: вы оставляете заявку, а решение по ней присылает бот."
       background={background}
       badge={

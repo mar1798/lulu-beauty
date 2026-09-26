@@ -1,5 +1,5 @@
 import clsx from 'clsx'
-import { useRef, type FC } from 'react'
+import { useRef, useState, type FC } from 'react'
 import { useInView } from 'motion/react'
 import type { IBasicStyling, IBrandMarqueeProps } from '../../types'
 import { AppLink } from '../../atoms/app-link'
@@ -35,11 +35,25 @@ export const BrandMarquee: FC<IBrandMarqueeProps & IBasicStyling> = ({
   const containerRef = useRef<HTMLDivElement>(null)
   /* `amount: 'some'` — лента узкая, порога по площади ей хватает минимального. */
   const isInView = useInView(containerRef, { amount: 'some' })
+  /** Коснулись пальцем — лента останавливается насовсем (`containerStopped`). */
+  const [isStopped, setIsStopped] = useState(false)
 
   return (
-    <div ref={containerRef} className={clsx(styles.container, className)}>
+    <div
+      ref={containerRef}
+      className={clsx(styles.container, isStopped && styles.containerStopped, className)}
+      onPointerDown={event => {
+        if (event.pointerType === 'touch') {
+          setIsStopped(true)
+        }
+      }}
+    >
       <div
-        className={clsx(styles.track, !isInView && styles.trackPaused)}
+        className={clsx(
+          styles.track,
+          !isInView && styles.trackPaused,
+          isStopped && styles.trackStopped
+        )}
         /* Длительность зависит от числа брендов — данным в CSS взяться неоткуда. */
         style={{ animationDuration: `${duration}s` }}
       >

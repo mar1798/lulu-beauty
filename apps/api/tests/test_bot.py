@@ -266,7 +266,9 @@ async def test_handle_links_sends_both_buttons_when_the_site_is_addressable(
 
     text, kwargs = message.answer.await_args[0], message.answer.await_args[1]
     assert text[0] == messages.LINKS_PROMPT
-    urls = [b.url for row in kwargs["reply_markup"].inline_keyboard for b in row]
+    urls = [
+        keyboards.button_target(b) for row in kwargs["reply_markup"].inline_keyboard for b in row
+    ]
     assert urls == ["https://lulu.example.com", keyboards.INSTAGRAM_URL]
 
 
@@ -284,5 +286,7 @@ async def test_handle_links_falls_back_to_the_address_in_words(
 
     text, kwargs = message.answer.await_args[0], message.answer.await_args[1]
     assert "http://localhost:3000" in text[0]
-    urls = [b.url for row in kwargs["reply_markup"].inline_keyboard for b in row]
+    urls = [
+        keyboards.button_target(b) for row in kwargs["reply_markup"].inline_keyboard for b in row
+    ]
     assert urls == [keyboards.INSTAGRAM_URL]

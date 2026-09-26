@@ -39,6 +39,7 @@ def _user_response(user: User) -> UserResponse:
         name=user.name,
         role=user.role,
         telegram_linked=user.telegram_chat_id is not None,
+        telegram_user_id=user.telegram_chat_id,
     )
 
 
@@ -49,6 +50,7 @@ def _admin_user_response(user: User) -> AdminUserResponse:
         name=user.name,
         role=user.role,
         telegram_linked=user.telegram_chat_id is not None,
+        telegram_user_id=user.telegram_chat_id,
         created_at=user.created_at,
     )
 

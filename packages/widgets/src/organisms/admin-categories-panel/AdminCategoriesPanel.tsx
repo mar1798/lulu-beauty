@@ -106,7 +106,7 @@ export const AdminCategoriesPanel: FC<IAdminCategoriesPanelProps & IBasicStyling
     setDraft({ name: category.name, slug: category.slug })
   }
 
-  const submitCreate = (event: FormEvent): void => {
+  const submitCreate = async (event: FormEvent): Promise<void> => {
     event.preventDefault()
     setIsSubmitted(true)
 
@@ -114,10 +114,22 @@ export const AdminCategoriesPanel: FC<IAdminCategoriesPanelProps & IBasicStyling
       return
     }
 
-    onCreate({ ...created, name: created.name.trim() })
-    setCreated(emptyValues)
-    setIsSlugTouched(false)
-    setIsSubmitted(false)
+    // Очищаем только после ответа: при ошибке набранное остаётся в форме.
+    const isSaved = await onCreate({ ...created, name: created.name.trim() })
+
+    if (isSaved !== false) {
+      setCreated(emptyValues)
+      setIsSlugTouched(false)
+      setIsSubmitted(false)
+    }
+  }
+
+  const submitUpdate = async (category: ICategory): Promise<void> => {
+    const isSaved = await onUpdate(category, { ...draft, name: draft.name.trim() })
+
+    if (isSaved !== false) {
+      setEditingId(null)
+    }
   }
 
   const found = categories.filter(category => matches(category, query))
@@ -190,8 +202,7 @@ export const AdminCategoriesPanel: FC<IAdminCategoriesPanelProps & IBasicStyling
                     variant="solid"
                     disabled={isBusy || !isValid(draft)}
                     onClick={() => {
-                      onUpdate(category, { ...draft, name: draft.name.trim() })
-                      setEditingId(null)
+                      void submitUpdate(category)
                     }}
                   />
                   <IconButton
@@ -240,7 +251,13 @@ export const AdminCategoriesPanel: FC<IAdminCategoriesPanelProps & IBasicStyling
         )}
       </div>
 
-      <form className={styles.createForm} noValidate={true} onSubmit={submitCreate}>
+      <form
+        className={styles.createForm}
+        noValidate={true}
+        onSubmit={event => {
+          void submitCreate(event)
+        }}
+      >
         <Text weight="semibold">Новая категория</Text>
 
         <div className={styles.createFields}>

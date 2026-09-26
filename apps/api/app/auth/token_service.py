@@ -13,6 +13,7 @@ from app.config import settings
 class TokenType(StrEnum):
     ACCESS = "access"
     REFRESH = "refresh"
+    DOWNLOAD = "download"
 
 
 class InvalidTokenError(Exception):
@@ -26,6 +27,18 @@ class AccessTokenPayload(BaseModel):
 
 class RefreshTokenPayload(BaseModel):
     sub: str
+
+
+class DownloadTokenPayload(BaseModel):
+    sub: str
+    export: str
+    params: dict[str, Any]
+
+
+# Long enough for a Telegram client to start the download it was just handed, short enough
+# that a link which leaked into a log or a forwarded screenshot is dead by the time anyone
+# reads it.
+DOWNLOAD_TOKEN_TTL_SECONDS = 120
 
 
 def create_access_token(user_id: uuid.UUID, role: Role) -> str:
@@ -78,6 +91,38 @@ def decode_refresh_token(token: str) -> RefreshTokenPayload:
         return RefreshTokenPayload(sub=str(payload["sub"]))
     except KeyError as error:
         raise InvalidTokenError("unexpected refresh-token claims") from error
+
+
+def create_download_token(user_id: uuid.UUID, export: str, params: dict[str, Any]) -> str:
+    """A short-lived link to one xlsx export, for clients that cannot save a blob.
+
+    Telegram's in-app browser and Mini App webview silently ignore `<a download>` on a
+    blob URL, so an export fetched with cookies never reaches the owner's phone. The link
+    carries its own authorisation instead: who asked, which export and with which
+    filters, for two minutes. It is signed with the access secret but typed `download`,
+    so it can never pass as an access token (`_decode` checks the type), and the download
+    handler re-reads the account's role, so a demotion kills an unused link at once.
+    """
+    now = datetime.now(UTC)
+    payload = {
+        "sub": str(user_id),
+        "type": TokenType.DOWNLOAD.value,
+        "export": export,
+        "params": params,
+        "iat": now,
+        "exp": now + timedelta(seconds=DOWNLOAD_TOKEN_TTL_SECONDS),
+    }
+    return jwt.encode(payload, settings.jwt_access_secret, algorithm="HS256")
+
+
+def decode_download_token(token: str) -> DownloadTokenPayload:
+    payload = _decode(token, settings.jwt_access_secret, TokenType.DOWNLOAD)
+    try:
+        return DownloadTokenPayload(
+            sub=str(payload["sub"]), export=str(payload["export"]), params=payload["params"]
+        )
+    except (KeyError, ValueError) as error:
+        raise InvalidTokenError("unexpected download-token claims") from error
 
 
 def _decode(token: str, secret: str, expected_type: TokenType) -> dict[str, Any]:

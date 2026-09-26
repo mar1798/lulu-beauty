@@ -25,6 +25,7 @@ import {
 } from '@/services/endpoints/orders'
 import { activeCycleKey, isOrdersKey, orderKey } from '@/services/swrKeys'
 import { INSTAGRAM_URL } from '@/utils/contacts'
+import { useLoginHref } from '@/hooks/useLoginHref'
 
 /**
  * Одна заявка покупателя.
@@ -65,6 +66,7 @@ const productHref = (slug: string): string => `/catalog/${slug}`
 const OrderPage: React.FC = () => {
   const router = useRouter()
   const { user, isLoading: isAuthLoading } = useAuth()
+  const loginHref = useLoginHref()
   const { notify } = useToast()
   const { confirm } = useConfirm()
 
@@ -108,8 +110,8 @@ const OrderPage: React.FC = () => {
     success: string,
     scope: ErrorScope,
     itemId: string | null = null,
-    done: { tone?: IToastTone; undo?: () => void } = {}
-  ): Promise<void> => {
+    done: { tone?: IToastTone; subject?: string; undo?: () => void } = {}
+  ): Promise<boolean> => {
     setIsBusy(true)
     setBusyItemId(itemId)
     setActionError(null)
@@ -127,8 +129,11 @@ const OrderPage: React.FC = () => {
       notify({
         tone: done.tone ?? 'success',
         title: success,
+        subject: done.subject,
         action: done.undo === undefined ? undefined : { label: 'Вернуть', onAction: done.undo },
       })
+
+      return true
     } catch (cause: unknown) {
       /*
         Текст выбирается по действию, а не по одному коду: между открытием
@@ -142,6 +147,8 @@ const OrderPage: React.FC = () => {
       notify({ tone: 'danger', title: 'Не получилось', description: message })
       // Перечитываем: заявка на экране уже разошлась с тем, что на сервере.
       await mutate()
+
+      return false
     } finally {
       setIsBusy(false)
       setBusyItemId(null)
@@ -206,7 +213,7 @@ const OrderPage: React.FC = () => {
           title="Заявка видна после входа"
           description="Войдите тем же номером, с которого её оформляли"
           action={
-            <Button link={{ href: '/login' }} isFullWidth="mobile">
+            <Button link={{ href: loginHref }} isFullWidth="mobile">
               Войти
             </Button>
           }
@@ -297,19 +304,22 @@ const OrderPage: React.FC = () => {
 
           void runAction(
             () => removeMyOrderItem(order.id, itemId),
-            name === undefined ? 'Позиция убрана' : `«${name}» убран`,
+            'Позиция убрана из заявки',
             'order.item.remove',
             itemId,
             {
               tone: 'warning',
+              subject: name,
               undo:
                 variantId === null
                   ? undefined
                   : () => {
                       void runAction(
                         () => addMyOrderItem(order.id, variantId, quantity),
-                        'Вернулся в заявку',
-                        'order.item.add'
+                        'Позиция снова в заявке',
+                        'order.item.add',
+                        null,
+                        { subject: name }
                       )
                     },
             }
@@ -339,13 +349,9 @@ const OrderPage: React.FC = () => {
             isBusy={isBusy}
           />
         }
-        onNoteSave={note => {
-          void runAction(
-            () => updateMyOrderNote(order.id, note),
-            'Комментарий сохранён',
-            'order.note'
-          )
-        }}
+        onNoteSave={note =>
+          runAction(() => updateMyOrderNote(order.id, note), 'Комментарий сохранён', 'order.note')
+        }
         onCancel={() => {
           void handleCancel()
         }}

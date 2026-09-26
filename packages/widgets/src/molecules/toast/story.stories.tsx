@@ -27,7 +27,7 @@ WithAction.parameters = {
 }
 WithAction.args = feedToastWithAction()
 
-/** Длинное название: две строки и многоточие, ширина тоста та же. */
+/** Длинное название: обрезается только оно, «что произошло» видно целиком. */
 export const LongTitle = Template.bind({})
 LongTitle.parameters = {
   layout: 'centered',

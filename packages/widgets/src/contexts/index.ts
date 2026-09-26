@@ -3,5 +3,6 @@
  */
 
 export * from './ConfirmContext'
+export * from './MotionProvider'
 export * from './ServicesContext'
 export * from './ToastContext'

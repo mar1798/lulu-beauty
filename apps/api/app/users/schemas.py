@@ -13,6 +13,11 @@ class UserResponse(CamelModel):
     name: str
     role: Role
     telegram_linked: bool
+    # The chat the bot talks to, which in a private chat is the Telegram user id. The
+    # Mini App compares it with the account in its `initData`: two Telegram accounts on
+    # one phone share the webview's cookies, and without the check an order would go out
+    # from whichever of them signed in last.
+    telegram_user_id: int | None
 
 
 class UserUpdateRequest(CamelModel):

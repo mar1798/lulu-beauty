@@ -1,5 +1,5 @@
 import type { CSSProperties, StyleRule } from '@vanilla-extract/css'
-import { color } from '../lib'
+import { color, rem } from '../lib'
 import { flexRow } from './flex'
 
 const TAG_GAP = 6,
@@ -9,12 +9,15 @@ const TAG_GAP = 6,
  * Строка меток товара: марка, категория, объём.
  *
  * С переносом — длинная метка не должна вытеснять соседние за край карточки.
+ * `overflow: hidden` — часть разделителя (см. `tagSeparator`): точка метки, открывающей
+ * строку, выходит за левый край и обрезается.
  */
 // eslint-disable-next-line @typescript-eslint/explicit-module-boundary-types,@typescript-eslint/explicit-function-return-type
 export function tagRow(gap: number = TAG_GAP) {
   return {
     ...flexRow(gap),
     flexWrap: 'wrap',
+    overflow: 'hidden',
   } satisfies CSSProperties
 }
 
@@ -23,26 +26,29 @@ export function tagRow(gap: number = TAG_GAP) {
  * читается как одна фраза: метки одного размера и тона, и глазу не за что
  * зацепиться на границе.
  *
- * Точка — это `::after` самой метки, а не отдельный элемент во flex-строке:
- * при переносе она остаётся в конце предыдущей строки, а не повисает в начале
- * следующей.
+ * Точка — `::before` метки, стоящий посередине зазора слева от неё. У метки, которая
+ * начинает строку (первой или перенесённой), точка оказывается левее края строки, и
+ * `overflow: hidden` у `tagRow` её срезает. Прежняя `::after` в конце метки при
+ * переносе оставалась висеть одна в конце строки.
  *
  * Рисуется кружком, а не глифом `·`: у глифа размер задаёт шрифт, кегль его
  * только масштабирует вместе с положением в строке — точка уезжала вверх,
- * оставаясь такой же мелкой. У кружка ширина и высота свои, а
- * `vertical-align: middle` держит его по центру строки меток.
+ * оставаясь такой же мелкой.
  */
 export function tagSeparator(gap: number = TAG_GAP): StyleRule {
   return {
+    position: 'relative',
     selectors: {
-      '&:not(:last-child)::after': {
+      '&::before': {
         content: '',
-        display: 'inline-block',
+        position: 'absolute',
+        top: '50%',
+        // Середина зазора: `flexRow` задаёт его в rem, точка — в пикселях.
+        left: `calc((${rem(gap)} + ${DOT_SIZE}px) / -2)`,
         width: DOT_SIZE,
         height: DOT_SIZE,
-        marginLeft: gap,
+        marginTop: -DOT_SIZE / 2,
         borderRadius: '50%',
-        verticalAlign: 'middle',
         backgroundColor: color.text('muted'),
       },
     },

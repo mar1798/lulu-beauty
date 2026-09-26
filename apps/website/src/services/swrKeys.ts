@@ -49,6 +49,17 @@ export const cyclesKey = ['cycles'] as const
 
 export const activeCycleKey = ['active-cycle'] as const
 
+/** Корзина текущего пользователя — какой бы он ни был. */
+export const isCartKey = (key: unknown): boolean => Array.isArray(key) && key[0] === 'cart'
+
+/**
+ * То, что меняется без участия вкладки: корзина (сбор закрылся — планировщик
+ * перенёс её в избранное), избранное и сам сбор. Перечитывается, когда человек
+ * возвращается в давно открытую вкладку (`useRefreshOnReturn`).
+ */
+export const isLiveStateKey = (key: unknown): boolean =>
+  Array.isArray(key) && (key[0] === 'cart' || key[0] === 'wishlist' || key[0] === activeCycleKey[0])
+
 export const ORDERS_TAG = 'orders'
 
 /**

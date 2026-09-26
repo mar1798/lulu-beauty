@@ -49,3 +49,8 @@ export const spinner = style({
 export const clear = style({
   marginRight: calc(vars.space.xs).negate().toString(),
 })
+
+/** Форма нужна только ради клавиши «Найти» — в раскладке её быть не должно. */
+export const form = style({
+  display: 'contents',
+})

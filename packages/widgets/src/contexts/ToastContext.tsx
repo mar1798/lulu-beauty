@@ -21,6 +21,8 @@ import { ToastViewport } from '../organisms/toast-viewport'
 
 export interface INotifyInput {
   title: string
+  /** Название товара и т. п. — строкой под заголовком, см. `IToast.subject`. */
+  subject?: string
   description?: string
   tone?: IToastTone
   /** Мс до автозакрытия; `0` — не закрывать само (для ошибок, которые надо прочитать). */
@@ -33,15 +35,34 @@ export interface INotifyInput {
   action?: IToastAction
 }
 
+export type IAnnouncePoliteness = 'polite' | 'assertive'
+
 export interface IToastContextValue {
   toasts: IToast[]
   notify: (input: INotifyInput) => string
   dismiss: (id: string) => void
+  /**
+   * Сказать скринридеру, не показывая тоста: «Добавлено в корзину» после кнопки,
+   * которая сменилась под фокусом. Тосты озвучиваются этим же путём сами.
+   */
+  announce: (message: string, politeness?: IAnnouncePoliteness) => void
 }
 
 const ToastContext = createContext<IToastContextValue | null>(null)
 
 const DEFAULT_DURATION = 5000
+
+/**
+ * Ошибка висит дольше: в ней причина и что делать, и за пять секунд её не успевают
+ * дочитать — особенно с телефона, где тост закрывает часть экрана.
+ */
+const DANGER_DURATION = 10000
+
+/**
+ * Пауза между очисткой live-области и новым текстом: одинаковый текст подряд без
+ * неё не озвучивается — для скринридера область не изменилась.
+ */
+const ANNOUNCE_DELAY_MS = 50
 
 /** Столько висит уведомление с обратным ходом — см. `INotifyInput.action`. */
 const ACTION_DURATION = 10000
@@ -85,6 +106,26 @@ const nextId = (): string => {
 export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [toasts, setToasts] = useState<IToast[]>([])
   const timers = useRef(new Map<string, IPending>())
+  const [announcements, setAnnouncements] = useState({ polite: '', assertive: '' })
+  const announceTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const announce = useCallback(
+    (message: string, politeness: IAnnouncePoliteness = 'polite'): void => {
+      if (announceTimer.current !== null) {
+        clearTimeout(announceTimer.current)
+      }
+
+      setAnnouncements({ polite: '', assertive: '' })
+      announceTimer.current = setTimeout(() => {
+        announceTimer.current = null
+        setAnnouncements({
+          polite: politeness === 'polite' ? message : '',
+          assertive: politeness === 'assertive' ? message : '',
+        })
+      }, ANNOUNCE_DELAY_MS)
+    },
+    []
+  )
 
   /*
     Стопка останавливается целиком, а не по одному тосту: курсор всё равно
@@ -164,14 +205,26 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         id: nextId(),
         tone: input.tone ?? 'info',
         title: input.title,
+        subject: input.subject,
         description: input.description,
         action: input.action,
       }
 
       setToasts(current => [...current, toast])
+      announce(
+        [toast.title, toast.subject, toast.description]
+          .filter(part => part !== undefined)
+          .join('. '),
+        toast.tone === 'danger' ? 'assertive' : 'polite'
+      )
 
       const duration =
-        input.duration ?? (input.action === undefined ? DEFAULT_DURATION : ACTION_DURATION)
+        input.duration ??
+        (input.action !== undefined
+          ? ACTION_DURATION
+          : toast.tone === 'danger'
+            ? DANGER_DURATION
+            : DEFAULT_DURATION)
 
       if (duration > 0) {
         /*
@@ -188,7 +241,7 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
       return toast.id
     },
-    [start]
+    [start, announce]
   )
 
   /*
@@ -215,13 +268,17 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       }
 
       pending.clear()
+
+      if (announceTimer.current !== null) {
+        clearTimeout(announceTimer.current)
+      }
     },
     [pending]
   )
 
   const value = useMemo<IToastContextValue>(
-    () => ({ toasts, notify, dismiss }),
-    [toasts, notify, dismiss]
+    () => ({ toasts, notify, dismiss, announce }),
+    [toasts, notify, dismiss, announce]
   )
 
   return (
@@ -233,7 +290,14 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         табом), не оставляет второго шанса. Заодно это WCAG 2.2.1: у таймера,
         который нельзя остановить, не должно быть ничего важного.
       */}
-      <ToastViewport toasts={toasts} onDismiss={dismiss} onPause={pause} onResume={resume} />
+      <ToastViewport
+        toasts={toasts}
+        onDismiss={dismiss}
+        onPause={pause}
+        onResume={resume}
+        politeAnnouncement={announcements.polite}
+        assertiveAnnouncement={announcements.assertive}
+      />
     </ToastContext.Provider>
   )
 }

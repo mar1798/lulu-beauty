@@ -45,3 +45,23 @@ const CATALOG_PATH = '/admin/export/products'
  * снимки переживают круг целыми.
  */
 export const downloadCatalogExport = (): Promise<IDownload> => download(CATALOG_PATH)
+
+export interface IExportLinkRequest extends IOrdersExportFilters {
+  kind: 'orders' | 'products'
+}
+
+/**
+ * Адрес выгрузки, который открывается без cookie: подписанный токен на две
+ * минуты прямо в пути (`POST /admin/export/links`).
+ *
+ * Нужен там, где `saveBlob` не работает, — в браузере и Mini App Telegram (см.
+ * `utils/exportDownload.ts`): файл по нему скачивает сам Telegram или внешний
+ * браузер, а наших cookie у них нет. Адрес абсолютный — Telegram относительный
+ * не примет.
+ */
+export const createExportLink = async (request: IExportLinkRequest): Promise<string> => {
+  const { token } = await api.post<{ token: string }>('/admin/export/links', { body: request })
+
+  return new URL(api.url(`/export/download/${encodeURIComponent(token)}`), window.location.origin)
+    .href
+}

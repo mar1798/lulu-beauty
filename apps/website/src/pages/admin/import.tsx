@@ -7,7 +7,8 @@ import { AdminShell } from '@/layouts/AdminShell'
 import { saveBlob } from '@/services/api'
 import { messageForError } from '@/services/apiErrors'
 import { importCatalog } from '@/services/endpoints/admin'
-import { downloadCatalogExport } from '@/services/endpoints/export'
+import { createExportLink, downloadCatalogExport } from '@/services/endpoints/export'
+import { needsLinkDownload, openDownloadLink } from '@/utils/exportDownload'
 import { SHOWCASE_PATHS, refreshPublicPages } from '@/services/endpoints/revalidate'
 import { categoriesKey, isAdminBrandsKey, isAdminProductsKey } from '@/services/swrKeys'
 
@@ -91,7 +92,12 @@ const AdminImportPage: React.FC = () => {
     setExportError(null)
 
     try {
-      saveBlob(await downloadCatalogExport(), 'catalog.xlsx')
+      // В Telegram blob не сохраняется — там файл идёт по подписанной ссылке.
+      if (needsLinkDownload()) {
+        await openDownloadLink(await createExportLink({ kind: 'products' }), 'catalog.xlsx')
+      } else {
+        saveBlob(await downloadCatalogExport(), 'catalog.xlsx')
+      }
     } catch (cause: unknown) {
       const message = messageForError(cause, 'admin.export.catalog')
 

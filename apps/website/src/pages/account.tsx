@@ -15,6 +15,7 @@ import { messageForError } from '@/services/apiErrors'
 import { getAccountDeletion } from '@/services/endpoints/auth'
 import { accountDeletionKey } from '@/services/swrKeys'
 import { publicConfig } from '@/сonfig'
+import { useLoginHref } from '@/hooks/useLoginHref'
 
 /**
  * Профиль: имя, номер, привязка Telegram, выход.
@@ -41,6 +42,7 @@ const ORDER_REFERENCE_FORMS: IPluralForms = ['этой заявке', 'этим 
 const AccountPage: React.FC = () => {
   const router = useRouter()
   const { user, isLoading, isAdmin, updateProfile, logout, deleteAccount } = useAuth()
+  const loginHref = useLoginHref()
   const { confirm } = useConfirm()
 
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -218,7 +220,7 @@ const AccountPage: React.FC = () => {
           title="Профиль виден после входа"
           description="Войдите - и здесь можно будет поправить имя и привязать Telegram"
           action={
-            <Button link={{ href: '/login' }} isFullWidth="mobile">
+            <Button link={{ href: loginHref }} isFullWidth="mobile">
               Войти
             </Button>
           }

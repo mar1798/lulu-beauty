@@ -111,8 +111,9 @@ project actually uses.
 The library is installed in `packages/widgets` (`npm install motion -w widgets` if ever
 missing) and already used by `Appear`, `Alert`, `MobileMenu`, `ToastViewport`, `Modal` and
 `ConfirmDialog`. **Always import from `motion/react`**, never the deprecated `framer-motion`
-package. Shared timings/easings live in `src/utils/motion.ts` — reuse them instead of inlining
-new values.
+package, and render `m.div`/`m.span` rather than `motion.*` — the engine is lazy-loaded by
+`LazyMotion strict`, see [widgets.md](widgets.md#animation). Shared timings/easings live in
+`src/utils/motion.ts` — reuse them instead of inlining new values.
 
 The `motion-plus` server (Motion+ paid tier: MotionScore audits, gated example source) is
 intentionally **not** registered — same reasoning as skipping AI Designer MCP: no account to

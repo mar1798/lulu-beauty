@@ -1,5 +1,5 @@
 import clsx from 'clsx'
-import { type FC } from 'react'
+import { type FC, useEffect, useRef } from 'react'
 import type { IBasicStyling, ICatalogTemplateProps } from '../../types'
 import { Container } from '../../atoms/container'
 import { Heading } from '../../atoms/heading'
@@ -20,32 +20,54 @@ import * as styles from './CatalogTemplate.css'
 export const CatalogTemplate: FC<ICatalogTemplateProps & IBasicStyling> = ({
   title,
   summary,
+  focusKey,
   aside,
   search,
   filter,
   children,
   pagination,
   className,
-}) => (
-  <Container as="section" className={clsx(styles.container, className)}>
-    <div className={styles.head}>
-      <div className={styles.heading}>
-        <Heading level={1}>{title}</Heading>
-        {summary !== undefined && <Text tone="secondary">{summary}</Text>}
+}) => {
+  const headingRef = useRef<HTMLDivElement>(null)
+  const previousKey = useRef(focusKey)
+
+  useEffect(() => {
+    if (previousKey.current === focusKey) {
+      return
+    }
+
+    previousKey.current = focusKey
+    // Без прокрутки: страница сама плавно едет к началу, рывок фокуса её перебил бы.
+    headingRef.current?.focus({ preventScroll: true })
+  }, [focusKey])
+
+  return (
+    <Container as="section" className={clsx(styles.container, className)}>
+      <div className={styles.head}>
+        <div ref={headingRef} className={styles.heading} tabIndex={-1}>
+          <Heading level={1}>{title}</Heading>
+          {/*
+            Живая область стоит всегда, даже пустая: скринридер следит только за
+            областями, которые были в документе до изменения.
+          */}
+          <div role="status">
+            {summary !== undefined && <Text tone="secondary">{summary}</Text>}
+          </div>
+        </div>
+
+        {aside !== undefined && <div className={styles.aside}>{aside}</div>}
       </div>
 
-      {aside !== undefined && <div className={styles.aside}>{aside}</div>}
-    </div>
+      {(search !== undefined || filter !== undefined) && (
+        <div className={styles.controls}>
+          {filter}
+          {search}
+        </div>
+      )}
 
-    {(search !== undefined || filter !== undefined) && (
-      <div className={styles.controls}>
-        {filter}
-        {search}
-      </div>
-    )}
+      {children}
 
-    {children}
-
-    {pagination !== undefined && <div className={styles.pagination}>{pagination}</div>}
-  </Container>
-)
+      {pagination !== undefined && <div className={styles.pagination}>{pagination}</div>}
+    </Container>
+  )
+}

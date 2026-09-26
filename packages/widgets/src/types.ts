@@ -354,6 +354,8 @@ export interface IAuthUser {
   name: string
   role: Role
   telegramLinked: boolean
+  /** Telegram-id привязанного аккаунта — Mini App сверяет с ним того, кто открыл окно. */
+  telegramUserId: number | null
 }
 
 /** Строка импорта xlsx/csv, которую бэк не смог разобрать. */
@@ -425,6 +427,10 @@ export interface IIconButtonProps {
   onClick?: () => void
   /** Недоступно с объяснением — см. `IButtonProps['unavailableReason']`. */
   unavailableReason?: string | null
+  /** Кнопка открывает панель: открыта ли она сейчас (`aria-expanded`). */
+  isExpanded?: boolean
+  /** Что именно открывает кнопка (`aria-haspopup`). */
+  hasPopup?: 'menu' | 'dialog' | 'listbox'
 }
 
 export interface ITooltipProps {
@@ -455,6 +461,8 @@ export interface IInputProps {
   placeholder?: string
   autoComplete?: string
   inputMode?: 'text' | 'tel' | 'email' | 'numeric' | 'decimal' | 'search' | 'url'
+  /** Подпись клавиши ввода на экранной клавиатуре. */
+  enterKeyHint?: 'enter' | 'done' | 'go' | 'next' | 'previous' | 'search' | 'send'
   maxLength?: number
   disabled?: boolean
   required?: boolean
@@ -846,6 +854,8 @@ export interface IHeaderProps {
   notice?: ReactNode
   /** Кнопка мобильного меню появляется только когда обработчик задан. */
   onMenuClick?: () => void
+  /** Открыто ли мобильное меню — для `aria-expanded` у его кнопки. */
+  isMenuOpen?: boolean
   /**
    * Режим «поверх героя» (главная): шапка лежит fixed поверх контента и
    * стартует без фона и границы, а после прокрутки на высоту шапки
@@ -964,6 +974,12 @@ export interface IHomeHeroProps {
    * про неё странице незачем.
    */
   showcaseMore?: ReactNode
+  /**
+   * Шапка лежит поверх героя (`Header` с `isFloating`) — и под неё нужен
+   * отступ сверху. По умолчанию да; во встроенном браузере Telegram шапка
+   * стоит в потоке, и отступ под неё оставил бы пустоту над заголовком.
+   */
+  hasOverlayHeader?: boolean
   /**
    * Слот под `DecorField`: встаёт первым ребёнком в `position: absolute;
    * inset: 0`, за содержимым.
@@ -1354,7 +1370,14 @@ export interface IProductDetailsProps {
 
 export interface ICatalogTemplateProps {
   title: string
+  /** «Найдено товаров: N» — объявляется скринридером при каждой смене. */
   summary?: string
+  /**
+   * Смена значения переводит фокус на заголовок — после смены страницы: иначе
+   * фокус остаётся на пагинации внизу нового списка, и скринридер не узнаёт, что
+   * список сменился. Первое значение фокус не трогает.
+   */
+  focusKey?: string | number
   /** Правый край шапки: таймер сбора и прочее, что относится ко всей витрине. */
   aside?: ReactNode
   search?: ReactNode
@@ -1636,8 +1659,11 @@ export interface IOrderDetailsProps {
    * заявки в API не ходит.
    */
   addItem?: ReactNode
-  /** Сохранение комментария. `null` очищает его. */
-  onNoteSave?: (note: string | null) => void
+  /**
+   * Сохранение комментария. `null` очищает его. Ответ `false` — не сохранилось:
+   * редактор остаётся открытым с набранным текстом, а не выбрасывает его.
+   */
+  onNoteSave?: (note: string | null) => void | Promise<boolean>
   /** Отмена заявки покупателем: заявка не исчезает, а получает статус «Отменена». */
   onCancel?: () => void
   /**
@@ -1807,6 +1833,12 @@ export interface IToast {
   id: string
   tone: IToastTone
   title: string
+  /**
+   * О чём уведомление — обычно название товара. Отдельно от заголовка, чтобы
+   * длинное название обрезалось само по себе, а не вместе с тем, что с ним
+   * произошло («…убран из…» не говорит ничего).
+   */
+  subject?: string
   description?: string
   action?: IToastAction
 }
@@ -1827,6 +1859,13 @@ export interface IToastViewportProps {
   onPause?: () => void
   /** Курсор ушёл, фокус вышел — отсчёт продолжается с того места, где встал. */
   onResume?: () => void
+  /**
+   * Текст для скринридера — в постоянных скрытых live-регионах. Уведомление,
+   * вставленное в документ уже заполненным, скринридеры пропускают: они следят
+   * только за областями, которые существовали до изменения.
+   */
+  politeAnnouncement?: string
+  assertiveAnnouncement?: string
 }
 
 /* --- Загрузка файлов и статусы --- */
@@ -1983,8 +2022,13 @@ export interface IAdminCategoryValues {
 
 export interface IAdminCategoriesPanelProps {
   categories: ICategory[]
-  onCreate: (values: IAdminCategoryValues) => void
-  onUpdate: (category: ICategory, values: IAdminCategoryValues) => void
+  /**
+   * Ответ `false` — не сохранилось: форма остаётся заполненной, а строка — в
+   * режиме правки. Иначе набранное пропадало до ответа сервера, и после ошибки
+   * (занятый slug) его приходилось вводить заново.
+   */
+  onCreate: (values: IAdminCategoryValues) => void | Promise<boolean>
+  onUpdate: (category: ICategory, values: IAdminCategoryValues) => void | Promise<boolean>
   onDelete: (category: ICategory) => void
   isLoading?: boolean
   /** Идёт запрос: контролы блокируются целиком, порядок строк может измениться. */

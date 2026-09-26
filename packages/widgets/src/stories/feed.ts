@@ -937,6 +937,7 @@ export const feedAuthUser = (overrides: Partial<IAuthUser> = {}): IAuthUser => (
   name: faker.person.firstName(),
   role: 'CUSTOMER',
   telegramLinked: false,
+  telegramUserId: null,
   ...overrides,
 })
 
@@ -1027,23 +1028,25 @@ export const feedToastWithAction = (): IToastProps => ({
   toast: {
     id: 'toast-2',
     tone: 'warning',
-    title: '«Крем для рук» убран',
+    title: 'Товар убран из корзины',
+    subject: 'Крем для рук',
     action: { label: 'Вернуть', onAction: noop },
   },
   onDismiss: noop,
 })
 
 /**
- * Длинное название: заголовок и пояснение обрезаются на второй строке, а
- * ширина тоста не зависит от товара.
+ * Длинное название: обрезается на второй строке только оно — событие в
+ * заголовке и пояснение видны целиком, ширина тоста не зависит от товара.
  */
 export const feedToastOverflowing = (): IToastProps => ({
   toast: {
     id: 'toast-3',
     tone: 'warning',
-    title: '«Увлажняющая сыворотка с гиалуроновой кислотой и ниацинамидом, 30 мл» убрана',
-    description:
-      'Позиция убрана из заявки. Пока сбор открыт, её можно вернуть - состав и цены пересчитаются сами.',
+    title: 'Товар убран из заявки',
+    subject:
+      'Увлажняющая сыворотка с гиалуроновой кислотой, ниацинамидом и экстрактом центеллы азиатской, 30 мл',
+    description: 'Пока сбор открыт, её можно вернуть - состав и цены пересчитаются сами.',
     action: { label: 'Вернуть', onAction: noop },
   },
   onDismiss: noop,
@@ -1062,7 +1065,8 @@ export const feedToastViewport = (): IToastViewportProps => ({
     {
       id: 'toast-4',
       tone: 'warning',
-      title: '«Крем для рук» убран',
+      title: 'Товар убран из корзины',
+      subject: 'Крем для рук',
       action: { label: 'Вернуть', onAction: noop },
     },
   ],

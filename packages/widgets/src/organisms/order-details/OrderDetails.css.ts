@@ -5,10 +5,17 @@ import { vars } from '../../styling/themes/contract.css'
 
 export const container = style({
   ...flexColumn(16),
-  padding: vars.space.xl,
+  /*
+    До `sm` отступ меньше: 32px с каждой стороны на экране в 320-375px съедали
+    пятую часть ширины, и названия позиций переносились через каждые два слова.
+  */
+  padding: vars.space.lg,
   backgroundColor: color.surface('base'),
   borderRadius: vars.radius.xxl,
   boxShadow: vars.shadow.md,
+  ...media({
+    sm: { padding: vars.space.xl },
+  }),
 })
 
 export const head = style({
@@ -56,10 +63,12 @@ export const footer = style({
   borderTop: border(1, color.border('subtle')),
 })
 
+/** С переносом: «Итого · 2 позиции» и сумма на узком экране в строку не помещаются. */
 export const totalRow = style({
   ...flexRow(12),
   alignItems: 'baseline',
   justifyContent: 'space-between',
+  flexWrap: 'wrap',
 })
 
 /** Скелетон позиции повторяет геометрию `ItemRow`: миниатюра и две строки. */

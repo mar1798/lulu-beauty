@@ -1,4 +1,6 @@
+import type { IncomingHttpHeaders } from 'node:http'
 import { serverConfig } from '@/сonfig'
+import { EMBEDDED_HEADER } from '@/utils/embedding'
 
 /**
  * JWT живут только здесь — в httpOnly-cookie, которые ставит сервер Next.
@@ -47,17 +49,46 @@ export interface IAuthTokens {
   refreshToken: string
 }
 
-const serialize = (name: string, value: string, maxAge: number): string => {
+/**
+ * Откуда пришёл запрос, ради которого ставятся cookie: из обычной вкладки или из
+ * фрейма Telegram Web (`utils/embedding.ts`). От этого зависят атрибуты, а снимать
+ * cookie надо теми же атрибутами, какими ставили, — иначе браузер сочтёт их
+ * другими и оставит на месте.
+ */
+export interface ICookieOrigin {
+  headers?: IncomingHttpHeaders
+}
+
+/**
+ * Во фрейме — `SameSite=None; Secure; Partitioned`, но только поверх HTTPS:
+ * `None` и `Partitioned` без `Secure` браузер отбрасывает целиком. В разработке
+ * по http фрейм Telegram всё равно не откроется, и там остаётся `Lax`.
+ *
+ * `Partitioned` (CHIPS) держит такие cookie в банке, привязанной к сайту верхнего
+ * уровня: их видит только наш фрейм внутри Telegram Web, а не любой сайт, который
+ * вздумал бы нас встроить или отправить на нас запрос. Защиту от CSRF, которую в
+ * обычной вкладке даёт `Lax`, здесь держит проверка происхождения
+ * (`server/sameOrigin.ts`) — на `/api/auth/*` и на изменяющих запросах прокси.
+ */
+const isEmbeddedRequest = (origin: ICookieOrigin): boolean =>
+  origin.headers?.[EMBEDDED_HEADER.toLowerCase()] === '1' && serverConfig('authCookieSecure')
+
+const serialize = (name: string, value: string, maxAge: number, origin: ICookieOrigin): string => {
+  const isEmbedded = isEmbeddedRequest(origin)
   const parts = [
     `${name}=${encodeURIComponent(value)}`,
     'Path=/',
     'HttpOnly',
-    'SameSite=Lax',
+    isEmbedded ? 'SameSite=None' : 'SameSite=Lax',
     `Max-Age=${maxAge}`,
   ]
 
   if (serverConfig('authCookieSecure')) {
     parts.push('Secure')
+  }
+
+  if (isEmbedded) {
+    parts.push('Partitioned')
   }
 
   return parts.join('; ')
@@ -71,15 +102,22 @@ const appendSetCookie = (res: ICookieResponse, cookies: string[]): void => {
   res.setHeader('Set-Cookie', [...before, ...cookies])
 }
 
-export const setAuthCookies = (res: ICookieResponse, tokens: IAuthTokens): void => {
+export const setAuthCookies = (
+  res: ICookieResponse,
+  tokens: IAuthTokens,
+  origin: ICookieOrigin
+): void => {
   appendSetCookie(res, [
-    serialize(ACCESS_COOKIE, tokens.accessToken, MAX_AGE_SECONDS),
-    serialize(REFRESH_COOKIE, tokens.refreshToken, MAX_AGE_SECONDS),
+    serialize(ACCESS_COOKIE, tokens.accessToken, MAX_AGE_SECONDS, origin),
+    serialize(REFRESH_COOKIE, tokens.refreshToken, MAX_AGE_SECONDS, origin),
   ])
 }
 
-export const clearAuthCookies = (res: ICookieResponse): void => {
-  appendSetCookie(res, [serialize(ACCESS_COOKIE, '', 0), serialize(REFRESH_COOKIE, '', 0)])
+export const clearAuthCookies = (res: ICookieResponse, origin: ICookieOrigin): void => {
+  appendSetCookie(res, [
+    serialize(ACCESS_COOKIE, '', 0, origin),
+    serialize(REFRESH_COOKIE, '', 0, origin),
+  ])
 }
 
 /** Чуть больше срока самой сессии на бэке (`AUTH_SESSION_TTL_SECONDS`): протухнуть она должна там, а не здесь. */
@@ -90,18 +128,23 @@ export interface ILoginSession {
   pollSecret: string
 }
 
-export const setLoginSession = (res: ICookieResponse, session: ILoginSession): void => {
+export const setLoginSession = (
+  res: ICookieResponse,
+  session: ILoginSession,
+  origin: ICookieOrigin
+): void => {
   appendSetCookie(res, [
     serialize(
       LOGIN_SESSION_COOKIE,
       `${session.sessionId}:${session.pollSecret}`,
-      LOGIN_SESSION_MAX_AGE_SECONDS
+      LOGIN_SESSION_MAX_AGE_SECONDS,
+      origin
     ),
   ])
 }
 
-export const clearLoginSession = (res: ICookieResponse): void => {
-  appendSetCookie(res, [serialize(LOGIN_SESSION_COOKIE, '', 0)])
+export const clearLoginSession = (res: ICookieResponse, origin: ICookieOrigin): void => {
+  appendSetCookie(res, [serialize(LOGIN_SESSION_COOKIE, '', 0, origin)])
 }
 
 export const readLoginSession = (req: ICookieRequest): ILoginSession | null => {

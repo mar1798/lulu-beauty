@@ -8,7 +8,13 @@ export const overlay = style({
   inset: 0,
   zIndex: vars.zIndex.modal,
   display: 'flex',
-  alignItems: 'center',
+  /*
+    Центр по вертикали — автоотступами окна (`dialog`), а не `align-items: center`:
+    окно выше экрана (альбомная ориентация, крупный шрифт) при центровке выходило
+    за верх, куда не прокрутить, и заголовок подтверждения был обрезан. Автоотступы
+    при нехватке места обнуляются, и окно встаёт от верхнего края.
+  */
+  alignItems: 'flex-start',
   justifyContent: 'center',
   padding: vars.space.md,
   backgroundColor: color.surface('overlay', 0.45),
@@ -19,6 +25,7 @@ export const overlay = style({
 export const dialog = style({
   ...flexColumn(16),
   width: '100%',
+  marginBlock: 'auto',
   padding: vars.space.lg,
   backgroundColor: color.surface('base'),
   borderRadius: vars.radius.xxl,

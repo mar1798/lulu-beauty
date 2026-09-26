@@ -12,10 +12,12 @@ import { vars } from '../../styling/themes/contract.css'
 export const container = style({
   position: 'relative',
   overflow: 'hidden',
-  padding: vars.space.xl,
+  /* До `sm` отступ меньше: при 320px заголовок в 32px полях был шире колонки. */
+  padding: vars.space.lg,
   backgroundColor: color.surface('soft'),
   borderRadius: vars.radius.xxl,
   ...media({
+    sm: { padding: vars.space.xl },
     md: { padding: vars.space.xxl },
   }),
 })

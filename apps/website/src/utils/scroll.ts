@@ -11,7 +11,8 @@
  * тот же.
  *
  * `behavior` задан явно, хотя в глобальных стилях у страницы и так
- * `scroll-behavior: smooth`: Next на время перехода подменяет его на `auto`
+ * `scroll-behavior: smooth`: `<html data-scroll-behavior="smooth">` (см.
+ * `_document.tsx`) велит Next на время перехода подменять его на `auto`
  * (`handleSmoothScroll`), и полагаться на CSS здесь нельзя.
  */
 export const scrollToTop = (): void => {

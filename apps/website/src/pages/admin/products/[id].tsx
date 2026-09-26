@@ -137,8 +137,13 @@ const AdminProductPage: React.FC = () => {
         ...SHOWCASE_PATHS,
         product === undefined ? null : productPath(product.slug)
       )
+      /*
+        Форму здесь не пересоздаём (`saveVersion` не трогаем): фото приходят в неё
+        отдельным пропом и обновятся сами, а пересоздание молча выбрасывало
+        несохранённые правки — владелец менял цену, добавлял фото, и цена
+        возвращалась к старой.
+      */
       await mutate()
-      setSaveVersion(current => current + 1)
     } catch (cause: unknown) {
       setImageError(messageForError(cause, 'admin.product.images'))
     } finally {

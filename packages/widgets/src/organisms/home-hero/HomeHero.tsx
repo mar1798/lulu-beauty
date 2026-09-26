@@ -10,7 +10,7 @@ import {
   type RefObject,
 } from 'react'
 import {
-  motion,
+  m,
   motionValue,
   useMotionValueEvent,
   useReducedMotion,
@@ -221,9 +221,9 @@ const HeroRiseMotion: FC<{
   const y = useTransform(progress, [0, 1], [0, -strength])
 
   return (
-    <motion.div className={className} style={{ y }}>
+    <m.div className={className} style={{ y }}>
       {children}
-    </motion.div>
+    </m.div>
   )
 }
 
@@ -265,6 +265,7 @@ export const HomeHero: FC<IHomeHeroProps & IBasicStyling> = ({
   showcaseMore,
   background,
   scrollHint,
+  hasOverlayHeader = true,
   className,
 }) => {
   const sectionRef = useRef<HTMLElement | null>(null)
@@ -379,7 +380,10 @@ export const HomeHero: FC<IHomeHeroProps & IBasicStyling> = ({
   )
 
   return (
-    <section ref={sectionRef} className={clsx(styles.container, className)}>
+    <section
+      ref={sectionRef}
+      className={clsx(styles.container, !hasOverlayHeader && styles.containerFlush, className)}
+    >
       {isReduced ? body : <HeroScrollProvider sectionRef={sectionRef}>{body}</HeroScrollProvider>}
     </section>
   )

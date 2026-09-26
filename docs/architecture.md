@@ -84,7 +84,9 @@ ISR. No session is involved, which is why `getStaticProps` can only ever fetch p
   logic — it is strictly the visual layer.
 - **The API owns every rule.** The admin gate on the frontend is a client-side redirect for
   _UX_; every admin endpoint independently checks the role itself (`require_admin`, and
-  `require_super_admin` for handing out roles). Admin JS chunks are
+  `require_super_admin` for handing out roles). Those two read the role **from the database**,
+  not from the token: a role taken away closes the panel at once rather than when the
+  15-minute access token runs out, and demoting an admin also revokes their sessions. Admin JS chunks are
   publicly fetchable — treat the admin UI structure as public and never put a secret in it.
 - **The API is stateful on purpose.** It runs a permanent scheduler (`app/scheduler.py`) and
   writes product images to a local disk volume, so serverless / scale-to-zero is out. This is

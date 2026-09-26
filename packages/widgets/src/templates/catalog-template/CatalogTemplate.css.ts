@@ -28,7 +28,12 @@ export const head = style({
   }),
 })
 
-export const heading = style(flexColumn(8))
+export const heading = style({
+  ...flexColumn(8),
+  // Фокус сюда ставит код после смены страницы (`focusKey`), это не элемент
+  // управления — рамка вокруг заголовка выглядела бы как поломка.
+  outline: 'none',
+})
 
 /** Таймер не сжимается: его ширина фиксирована, отдавать её сетке нечему. */
 export const aside = style({

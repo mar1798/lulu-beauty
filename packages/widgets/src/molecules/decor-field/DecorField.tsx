@@ -1,6 +1,6 @@
 import clsx from 'clsx'
 import { useRef, type FC, type ReactNode, type RefObject } from 'react'
-import { motion, useInView, useReducedMotion } from 'motion/react'
+import { m, useInView, useReducedMotion } from 'motion/react'
 import type { IBasicStyling, IDecorFieldProps, IDecorSpot } from '../../types'
 import { AppImage } from '../../atoms/app-image'
 import { useParallaxOffset } from '../../hooks/useParallaxOffset'
@@ -31,10 +31,18 @@ import * as styles from './DecorField.css'
  */
 
 /**
- * Потолок ступени в px — он же реальный отрисованный размер пятна для
- * оптимизатора картинок: `100vw` заставил бы его отдавать полный файл.
+ * `sizes` пятна — тот же `clamp()`, что в токенах `decor.size*`, развёрнутый в
+ * медиаусловия: пол до 800px (там `Nvw` равно полу), `vw` в середине и потолок
+ * там, где `vw` его догоняет. Один потолок на всех ширинах заставлял телефон
+ * качать картинку в ~1.75 раза шире, чем она рисуется; `100vw` — полный файл.
+ *
+ * Меняете ступень в `tokens.ts` — пересчитайте и здесь.
  */
-const SIZE_CEILING = { sm: '148px', md: '196px', lg: '248px' } as const
+const SPOT_SIZES = {
+  sm: '(min-width: 1346px) 148px, (min-width: 800px) 11vw, 88px',
+  md: '(min-width: 1400px) 196px, (min-width: 800px) 14vw, 112px',
+  lg: '(min-width: 1459px) 248px, (min-width: 800px) 17vw, 136px',
+} as const
 
 /**
  * Едущий слой пятна — отдельным компонентом, чтобы `useParallaxOffset`
@@ -55,9 +63,9 @@ const SpotDrift: FC<{
   const y = useParallaxOffset(containerRef, DECOR_PARALLAX_PX * depth)
 
   return (
-    <motion.div className={clsx(styles.drift, isActive && styles.moving)} style={{ y }}>
+    <m.div className={clsx(styles.drift, isActive && styles.moving)} style={{ y }}>
       {children}
-    </motion.div>
+    </m.div>
   )
 }
 
@@ -92,7 +100,7 @@ const Spot: FC<{
             spot.isFlipped === true && styles.flipped
           )}
           image={spot.image}
-          sizes={{ fb: SIZE_CEILING[spot.size] }}
+          sizes={{ fb: SPOT_SIZES[spot.size] }}
           priority={spot.isPriority}
         />
       </div>

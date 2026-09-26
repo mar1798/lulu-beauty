@@ -48,7 +48,7 @@ def test_help_offers_unlink_the_site_and_the_instagram(monkeypatch: pytest.Monke
 
     buttons = [b for row in keyboards.help_actions().inline_keyboard for b in row]
 
-    assert [button.url for button in buttons if button.url] == [
+    assert [keyboards.button_target(b) for b in buttons if keyboards.button_target(b)] == [
         "https://lulu.example.com",
         keyboards.INSTAGRAM_URL,
     ]
@@ -64,7 +64,9 @@ def test_help_keeps_the_unlink_button_when_the_site_is_not_linkable(
 
     buttons = [b for row in keyboards.help_actions().inline_keyboard for b in row]
 
-    assert [button.url for button in buttons if button.url] == [keyboards.INSTAGRAM_URL]
+    assert [keyboards.button_target(b) for b in buttons if keyboards.button_target(b)] == [
+        keyboards.INSTAGRAM_URL
+    ]
     assert MenuAction.unpack(buttons[-1].callback_data or "").action == "unlink"
 
 
@@ -121,7 +123,7 @@ def test_checkout_link_points_at_checkout_on_a_public_site(
     assert markup is not None
     button = markup.inline_keyboard[0][0]
     # The trailing slash of the configured base must not survive into the link.
-    assert button.url == "https://lulu.example.com/checkout"
+    assert keyboards.button_target(button) == "https://lulu.example.com/checkout"
 
 
 def test_wishlist_link_follows_the_same_public_url_rule(
@@ -132,7 +134,9 @@ def test_wishlist_link_follows_the_same_public_url_rule(
     monkeypatch.setattr("app.config.settings.website_base_url", "https://lulu.example.com")
     markup = keyboards.wishlist_link()
     assert markup is not None
-    assert markup.inline_keyboard[0][0].url == "https://lulu.example.com/wishlist"
+    assert (
+        keyboards.button_target(markup.inline_keyboard[0][0]) == "https://lulu.example.com/wishlist"
+    )
 
     monkeypatch.setattr("app.config.settings.website_base_url", "http://localhost:3000")
     assert keyboards.wishlist_link() is None
@@ -172,8 +176,11 @@ def test_site_and_admin_links_point_where_they_say(monkeypatch: pytest.MonkeyPat
 
     assert site is not None
     assert admin is not None
-    assert site.inline_keyboard[0][0].url == "https://lulu.example.com"
-    assert admin.inline_keyboard[0][0].url == "https://lulu.example.com/admin/orders"
+    assert keyboards.button_target(site.inline_keyboard[0][0]) == "https://lulu.example.com"
+    assert (
+        keyboards.button_target(admin.inline_keyboard[0][0])
+        == "https://lulu.example.com/admin/orders"
+    )
 
 
 def test_site_link_disarms_itself_on_a_non_public_host(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -195,7 +202,9 @@ def test_site_links_keep_the_instagram_when_the_site_is_not_linkable(
 
     rows = keyboards.site_links().inline_keyboard
 
-    assert [[b.url for b in row] for row in rows] == [[keyboards.INSTAGRAM_URL]]
+    assert [[keyboards.button_target(b) for b in row] for row in rows] == [
+        [keyboards.INSTAGRAM_URL]
+    ]
 
 
 def test_site_links_put_the_shop_above_the_instagram(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -205,7 +214,7 @@ def test_site_links_put_the_shop_above_the_instagram(monkeypatch: pytest.MonkeyP
 
     rows = keyboards.site_links().inline_keyboard
 
-    assert [[b.url for b in row] for row in rows] == [
+    assert [[keyboards.button_target(b) for b in row] for row in rows] == [
         ["https://lulu.example.com"],
         [keyboards.INSTAGRAM_URL],
     ]
@@ -220,7 +229,9 @@ def test_owner_contact_actions_always_offer_the_instagram(
 
     rows = keyboards.owner_contact_actions().inline_keyboard
 
-    assert [[b.url for b in row] for row in rows] == [[keyboards.INSTAGRAM_URL]]
+    assert [[keyboards.button_target(b) for b in row] for row in rows] == [
+        [keyboards.INSTAGRAM_URL]
+    ]
 
 
 def test_owner_contact_actions_put_the_orders_above_the_instagram(
@@ -230,7 +241,7 @@ def test_owner_contact_actions_put_the_orders_above_the_instagram(
 
     rows = keyboards.owner_contact_actions().inline_keyboard
 
-    assert [[b.url for b in row] for row in rows] == [
+    assert [[keyboards.button_target(b) for b in row] for row in rows] == [
         ["https://lulu.example.com/orders"],
         [keyboards.INSTAGRAM_URL],
     ]
@@ -246,7 +257,7 @@ def test_order_actions_add_the_admin_link_when_the_site_is_addressable(
     rows = keyboards.order_actions(uuid.uuid4()).inline_keyboard
 
     assert len(rows) == 2
-    assert rows[1][0].url == "https://lulu.example.com/admin/orders"
+    assert keyboards.button_target(rows[1][0]) == "https://lulu.example.com/admin/orders"
 
 
 def test_order_actions_keep_working_without_a_public_site(
@@ -276,7 +287,7 @@ def test_privacy_link_points_at_the_page_the_site_serves(
 
     assert markup is not None
     button = markup.inline_keyboard[0][0]
-    assert button.url == "https://lulu.example.com/privacy"
+    assert keyboards.button_target(button) == "https://lulu.example.com/privacy"
     assert button.text == messages.PRIVACY_BUTTON
 
 
@@ -288,3 +299,27 @@ def test_privacy_link_disarms_itself_on_a_non_public_host(
     monkeypatch.setattr("app.config.settings.website_base_url", "http://localhost:3000")
 
     assert keyboards.privacy_link() is None
+
+
+def test_site_buttons_open_as_a_mini_app_on_https(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Mini App входит сам по initData; url-кнопка привела бы покупателя гостем."""
+    monkeypatch.setattr("app.config.settings.website_base_url", "https://lulu.example.com")
+
+    markup = keyboards.checkout_link()
+
+    assert markup is not None
+    button = markup.inline_keyboard[0][0]
+    assert button.url is None
+    assert button.web_app is not None
+
+
+def test_site_buttons_stay_url_buttons_on_public_http(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Mini App требует https, поэтому на http кнопка остаётся обычной ссылкой."""
+    monkeypatch.setattr("app.config.settings.website_base_url", "http://lulu.example.com")
+
+    markup = keyboards.checkout_link()
+
+    assert markup is not None
+    button = markup.inline_keyboard[0][0]
+    assert button.url == "http://lulu.example.com/checkout"
+    assert button.web_app is None

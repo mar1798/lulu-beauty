@@ -80,7 +80,8 @@ export const WishlistButton: React.FC<{
       result.ok
         ? {
             tone: 'success',
-            title: name === undefined ? 'Товар снова в избранном' : `«${name}» снова в избранном`,
+            title: 'Товар снова в избранном',
+            subject: name,
           }
         : {
             tone: 'danger',
@@ -141,7 +142,8 @@ export const WishlistButton: React.FC<{
       if (isSaved) {
         notify({
           tone: 'warning',
-          title: name === undefined ? 'Товар убран из избранного' : `«${name}» убран из избранного`,
+          title: 'Товар убран из избранного',
+          subject: name,
           action: {
             label: 'Вернуть',
             onAction: () => {
@@ -152,7 +154,8 @@ export const WishlistButton: React.FC<{
       } else {
         notify({
           tone: 'success',
-          title: name === undefined ? 'Товар в избранном' : `«${name}» в избранном`,
+          title: 'Товар в избранном',
+          subject: name,
           action: {
             label: 'Посмотреть',
             onAction: () => {
@@ -184,14 +187,17 @@ export const WishlistButton: React.FC<{
 
   // Состояние читается заливкой, а не оттенком: разницу в цвете видят не все.
   const icon = isSaved ? <IconHeartFilled /> : <IconHeart />
-  /* Подпись называет, что произойдёт от нажатия. Она же — текст подсказки:
-     доступное имя и видимый текст обязаны совпадать. */
+  /* Подпись называет, что произойдёт от нажатия. Она же — текст подсказки.
+     Доступное имя длиннее — с названием товара: в сетке двадцать одинаковых
+     «Добавить в избранное» подряд скринридеру не различить. Видимый текст при
+     этом остаётся началом имени, как того требует WCAG 2.5.3. */
   const label = isSaved ? 'Убрать из избранного' : 'Добавить в избранное'
+  const accessibleLabel = name === undefined ? label : `${label}: ${name}`
 
   const button = (
     <IconButton
       icon={icon}
-      label={label}
+      label={accessibleLabel}
       /*
         Сохранённое — единственная заливка марки в карточке: белое сердце на
         розовом видно в углу фотографии, а белая кнопка с розовым контуром на

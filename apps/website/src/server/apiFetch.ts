@@ -9,6 +9,7 @@ import {
   readAuthTokens,
   setAuthCookies,
   type IAuthTokens,
+  type ICookieOrigin,
   type ICookieRequest,
   type ICookieResponse,
 } from './cookies'
@@ -104,7 +105,7 @@ const isExpired = (token: string): boolean => {
  * ошибки в самом Next. Ровно это видела внешняя проверка `/health` в минуту
  * подмены контейнеров на релизе — письмо о падении без единого слова о причине.
  */
-const callApi = async (url: string, init: RequestInit): Promise<Response> => {
+export const callApi = async (url: string, init: RequestInit): Promise<Response> => {
   try {
     return await fetch(url, init)
   } catch (error) {
@@ -218,7 +219,7 @@ const exchangeTokens = (
 
 /** Меняет пару токенов по refresh-cookie и переставляет cookie в ответе. */
 export const refreshTokens = async (
-  req: ICookieRequest,
+  req: ICookieRequest & ICookieOrigin,
   res: ICookieResponse,
   client?: IClientRequest
 ): Promise<string> => {
@@ -236,13 +237,13 @@ export const refreshTokens = async (
     // Cookie стираются только на отказ бэкенда: недоступный API — это сбой
     // запроса, а не разлогин, и переживать его пользователь должен молча.
     if (error instanceof UnauthenticatedError) {
-      clearAuthCookies(res)
+      clearAuthCookies(res, req)
     }
 
     throw error
   }
 
-  setAuthCookies(res, tokens)
+  setAuthCookies(res, tokens, req)
   // Чтобы повторный вызов внутри этого же запроса взял уже новый токен.
   req.cookies[ACCESS_COOKIE] = tokens.accessToken
   req.cookies[REFRESH_COOKIE] = tokens.refreshToken
@@ -302,7 +303,7 @@ export const fetchWithAuth = async (
   )
 
   if (retried.status === UNAUTHORIZED) {
-    clearAuthCookies(res)
+    clearAuthCookies(res, req)
   }
 
   return retried

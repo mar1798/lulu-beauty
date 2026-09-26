@@ -1,5 +1,5 @@
 import clsx from 'clsx'
-import { AnimatePresence, motion, useReducedMotion, type TargetAndTransition } from 'motion/react'
+import { AnimatePresence, m, useReducedMotion, type TargetAndTransition } from 'motion/react'
 import {
   Fragment,
   type FC,
@@ -27,6 +27,7 @@ import { Spinner } from '../../atoms/spinner'
 import { Text } from '../../atoms/text'
 import { anchorTo, type IAnchor } from '../../atoms/select'
 import { useFocusTrap } from '../../hooks/useFocusTrap'
+import { noteOverlayNavigation, useBackDismiss } from '../../hooks/useBackDismiss'
 import { useLockBodyScroll } from '../../hooks/useLockBodyScroll'
 import {
   DIALOG_TRANSITION,
@@ -178,12 +179,19 @@ export const HeaderSearch: FC<IHeaderSearchProps & IBasicStyling> = ({
     setActiveIndex(-1)
   }, [])
 
+  /*
+    «Назад» закрывает панель, а не уводит со страницы. Выбор строки — переход, и
+    закрывается обычным `dismiss`: запись в истории разберёт `useBackDismiss`.
+  */
+  const requestCloseDrawer = useBackDismiss(isDrawerOpen, closeDrawer)
+
   /**
    * Строку выбрали — значит, уходим со страницы: закрывается и список, и
    * панель. Вернувшись назад, человек не должен обнаружить поверх шапки
    * поиск, которого он не открывал.
    */
   const dismiss = useCallback(() => {
+    noteOverlayNavigation()
     close()
     setIsDrawerOpen(false)
   }, [close])
@@ -252,7 +260,7 @@ export const HeaderSearch: FC<IHeaderSearchProps & IBasicStyling> = ({
         if (isDrawerOpen) {
           event.stopPropagation()
           event.preventDefault()
-          closeDrawer()
+          requestCloseDrawer()
         } else if (isOpen) {
           event.stopPropagation()
           event.preventDefault()
@@ -331,14 +339,14 @@ export const HeaderSearch: FC<IHeaderSearchProps & IBasicStyling> = ({
 
     const onDocumentKeyDown = (event: globalThis.KeyboardEvent): void => {
       if (event.key === 'Escape') {
-        closeDrawer()
+        requestCloseDrawer()
       }
     }
 
     const wideScreen = window.matchMedia(WIDE_SCREEN_QUERY)
     const onWiden = (): void => {
       if (wideScreen.matches) {
-        closeDrawer()
+        requestCloseDrawer()
       }
     }
 
@@ -349,7 +357,31 @@ export const HeaderSearch: FC<IHeaderSearchProps & IBasicStyling> = ({
       document.removeEventListener('keydown', onDocumentKeyDown)
       wideScreen.removeEventListener('change', onWiden)
     }
-  }, [isDrawerOpen, closeDrawer])
+  }, [isDrawerOpen, requestCloseDrawer])
+
+  /**
+   * Высота панели — по видимой части экрана, а не по `100dvh`: экранная клавиатура
+   * в `dvh` не входит, и низ панели оказывался под ней (`VISIBLE_HEIGHT_PROPERTY`).
+   */
+  useEffect(() => {
+    // Старые webview и jsdom `visualViewport` не знают вовсе — тогда остаётся `100dvh`.
+    const viewport = window.visualViewport as VisualViewport | null | undefined
+
+    if (!isDrawerOpen || viewport === null || viewport === undefined) {
+      return
+    }
+
+    const update = (): void => {
+      panelRef.current?.style.setProperty(styles.VISIBLE_HEIGHT_PROPERTY, `${viewport.height}px`)
+    }
+
+    update()
+    viewport.addEventListener('resize', update)
+
+    return () => {
+      viewport.removeEventListener('resize', update)
+    }
+  }, [isDrawerOpen, panelRef])
 
   /** Ответ пришёл короче прежнего — подсветка не должна висеть за его пределами. */
   useEffect(() => {
@@ -592,8 +624,20 @@ export const HeaderSearch: FC<IHeaderSearchProps & IBasicStyling> = ({
     )
   }
 
+  /*
+    Сколько нашлось — вслух. Список подсказок меняется молча, и «ничего не
+    нашлось» скринридер тоже не замечал: область стоит в документе всегда, а
+    меняется только её текст.
+  */
+  const foundCount = (groups ?? []).reduce((sum, group) => sum + group.items.length, 0)
+  const status = !hasAnswer ? '' : isNothingFound ? 'Совпадений нет' : `Найдено: ${foundCount}`
+
   return (
     <div className={clsx(styles.container, className)}>
+      <div className={styles.liveRegion} role="status" aria-live="polite">
+        {isOpen || isDrawerOpen ? status : ''}
+      </div>
+
       {/* Своя кнопка, а не `IconButton`: тому нечем передать `aria-expanded`,
           а без него лупа не сообщает, что под ней открывается панель. */}
       <button
@@ -615,7 +659,7 @@ export const HeaderSearch: FC<IHeaderSearchProps & IBasicStyling> = ({
       <Portal>
         <AnimatePresence>
           {isOpen && hasAnswer && !isDrawerOpen && anchor !== null && (
-            <motion.div
+            <m.div
               ref={node => {
                 popoverRef.current = node
                 popoverScrollRef.current = node
@@ -641,7 +685,7 @@ export const HeaderSearch: FC<IHeaderSearchProps & IBasicStyling> = ({
               }}
             >
               {list('bar')}
-            </motion.div>
+            </m.div>
           )}
         </AnimatePresence>
       </Portal>
@@ -651,7 +695,7 @@ export const HeaderSearch: FC<IHeaderSearchProps & IBasicStyling> = ({
       <Portal>
         <AnimatePresence>
           {isDrawerOpen && (
-            <motion.div
+            <m.div
               className={styles.overlay}
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -661,11 +705,11 @@ export const HeaderSearch: FC<IHeaderSearchProps & IBasicStyling> = ({
                 /* Как в `Modal`: закрываем по нажатию на самом фоне, а не по
                    клику, иначе выделение текста внутри панели закрывало бы её. */
                 if (event.target === event.currentTarget) {
-                  closeDrawer()
+                  requestCloseDrawer()
                 }
               }}
             >
-              <motion.div
+              <m.div
                 ref={panelRef}
                 className={styles.panel}
                 role="dialog"
@@ -689,7 +733,7 @@ export const HeaderSearch: FC<IHeaderSearchProps & IBasicStyling> = ({
                     label="Закрыть поиск"
                     variant="ghost"
                     size="sm"
-                    onClick={closeDrawer}
+                    onClick={requestCloseDrawer}
                   />
                 </div>
 
@@ -702,8 +746,8 @@ export const HeaderSearch: FC<IHeaderSearchProps & IBasicStyling> = ({
                     <p className={styles.empty}>Постараемся найти все что вы ищите</p>
                   )}
                 </div>
-              </motion.div>
-            </motion.div>
+              </m.div>
+            </m.div>
           )}
         </AnimatePresence>
       </Portal>

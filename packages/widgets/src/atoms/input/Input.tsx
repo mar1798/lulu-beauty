@@ -29,6 +29,7 @@ export const Input: FC<IInputProps & IBasicStyling> = ({
   placeholder,
   autoComplete,
   inputMode,
+  enterKeyHint,
   maxLength,
   disabled = false,
   required = false,
@@ -70,6 +71,7 @@ export const Input: FC<IInputProps & IBasicStyling> = ({
           placeholder={placeholder}
           autoComplete={autoComplete}
           inputMode={inputMode}
+          enterKeyHint={enterKeyHint}
           maxLength={maxLength}
           disabled={disabled}
           required={required}

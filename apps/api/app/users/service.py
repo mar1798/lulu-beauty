@@ -6,6 +6,7 @@ from sqlalchemy import case, delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.models import ADMIN_ROLES, RefreshToken, Role, TelegramAuthSession, User
+from app.auth.service import AuthService
 from app.cart.models import Cart
 from app.orders.models import Order, OrderStatus
 from app.wanted.models import WantedProduct
@@ -169,7 +170,13 @@ class UsersService:
         if user.role is Role.SUPER_ADMIN:
             raise SuperAdminImmutableError
 
+        # Taking the panel away also ends the person's sessions. The admin routes read
+        # the role from the database (`require_admin`), so the panel closes at once
+        # either way; this makes sure no tab signed in as an admin lingers on.
+        is_demotion = user.role in ADMIN_ROLES and role not in ADMIN_ROLES
         user.role = role
+        if is_demotion:
+            await AuthService(self._session).revoke_all_for_user(user.id)
         await self._session.flush()
         return user
 

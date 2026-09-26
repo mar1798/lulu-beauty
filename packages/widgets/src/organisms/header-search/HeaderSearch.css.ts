@@ -1,7 +1,14 @@
 import { style, styleVariants } from '@vanilla-extract/css'
 import { border, color, font, rem, transition } from '../../styling/lib'
 import { media } from '../../styling/lib/media'
-import { fieldInput, fieldShell, flexColumn, flexRow, focusVisibleRing } from '../../styling/mixin'
+import {
+  fieldInput,
+  fieldShell,
+  flexColumn,
+  flexRow,
+  focusVisibleRing,
+  visuallyHidden,
+} from '../../styling/mixin'
 import { vars } from '../../styling/themes/contract.css'
 
 /**
@@ -92,10 +99,20 @@ export const overlay = style({
   }),
 })
 
+/**
+ * Высота видимой части экрана — над клавиатурой. Пишет её `HeaderSearch` из
+ * `visualViewport`: `100dvh` клавиатуру не учитывает, и последние подсказки,
+ * «Показать всё» и «Отправить пожелание» оставались под ней, куда не долистать.
+ *
+ * Литеральное имя, а не `createVar()` — по той же причине, что в `Float.css.ts`:
+ * значение ставится инлайном, и нужно голое имя.
+ */
+export const VISIBLE_HEIGHT_PROPERTY = '--search-visible-height'
+
 export const panel = style({
   ...flexColumn(0),
   width: '100%',
-  maxHeight: '100dvh',
+  maxHeight: `var(${VISIBLE_HEIGHT_PROPERTY}, 100dvh)`,
   backgroundColor: color.surface('base'),
   borderBottomLeftRadius: vars.radius.xxl,
   borderBottomRightRadius: vars.radius.xxl,
@@ -325,3 +342,6 @@ export const emptyLink = style([
   },
   focusVisibleRing(),
 ])
+
+/** Постоянная скрытая область «Найдено: N» — см. `HeaderSearch`. */
+export const liveRegion = style(visuallyHidden())

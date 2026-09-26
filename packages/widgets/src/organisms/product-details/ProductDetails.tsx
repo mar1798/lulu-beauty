@@ -1,6 +1,6 @@
 import clsx from 'clsx'
 import { type FC, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
+import { AnimatePresence, m, useReducedMotion } from 'motion/react'
 import type { IBasicStyling, IProductDetailsProps } from '../../types'
 import { Badge } from '../../atoms/badge'
 import { Heading } from '../../atoms/heading'
@@ -329,7 +329,7 @@ export const ProductDetails: FC<IProductDetailsProps & IBasicStyling> = ({
             {quantity !== undefined && (
               <AnimatePresence initial={false}>
                 {isInCart && (
-                  <motion.div
+                  <m.div
                     ref={quantityRef}
                     className={styles.actionQuantity}
                     initial={isReduced ? false : { width: 0, opacity: 0 }}
@@ -338,7 +338,7 @@ export const ProductDetails: FC<IProductDetailsProps & IBasicStyling> = ({
                     transition={isReduced ? { duration: 0 } : CART_ACTION_TRANSITION}
                   >
                     <div className={styles.actionQuantityInner}>{quantity}</div>
-                  </motion.div>
+                  </m.div>
                 )}
               </AnimatePresence>
             )}
@@ -350,7 +350,7 @@ export const ProductDetails: FC<IProductDetailsProps & IBasicStyling> = ({
               передать.
             */}
             {action !== undefined && (
-              <motion.div
+              <m.div
                 ref={actionRef}
                 className={clsx(
                   styles.actionPrimary,
@@ -369,7 +369,7 @@ export const ProductDetails: FC<IProductDetailsProps & IBasicStyling> = ({
                 onAnimationComplete={() => setIsMorphing(false)}
               >
                 {action}
-              </motion.div>
+              </m.div>
             )}
 
             {secondaryAction !== undefined && (

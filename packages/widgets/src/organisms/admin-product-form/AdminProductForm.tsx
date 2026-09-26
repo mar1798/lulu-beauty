@@ -1,5 +1,5 @@
 import clsx from 'clsx'
-import { type FC, type FormEvent, useEffect, useId, useMemo, useState } from 'react'
+import { type FC, type FormEvent, useEffect, useId, useMemo, useRef, useState } from 'react'
 import type {
   IAdminProductFormProps,
   IAdminProductValues,
@@ -237,6 +237,26 @@ export const AdminProductForm: FC<IAdminProductFormProps & IBasicStyling> = ({
   const [categoryId, setCategoryId] = useState(product?.categoryId ?? '')
   const [isSubmitted, setIsSubmitted] = useState(false)
 
+  /*
+    Неудачный сабмит — фокус и прокрутка к первому полю с ошибкой. Форма длинная,
+    и на телефоне после «Сохранить» спиннер мигал, а ошибка оставалась на два-три
+    экрана выше: казалось, что ничего не происходит. Счётчик, а не флаг: второй
+    неудачный сабмит подряд обязан сработать так же.
+  */
+  const formRef = useRef<HTMLFormElement>(null)
+  const [invalidSubmits, setInvalidSubmits] = useState(0)
+
+  useEffect(() => {
+    if (invalidSubmits === 0) {
+      return
+    }
+
+    const field = formRef.current?.querySelector<HTMLElement>('[aria-invalid="true"]')
+
+    field?.scrollIntoView({ block: 'center' })
+    field?.focus({ preventScroll: true })
+  }, [invalidSubmits])
+
   const [imageAlt, setImageAlt] = useState('')
   const mediaTitleId = useId()
   const createMediaTitleId = useId()
@@ -388,10 +408,12 @@ export const AdminProductForm: FC<IAdminProductFormProps & IBasicStyling> = ({
       а форма всё равно уходила на сервер.
     */
     if (Object.values(errors).some(message => message !== null)) {
+      setInvalidSubmits(current => current + 1)
       return
     }
 
     if (variantErrors.some(row => row.price !== null || row.volume !== null)) {
+      setInvalidSubmits(current => current + 1)
       return
     }
 
@@ -436,13 +458,7 @@ export const AdminProductForm: FC<IAdminProductFormProps & IBasicStyling> = ({
 
   return (
     <div className={clsx(styles.container, className)}>
-      <form className={styles.form} noValidate={true} onSubmit={handleSubmit}>
-        {error !== undefined && error !== null && (
-          <Alert tone="danger" title="Не получилось сохранить">
-            {error}
-          </Alert>
-        )}
-
+      <form ref={formRef} className={styles.form} noValidate={true} onSubmit={handleSubmit}>
         <Input
           label="Название"
           value={name}
@@ -588,6 +604,16 @@ export const AdminProductForm: FC<IAdminProductFormProps & IBasicStyling> = ({
           error={isSubmitted ? errors.description : null}
           onChange={setDescriptionHtml}
         />
+
+        {/*
+          Ошибка сервера — у кнопки, а не над формой: на телефоне верх формы в
+          этот момент за краем экрана.
+        */}
+        {error !== undefined && error !== null && (
+          <Alert tone="danger" title="Не получилось сохранить">
+            {error}
+          </Alert>
+        )}
 
         <div className={styles.formActions}>
           <Button isFullWidth="mobile" type="submit" isLoading={isSubmitting}>

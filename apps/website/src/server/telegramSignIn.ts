@@ -1,5 +1,5 @@
 import type { NextApiRequest, NextApiResponse } from 'next'
-import { apiUrl } from '@/server/apiFetch'
+import { UpstreamUnavailableError, apiUrl, callApi } from '@/server/apiFetch'
 import { clientHeaders } from '@/server/clientAddress'
 import { setAuthCookies, type IAuthTokens } from '@/server/cookies'
 
@@ -27,11 +27,23 @@ export const signInThroughTelegram = async (
   path: string,
   body: unknown
 ): Promise<void> => {
-  const response = await fetch(apiUrl(path), {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...clientHeaders(req) },
-    body: JSON.stringify(body),
-  })
+  let response: Response
+
+  try {
+    response = await callApi(apiUrl(path), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...clientHeaders(req) },
+      body: JSON.stringify(body),
+    })
+  } catch (error) {
+    if (error instanceof UpstreamUnavailableError) {
+      res.status(error.status).json({ detail: 'upstream_unavailable' })
+
+      return
+    }
+
+    throw error
+  }
 
   if (!response.ok) {
     /*
@@ -48,15 +60,15 @@ export const signInThroughTelegram = async (
 
   const tokens = (await response.json()) as ITokensResponse
 
-  setAuthCookies(res, tokens as IAuthTokens)
+  setAuthCookies(res, tokens as IAuthTokens, req)
 
   /*
     Профиль тянем той же парой токенов, а не из cookie: `req.cookies` — уже прочитанный
     запрос, выставленных мгновение назад cookie там нет (то же, что в `telegram/poll`).
   */
-  const me = await fetch(apiUrl('/users/me'), {
+  const me = await callApi(apiUrl('/users/me'), {
     headers: { Authorization: `Bearer ${tokens.accessToken}`, ...clientHeaders(req) },
-  })
+  }).catch(() => null)
 
-  res.status(200).json({ user: me.ok ? await me.json() : null })
+  res.status(200).json({ user: me?.ok === true ? await me.json() : null })
 }

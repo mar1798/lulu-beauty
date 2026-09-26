@@ -17,10 +17,12 @@ import {
   listCycles,
   updateOrderStatus,
 } from '@/services/endpoints/admin'
-import { downloadOrdersExport } from '@/services/endpoints/export'
+import { createExportLink, downloadOrdersExport } from '@/services/endpoints/export'
+import { needsLinkDownload, openDownloadLink } from '@/utils/exportDownload'
 import { adminOrdersKey, cyclesKey, isAdminOverviewKey } from '@/services/swrKeys'
 import { scrollToTop } from '@/utils/scroll'
 import * as styles from '@/styles/admin.css'
+import { useClampedPage } from '@/hooks/useClampedPage'
 
 /**
  * Заявки покупателей: фильтр по сбору и статусу, смена статуса, выгрузка.
@@ -142,6 +144,9 @@ const AdminOrdersPage: React.FC = () => {
     { keepPreviousData: true }
   )
 
+  // Опустевшая страница (последнюю заявку удалили или увели из фильтра) — назад.
+  useClampedPage(data, page, setPage)
+
   /*
     Скелетон — только пока показывать нечего. `isLoading` из SWR считается по
     текущему ключу и на смене фильтра становится `true` даже с
@@ -209,13 +214,21 @@ const AdminOrdersPage: React.FC = () => {
     setActionError(null)
 
     try {
-      const download = await downloadOrdersExport({
+      const filters = {
         cycleId: cycleFilter,
         status: status === ALL ? undefined : (status as OrderStatus),
         includePrices,
-      })
+      }
 
-      saveBlob(download, 'orders.xlsx')
+      // В Telegram blob не сохраняется — там файл идёт по подписанной ссылке.
+      if (needsLinkDownload()) {
+        await openDownloadLink(
+          await createExportLink({ kind: 'orders', ...filters }),
+          'orders.xlsx'
+        )
+      } else {
+        saveBlob(await downloadOrdersExport(filters), 'orders.xlsx')
+      }
     } catch (cause: unknown) {
       const message = messageForError(cause, 'admin.export')
 

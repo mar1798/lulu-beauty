@@ -1,5 +1,5 @@
 import clsx from 'clsx'
-import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
+import { AnimatePresence, m, useReducedMotion } from 'motion/react'
 import { type FC, useEffect } from 'react'
 import type { IBasicStyling, IMobileMenuProps } from '../../types'
 import { IconCart, IconClose, IconUser } from '../../svg/icons'
@@ -8,6 +8,7 @@ import { IconButton } from '../../atoms/icon-button'
 import { Portal } from '../../atoms/portal'
 import { Text } from '../../atoms/text'
 import { useFocusTrap } from '../../hooks/useFocusTrap'
+import { useBackDismiss } from '../../hooks/useBackDismiss'
 import { useLockBodyScroll } from '../../hooks/useLockBodyScroll'
 import { DIALOG_TRANSITION, OVERLAY_TRANSITION } from '../../utils/motion'
 import * as styles from './MobileMenu.css'
@@ -48,6 +49,12 @@ export const MobileMenu: FC<IMobileMenuProps & IBasicStyling> = ({
 
   useLockBodyScroll(isOpen)
 
+  /*
+    «Назад» закрывает панель, а не уводит со страницы. Пункты меню закрывают её
+    обычным `onClose`: это переход, и запись в истории разберёт `useBackDismiss`.
+  */
+  const requestClose = useBackDismiss(isOpen, onClose)
+
   useEffect(() => {
     if (!isOpen) {
       return
@@ -55,14 +62,14 @@ export const MobileMenu: FC<IMobileMenuProps & IBasicStyling> = ({
 
     const onKeyDown = (event: KeyboardEvent): void => {
       if (event.key === 'Escape') {
-        onClose()
+        requestClose()
       }
     }
 
     const wideScreen = window.matchMedia(WIDE_SCREEN_QUERY)
     const onWiden = (): void => {
       if (wideScreen.matches) {
-        onClose()
+        requestClose()
       }
     }
 
@@ -73,13 +80,13 @@ export const MobileMenu: FC<IMobileMenuProps & IBasicStyling> = ({
       document.removeEventListener('keydown', onKeyDown)
       wideScreen.removeEventListener('change', onWiden)
     }
-  }, [isOpen, onClose])
+  }, [isOpen, requestClose])
 
   return (
     <Portal>
       <AnimatePresence>
         {isOpen && (
-          <motion.div
+          <m.div
             className={clsx(styles.overlay, className)}
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -91,11 +98,11 @@ export const MobileMenu: FC<IMobileMenuProps & IBasicStyling> = ({
                 иначе выделение текста внутри панели закрывало бы её.
               */
               if (event.target === event.currentTarget) {
-                onClose()
+                requestClose()
               }
             }}
           >
-            <motion.div
+            <m.div
               ref={panelRef}
               className={styles.panel}
               role="dialog"
@@ -117,7 +124,7 @@ export const MobileMenu: FC<IMobileMenuProps & IBasicStyling> = ({
                   label="Закрыть меню"
                   variant="ghost"
                   size="sm"
-                  onClick={onClose}
+                  onClick={requestClose}
                 />
               </div>
 
@@ -170,8 +177,8 @@ export const MobileMenu: FC<IMobileMenuProps & IBasicStyling> = ({
 
                 {footer}
               </div>
-            </motion.div>
-          </motion.div>
+            </m.div>
+          </m.div>
         )}
       </AnimatePresence>
     </Portal>

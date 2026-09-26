@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { screen } from '@testing-library/react'
+import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MobileMenu } from '.'
 import { feedMobileMenu } from '../../stories/feed'
@@ -32,15 +32,25 @@ describe('MobileMenu', () => {
     renderWidget(<MobileMenu {...feedMobileMenu()} onClose={onClose} />)
 
     await user.click(screen.getByRole('button', { name: 'Закрыть меню' }))
-    expect(onClose).toHaveBeenCalledTimes(1)
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1))
 
     await user.keyboard('{Escape}')
-    expect(onClose).toHaveBeenCalledTimes(2)
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(2))
 
     // Фон — родитель самой панели.
     const overlay = screen.getByRole('dialog').parentElement as HTMLElement
     await user.pointer({ target: overlay, keys: '[MouseLeft>]' })
-    expect(onClose).toHaveBeenCalledTimes(3)
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(3))
+  })
+
+  it('закрывается жестом «назад»', async () => {
+    const onClose = vi.fn()
+
+    renderWidget(<MobileMenu {...feedMobileMenu()} onClose={onClose} />)
+
+    window.history.back()
+
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1))
   })
 
   it('закрывается при переходе по пункту меню', async () => {
@@ -51,7 +61,7 @@ describe('MobileMenu', () => {
 
     await user.click(screen.getByRole('link', { name: 'Каталог' }))
 
-    expect(onClose).toHaveBeenCalledTimes(1)
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1))
   })
 
   it('помечает текущий раздел и показывает счётчик корзины', () => {

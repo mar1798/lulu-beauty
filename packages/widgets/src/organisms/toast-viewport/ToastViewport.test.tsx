@@ -7,9 +7,9 @@ import { renderWidget } from '../../testing/render'
 
 /**
  * Как и у модалки, стандартный smoke-тест не годится — стопка рендерится
- * порталом. Проверяем главное: все уведомления видны, ошибка объявляется
- * скринридером немедленно (`alert`), остальные — деликатно (`status`),
- * и закрытие отдаёт наверх идентификатор именно того тоста, по которому кликнули.
+ * порталом. Проверяем главное: все уведомления видны, озвучивают их постоянные
+ * live-регионы (ошибку — `alert`, остальное — `status`), и закрытие отдаёт
+ * наверх идентификатор именно того тоста, по которому кликнули.
  */
 describe('ToastViewport', () => {
   it('показывает все уведомления вне своего поддерева', () => {
@@ -23,11 +23,24 @@ describe('ToastViewport', () => {
     expect(screen.getAllByRole('button', { name: 'Вернуть' })).toHaveLength(1)
   })
 
-  it('ошибку объявляет как alert, остальное - как status', () => {
-    renderWidget(<ToastViewport {...feedToastViewport()} />)
+  it('держит live-регионы и без уведомлений, а текст пишет в них', () => {
+    const { rerender } = renderWidget(<ToastViewport toasts={[]} onDismiss={vi.fn()} />)
 
+    // Регионы есть до первого уведомления — иначе скринридер его пропустит.
+    expect(screen.getByRole('status')).toBeEmptyDOMElement()
+    expect(screen.getByRole('alert')).toBeEmptyDOMElement()
+
+    rerender(
+      <ToastViewport
+        toasts={[]}
+        onDismiss={vi.fn()}
+        politeAnnouncement="Товар сохранён"
+        assertiveAnnouncement="Не удалось удалить сбор"
+      />
+    )
+
+    expect(screen.getByRole('status')).toHaveTextContent('Товар сохранён')
     expect(screen.getByRole('alert')).toHaveTextContent('Не удалось удалить сбор')
-    expect(screen.getAllByRole('status')).toHaveLength(3)
   })
 
   it('закрывает именно тот тост, по которому нажали', async () => {

@@ -171,8 +171,14 @@ export const lightTokens = {
       subtle: channels('acaaa9'),
       inverse: channels('ffffff'),
       brand: channels('a9587e'),
-      danger: channels('c9524a'),
-      success: channels('3d8f62'),
+      /**
+       * Темнее референсных `#c9524a`/`#3d8f62`: ими набраны ошибки под полями
+       * (12px) и срочный таймер, а контраст был 3.97:1 и 3.59:1 на холсте —
+       * ниже WCAG AA. Эти держат 4.5:1 на всех фонах сайта, включая самый
+       * тёмный — `background.soft` (`#f2d8e5`): 4.67:1 и 4.58:1.
+       */
+      danger: channels('a83c36'),
+      success: channels('2a6e4c'),
     },
     /**
      * Границы — волосяные: `#ebebeb` из референса на разделителях и полях,

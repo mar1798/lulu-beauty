@@ -45,7 +45,7 @@ const count = (): string => screen.getByTestId('count').textContent ?? ''
 const show = (): HTMLElement => {
   fireEvent.click(screen.getByRole('button', { name: 'Убрать' }))
 
-  return screen.getByRole('status')
+  return screen.getByText('Товар убран')
 }
 
 /** Прокрутка поддельного времени: таймеры закрывают тост, `Date.now` считает остаток. */

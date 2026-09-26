@@ -15,6 +15,7 @@ import { useWishlist } from '@/contexts/WishlistContext'
 import { listCategories } from '@/services/endpoints/catalog'
 import { categoriesKey } from '@/services/swrKeys'
 import * as styles from '@/styles/layout.css'
+import { useLoginHref } from '@/hooks/useLoginHref'
 
 /**
  * Избранное. Приватное и целиком клиентское, как корзина: данные идут через
@@ -33,6 +34,7 @@ import * as styles from '@/styles/layout.css'
  */
 const WishlistPage: React.FC = () => {
   const { user, isLoading: isAuthLoading } = useAuth()
+  const loginHref = useLoginHref()
   const { wishlist, isLoading, error } = useWishlist()
 
   // Названия категорий — тем же ключом, что и каталог: список уже в кеше.
@@ -65,7 +67,7 @@ const WishlistPage: React.FC = () => {
           title="Избранное у каждого своё"
           description="Войдите, чтобы сохранять товары - список дождётся следующего сбора"
           action={
-            <Button link={{ href: '/login' }} isFullWidth="mobile">
+            <Button link={{ href: loginHref }} isFullWidth="mobile">
               Войти
             </Button>
           }

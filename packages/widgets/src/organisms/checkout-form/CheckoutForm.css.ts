@@ -9,16 +9,25 @@ const SUBMIT_WIDTH = rem(220)
 
 export const form = style({
   ...flexColumn(20),
-  padding: vars.space.xl,
+  /*
+    До `sm` отступ меньше: 32px с каждой стороны на экране в 320-375px съедали
+    пятую часть ширины, и названия позиций переносились через каждые два слова.
+  */
+  padding: vars.space.lg,
   backgroundColor: color.surface('base'),
   borderRadius: vars.radius.xxl,
   boxShadow: vars.shadow.md,
+  ...media({
+    sm: { padding: vars.space.xl },
+  }),
 })
 
+/** С переносом: «Итого · 2 позиции» и сумма на узком экране в строку не помещаются. */
 export const totalRow = style({
   ...flexRow(12),
   alignItems: 'baseline',
   justifyContent: 'space-between',
+  flexWrap: 'wrap',
 })
 
 /*

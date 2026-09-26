@@ -1,5 +1,5 @@
 import clsx from 'clsx'
-import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
+import { AnimatePresence, m, useReducedMotion } from 'motion/react'
 import { type FC } from 'react'
 import type { IBasicStyling, IToastViewportProps } from '../../types'
 import { Portal } from '../../atoms/portal'
@@ -26,12 +26,26 @@ export const ToastViewport: FC<IToastViewportProps & IBasicStyling> = ({
   onDismiss,
   onPause,
   onResume,
+  politeAnnouncement = '',
+  assertiveAnnouncement = '',
   className,
 }) => {
   const isReduced = useReducedMotion() ?? false
 
   return (
     <Portal>
+      {/*
+        Озвучивают уведомления эти две области, а не сами тосты: они стоят в
+        документе постоянно и меняют только текст — так скринридер их слышит.
+        Ошибка перебивает чтение, остальное дожидается паузы.
+      */}
+      <div className={styles.liveRegion} role="status" aria-live="polite" aria-atomic={true}>
+        {politeAnnouncement}
+      </div>
+      <div className={styles.liveRegion} role="alert" aria-live="assertive" aria-atomic={true}>
+        {assertiveAnnouncement}
+      </div>
+
       {/*
         События приходят от самих тостов — контейнер прозрачен для мыши и
         целью указателя не бывает, — но всплывают до него, и React считает
@@ -47,7 +61,7 @@ export const ToastViewport: FC<IToastViewportProps & IBasicStyling> = ({
       >
         <AnimatePresence initial={false}>
           {toasts.map(toast => (
-            <motion.div
+            <m.div
               key={toast.id}
               layout={!isReduced}
               initial={isReduced ? { opacity: 0 } : { opacity: 0, transform: 'translateY(12px)' }}
@@ -56,7 +70,7 @@ export const ToastViewport: FC<IToastViewportProps & IBasicStyling> = ({
               transition={TOAST_TRANSITION}
             >
               <Toast toast={toast} onDismiss={onDismiss} />
-            </motion.div>
+            </m.div>
           ))}
         </AnimatePresence>
       </div>

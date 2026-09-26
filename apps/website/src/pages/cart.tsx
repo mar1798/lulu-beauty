@@ -11,6 +11,8 @@ import { EditableOrderNotice } from '@/components/EditableOrderNotice'
 import { useAuth } from '@/contexts/AuthContext'
 import { useCart } from '@/contexts/CartContext'
 import * as styles from '@/styles/layout.css'
+import { useLoginHref } from '@/hooks/useLoginHref'
+import { useCycleExpiryRefresh } from '@/hooks/useCycleExpiryRefresh'
 
 /**
  * Корзина. Приватная и целиком клиентская: данные идут через прокси,
@@ -23,9 +25,13 @@ import * as styles from '@/styles/layout.css'
 const CartPage: React.FC = () => {
   const router = useRouter()
   const { user, isLoading: isAuthLoading } = useAuth()
+  const loginHref = useLoginHref()
   const { cart, isLoading, isWholeCartBusy, isItemBusy, error, updateItem, removeItem, addItem } =
     useCart()
   const { notify } = useToast()
+  // Дедлайн прошёл, пока страница открыта, — перечитать сбор и корзину, чтобы
+  // «Оформить» погасла сразу, а не ответила 409.
+  useCycleExpiryRefresh(cart?.cycleDeadlineAt ?? null)
 
   /**
    * Возврат только что убранного товара.
@@ -49,6 +55,23 @@ const CartPage: React.FC = () => {
             description: result.error ?? 'Попробуйте добавить товар из каталога',
           }
     )
+  }
+
+  /**
+   * Смена количества. Осечка — тостом, как на оформлении: число откатывается само
+   * (`CartContext`), а общая ошибка корзины стоит под списком, на телефоне — в
+   * одном-двух экранах ниже, и без тоста число просто молча возвращалось обратно.
+   */
+  const changeQuantity = async (variantId: string, quantity: number): Promise<void> => {
+    const result = await updateItem(variantId, quantity)
+
+    if (!result.ok) {
+      notify({
+        tone: 'danger',
+        title: 'Количество не изменилось',
+        description: result.error ?? undefined,
+      })
+    }
   }
 
   /**
@@ -77,7 +100,8 @@ const CartPage: React.FC = () => {
       // Предупреждение, а не «просто сообщение»: из корзины пропала строка,
       // и тост существует затем, чтобы это можно было отменить.
       tone: 'warning',
-      title: item === undefined ? 'Товар убран из корзины' : `«${item.productName}» убран`,
+      title: 'Товар убран из корзины',
+      subject: item?.productName,
       action: {
         label: 'Вернуть',
         onAction: () => {
@@ -96,7 +120,7 @@ const CartPage: React.FC = () => {
           title="Корзина у каждого своя"
           description="Войдите, чтобы собрать заявку - она сохранится до закрытия сбора"
           action={
-            <Button link={{ href: '/login' }} isFullWidth="mobile">
+            <Button link={{ href: loginHref }} isFullWidth="mobile">
               Войти
             </Button>
           }
@@ -124,7 +148,7 @@ const CartPage: React.FC = () => {
           error={error}
           buildProductHref={slug => `/catalog/${slug}`}
           onQuantityChange={(variantId, quantity) => {
-            void updateItem(variantId, quantity)
+            void changeQuantity(variantId, quantity)
           }}
           onRemove={variantId => {
             void remove(variantId)

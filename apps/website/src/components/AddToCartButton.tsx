@@ -93,7 +93,16 @@ export const AddToCartButton: React.FC<{
   const { user, isLoading: isAuthLoading, reload: reloadSession } = useAuth()
   const { cart, addItem, isItemBusy } = useCart()
   const { isClosed } = useActiveCycle()
-  const { notify } = useToast()
+  const { notify, announce } = useToast()
+
+  /**
+   * Обёртка — чтобы найти кнопку после подмены. «В корзину» по успеху меняется на
+   * ссылку «в корзине», прежний узел исчезает вместе с фокусом, и скринридер
+   * улетал в начало страницы. Флаг ставит успешное добавление, эффект ниже
+   * переводит фокус на новую ссылку.
+   */
+  const wrapperRef = useRef<HTMLSpanElement>(null)
+  const shouldRefocus = useRef(false)
 
   /**
    * Клик уже обрабатывается — от ожидания сессии до ответа корзины. Ref, а не
@@ -130,6 +139,15 @@ export const AddToCartButton: React.FC<{
     return () => window.clearTimeout(timer)
   }, [isConfirming])
 
+  useEffect(() => {
+    if (!isConfirming || !shouldRefocus.current) {
+      return
+    }
+
+    shouldRefocus.current = false
+    wrapperRef.current?.querySelector<HTMLElement>('a, button')?.focus()
+  }, [isConfirming])
+
   const add = useCallback(async (): Promise<void> => {
     /*
       Второй клик по неответившей кнопке добавил бы товар повторно: `cart` в
@@ -159,7 +177,11 @@ export const AddToCartButton: React.FC<{
       const result = await addItem(target.id)
 
       if (result.ok) {
+        // Фокус переводим, только если он был на этой кнопке: мышью и пальцем
+        // жмут, не глядя на фокус, и прыгать ему незачем.
+        shouldRefocus.current = wrapperRef.current?.contains(document.activeElement) === true
         setIsConfirming(true)
+        announce(`«${product.name}» добавлен в корзину`)
       } else {
         /*
           Причину показываем словами корзины, а не общим «попробуйте ещё раз»:
@@ -175,7 +197,18 @@ export const AddToCartButton: React.FC<{
     } finally {
       isRunning.current = false
     }
-  }, [user, isAuthLoading, reloadSession, router, addItem, isItemBusy, target, notify])
+  }, [
+    user,
+    isAuthLoading,
+    reloadSession,
+    router,
+    addItem,
+    isItemBusy,
+    target,
+    notify,
+    announce,
+    product.name,
+  ])
 
   /*
     Объём не выбран, а выбирать есть из чего: кнопка ведёт на страницу товара.
@@ -221,18 +254,20 @@ export const AddToCartButton: React.FC<{
       именно их не хватало, чтобы догадаться о переходе, не нажав.
     */
     return (
-      <IconButton
-        icon={
-          <span key={isConfirming ? 'check' : 'cart'} className={styles.iconSwap}>
-            {isConfirming ? <IconCheck /> : <IconCart />}
-          </span>
-        }
-        label={isConfirming ? 'Добавлено - перейти в корзину' : 'В корзине - перейти в корзину'}
-        variant="solid"
-        /* На странице товара круг ровняется по высоте строки действий (52px). */
-        size={isCompact ? 'md' : 'lg'}
-        link={{ href: '/cart' }}
-      />
+      <span ref={wrapperRef} className={styles.wrapper}>
+        <IconButton
+          icon={
+            <span key={isConfirming ? 'check' : 'cart'} className={styles.iconSwap}>
+              {isConfirming ? <IconCheck /> : <IconCart />}
+            </span>
+          }
+          label={`${isConfirming ? 'Добавлено' : 'В корзине'} - перейти в корзину: ${product.name}`}
+          variant="solid"
+          /* На странице товара круг ровняется по высоте строки действий (52px). */
+          size={isCompact ? 'md' : 'lg'}
+          link={{ href: '/cart' }}
+        />
+      </span>
     )
   }
 
@@ -251,7 +286,7 @@ export const AddToCartButton: React.FC<{
   const button = isCompact ? (
     <IconButton
       icon={<IconPlus />}
-      label="В корзину"
+      label={`В корзину: ${product.name}`}
       variant="primary"
       size="md"
       disabled={disabled}
@@ -278,11 +313,15 @@ export const AddToCartButton: React.FC<{
 
   // Подсказка появляется только когда есть что объяснять: над рабочей кнопкой
   // пузырь «в корзину» ничего не добавил бы к её же подписи.
-  return unavailableReason === null ? (
-    button
-  ) : (
-    <Tooltip content={unavailableReason} isBlock={isFullWidth}>
-      {button}
-    </Tooltip>
+  return (
+    <span ref={wrapperRef} className={isFullWidth ? styles.wrapperBlock : styles.wrapper}>
+      {unavailableReason === null ? (
+        button
+      ) : (
+        <Tooltip content={unavailableReason} isBlock={isFullWidth}>
+          {button}
+        </Tooltip>
+      )}
+    </span>
   )
 }

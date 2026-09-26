@@ -1,16 +1,27 @@
-import { style } from '@vanilla-extract/css'
+import { globalStyle, style } from '@vanilla-extract/css'
 import { border, color, font, rem, transition } from '../../styling/lib'
 import { media } from '../../styling/lib/media'
 import { flexRow, focusVisibleRing } from '../../styling/mixin'
+import { headerOffset } from '../../styling/properties.css'
 import { vars } from '../../styling/themes/contract.css'
 
+/**
+ * Размытие под шапкой — только с `md`. На телефоне `backdrop-filter` на
+ * прилипшем слое пересчитывается на каждом кадре прокрутки и заметно ест кадры,
+ * а при почти непрозрачном фоне его и так почти не видно — там фон сплошной.
+ */
 export const container = style({
   position: 'sticky',
   top: 0,
   zIndex: vars.zIndex.header,
-  backgroundColor: color.surface('base', 0.92),
-  backdropFilter: 'blur(12px)',
+  backgroundColor: color.surface('base'),
   borderBottom: border(1, color.border('subtle')),
+  ...media({
+    md: {
+      backgroundColor: color.surface('base', 0.92),
+      backdropFilter: 'blur(12px)',
+    },
+  }),
 })
 
 /**
@@ -25,13 +36,25 @@ export const floating = style({
   backdropFilter: 'none',
   borderBottomColor: 'transparent',
   transition: transition('background-color', 'border-color'),
+  /*
+    Повтор под `md` не лишний: vanilla-extract выносит медиаправила в конец
+    таблицы, и фон с размытием из `container` иначе перебил бы прозрачность.
+  */
+  ...media({
+    md: { backgroundColor: 'transparent', backdropFilter: 'none' },
+  }),
 })
 
-/** После прокрутки на высоту шапки возвращается обычный вид. */
+/** После прокрутки на высоту шапки возвращается обычный вид — см. `container`. */
 export const floatingScrolled = style({
-  backgroundColor: color.surface('base', 0.92),
-  backdropFilter: 'blur(12px)',
+  backgroundColor: color.surface('base'),
   borderBottomColor: color.border('subtle'),
+  ...media({
+    md: {
+      backgroundColor: color.surface('base', 0.92),
+      backdropFilter: 'blur(12px)',
+    },
+  }),
 })
 
 /**
@@ -58,6 +81,15 @@ export const inner = style({
   ...flexRow(16),
   alignItems: 'center',
   minHeight: rem(72),
+})
+
+/**
+ * Отступ под прилипшую шапку (`headerOffset`) для всего, что прилипает под ней.
+ * Только пока шапка прилипает: у `unpinned` (Telegram) она уезжает со страницей,
+ * и отступ под неё оставил бы пустую полосу. `inner` в 72px плюс граница в 1px.
+ */
+globalStyle(`html:has(${container}:not(${unpinned}))`, {
+  vars: { [headerOffset]: rem(73) },
 })
 
 export const logo = style([

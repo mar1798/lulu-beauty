@@ -1,7 +1,7 @@
 import { style } from '@vanilla-extract/css'
 import { rem } from '../../styling/lib'
 import { media } from '../../styling/lib/media'
-import { flexColumn } from '../../styling/mixin'
+import { flexColumn, visuallyHidden } from '../../styling/mixin'
 import { vars } from '../../styling/themes/contract.css'
 
 export const container = style({
@@ -22,3 +22,5 @@ export const container = style({
     },
   }),
 })
+
+export const liveRegion = style(visuallyHidden())

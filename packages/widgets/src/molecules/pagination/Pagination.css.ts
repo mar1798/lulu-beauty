@@ -1,13 +1,40 @@
 import { style } from '@vanilla-extract/css'
 import { border, color, font, rem, transition } from '../../styling/lib'
+import { media } from '../../styling/lib/media'
 import { flexRow, focusVisibleRing } from '../../styling/mixin'
 import { vars } from '../../styling/themes/contract.css'
 
+/**
+ * Одна строка всегда. Полный ряд номеров на телефоне (с 4-й страницы — семь
+ * элементов плюс две стрелки) в 320-375px не помещался и уезжал на вторую строку;
+ * там вместо номеров — «5 из 9» между стрелками (`compact`).
+ */
 export const container = style({
   ...flexRow(6),
   alignItems: 'center',
   justifyContent: 'center',
-  flexWrap: 'wrap',
+  flexWrap: 'nowrap',
+})
+
+/** Номера и многоточия — только с `sm`. */
+export const wide = style({
+  display: 'none',
+  ...media({
+    sm: { display: 'inline-flex' },
+  }),
+})
+
+/** «5 из 9» — только до `sm`. */
+export const compact = style({
+  display: 'inline-flex',
+  alignItems: 'center',
+  padding: `0 ${rem(8)}`,
+  font: font('14/20', 500),
+  color: color.text('secondary'),
+  whiteSpace: 'nowrap',
+  ...media({
+    sm: { display: 'none' },
+  }),
 })
 
 export const page = style([

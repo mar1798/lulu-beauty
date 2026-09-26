@@ -1,13 +1,25 @@
 import { Head, Html, Main, NextScript } from 'next/document'
 import React from 'react'
+import { EARLY_READY_SCRIPT } from '@/utils/telegramMiniApp'
 
 /**
  * `lang="ru"` — сайт русскоязычный целиком: от этого зависит и синтез речи
  * у скринридера, и переносы, и предложение перевода в браузере.
+ *
+ * `data-scroll-behavior="smooth"` — сигнал Next, что у страницы глобальный
+ * `scroll-behavior: smooth` и на время перехода его надо выключать. Без атрибута
+ * Next 16 этого не делает, и каждый переход по ссылке плавно ехал наверх со старой
+ * позиции, по пути запуская анимации появления.
  */
 const Document = (): React.ReactElement => (
-  <Html lang="ru">
+  <Html lang="ru" data-scroll-behavior="smooth">
     <Head>
+      {/*
+        Первым делом — сигнал Telegram, что страница готова: иначе в Mini App его
+        заставка закрывает уже нарисованную страницу до гидрации и загрузки SDK.
+        Вне Mini App скрипт сразу выходит.
+      */}
+      <script dangerouslySetInnerHTML={{ __html: EARLY_READY_SCRIPT }} />
       {/*
         Иконки живут здесь, а не в `_app`: они одинаковы на всех страницах и
         от пропсов не зависят.

@@ -31,10 +31,10 @@ describe('Modal', () => {
     renderWidget(<Modal {...feedModal()} onClose={onClose} />)
 
     await user.click(screen.getByRole('button', { name: 'Закрыть' }))
-    expect(onClose).toHaveBeenCalledTimes(1)
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1))
 
     await user.keyboard('{Escape}')
-    expect(onClose).toHaveBeenCalledTimes(2)
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(2))
   })
 
   it('клик мимо окна закрывает только когда это разрешено', async () => {
@@ -53,7 +53,7 @@ describe('Modal', () => {
 
     rerender(<Modal {...feedModal()} isDismissable={true} onClose={onClose} />)
     await user.click(overlay())
-    expect(onClose).toHaveBeenCalledTimes(1)
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1))
   })
   it('забирает фокус внутрь, когда открыт уже при монтировании', async () => {
     /*
