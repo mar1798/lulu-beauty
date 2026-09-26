@@ -190,14 +190,17 @@ Client-side fetching is [SWR](https://swr.vercel.app/), configured globally in `
   so any component can read them by key instead of receiving them as a prop through several
   layers. Fallback keys must be run through `unstable_serialize` — `useSWR` accepts tuples but
   `fallback` looks up the serialized form, and a raw tuple simply never matches, silently.
-  **A prefilled key must also switch mount revalidation off.** `fallback` and `fallbackData`
-  are revalidated on mount by default, so data carefully baked into `getStaticProps` was
-  re-fetched anyway, in the same second as hydration and `/api/auth/me`. It can't be fresher
-  than the page: `revalidate: 60` bounds both. `hasFallback(fallback, key)` (same module,
-  reading `useSWRConfig().fallback`) answers "is this one prefilled on this page" —
-  `useActiveCycle` passes it to `revalidateOnMount`, and `pages/catalog/index.tsx` does the
-  same for the first, unfiltered product page. Changing a filter or page changes the key and
-  fetches as usual; only the mount is skipped.
+  **A prefilled key switches mount revalidation off only while the page is fresh.**
+  `fallback` and `fallbackData` are revalidated on mount by default, so data baked into
+  `getStaticProps` was re-fetched in the same second as hydration and `/api/auth/me` — pointless
+  for a page rendered a moment ago. But ISR serves a stale copy first and regenerates it in the
+  background, so a static page can be days old (see [gotchas.md](gotchas.md)).
+  `activeCycleFallback` stamps the render time next to the cycle, and `isFreshFallback(fallback,
+key)` answers "prefilled on this page and rendered less than 60 s ago" — `useActiveCycle`
+  passes it to `revalidateOnMount`. `pages/catalog/index.tsx` does the same for the first,
+  unfiltered product page with `isFreshRender(fallback)`, and the home hero reads the cycle
+  through `useActiveCycle` rather than straight from its prop. Changing a filter or page
+  changes the key and fetches as usual.
 - `src/services/apiErrors.ts` — `ApiError { status, code, fields }` plus the machine-code →
   Russian-message table. The backend emits codes only, so **every new `HTTPException` detail
   needs an entry here**. Messages are chosen by **code + `ErrorScope`**, not by code alone:

@@ -1,7 +1,7 @@
 import useSWR, { useSWRConfig } from 'swr'
 import type { IOrderCycle } from 'widgets/types'
 import { getActiveCycleOrNull } from '@/services/endpoints/cycles'
-import { hasFallback } from '@/services/swrFallback'
+import { isFreshFallback } from '@/services/swrFallback'
 import { activeCycleKey } from '@/services/swrKeys'
 
 /**
@@ -33,19 +33,19 @@ export interface IActiveCycleState {
 
 export const useActiveCycle = (): IActiveCycleState => {
   /*
-    На странице со статикой состояние сбора уже приехало в `fallback` — и
-    перепроверять его при монтировании незачем: страница пересобирается по
-    `revalidate: 60`, значит свежее этого запрос всё равно ничего не принесёт,
-    а уходит он ровно в ту секунду, когда браузер занят гидратацией и
-    `/api/auth/me` (см. `services/swrFallback.ts`).
+    На странице со статикой состояние сбора уже приехало в `fallback`. Если
+    страницу собрали только что, перепроверять его незачем: запрос ничего
+    свежего не принесёт, а уйдёт ровно в ту секунду, когда браузер занят
+    гидратацией и `/api/auth/me`. Но ISR отдаёт и копии многодневной давности —
+    их сбор перечитывается (см. `isFreshFallback` в `services/swrFallback.ts`).
 
-    Страницы без статики (админка, заявки) `fallback` не кладут — там условие
-    ложно, и всё работает как прежде.
+    Страницы без статики (админка, заявки) `fallback` не кладут — там
+    запрос уходит при монтировании, как обычно.
   */
   const { fallback } = useSWRConfig()
 
   const { data, error } = useSWR(activeCycleKey, () => getActiveCycleOrNull(), {
-    revalidateOnMount: !hasFallback(fallback, activeCycleKey),
+    revalidateOnMount: !isFreshFallback(fallback, activeCycleKey),
   })
 
   /*

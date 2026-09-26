@@ -24,7 +24,7 @@ import {
 import { messageForError } from '@/services/apiErrors'
 import { listBrands, listCategories, listProducts } from '@/services/endpoints/catalog'
 import { getActiveCycleOrNull } from '@/services/endpoints/cycles'
-import { activeCycleFallback, type ISwrFallback } from '@/services/swrFallback'
+import { activeCycleFallback, isFreshRender, type ISwrFallback } from '@/services/swrFallback'
 import { productListLd } from '@/utils/jsonLd'
 import { scrollToTop } from '@/utils/scroll'
 import { CATALOG_DESCRIPTION, CATALOG_TITLE } from '@/utils/seo'
@@ -133,7 +133,7 @@ const fetchCatalogPage = async ([, category, brand, q, page]: ICatalogKey): Prom
 /** Сентинел «все бренды»: у `Select` нет значения `null`, пустая строка — сброс. */
 const ALL_BRANDS = ''
 
-const CatalogPage: React.FC<ICatalogPageProps> = ({ categories, brands, initial }) => {
+const CatalogPage: React.FC<ICatalogPageProps> = ({ categories, brands, initial, fallback }) => {
   const [{ category: categorySlug, brand, q, page: pageNumber }, setParams] = useQueryParams({
     category: optionalTextParam,
     brand: optionalTextParam,
@@ -176,8 +176,11 @@ const CatalogPage: React.FC<ICatalogPageProps> = ({ categories, brands, initial 
     Первая страница без фильтров уже пришла статикой. `fallbackData` сам по
     себе повторный запрос не отменяет — SWR всё равно перепроверяет значение
     при монтировании, и запрос уходил, конкурируя с гидратацией и
-    `/api/auth/me`. Свежее он ничего не приносил: страница пересобирается по
-    `revalidate: 60`, и статика устаревает ровно на столько же.
+    `/api/auth/me`. Для только что собранной страницы он и правда лишний.
+
+    Но ISR отдаёт протухшую копию сразу, а пересобирает в фоне, — и статика
+    может оказаться сколь угодно старой, с прежними ценами и наличием. Такую
+    перепроверяем (`isFreshRender`, `services/swrFallback.ts`).
 
     Только при монтировании: смена категории, бренда, поиска или страницы
     меняет ключ, и новый набор запрашивается как обычно.
@@ -194,7 +197,7 @@ const CatalogPage: React.FC<ICatalogPageProps> = ({ categories, brands, initial 
     fetchCatalogPage,
     {
       fallbackData: staticPage,
-      revalidateOnMount: staticPage === undefined,
+      revalidateOnMount: staticPage === undefined || !isFreshRender(fallback),
       // Смена категории/страницы не должна перекрашивать сетку в скелетон:
       // прошлая страница остаётся на экране, пока грузится следующая.
       keepPreviousData: true,

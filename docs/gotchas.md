@@ -48,8 +48,16 @@ silently fails in the browser. `X-Frame-Options` is deliberately absent — it c
 
 **`fallback` and `fallbackData` are revalidated on mount by default**, so prefilling a key
 from `getStaticProps` does not, by itself, remove the request — it just moves it into the
-hydration second. Pair the prefill with `revalidateOnMount: false` (`hasFallback` in
-`services/swrFallback.ts`).
+hydration second. Skipping it is only safe while the page is fresh: `isFreshFallback` /
+`isFreshRender` in `services/swrFallback.ts` answer that from the render time stamped next
+to the prefill.
+
+**An ISR page is not "at most `revalidate` seconds old".** Next serves the stale copy
+_immediately_ and regenerates in the background, so the first visitor of a product nobody
+opened for a week gets week-old HTML. With mount revalidation switched off unconditionally,
+that visitor saw the collection closed (and the add-to-cart button disabled) while it was
+open, until a reload fetched the regenerated page — production, 09.2026. Anything baked into
+static props that can change must be re-checked when the page is older than `revalidate`.
 
 **`fallback: true` on `catalog/[slug]` hung production.** A slug with no product answered
 nothing at all — no 404, no skeleton, the connection just sat open — while the very same URL
