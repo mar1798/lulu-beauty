@@ -80,7 +80,8 @@ export const WishlistButton: React.FC<{
       result.ok
         ? {
             tone: 'success',
-            title: name === undefined ? 'Товар снова в избранном' : `«${name}» снова в избранном`,
+            title: 'Товар снова в избранном',
+            subject: name,
           }
         : {
             tone: 'danger',
@@ -141,7 +142,8 @@ export const WishlistButton: React.FC<{
       if (isSaved) {
         notify({
           tone: 'warning',
-          title: name === undefined ? 'Товар убран из избранного' : `«${name}» убран из избранного`,
+          title: 'Товар убран из избранного',
+          subject: name,
           action: {
             label: 'Вернуть',
             onAction: () => {
@@ -152,7 +154,8 @@ export const WishlistButton: React.FC<{
       } else {
         notify({
           tone: 'success',
-          title: name === undefined ? 'Товар в избранном' : `«${name}» в избранном`,
+          title: 'Товар в избранном',
+          subject: name,
           action: {
             label: 'Посмотреть',
             onAction: () => {

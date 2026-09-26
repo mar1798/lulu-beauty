@@ -110,7 +110,7 @@ const OrderPage: React.FC = () => {
     success: string,
     scope: ErrorScope,
     itemId: string | null = null,
-    done: { tone?: IToastTone; undo?: () => void } = {}
+    done: { tone?: IToastTone; subject?: string; undo?: () => void } = {}
   ): Promise<boolean> => {
     setIsBusy(true)
     setBusyItemId(itemId)
@@ -129,6 +129,7 @@ const OrderPage: React.FC = () => {
       notify({
         tone: done.tone ?? 'success',
         title: success,
+        subject: done.subject,
         action: done.undo === undefined ? undefined : { label: 'Вернуть', onAction: done.undo },
       })
 
@@ -303,19 +304,22 @@ const OrderPage: React.FC = () => {
 
           void runAction(
             () => removeMyOrderItem(order.id, itemId),
-            name === undefined ? 'Позиция убрана' : `«${name}» убран`,
+            'Позиция убрана из заявки',
             'order.item.remove',
             itemId,
             {
               tone: 'warning',
+              subject: name,
               undo:
                 variantId === null
                   ? undefined
                   : () => {
                       void runAction(
                         () => addMyOrderItem(order.id, variantId, quantity),
-                        'Вернулся в заявку',
-                        'order.item.add'
+                        'Позиция снова в заявке',
+                        'order.item.add',
+                        null,
+                        { subject: name }
                       )
                     },
             }

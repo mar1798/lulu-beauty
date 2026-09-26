@@ -37,7 +37,9 @@ Supporting directories:
   `MotionProvider`. Toasts are voiced through two permanent hidden live regions in
   `ToastViewport` (polite and assertive) rather than a role on each toast — a region inserted
   already filled is skipped by screen readers; `useToast().announce()` speaks without a toast.
-  A `danger` toast lives 10s, and its description is never clamped.
+  A `danger` toast lives 10s, and its description is never clamped. The title says what
+  happened ("Товар убран из корзины"); a product name goes in `subject`, its own line clamped
+  at two — inside the title the ellipsis ate the event instead of the name.
 - `src/hooks` — `useCountdown`, `useDebouncedValue`, `useDisclosure`, `useFocusTrap`,
   `useLockBodyScroll`, `useParallaxOffset`.
 - `src/utils` — non-styling shared utilities: `motion.ts`, `datetime.ts`, `plural.ts`,

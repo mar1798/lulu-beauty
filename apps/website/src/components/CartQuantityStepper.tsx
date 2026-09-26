@@ -77,7 +77,8 @@ export const CartQuantityStepper: React.FC<{
         if (quantity === REMOVE) {
           notify({
             tone: 'warning',
-            title: `«${productName}» убран из корзины`,
+            title: 'Товар убран из корзины',
+            subject: productName,
             action: {
               label: 'Вернуть',
               onAction: () => {

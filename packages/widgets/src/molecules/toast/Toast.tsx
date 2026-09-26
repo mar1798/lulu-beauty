@@ -21,6 +21,7 @@ export const Toast: FC<IToastProps & IBasicStyling> = ({ toast, onDismiss, class
   <div className={clsx(styles.container, styles.tone[toast.tone], className)}>
     <div className={styles.body}>
       <span className={styles.title}>{toast.title}</span>
+      {toast.subject !== undefined && <span className={styles.subject}>{toast.subject}</span>}
       {toast.description !== undefined && (
         <span className={styles.description}>{toast.description}</span>
       )}

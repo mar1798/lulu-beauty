@@ -1833,6 +1833,12 @@ export interface IToast {
   id: string
   tone: IToastTone
   title: string
+  /**
+   * О чём уведомление — обычно название товара. Отдельно от заголовка, чтобы
+   * длинное название обрезалось само по себе, а не вместе с тем, что с ним
+   * произошло («…убран из…» не говорит ничего).
+   */
+  subject?: string
   description?: string
   action?: IToastAction
 }

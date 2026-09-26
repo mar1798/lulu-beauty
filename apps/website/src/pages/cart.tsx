@@ -100,7 +100,8 @@ const CartPage: React.FC = () => {
       // Предупреждение, а не «просто сообщение»: из корзины пропала строка,
       // и тост существует затем, чтобы это можно было отменить.
       tone: 'warning',
-      title: item === undefined ? 'Товар убран из корзины' : `«${item.productName}» убран`,
+      title: 'Товар убран из корзины',
+      subject: item?.productName,
       action: {
         label: 'Вернуть',
         onAction: () => {

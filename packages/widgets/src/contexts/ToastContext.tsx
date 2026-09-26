@@ -21,6 +21,8 @@ import { ToastViewport } from '../organisms/toast-viewport'
 
 export interface INotifyInput {
   title: string
+  /** Название товара и т. п. — строкой под заголовком, см. `IToast.subject`. */
+  subject?: string
   description?: string
   tone?: IToastTone
   /** Мс до автозакрытия; `0` — не закрывать само (для ошибок, которые надо прочитать). */
@@ -203,13 +205,16 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         id: nextId(),
         tone: input.tone ?? 'info',
         title: input.title,
+        subject: input.subject,
         description: input.description,
         action: input.action,
       }
 
       setToasts(current => [...current, toast])
       announce(
-        toast.description === undefined ? toast.title : `${toast.title}. ${toast.description}`,
+        [toast.title, toast.subject, toast.description]
+          .filter(part => part !== undefined)
+          .join('. '),
         toast.tone === 'danger' ? 'assertive' : 'polite'
       )
 
