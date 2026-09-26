@@ -80,17 +80,21 @@ export const Pagination: FC<IPaginationProps & IBasicStyling> = ({
         <IconChevronLeft />
       </button>
 
+      <span className={styles.compact}>
+        {page} из {pageCount}
+      </span>
+
       {items.map((item, index) =>
         item === PAGE_GAP ? (
           // eslint-disable-next-line react/no-array-index-key
-          <span key={`gap-${index}`} className={styles.gap} aria-hidden={true}>
+          <span key={`gap-${index}`} className={clsx(styles.gap, styles.wide)} aria-hidden={true}>
             …
           </span>
         ) : (
           <button
             key={item}
             type="button"
-            className={styles.page}
+            className={clsx(styles.page, styles.wide)}
             aria-current={item === page ? 'page' : undefined}
             aria-label={`Страница ${item}`}
             onClick={() => onChange(item)}

@@ -937,6 +937,7 @@ export const feedAuthUser = (overrides: Partial<IAuthUser> = {}): IAuthUser => (
   name: faker.person.firstName(),
   role: 'CUSTOMER',
   telegramLinked: false,
+  telegramUserId: null,
   ...overrides,
 })
 

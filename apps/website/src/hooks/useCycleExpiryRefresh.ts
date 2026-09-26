@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import { useSWRConfig } from 'swr'
-import { activeCycleKey } from '@/services/swrKeys'
+import { activeCycleKey, isCartKey } from '@/services/swrKeys'
 
 /**
  * Перепроверка состояния сбора в тот момент, когда таймер добежал до нуля.
@@ -65,6 +65,9 @@ export const useCycleExpiryRefresh = (deadlineAt: string | null): void => {
 
       attempts += 1
       void mutate(activeCycleKey)
+      // И корзина: у закрытого сбора её `cycleId` сбрасывается, и «Оформить» должна
+      // погаснуть сейчас, а не ответить 409 на нажатие.
+      void mutate(isCartKey)
 
       if (attempts < MAX_ATTEMPTS) {
         timer = setTimeout(check, RETRY_MS)

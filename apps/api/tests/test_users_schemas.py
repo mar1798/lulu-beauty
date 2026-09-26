@@ -12,6 +12,7 @@ def test_user_response_serializes_camel_case() -> None:
         role=Role.CUSTOMER,
         phone_verified=True,
         telegram_linked=False,
+        telegram_user_id=None,
     )
     dumped = response.model_dump(by_alias=True)
     assert dumped["telegramLinked"] is False

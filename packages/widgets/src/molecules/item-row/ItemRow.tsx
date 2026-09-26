@@ -1,5 +1,5 @@
 import clsx from 'clsx'
-import { type FC, useState } from 'react'
+import { type FC, useRef, useState } from 'react'
 import type { IBasicStyling, IItemRowProps } from '../../types'
 import { IconBox, IconClose } from '../../svg/icons'
 import { AppImage } from '../../atoms/app-image'
@@ -48,6 +48,31 @@ export const ItemRow: FC<IItemRowProps & IBasicStyling> = ({
     было», и рисуется той же заглушкой, а не битой иконкой браузера.
   */
   const [isImageBroken, setIsImageBroken] = useState(false)
+  const rowRef = useRef<HTMLDivElement>(null)
+
+  /*
+    Строка исчезнет вместе с кнопкой, на которой стоит фокус, — и скринридер
+    улетел бы в начало страницы. Поэтому фокус заранее уходит на название соседней
+    позиции (следующей, а у последней — предыдущей).
+
+    Кнопка не выключается, пока идёт запрос: выключенная теряет фокус тут же.
+    Повторное нажатие просто игнорируется.
+  */
+  const remove = (): void => {
+    if (isBusy || onRemove === undefined) {
+      return
+    }
+
+    const row = rowRef.current
+
+    if (row !== null && row.contains(document.activeElement)) {
+      const neighbour = row.nextElementSibling ?? row.previousElementSibling
+
+      neighbour?.querySelector<HTMLElement>('a[href], button:not([disabled])')?.focus()
+    }
+
+    onRemove()
+  }
   const hasImage = item.productImageUrl !== null && !isImageBroken
   const tags = productTags({
     brand: item.productBrand,
@@ -56,7 +81,7 @@ export const ItemRow: FC<IItemRowProps & IBasicStyling> = ({
   })
 
   return (
-    <div className={clsx(styles.container, className)}>
+    <div ref={rowRef} className={clsx(styles.container, className)}>
       <span className={styles.thumb}>
         {hasImage ? (
           <AppImage
@@ -131,9 +156,9 @@ export const ItemRow: FC<IItemRowProps & IBasicStyling> = ({
                   canRemove ? (removeLabel ?? `Убрать: ${item.productName}`) : removeBlockedLabel
                 }
                 variant="dangerSoft"
-                size="sm"
-                disabled={isBusy || !canRemove}
-                onClick={onRemove}
+                size="md"
+                disabled={!canRemove}
+                onClick={remove}
               />
             )}
           </div>

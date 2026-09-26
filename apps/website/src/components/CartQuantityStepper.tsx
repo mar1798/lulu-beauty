@@ -15,7 +15,8 @@ import { useCart } from '@/contexts/CartContext'
  * Шаг вниз с единицы убирает позицию (`min = 0`), и строка действий
  * разворачивается обратно в подписанную «В корзину». Это единственный способ
  * отменить добавление, не уходя в корзину: кнопка рядом к этому моменту уже
- * ссылка.
+ * ссылка. Поэтому удаление, как и крестик в `/cart`, идёт с тостом «Вернуть»:
+ * промах по «−» на телефоне иначе молча убирал товар.
  *
  * Позиции нет — рисуется погашенная единица. Показать её всё равно некому:
  * `ProductDetails` держит этот слот свёрнутым в ноль, — но содержимое обязано
@@ -39,13 +40,29 @@ export const CartQuantityStepper: React.FC<{
   /** Уходит в подпись группы — рядом с ней на странице есть и другие кнопки. */
   productName: string
 }> = ({ variantId, productName }) => {
-  const { cart, updateItem, removeItem } = useCart()
+  const { cart, updateItem, removeItem, addItem } = useCart()
   const { notify } = useToast()
 
   const line =
     variantId === null ? undefined : cart?.items.find(item => item.variantId === variantId)
 
   const label = `Количество: ${productName}`
+
+  /** Возврат убранной позиции — заново, с той единицей, с которой её убрали. */
+  const restore = useCallback(
+    async (target: string): Promise<void> => {
+      const result = await addItem(target, ONE)
+
+      if (!result.ok) {
+        notify({
+          tone: 'danger',
+          title: 'Вернуть не получилось',
+          description: result.error ?? 'Попробуйте добавить товар ещё раз',
+        })
+      }
+    },
+    [addItem, notify]
+  )
 
   const change = useCallback(
     async (quantity: number): Promise<void> => {
@@ -57,6 +74,19 @@ export const CartQuantityStepper: React.FC<{
         quantity === REMOVE ? await removeItem(variantId) : await updateItem(variantId, quantity)
 
       if (result.ok) {
+        if (quantity === REMOVE) {
+          notify({
+            tone: 'warning',
+            title: `«${productName}» убран из корзины`,
+            action: {
+              label: 'Вернуть',
+              onAction: () => {
+                void restore(variantId)
+              },
+            },
+          })
+        }
+
         return
       }
 
@@ -72,7 +102,7 @@ export const CartQuantityStepper: React.FC<{
         description: result.error ?? 'Попробуйте ещё раз или обновите страницу',
       })
     },
-    [variantId, updateItem, removeItem, notify]
+    [variantId, updateItem, removeItem, notify, productName, restore]
   )
 
   if (line === undefined) {

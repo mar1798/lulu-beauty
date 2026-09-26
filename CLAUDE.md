@@ -213,7 +213,9 @@ than guessing timing/easing values; `best-practices/` under the skill works offl
 `packages/widgets` and used across it, from `Reveal` to `ProductDetails`
 (`grep -rl "from 'motion/react'" packages/widgets/src` for the current list) — always import
 from `motion/react`, never the deprecated `framer-motion`, and reuse the shared timings in
-`src/utils/motion.ts`. The paid `motion-plus` server is
+`src/utils/motion.ts`. Components render **`m.*`, not `motion.*`**: the engine arrives through
+`LazyMotion strict` (`MotionProvider` on the site, `StoryWrapper` in Storybook/tests), and a
+`motion.div` throws. The paid `motion-plus` server is
 intentionally not registered.
 
 ## Keeping the docs honest

@@ -30,6 +30,17 @@ const SITE_IMAGE = {
 /** Постоянная часть превью. Только для `_app`. */
 export const SiteMeta: React.FC = () => (
   <Head>
+    {/*
+      Свой viewport вместо умолчания Next — ради `interactive-widget`: с
+      `resizes-content` экранная клавиатура на Android ужимает саму страницу, и
+      `100dvh`-панели (поиск) не уходят под неё. iOS атрибут игнорирует — там
+      высоту считает `visualViewport` (см. `HeaderSearch`).
+    */}
+    <meta
+      key="viewport"
+      name="viewport"
+      content="width=device-width, initial-scale=1, interactive-widget=resizes-content"
+    />
     <meta key="og:site_name" property="og:site_name" content={SITE_NAME} />
     <meta key="og:type" property="og:type" content="website" />
     <meta key="og:locale" property="og:locale" content="ru_RU" />

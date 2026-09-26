@@ -36,3 +36,17 @@ export const iconSwap = style({
     preferReducedMotion: { animationDuration: '1ms' },
   }),
 })
+
+/**
+ * Обёртка кнопки — только чтобы найти её новый узел после подмены и вернуть на
+ * него фокус (`AddToCartButton`). В раскладке её быть не должно.
+ */
+export const wrapper = style({
+  display: 'contents',
+})
+
+/** Кнопка на всю ширину: `contents` растянуть нечего, обёртка сама становится блоком. */
+export const wrapperBlock = style({
+  display: 'block',
+  width: '100%',
+})

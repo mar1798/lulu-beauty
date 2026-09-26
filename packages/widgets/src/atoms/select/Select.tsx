@@ -1,5 +1,5 @@
 import clsx from 'clsx'
-import { AnimatePresence, motion, useReducedMotion, type TargetAndTransition } from 'motion/react'
+import { AnimatePresence, m, useReducedMotion, type TargetAndTransition } from 'motion/react'
 import {
   type CSSProperties,
   type FC,
@@ -10,6 +10,7 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
 } from 'react'
 import type { IBasicStyling, ISelectOption, ISelectProps } from '../../types'
 import { IconCheck, IconChevronDown } from '../../svg/icons'
@@ -115,6 +116,32 @@ const firstEnabled = (options: ISelectOption[]): number => seek(options, 0, 1)
 
 const lastEnabled = (options: ISelectOption[]): number => seek(options, options.length - 1, -1)
 
+/**
+ * Тач-экран — там вместо своего списка стоит нативный `<select>`.
+ *
+ * Свой список рендерится порталом в конец `body`, и VoiceOver на телефоне до него
+ * свайпами не долистывал: фокус шёл по порядку документа, а список стоял после
+ * подвала. Нативный выбор на телефоне — системное колесо или лист, которые
+ * скринридер знает, а палец привык. На сервере — «нет»: верное значение
+ * подставит первая отрисовка в браузере.
+ */
+const TOUCH_QUERY = '(pointer: coarse)'
+
+const subscribeTouch = (onChange: () => void): (() => void) => {
+  const list = window.matchMedia(TOUCH_QUERY)
+
+  list.addEventListener('change', onChange)
+
+  return () => list.removeEventListener('change', onChange)
+}
+
+const useIsTouch = (): boolean =>
+  useSyncExternalStore(
+    subscribeTouch,
+    () => window.matchMedia(TOUCH_QUERY).matches,
+    () => false
+  )
+
 export const Select: FC<ISelectProps & IBasicStyling> = ({
   value,
   onChange,
@@ -156,6 +183,7 @@ export const Select: FC<ISelectProps & IBasicStyling> = ({
   const [anchor, setAnchor] = useState<IAnchor | null>(null)
 
   const isReduced = useReducedMotion() ?? false
+  const isTouch = useIsTouch()
   const hasError = error !== undefined && error !== null && error !== ''
 
   /*
@@ -491,6 +519,60 @@ export const Select: FC<ISelectProps & IBasicStyling> = ({
       : { opacity: 0, transform: `translateY(${shift}px) scale(0.97)` }
   }
 
+  const footnote = hasError ? (
+    <span className={styles.error} id={errorId} role="alert">
+      {error}
+    </span>
+  ) : (
+    hint !== undefined && (
+      <span className={styles.hint} id={hintId}>
+        {hint}
+      </span>
+    )
+  )
+
+  if (isTouch) {
+    return (
+      <div className={clsx(styles.container, className)}>
+        {label !== undefined && (
+          <label className={styles.label} id={labelId} htmlFor={fieldId}>
+            {label}
+          </label>
+        )}
+
+        <div className={styles.shell}>
+          <select
+            id={fieldId}
+            name={name}
+            className={clsx(
+              styles.control,
+              styles.native,
+              selected === null && styles.placeholder,
+              hasError && styles.invalid
+            )}
+            value={value}
+            disabled={disabled}
+            required={required}
+            aria-label={label === undefined ? ariaLabel : undefined}
+            aria-invalid={hasError}
+            aria-describedby={describedBy}
+            onChange={event => onChange(event.target.value)}
+          >
+            {items.map(option => (
+              <option key={option.value} value={option.value} disabled={option.disabled}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+
+          <IconChevronDown className={styles.chevron} />
+        </div>
+
+        {footnote}
+      </div>
+    )
+  }
+
   return (
     <div className={clsx(styles.container, className)}>
       {label !== undefined && (
@@ -538,7 +620,7 @@ export const Select: FC<ISelectProps & IBasicStyling> = ({
       <Portal>
         <AnimatePresence>
           {isOpen && anchor !== null && (
-            <motion.div
+            <m.div
               ref={popoverRef}
               className={clsx(styles.popover, styles.origin[anchor.placement])}
               style={anchor.style}
@@ -592,22 +674,12 @@ export const Select: FC<ISelectProps & IBasicStyling> = ({
                   )
                 })}
               </ul>
-            </motion.div>
+            </m.div>
           )}
         </AnimatePresence>
       </Portal>
 
-      {hasError ? (
-        <span className={styles.error} id={errorId} role="alert">
-          {error}
-        </span>
-      ) : (
-        hint !== undefined && (
-          <span className={styles.hint} id={hintId}>
-            {hint}
-          </span>
-        )
-      )}
+      {footnote}
     </div>
   )
 }

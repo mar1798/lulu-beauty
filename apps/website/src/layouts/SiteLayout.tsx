@@ -11,6 +11,7 @@ import { useCart } from '@/contexts/CartContext'
 import { usePrefetchRoutes } from '@/hooks/usePrefetchRoutes'
 import { useTelegramWebview } from '@/hooks/useTelegramWebview'
 import { INSTAGRAM_URL } from '@/utils/contacts'
+import { useLoginHref } from '@/hooks/useLoginHref'
 
 /**
  * Каркас публичных страниц: шапка и подвал, настроенные данными сайта.
@@ -58,13 +59,13 @@ const CONTACTS_COLUMN: IFooterColumn = {
  * нужны (и сбивают с толку — выглядят как приглашение завести второй аккаунт),
  * гостю бесполезен «Профиль» — он всё равно упрётся в редирект на вход.
  */
-const accountColumn = (isAuthorized: boolean): IFooterColumn => ({
+const accountColumn = (isAuthorized: boolean, loginHref: string): IFooterColumn => ({
   title: 'Аккаунт',
   links: isAuthorized
     ? [{ label: 'Профиль', link: { href: '/account' } }]
     : // Регистрации как страницы больше нет: аккаунт заводится в боте на первом
       // же входе, поэтому «Вход» — единственная ссылка, которая гостю что-то даёт.
-      [{ label: 'Вход', link: { href: '/login' } }],
+      [{ label: 'Вход', link: { href: loginHref } }],
 })
 
 /**
@@ -137,6 +138,7 @@ export const SiteLayout: React.FC<ISiteLayoutProps> = ({ children, isCartCountSh
   const { itemCount } = useCart(isCartCountShown)
   const menu = useDisclosure()
   const isTelegramWebview = useTelegramWebview()
+  const loginHref = useLoginHref()
 
   usePrefetchRoutes(user === null ? GUEST_PREFETCH : isAdmin ? ADMIN_PREFETCH : USER_PREFETCH)
 
@@ -149,8 +151,8 @@ export const SiteLayout: React.FC<ISiteLayoutProps> = ({ children, isCartCountSh
   const headerUser = user === null ? null : { name: user.name, link: { href: '/account' } }
 
   const footerColumns = useMemo<IFooterColumn[]>(
-    () => [SHOP_COLUMN, accountColumn(user !== null), CONTACTS_COLUMN, LEGAL_COLUMN],
-    [user]
+    () => [SHOP_COLUMN, accountColumn(user !== null, loginHref), CONTACTS_COLUMN, LEGAL_COLUMN],
+    [user, loginHref]
   )
 
   return (
@@ -163,10 +165,11 @@ export const SiteLayout: React.FC<ISiteLayoutProps> = ({ children, isCartCountSh
             cartLink={{ href: '/cart' }}
             cartCount={isCartCountShown ? itemCount : 0}
             user={headerUser}
-            loginLink={{ href: '/login' }}
+            loginLink={{ href: loginHref }}
             currentHref={currentHref}
             search={<CatalogSearch />}
             onMenuClick={menu.open}
+            isMenuOpen={menu.isOpen}
             /*
               Режим «поверх героя» — только на главной: там первый экран
               полноэкранный и начинается от края, остальным страницам шапка
@@ -190,7 +193,7 @@ export const SiteLayout: React.FC<ISiteLayoutProps> = ({ children, isCartCountSh
             onClose={menu.close}
             navigation={navigation}
             user={headerUser}
-            loginLink={{ href: '/login' }}
+            loginLink={{ href: loginHref }}
             cartLink={{ href: '/cart' }}
             cartCount={isCartCountShown ? itemCount : 0}
             currentHref={currentHref}

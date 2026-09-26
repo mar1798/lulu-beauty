@@ -1,5 +1,5 @@
 import clsx from 'clsx'
-import { AnimatePresence, motion, useReducedMotion, type TargetAndTransition } from 'motion/react'
+import { AnimatePresence, m, useReducedMotion, type TargetAndTransition } from 'motion/react'
 import {
   type FC,
   type KeyboardEvent,
@@ -407,7 +407,7 @@ export const Combobox: FC<IComboboxProps & IBasicStyling> = ({
       <Portal>
         <AnimatePresence>
           {isOpen && anchor !== null && (
-            <motion.div
+            <m.div
               ref={popoverRef}
               className={clsx(styles.popover, styles.origin[anchor.placement])}
               style={anchor.style}
@@ -461,7 +461,7 @@ export const Combobox: FC<IComboboxProps & IBasicStyling> = ({
               </ul>
 
               {matches.length === 0 && <p className={styles.empty}>{emptyLabel}</p>}
-            </motion.div>
+            </m.div>
           )}
         </AnimatePresence>
       </Portal>

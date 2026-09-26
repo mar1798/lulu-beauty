@@ -17,6 +17,7 @@ from aiogram.types import (
     InlineKeyboardMarkup,
     KeyboardButton,
     ReplyKeyboardMarkup,
+    WebAppInfo,
 )
 
 from app.config import settings
@@ -352,7 +353,13 @@ def _site_link(path: str, text: str) -> InlineKeyboardMarkup | None:
 
 
 def _site_button(path: str, text: str) -> InlineKeyboardButton | None:
-    """One url button, or None when the configured site isn't publicly addressable.
+    """One link to the site, or None when the configured site isn't publicly addressable.
+
+    On https the button opens the page as a Mini App rather than in the browser: the
+    Mini App signs the customer in from `initData` without a single tap, while a plain
+    url button lands them on the site as a guest — «Оформить» under the cart reminder
+    would open checkout with an empty guest cart. Plain http can't be a Mini App
+    (`mini_app_url`), so there the button stays a url one.
 
     Split out of `_site_link` for the help keyboard, which mixes a link with a callback
     button in the same markup and so can't take a whole markup back.
@@ -364,7 +371,16 @@ def _site_button(path: str, text: str) -> InlineKeyboardButton | None:
         logger.debug("WEBSITE_BASE_URL %r is not linkable from Telegram; sending no button", base)
         return None
 
+    if url.startswith("https://"):
+        return InlineKeyboardButton(text=text, web_app=WebAppInfo(url=url))
     return InlineKeyboardButton(text=text, url=url)
+
+
+def button_target(button: InlineKeyboardButton) -> str | None:
+    """Where a link button leads, whichever of the two kinds `_site_button` made it."""
+    if button.web_app is not None:
+        return button.web_app.url
+    return button.url
 
 
 def _is_public_url(url: str) -> bool:

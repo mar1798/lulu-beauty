@@ -1,5 +1,5 @@
 import { style } from '@vanilla-extract/css'
-import { border, color, font, media, rem, transition } from '../../styling/lib'
+import { border, color, font, rem, transition } from '../../styling/lib'
 import { flexRow, focusVisibleRing } from '../../styling/mixin'
 import { vars } from '../../styling/themes/contract.css'
 
@@ -19,12 +19,12 @@ export const button = style([
     alignItems: 'center',
     justifyContent: 'center',
     /*
-      До `sm` кнопки на четыре пикселя уже: степпер стоит рядом с крестиком
-      «убрать» и суммой позиции (см. `ItemRow.css`), и на узком экране
-      эта тройка помещается в строку только ужатой.
+      44px на всех ширинах — минимум касания по HIG. Прежние 32px на телефоне
+      стояли вплотную к крестику «убрать», и промах по «+» удалял позицию. Места
+      теперь хватает: до `sm` управление в `ItemRow` занимает свою строку.
     */
-    width: rem(32),
-    height: rem(32),
+    width: rem(44),
+    height: rem(44),
     font: font('18/18', 500),
     color: color.text('secondary'),
     backgroundColor: 'transparent',
@@ -38,20 +38,14 @@ export const button = style([
       },
       '&[disabled]': { opacity: 0.4, cursor: 'not-allowed' },
     },
-    ...media({
-      sm: { width: rem(36), height: rem(36) },
-    }),
   },
   focusVisibleRing(),
 ])
 
 export const value = style({
-  minWidth: rem(32),
+  minWidth: rem(40),
   textAlign: 'center',
   font: font('16/24', 600),
   fontVariantNumeric: 'tabular-nums',
   color: color.text('primary'),
-  ...media({
-    sm: { minWidth: rem(40) },
-  }),
 })

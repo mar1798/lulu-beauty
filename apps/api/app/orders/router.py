@@ -4,7 +4,7 @@ from collections.abc import Mapping
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth.dependencies import CurrentUser, get_current_user, require_admin
+from app.auth.dependencies import CurrentUser, get_current_user, require_admin, require_live_user
 from app.auth.models import User
 from app.common.schemas import PageResponse
 from app.db import get_session
@@ -134,7 +134,8 @@ async def checkout(
     body: CheckoutRequest,
     background_tasks: BackgroundTasks,
     session: AsyncSession = Depends(get_session),
-    current_user: CurrentUser = Depends(get_current_user),
+    # Not the bare token: an erased account's token lives on for up to fifteen minutes.
+    current_user: CurrentUser = Depends(require_live_user),
 ) -> OrderResponse:
     service = OrdersService(session)
     try:

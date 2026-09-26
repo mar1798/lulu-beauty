@@ -1,6 +1,6 @@
 import clsx from 'clsx'
 import { useRef, type FC, type RefObject } from 'react'
-import { motion, useReducedMotion } from 'motion/react'
+import { m, useReducedMotion } from 'motion/react'
 import type { IBasicStyling, IParallaxProps } from '../../types'
 import { useParallaxOffset } from '../../hooks/useParallaxOffset'
 import { useStillNode } from '../../hooks/useStillNode'
@@ -40,24 +40,24 @@ const ParallaxMotion: FC<
 
   if (as === 'span') {
     return (
-      <motion.span
+      <m.span
         ref={ownRef as RefObject<HTMLSpanElement | null>}
         className={clsx(styles.container, className)}
         style={style}
       >
         {children}
-      </motion.span>
+      </m.span>
     )
   }
 
   return (
-    <motion.div
+    <m.div
       ref={ownRef as RefObject<HTMLDivElement | null>}
       className={clsx(styles.container, className)}
       style={style}
     >
       {children}
-    </motion.div>
+    </m.div>
   )
 }
 

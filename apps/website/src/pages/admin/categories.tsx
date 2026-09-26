@@ -33,7 +33,7 @@ const AdminCategoriesPage: React.FC = () => {
 
   const error = fetchError === undefined ? null : messageForError(fetchError, 'admin.categories')
 
-  const run = async (action: () => Promise<unknown>, success: string): Promise<void> => {
+  const run = async (action: () => Promise<unknown>, success: string): Promise<boolean> => {
     setIsBusy(true)
     setActionError(null)
 
@@ -44,11 +44,15 @@ const AdminCategoriesPage: React.FC = () => {
       // Карточки товаров показывают имя категории тоже — те догонят по `revalidate`.
       refreshPublicPages(...SHOWCASE_PATHS)
       await mutate()
+
+      return true
     } catch (cause: unknown) {
       const message = messageForError(cause, 'admin.categories')
 
       setActionError(message)
       notify({ tone: 'danger', title: 'Не получилось', description: message })
+
+      return false
     } finally {
       setIsBusy(false)
     }
@@ -76,12 +80,12 @@ const AdminCategoriesPage: React.FC = () => {
         isLoading={isLoading}
         isBusy={isBusy}
         error={error ?? actionError}
-        onCreate={(values: IAdminCategoryValues) => {
-          void run(() => createCategory(values), 'Категория добавлена')
-        }}
-        onUpdate={(category, values) => {
-          void run(() => updateCategory(category.id, values), 'Категория сохранена')
-        }}
+        onCreate={(values: IAdminCategoryValues) =>
+          run(() => createCategory(values), 'Категория добавлена')
+        }
+        onUpdate={(category, values) =>
+          run(() => updateCategory(category.id, values), 'Категория сохранена')
+        }
         onDelete={category => {
           void handleDelete(category)
         }}

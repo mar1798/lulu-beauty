@@ -5,7 +5,7 @@ import { Inter } from 'next/font/google'
 import clsx from 'clsx'
 import React, { useMemo } from 'react'
 import { SWRConfig } from 'swr'
-import { ConfirmProvider, ServicesContext, ToastProvider } from 'widgets/contexts'
+import { ConfirmProvider, MotionProvider, ServicesContext, ToastProvider } from 'widgets/contexts'
 import { AuthProvider } from '@/contexts/AuthContext'
 import { CartProvider } from '@/contexts/CartContext'
 import { WishlistProvider } from '@/contexts/WishlistContext'
@@ -13,6 +13,7 @@ import { Link } from '@/components/Link'
 import { Image } from '@/components/Image'
 import { JsonLd } from '@/components/JsonLd'
 import { SiteMeta } from '@/components/PageMeta'
+import { LiveStateRefresh } from '@/components/LiveStateRefresh'
 import { TelegramMiniAppSession } from '@/components/TelegramMiniAppSession'
 import { storeLd } from '@/utils/jsonLd'
 import { shell } from '@/styles/shell.css'
@@ -65,6 +66,9 @@ const App: React.FC<AppProps> = ({ Component, pageProps }) => {
 
   return (
     <SWRConfig value={value}>
+      {/* Корзина, избранное и сбор перечитываются при возврате в давно открытую вкладку. */}
+      <LiveStateRefresh />
+
       {/*
           Превью ссылки по умолчанию — на всех страницах, включая приватные:
           публичные перекрывают заголовок и описание своим `PageMeta`.
@@ -78,31 +82,37 @@ const App: React.FC<AppProps> = ({ Component, pageProps }) => {
         */}
       <JsonLd data={storeLd()} />
 
-      <ServicesContext.Provider initialState={services}>
-        {/*
+      {/*
+          Движок анимаций для `m.*` виджетов — отдельным чанком после гидрации,
+          а не в общем бандле каждой страницы (см. `MotionProvider`).
+        */}
+      <MotionProvider>
+        <ServicesContext.Provider initialState={services}>
+          {/*
             Тосты и подтверждения — над данными: подтверждение удаления нужно и
             корзине, и админке, а уведомление об успехе переживает переход между
             страницами внутри раздела.
           */}
-        <ToastProvider>
-          <ConfirmProvider>
-            <AuthProvider>
-              {/*
+          <ToastProvider>
+            <ConfirmProvider>
+              <AuthProvider>
+                {/*
                   Сайт, открытый как Mini App, входит сам — на любой странице, а не
                   только на `/login`: внутри Telegram человек попадает сразу в каталог.
                 */}
-              <TelegramMiniAppSession />
-              <CartProvider>
-                <WishlistProvider>
-                  <div className={clsx(shell, inter.variable, inter.className)}>
-                    <Component {...pageProps} />
-                  </div>
-                </WishlistProvider>
-              </CartProvider>
-            </AuthProvider>
-          </ConfirmProvider>
-        </ToastProvider>
-      </ServicesContext.Provider>
+                <TelegramMiniAppSession />
+                <CartProvider>
+                  <WishlistProvider>
+                    <div className={clsx(shell, inter.variable, inter.className)}>
+                      <Component {...pageProps} />
+                    </div>
+                  </WishlistProvider>
+                </CartProvider>
+              </AuthProvider>
+            </ConfirmProvider>
+          </ToastProvider>
+        </ServicesContext.Provider>
+      </MotionProvider>
     </SWRConfig>
   )
 }

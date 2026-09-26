@@ -52,6 +52,19 @@ export const track = style({
 })
 
 /**
+ * Лента после первого касания на тач-экране: наведения там нет, и остановить её
+ * было нечем, а читать движущиеся имена пальцем неудобно. Дальше — как при
+ * `prefers-reduced-motion`: обычная строка, которую листают сами.
+ */
+export const containerStopped = style({
+  overflowX: 'auto',
+})
+
+export const trackStopped = style({
+  animationName: 'none',
+})
+
+/**
  * За кадром лента стоит: бесконечная анимация иначе тикала бы в композиторе
  * всё время, что открыта вкладка. Классом, а не инлайном, — инлайновый
  * `animation-play-state` перебил бы паузу по `:hover`/`:focus-within`.

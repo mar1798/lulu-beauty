@@ -56,6 +56,29 @@ async def test_checkout_snapshots_items_and_clears_cart(db_session: AsyncSession
     assert remaining_items == []
 
 
+async def test_checkout_leaves_hidden_lines_in_the_cart(db_session: AsyncSession) -> None:
+    """Позиция без наличия в заявку не идёт — но и из корзины не пропадает: вернётся
+    товар, вернётся и она. Раньше checkout чистил корзину целиком."""
+    user = await make_user(db_session)
+    await make_cycle(db_session)
+    ordered = await make_product(db_session, name="Rose Serum")
+    sold_out = await make_product(db_session, name="Green Tea Toner")
+    await CartService(db_session).add_item(user.id, variant_id(ordered), 1)
+    await CartService(db_session).add_item(user.id, variant_id(sold_out), 2)
+    sold_out.variants[0].in_stock = False
+    await db_session.flush()
+
+    order = await OrdersService(db_session).checkout(user.id, note=None)
+
+    assert [item.product_name for item in order.items] == ["Rose Serum"]
+    remaining = (await db_session.execute(select(CartItem))).scalars().all()
+    assert [(item.variant_id, item.quantity) for item in remaining] == [(variant_id(sold_out), 2)]
+
+    # Повторный checkout по-прежнему видит пустую корзину: оставшаяся строка скрыта.
+    with pytest.raises(EmptyCartError):
+        await OrdersService(db_session).checkout(user.id, note=None)
+
+
 async def test_checkout_snapshot_survives_later_product_price_change(
     db_session: AsyncSession,
 ) -> None:

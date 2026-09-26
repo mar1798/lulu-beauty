@@ -1,5 +1,6 @@
-import React, { useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import Head from 'next/head'
+import { useRouter } from 'next/router'
 import { mutate as globalMutate } from 'swr'
 import type { IOrder } from 'widgets/types'
 import { Alert, AppLink, Button, Text } from 'widgets/atoms'
@@ -16,8 +17,10 @@ import { useAuth } from '@/contexts/AuthContext'
 import { useCart } from '@/contexts/CartContext'
 import { useProductSearch } from '@/hooks/useProductSearch'
 import { messageForError } from '@/services/apiErrors'
-import { addMyOrderItem, checkout } from '@/services/endpoints/orders'
+import { addMyOrderItem, checkout, getMyOrder } from '@/services/endpoints/orders'
 import { isOrdersKey } from '@/services/swrKeys'
+import { useLoginHref } from '@/hooks/useLoginHref'
+import { useCycleExpiryRefresh } from '@/hooks/useCycleExpiryRefresh'
 
 /**
  * Оформление заявки.
@@ -39,17 +42,52 @@ import { isOrdersKey } from '@/services/swrKeys'
  * забытое чаще всего ровно после отправки, и уводить за этим на `/orders/[id]`
  * значит терять только что поданную заявку из виду.
  */
+/** Номер поданной заявки в адресе — чтобы экран успеха пережил перезагрузку. */
+const ORDER_PARAM = 'order'
+
 const CheckoutPage: React.FC = () => {
+  const router = useRouter()
   const { user, isLoading: isAuthLoading } = useAuth()
+  const loginHref = useLoginHref()
   const { cart, isLoading, reload, addItem, updateItem, settled } = useCart()
   const { notify } = useToast()
   const search = useProductSearch()
+  // Дедлайн прошёл, пока страница открыта, — перечитать сбор и корзину, чтобы
+  // «Оформить» погасла сразу, а не ответила 409.
+  useCycleExpiryRefresh(cart?.cycleDeadlineAt ?? null)
 
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [order, setOrder] = useState<IOrder | null>(null)
   /** Идёт добавление: подборщик блокируется целиком, чтобы не задвоить товар. */
   const [isAdding, setIsAdding] = useState(false)
+
+  /*
+    Экран успеха держался только в памяти: webview Telegram перезагружает страницу
+    при возврате, и вместо «Заявка принята» человек видел «Оформлять нечего» — и мог
+    решить, что заявка не ушла. Поэтому после отправки номер уезжает в адрес, а
+    при загрузке с ним заявка перечитывается.
+  */
+  const orderParam = router.isReady ? router.query[ORDER_PARAM] : undefined
+  const restoringId = typeof orderParam === 'string' && order === null ? orderParam : null
+  const restoredId = useRef<string | null>(null)
+  const [failedRestoreId, setFailedRestoreId] = useState<string | null>(null)
+  const isRestoring = restoringId !== null && failedRestoreId !== restoringId
+
+  useEffect(() => {
+    if (restoringId === null || user === null || restoredId.current === restoringId) {
+      return
+    }
+
+    restoredId.current = restoringId
+
+    getMyOrder(restoringId)
+      .then(setOrder)
+      .catch(() => {
+        // Заявки нет или она чужая — просто остаёмся на оформлении.
+        setFailedRestoreId(restoringId)
+      })
+  }, [restoringId, user])
 
   const handleAdd = async (variantId: string): Promise<void> => {
     setIsAdding(true)
@@ -119,7 +157,14 @@ const CheckoutPage: React.FC = () => {
       // Сервер снимает заявку с корзины — сперва пусть корзина догонит экран.
       await settled()
 
-      setOrder(await checkout(note ?? undefined))
+      const placed = await checkout(note ?? undefined)
+
+      setOrder(placed)
+      void router.replace(
+        { pathname: router.pathname, query: { [ORDER_PARAM]: placed.id } },
+        undefined,
+        { shallow: true, scroll: false }
+      )
       await reload()
 
       if (user !== null) {
@@ -127,7 +172,12 @@ const CheckoutPage: React.FC = () => {
         void globalMutate(isOrdersKey)
       }
     } catch (cause: unknown) {
-      setError(messageForError(cause, 'checkout'))
+      const message = messageForError(cause, 'checkout')
+
+      setError(message)
+      // Дублируем тостом: на телефоне форма длинная, и ошибка у кнопки может
+      // оказаться под клавиатурой.
+      notify({ tone: 'danger', title: 'Заявка не оформилась', description: message })
     } finally {
       setIsSubmitting(false)
     }
@@ -200,7 +250,7 @@ const CheckoutPage: React.FC = () => {
       )
     }
 
-    const isCartLoading = isAuthLoading || (user !== null && isLoading)
+    const isCartLoading = isAuthLoading || (user !== null && isLoading) || isRestoring
 
     if (user === null && !isAuthLoading) {
       return (
@@ -208,7 +258,7 @@ const CheckoutPage: React.FC = () => {
           title="Нужен вход"
           description="Заявка оформляется на аккаунт - в привязанный к нему чат придёт подтверждение"
           action={
-            <Button link={{ href: '/login' }} isFullWidth="mobile">
+            <Button link={{ href: loginHref }} isFullWidth="mobile">
               Войти
             </Button>
           }

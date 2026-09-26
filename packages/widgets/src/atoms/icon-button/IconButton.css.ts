@@ -22,8 +22,26 @@ export const container = style([
   focusVisibleRing(),
 ])
 
+/**
+ * `sm` рисуется в 32px, но ловит касание в 44px: `::after` выходит на 6px за
+ * каждый край. Это все крестики закрытия и очистки — по 32px в них промахивались.
+ * Соседние элементы от этого не сдвигаются: область невидима и в раскладке не
+ * участвует.
+ */
 export const size = styleVariants({
-  sm: { width: rem(32), height: rem(32), fontSize: rem(16) },
+  sm: {
+    position: 'relative',
+    width: rem(32),
+    height: rem(32),
+    fontSize: rem(16),
+    selectors: {
+      '&::after': {
+        content: '',
+        position: 'absolute',
+        inset: rem(-6),
+      },
+    },
+  },
   md: { width: rem(40), height: rem(40), fontSize: rem(20) },
   lg: { width: rem(48), height: rem(48), fontSize: rem(24) },
 })

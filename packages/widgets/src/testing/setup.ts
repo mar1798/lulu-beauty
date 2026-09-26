@@ -63,3 +63,11 @@ if (typeof window !== 'undefined' && window.matchMedia === undefined) {
       dispatchEvent: vi.fn(),
     }) as unknown as MediaQueryList
 }
+
+/*
+  `scrollIntoView` в jsdom тоже нет: раскладки там не существует, прокручивать
+  нечего. Им пользуются формы, уводящие к первому полю с ошибкой.
+*/
+if (typeof Element !== 'undefined' && typeof Element.prototype.scrollIntoView !== 'function') {
+  Element.prototype.scrollIntoView = (): void => {}
+}

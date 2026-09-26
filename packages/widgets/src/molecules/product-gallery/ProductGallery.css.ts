@@ -1,5 +1,5 @@
 import { style } from '@vanilla-extract/css'
-import { border, color, media, rem, transition } from '../../styling/lib'
+import { border, color, font, media, rem, transition } from '../../styling/lib'
 import { flexColumn, flexRow, focusVisibleRing } from '../../styling/mixin'
 import { vars } from '../../styling/themes/contract.css'
 
@@ -30,6 +30,24 @@ export const main = style({
     },
   }),
 })
+
+/**
+ * Весь кадр — кнопка «открыть во весь экран». `pan-y` отдаёт браузеру только
+ * вертикальную прокрутку страницы, а горизонтальный жест остаётся свайпу.
+ */
+export const mainButton = style([
+  {
+    position: 'absolute',
+    inset: 0,
+    display: 'block',
+    padding: 0,
+    border: 'none',
+    background: 'none',
+    cursor: 'zoom-in',
+    touchAction: 'pan-y',
+  },
+  focusVisibleRing(),
+])
 
 export const placeholder = style({
   position: 'absolute',
@@ -69,3 +87,45 @@ export const thumb = style([
   },
   focusVisibleRing(),
 ])
+
+/** Полноэкранный просмотр — поверх всего, на тёмной подложке, чтобы фото читалось. */
+export const viewer = style({
+  position: 'fixed',
+  inset: 0,
+  zIndex: vars.zIndex.modal,
+  backgroundColor: color.surface('inverse', 0.92),
+  outline: 'none',
+})
+
+/**
+ * Кадр с полями под кнопки. `pan-y pinch-zoom` — вертикаль и щипок остаются
+ * браузеру (увеличить надпись на упаковке), горизонталь — свайпу.
+ */
+export const viewerFrame = style({
+  position: 'absolute',
+  inset: `calc(env(safe-area-inset-top) + ${rem(64)}) 0 calc(env(safe-area-inset-bottom) + ${rem(80)})`,
+  touchAction: 'pan-y pinch-zoom',
+})
+
+export const viewerClose = style({
+  position: 'absolute',
+  top: `calc(env(safe-area-inset-top) + ${vars.space.sm})`,
+  right: vars.space.sm,
+})
+
+export const viewerNav = style({
+  ...flexRow(16),
+  position: 'absolute',
+  left: '50%',
+  bottom: `calc(env(safe-area-inset-bottom) + ${vars.space.md})`,
+  alignItems: 'center',
+  transform: 'translateX(-50%)',
+})
+
+export const viewerPosition = style({
+  minWidth: rem(56),
+  textAlign: 'center',
+  font: font('14/20', 500),
+  color: color.text('inverse'),
+  fontVariantNumeric: 'tabular-nums',
+})

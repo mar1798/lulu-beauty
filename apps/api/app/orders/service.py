@@ -276,7 +276,13 @@ class OrdersService:
         order.total_cents = total_cents
 
         self._session.add(order)
-        await self._session.execute(delete(CartItem).where(CartItem.cart_id == cart.id))
+        # Only the lines that went into the order. A line hidden from the cart (its
+        # product discontinued or out of stock) is still the customer's choice, and it
+        # comes back to the cart the moment the product does; wiping the whole cart took
+        # it with the order it never joined. A second checkout still finds nothing to
+        # order — the remaining lines are exactly the ones the filter above skips.
+        ordered_ids = [cart_item.id for cart_item, _, _ in rows]
+        await self._session.execute(delete(CartItem).where(CartItem.id.in_(ordered_ids)))
         await self._session.flush()
         return order
 
@@ -318,12 +324,25 @@ class OrdersService:
         )
         return list(result.scalars().all()), total
 
-    async def get_for_user(self, user_id: uuid.UUID, order_id: uuid.UUID) -> Order:
-        result = await self._session.execute(
+    async def get_for_user(
+        self, user_id: uuid.UUID, order_id: uuid.UUID, *, for_update: bool = False
+    ) -> Order:
+        """The customer's own order, or `OrderNotFoundError`.
+
+        `for_update` locks the row for the paths that change it. Without the lock the
+        customer's cancel and the owner's confirm could each read PENDING, each pass its
+        own check, and the later commit would win — a confirmed order could end up
+        CANCELLED_BY_CUSTOMER for good. `update_status` takes the same lock, so the
+        second of the two now waits and re-checks against what the first one wrote.
+        """
+        query = (
             select(Order)
             .options(selectinload(Order.items))
             .where(Order.id == order_id, Order.user_id == user_id)
         )
+        if for_update:
+            query = query.with_for_update(of=Order).execution_options(populate_existing=True)
+        result = await self._session.execute(query)
         order = result.scalar_one_or_none()
         if order is None:
             raise OrderNotFoundError
@@ -428,7 +447,7 @@ class OrdersService:
         return (await self.customer_flags([order]))[order.id]
 
     async def _get_editable(self, user_id: uuid.UUID, order_id: uuid.UUID) -> Order:
-        order = await self.get_for_user(user_id, order_id)
+        order = await self.get_for_user(user_id, order_id, for_update=True)
         if not (await self._flags_for(order)).is_editable:
             raise OrderNotEditableError
         return order
@@ -440,7 +459,7 @@ class OrdersService:
         request is already past the point where you decide", and the site picks the
         wording from the action, not from the code.
         """
-        order = await self.get_for_user(user_id, order_id)
+        order = await self.get_for_user(user_id, order_id, for_update=True)
         if not (await self._flags_for(order)).is_cancellable:
             raise OrderNotEditableError
         return order
@@ -578,7 +597,7 @@ class OrdersService:
         back would return it to the tally and the purchase sheet with nobody told. That
         one is undone the same way it was made, from the owner's panel.
         """
-        order = await self.get_for_user(user_id, order_id)
+        order = await self.get_for_user(user_id, order_id, for_update=True)
         if not (await self._flags_for(order)).is_restorable:
             raise OrderNotRestorableError
         # Nothing left to restore: the cancellation came from `drop_product` taking the
@@ -886,8 +905,14 @@ class OrdersService:
         "готова к выдаче" to the customer every time they do would train them to ignore
         the bot. Only the service can tell — the caller never sees the previous value.
         """
+        # Locked for the same race `get_for_user(for_update=True)` closes from the
+        # customer's side: the transition check below must see the committed status.
         result = await self._session.execute(
-            select(Order).options(selectinload(Order.items)).where(Order.id == order_id)
+            select(Order)
+            .options(selectinload(Order.items))
+            .where(Order.id == order_id)
+            .with_for_update(of=Order)
+            .execution_options(populate_existing=True)
         )
         order = result.scalar_one_or_none()
         if order is None:

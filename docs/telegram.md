@@ -72,6 +72,11 @@ browser                 next (/api/auth/*)            api                 telegr
   `JWT_ACCESS_TTL_SECONDS` (15 min) and then cannot refresh. The copy says so rather than
   claiming every session is gone at once — an overstated security message is worse than
   one that admits a gap.
+- The tab survives being unloaded while the person is in Telegram: `useTelegramLogin` keeps
+  the bot link in `sessionStorage` and, on the next mount, polls the existing `lb_ls` first,
+  opening a new session only on 404/410. It also polls at once on `visibilitychange` and
+  `pageshow`, and every poll has a 10s timeout. `isEnabled` is latched after it first turns
+  true, so SWR retrying `/api/auth/me` does not tear the polling loop down.
 - `TelegramLoginService.reject` answers None both for "this button no longer applies" and
   for "it applied, but the login never named an account", and the handler shows the same
   «отменять нечего» for both. The second case needs a callback for an unauthorized session
@@ -90,6 +95,15 @@ every Mini App login fail.
 
 **Neither path carries a phone number**, so they can only sign in an account that already
 exists; a stranger gets `telegram_account_not_linked` and is sent to the bot.
+
+In the Mini App (`useTelegramMiniApp`) a guest retries the sign-in whenever the window becomes
+visible again, since they come back from the bot registered, and the «Нужна регистрация» toast
+closes on success. A signed-in session is compared with the account in `initData`
+(`telegramUserId` on `/users/me` against `user.id`): Telegram accounts on one phone share the
+webview's cookies, so on a mismatch the Mini App signs in again as the opener, or signs out
+if that account isn't linked. `_document` sends `web_app_ready`/`web_app_expand` from an inline
+script before hydration, and `useTelegramBackButton` shows Telegram's BackButton whenever the
+window has history of its own (depth counted by Next's `history.state.key`).
 
 The Login Widget is behind `NEXT_PUBLIC_TELEGRAM_LOGIN_WIDGET` because it only authorizes on
 the domain registered with `/setdomain` in BotFather. Anywhere else — localhost included — it
@@ -198,3 +212,8 @@ one a slow owner is about to confirm.
 
 Message copy lives in `messages.py` and is Russian. The bot omits link buttons pointing at
 `localhost` — Telegram rejects those — so those buttons simply don't appear in local dev.
+On an `https` site every link to it is a **`web_app` button**, not a url one
+(`keyboards._site_button`): it opens the page as a Mini App, which signs the customer in from
+`initData` by itself, while a url button would land them on the site as a guest. Plain `http`
+can't be a Mini App, so there the buttons stay url buttons. Tests read either kind through
+`keyboards.button_target`.

@@ -1,11 +1,12 @@
 import clsx from 'clsx'
-import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
+import { AnimatePresence, m, useReducedMotion } from 'motion/react'
 import { type FC, useEffect, useId } from 'react'
 import type { IBasicStyling, IModalProps } from '../../types'
 import { IconClose } from '../../svg/icons'
 import { IconButton } from '../../atoms/icon-button'
 import { Portal } from '../../atoms/portal'
 import { useFocusTrap } from '../../hooks/useFocusTrap'
+import { useBackDismiss } from '../../hooks/useBackDismiss'
 import { useLockBodyScroll } from '../../hooks/useLockBodyScroll'
 import { DIALOG_TRANSITION, OVERLAY_TRANSITION } from '../../utils/motion'
 import * as styles from './Modal.css'
@@ -37,6 +38,13 @@ export const Modal: FC<IModalProps & IBasicStyling> = ({
 
   useLockBodyScroll(isOpen)
 
+  /*
+    «Назад» закрывает окно — но только то, которое можно закрыть кликом мимо: за
+    недисмиссабельным стоит заполненная форма, и жест уводит со страницы, как и
+    раньше, а не молча выбрасывает набранное.
+  */
+  const requestClose = useBackDismiss(isOpen && isDismissable, onClose)
+
   useEffect(() => {
     if (!isOpen) {
       return
@@ -44,7 +52,7 @@ export const Modal: FC<IModalProps & IBasicStyling> = ({
 
     const onKeyDown = (event: KeyboardEvent): void => {
       if (event.key === 'Escape') {
-        onClose()
+        requestClose()
       }
     }
 
@@ -53,13 +61,13 @@ export const Modal: FC<IModalProps & IBasicStyling> = ({
     return () => {
       document.removeEventListener('keydown', onKeyDown)
     }
-  }, [isOpen, onClose])
+  }, [isOpen, requestClose])
 
   return (
     <Portal>
       <AnimatePresence>
         {isOpen && (
-          <motion.div
+          <m.div
             className={styles.overlay}
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -72,11 +80,11 @@ export const Modal: FC<IModalProps & IBasicStyling> = ({
                 мыши отпущена снаружи.
               */
               if (isDismissable && event.target === event.currentTarget) {
-                onClose()
+                requestClose()
               }
             }}
           >
-            <motion.div
+            <m.div
               ref={dialogRef}
               className={clsx(styles.dialog, styles.size[size], className)}
               role="dialog"
@@ -99,15 +107,15 @@ export const Modal: FC<IModalProps & IBasicStyling> = ({
                   label="Закрыть"
                   size="sm"
                   variant="ghost"
-                  onClick={onClose}
+                  onClick={requestClose}
                 />
               </div>
 
               <div className={styles.body}>{children}</div>
 
               {footer !== undefined && <div className={styles.footer}>{footer}</div>}
-            </motion.div>
-          </motion.div>
+            </m.div>
+          </m.div>
         )}
       </AnimatePresence>
     </Portal>

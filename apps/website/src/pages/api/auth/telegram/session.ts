@@ -1,5 +1,5 @@
 import type { NextApiRequest, NextApiResponse } from 'next'
-import { apiUrl, methodNotAllowed } from '@/server/apiFetch'
+import { UpstreamUnavailableError, apiUrl, callApi, methodNotAllowed } from '@/server/apiFetch'
 import { clientHeaders } from '@/server/clientAddress'
 import { setLoginSession } from '@/server/cookies'
 import { rejectCrossOrigin } from '@/server/sameOrigin'
@@ -19,6 +19,8 @@ interface IStartedSession {
   expiresAt: string
 }
 
+const TOO_MANY_REQUESTS = 429
+
 const handler = async (req: NextApiRequest, res: NextApiResponse): Promise<void> => {
   if (req.method !== 'POST') {
     methodNotAllowed(res, ['POST'])
@@ -30,22 +32,41 @@ const handler = async (req: NextApiRequest, res: NextApiResponse): Promise<void>
     return
   }
 
-  const response = await fetch(apiUrl('/auth/telegram/session'), {
-    method: 'POST',
-    // Единственная анонимная ручка, которая пишет в базу: ради неё у бэкенда и
-    // появился строгий лимит, а он бесполезен, пока все гости выглядят одинаково.
-    headers: { 'Content-Type': 'application/json', ...clientHeaders(req) },
-    body: '{}',
-  })
+  let response: Response
+
+  try {
+    response = await callApi(apiUrl('/auth/telegram/session'), {
+      method: 'POST',
+      // Единственная анонимная ручка, которая пишет в базу: ради неё у бэкенда и
+      // появился строгий лимит, а он бесполезен, пока все гости выглядят одинаково.
+      headers: { 'Content-Type': 'application/json', ...clientHeaders(req) },
+      body: '{}',
+    })
+  } catch (error) {
+    // API перезапускается — внятный 503 вместо голой страницы ошибки Next.
+    if (error instanceof UpstreamUnavailableError) {
+      res.status(error.status).json({ detail: 'upstream_unavailable' })
+      return
+    }
+
+    throw error
+  }
 
   if (!response.ok) {
-    res.status(response.status).json({ detail: 'auth_session_not_started' })
+    /*
+      Код бэкенда доезжает до вкладки, как в `poll.ts`: 429 — это «подождите минуту»
+      (`rate_limited`), а не «не удалось начать вход», после которого человек жмёт
+      «повторить» и снова упирается в лимит.
+    */
+    res.status(response.status).json({
+      detail: response.status === TOO_MANY_REQUESTS ? 'rate_limited' : 'auth_session_not_started',
+    })
     return
   }
 
   const started = (await response.json()) as IStartedSession
 
-  setLoginSession(res, { sessionId: started.sessionId, pollSecret: started.pollSecret })
+  setLoginSession(res, { sessionId: started.sessionId, pollSecret: started.pollSecret }, req)
   res.status(200).json({ botUrl: started.botUrl, expiresAt: started.expiresAt })
 }
 

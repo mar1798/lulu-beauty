@@ -275,6 +275,7 @@ const CatalogPage: React.FC<ICatalogPageProps> = ({ categories, brands, initial 
       <CatalogTemplate
         title="Каталог"
         summary={isFirstLoad ? undefined : `Найдено товаров: ${total}`}
+        focusKey={pageNumber}
         // Срок сбора виден и здесь, а не только в герое главной: на витрину
         // приходят по ссылке на категорию и поиском, минуя главную вовсе.
         aside={<CycleCountdown />}

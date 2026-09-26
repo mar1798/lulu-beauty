@@ -3,7 +3,7 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth.dependencies import CurrentUser, get_current_user
+from app.auth.dependencies import CurrentUser, get_current_user, require_live_user
 from app.cart.schemas import AddCartItemRequest, CartResponse, UpdateCartItemRequest
 from app.cart.service import (
     CartItemNotFoundError,
@@ -28,7 +28,9 @@ async def get_cart(
 async def add_item(
     body: AddCartItemRequest,
     session: AsyncSession = Depends(get_session),
-    current_user: CurrentUser = Depends(get_current_user),
+    # The call that creates the cart: an account erased in the token's last minutes
+    # must not start a new one (`require_live_user`).
+    current_user: CurrentUser = Depends(require_live_user),
 ) -> CartResponse:
     try:
         cart = await CartService(session).add_item(current_user.id, body.variant_id, body.quantity)

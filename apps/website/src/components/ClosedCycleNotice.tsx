@@ -2,6 +2,7 @@ import React from 'react'
 import { Alert, Button } from 'widgets/atoms'
 import { useAuth } from '@/contexts/AuthContext'
 import { useActiveCycle } from '@/hooks/useActiveCycle'
+import { useLoginHref } from '@/hooks/useLoginHref'
 
 /**
  * Врезка «приём заказов закрыт» — одна на страницу.
@@ -17,6 +18,7 @@ import { useActiveCycle } from '@/hooks/useActiveCycle'
 export const ClosedCycleNotice: React.FC = () => {
   const { isClosed } = useActiveCycle()
   const { user } = useAuth()
+  const loginHref = useLoginHref()
 
   if (!isClosed) {
     return null
@@ -31,7 +33,7 @@ export const ClosedCycleNotice: React.FC = () => {
           size="sm"
           variant="secondary"
           // Гостю показывать пустое избранное незачем — сначала вход.
-          link={{ href: user === null ? '/login' : '/wishlist' }}
+          link={{ href: user === null ? loginHref : '/wishlist' }}
         >
           {user === null ? 'Войти' : 'Моё избранное'}
         </Button>

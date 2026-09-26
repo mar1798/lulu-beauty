@@ -445,6 +445,28 @@ async def notify_cycle_closed_for_customers(session: AsyncSession, cycle: OrderC
         logger.exception("Failed to announce the closing of cycle %s to customers", cycle.id)
 
 
+async def notify_cycle_closed_in_background(
+    cycle_id: uuid.UUID, rescues: Sequence[CartRescue]
+) -> None:
+    """Both customer broadcasts of an early close, as a background task.
+
+    The owner's "закрыть сбор" used to answer only after every customer had been told —
+    ten to thirty seconds of a spinning button on a phone, and a second press answered
+    `cycle_already_closed`. The owner's own tally still goes out in the request (it is
+    what they pressed the button for); these two run here, in a session of their own,
+    because the request's is closed by the time a background task starts.
+    """
+    try:
+        async with async_session() as session:
+            cycle = await session.get(OrderCycle, cycle_id)
+            if cycle is None:  # deleted between the commit and this task running
+                return
+            await notify_carts_rescued(session, cycle, rescues)
+            await notify_cycle_closed_for_customers(session, cycle)
+    except Exception:  # noqa: BLE001 - the cycle is already closed; see module docstring
+        logger.exception("Failed to announce the closing of cycle %s", cycle_id)
+
+
 async def notify_cycle_reminders(
     session: AsyncSession, reminders: Sequence[CycleReminder]
 ) -> list[CycleReminder]:

@@ -27,6 +27,7 @@ import { SHOWCASE_PATHS, productPath, refreshPublicPages } from '@/services/endp
 import { adminBrandsKey, adminProductsKey, categoriesKey } from '@/services/swrKeys'
 import { scrollToTop } from '@/utils/scroll'
 import * as styles from '@/styles/admin.css'
+import { useClampedPage } from '@/hooks/useClampedPage'
 
 /**
  * Список товаров: поиск, фильтр по категории, показ удалённых, пагинация.
@@ -121,6 +122,16 @@ const AdminProductsPage: React.FC = () => {
     // Смена фильтра/страницы не должна сбрасывать таблицу в скелетон.
     { keepPreviousData: true }
   )
+
+  // Опустевшая страница — назад, на последнюю существующую (`useClampedPage`).
+  const replacePage = useCallback(
+    (next: number) => {
+      setParams({ page: next }, { replace: true })
+    },
+    [setParams]
+  )
+
+  useClampedPage(data, page, replacePage)
 
   /*
     `isLoading` ложно ровно тогда, когда на экране выдача по текущему ключу.

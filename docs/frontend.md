@@ -94,6 +94,14 @@ point at it), categories, cycles, and the xlsx import. The import names only `/`
   login's polling secret. That secret is deliberately **not** the payload in the
   `t.me/…?start=` link: the link is visible in the Telegram chat, so polling on it would let
   anyone who sees the chat claim the confirmed sign-in.
+- **Inside Telegram Web the site is a third-party iframe**, where browsers neither store nor
+  send `SameSite=Lax` cookies. There the page marks every request with `X-LB-Embedded: 1`
+  (`utils/embedding.ts`, added in `services/api.ts`'s single `send`), and `cookies.ts` sets —
+  and clears, since a cookie is only removed with the attributes it was set with —
+  `SameSite=None; Secure; Partitioned` instead. `Partitioned` (CHIPS) keeps that jar tied to
+  `web.telegram.org`, so no other site gets it. Over plain http (dev) it stays `Lax`: `None`
+  without `Secure` is dropped. Safari blocks third-party cookies outright, so Telegram Web in
+  Safari still cannot keep a session.
 - `pages/api/auth/*` — thin proxies to the API's `/auth/*` that set and clear those cookies:
   `telegram/session` (open a sign-in), `telegram/poll` (claim it), `telegram/widget` and
   `telegram/mini-app` (trade a Telegram HMAC signature for the same cookies), plus `me`,
@@ -104,7 +112,9 @@ point at it), categories, cycles, and the xlsx import. The import names only `/`
   the attacker's cookies (a Telegram signature is valid for a day). `SameSite=Lax` does not
   help — it restricts sending cookies, not setting them. The check accepts either
   `Sec-Fetch-Site: same-origin` or a matching `Origin`; a request with neither is not a
-  browser form and passes.
+  browser form and passes. The same check guards every non-GET request through `/api/proxy/*` and
+  `/api/revalidate`: in the iframe the cookies are `SameSite=None`, and origin is what stands
+  between them and a cross-site POST.
 - `src/server/apiFetch.ts` — `fetchWithAuth` attaches `Authorization: Bearer` and refreshes
   **proactively** by decoding the access token's `exp` (30s skew) before sending, falling back
   to one refresh-and-retry on a 401. Streamed bodies are `retryable: false` (a stream reads
@@ -263,11 +273,27 @@ Client-side fetching is [SWR](https://swr.vercel.app/), configured globally in `
   overrule it; and while it moves, the button clips its own label — the clipping is on
   the button, never on the box around it, since `Tooltip`'s bubble is drawn in that box.
 - `src/hooks/` — `useAdminGate`, `useActiveCycle`, `useEditableOrder`, `useProductSearch`,
-  `useTelegramLogin`, `useTelegramMiniApp`, `useQrCode`, `useQueryParams`,
-  `usePrefetchRoutes`, `useRedirectIfAuthenticated`.
+  `useTelegramLogin`, `useTelegramMiniApp`, `useTelegramBackButton`, `useQrCode`,
+  `useQueryParams`, `usePrefetchRoutes`, `useRedirectIfAuthenticated`, `useLoginHref`,
+  `useRefreshOnReturn`, `useClampedPage`, `useMediaQuery`.
+- **Every link to `/login` goes through `useLoginHref()`**, which adds `?next=` with the current
+  path, so the person returns to checkout or their order instead of the catalogue.
+- **Scroll and history.** `<Html data-scroll-behavior="smooth">` tells Next to switch the global
+  smooth scrolling off during navigation, and `experimental.scrollRestoration` restores the
+  position on «назад». Overlays (`MobileMenu`, `HeaderSearch`'s panel, dismissable `Modal`s,
+  the gallery viewer) push a history entry through `useBackDismiss` in `widgets`, so the back
+  gesture closes them instead of leaving the page. Closing one another way takes the entry
+  off with a `history.back()`; while that is in flight the hook holds the page's own
+  `pushState`/`replaceState` (it wraps them, and Next looks them up at call time), so a
+  `router.push` right after a confirm dialog isn't undone by it. An entry left behind by a
+  link click is skipped in the direction of travel — told apart by Next's `state.key`.
+- **State that changes behind a long-open tab** — cart, wishlist, the active cycle — is
+  re-read when the tab comes back after 30s in the background (`useRefreshOnReturn`, mounted
+  in `_app`), since `revalidateOnFocus` is off app-wide.
 - **Every removal in the customer flow is undoable from its toast.** Taking a line out of
-  the cart (`/cart`), an item out of a submitted order (`/orders/[id]`) or a product out of
-  the wishlist (`WishlistButton`, so both `/wishlist` and the catalogue cards) leaves a
+  the cart (`/cart`, and «−» from 1 on the product page — `CartQuantityStepper`), an item
+  out of a submitted order (`/orders/[id]`) or a product out of the wishlist
+  (`WishlistButton`, so both `/wishlist` and the catalogue cards) leaves a
   `notify({ tone: 'warning', action: { label: 'Вернуть', … } })` behind it — `IToast.action`,
   one button, rendered by `Toast` next to the close cross, and a toast carrying one lives 10s
   instead of 5s (`ACTION_DURATION` in `ToastContext`). The countdown stops while the stack is

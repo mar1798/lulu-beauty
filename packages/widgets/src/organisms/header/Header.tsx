@@ -79,6 +79,7 @@ export const Header: FC<IHeaderProps & IBasicStyling> = ({
   search,
   notice,
   onMenuClick,
+  isMenuOpen = false,
   isFloating = false,
   isPinned = true,
   className,
@@ -152,6 +153,8 @@ export const Header: FC<IHeaderProps & IBasicStyling> = ({
                 icon={<IconMenu />}
                 label="Открыть меню"
                 variant="ghost"
+                isExpanded={isMenuOpen}
+                hasPopup="dialog"
                 onClick={onMenuClick}
               />
             )}

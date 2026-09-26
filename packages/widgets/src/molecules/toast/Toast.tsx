@@ -9,19 +9,16 @@ import * as styles from './Toast.css'
 /**
  * Короткое уведомление о результате действия.
  *
- * `role` зависит от тона, как и у `Alert`: ошибка перебивает чтение
- * (`alert`), успех — нет (`status`). Уведомление об успехе, зачитанное
- * поверх того, что человек читает, раздражает сильнее, чем помогает.
+ * Роли `alert`/`status` у самого тоста нет: озвучивают уведомление постоянные
+ * live-регионы `ToastViewport` — тост, вставленный уже заполненным, скринридеры
+ * пропускают.
  *
  * `toast.action` — обратный ход («Вернуть» после удаления). Нажатие закрывает
  * уведомление сразу: результат самого запроса придёт следующим тостом, а
  * висящее уведомление с уже нажатой кнопкой читается как «не сработало».
  */
 export const Toast: FC<IToastProps & IBasicStyling> = ({ toast, onDismiss, className }) => (
-  <div
-    className={clsx(styles.container, styles.tone[toast.tone], className)}
-    role={toast.tone === 'danger' ? 'alert' : 'status'}
-  >
+  <div className={clsx(styles.container, styles.tone[toast.tone], className)}>
     <div className={styles.body}>
       <span className={styles.title}>{toast.title}</span>
       {toast.description !== undefined && (

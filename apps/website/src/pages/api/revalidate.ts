@@ -9,6 +9,7 @@ import {
   unauthenticated,
 } from '@/server/apiFetch'
 import { resetSharedStaticData } from '@/services/staticData'
+import { rejectCrossOrigin } from '@/server/sameOrigin'
 
 /**
  * Ревалидация публичных страниц по требованию.
@@ -181,6 +182,12 @@ const isAdmin = async (req: NextApiRequest, res: NextApiResponse): Promise<boole
 const handler = async (req: NextApiRequest, res: NextApiResponse): Promise<void> => {
   if (req.method !== 'POST') {
     methodNotAllowed(res, ['POST'])
+    return
+  }
+
+  // Только со своей страницы: во фрейме Telegram Web cookie админа стоят с
+  // `SameSite=None`, и от CSRF защищает уже проверка происхождения.
+  if (rejectCrossOrigin(req, res)) {
     return
   }
 

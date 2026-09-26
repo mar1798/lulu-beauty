@@ -1,5 +1,6 @@
 import { style } from '@vanilla-extract/css'
 import { color, font, rem } from '../../styling/lib'
+import { media } from '../../styling/lib/media'
 import { flexColumn, flexRow, panel as panelMixin } from '../../styling/mixin'
 import { tableBase, tableCell, tableHeadCell, tableWrap } from '../../styling/mixin/table'
 import { vars } from '../../styling/themes/contract.css'
@@ -40,7 +41,20 @@ export const totalLabel = style({
 
 export const errorsWrap = style([tableWrap(), { boxShadow: 'none' }])
 
-export const table = style([tableBase(), { minWidth: rem(360) }])
+/**
+ * С `sm` у таблицы есть нижняя граница ширины, а на телефоне — нет: 360px шире
+ * панели на экране в 320-375px. Длинный текст ошибки там переносится где угодно.
+ */
+export const table = style([
+  tableBase(),
+  {
+    minWidth: 0,
+    overflowWrap: 'anywhere',
+    ...media({
+      sm: { minWidth: rem(360), overflowWrap: 'normal' },
+    }),
+  },
+])
 
 export const headCell = style(tableHeadCell())
 

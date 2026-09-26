@@ -39,8 +39,8 @@ export interface IAuthContextValue {
   isSuperAdmin: boolean
   /** Открывает вход и отдаёт ссылку на бота. */
   startTelegramLogin: () => Promise<ITelegramLoginSession>
-  /** Один опрос: `null` — ещё ждём, профиль — вошли. */
-  pollTelegramLogin: () => Promise<IAuthUser | null>
+  /** Один опрос: `null` — ещё ждём, профиль — вошли. `signal` — таймаут запроса. */
+  pollTelegramLogin: (signal?: AbortSignal) => Promise<IAuthUser | null>
   /**
    * Вход по подписи Telegram — из Mini App и из виджета на странице входа.
    *
@@ -121,27 +121,30 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const startTelegramLogin = useCallback(() => startTelegramLoginRequest(), [])
 
-  const pollTelegramLogin = useCallback(async (): Promise<IAuthUser | null> => {
-    const result = await pollTelegramLoginRequest()
+  const pollTelegramLogin = useCallback(
+    async (signal?: AbortSignal): Promise<IAuthUser | null> => {
+      const result = await pollTelegramLoginRequest(signal)
 
-    if (result.status !== 'AUTHORIZED') {
-      return null
-    }
+      if (result.status !== 'AUTHORIZED') {
+        return null
+      }
 
-    /*
+      /*
       Профиль приходит вместе с подтверждением, и кеш заполняется им сразу:
       иначе между «вошли» и первым ответом `/api/auth/me` экран успевает
       мигнуть гостевым состоянием — с редиректом на этот же вход включительно.
       Если профиль не дочитался, перезапрашиваем — cookie уже стоят.
     */
-    if (result.user == null) {
-      return await reload()
-    }
+      if (result.user == null) {
+        return await reload()
+      }
 
-    await mutate(result.user, { revalidate: false })
+      await mutate(result.user, { revalidate: false })
 
-    return result.user
-  }, [mutate, reload])
+      return result.user
+    },
+    [mutate, reload]
+  )
 
   /**
    * Общий хвост обоих входов по подписи: профиль приходит вместе с ответом и сразу

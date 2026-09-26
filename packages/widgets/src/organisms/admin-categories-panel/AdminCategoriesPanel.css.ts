@@ -80,7 +80,8 @@ export const createFields = style({
   ...media({
     sm: {
       display: 'grid',
-      gridTemplateColumns: `minmax(0, 1fr) minmax(0, 1fr) ${rem(120)}`,
+      // Две колонки: третья в 120px осталась от убранного поля и стояла пустой.
+      gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)',
       gap: vars.space.md,
       alignItems: 'start',
     },

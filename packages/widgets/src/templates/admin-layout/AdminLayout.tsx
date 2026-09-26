@@ -1,5 +1,5 @@
 import clsx from 'clsx'
-import { type FC } from 'react'
+import { type FC, useEffect, useRef } from 'react'
 import type { IAdminLayoutProps, IBasicStyling } from '../../types'
 import { AppLink } from '../../atoms/app-link'
 import { Container } from '../../atoms/container'
@@ -32,46 +32,69 @@ export const AdminLayout: FC<IAdminLayoutProps & IBasicStyling> = ({
   sidebar,
   children,
   className,
-}) => (
-  <Container as="section" width="wide" className={clsx(styles.container, className)}>
-    <div className={styles.body}>
-      <div className={styles.side}>
-        {/* Активный пункт подсвечивается по `aria-current` в CSS — как в шапке. */}
-        <nav className={styles.nav} aria-label="Разделы админки">
-          {navigation.map(item => (
-            <AppLink
-              key={item.link.href}
-              {...item.link}
-              className={styles.navLink}
-              aria-current={item.link.href === currentHref ? 'page' : undefined}
-            >
-              {item.icon !== undefined && <span className={styles.navIcon}>{item.icon}</span>}
-              {item.label}
-            </AppLink>
-          ))}
-        </nav>
+}) => {
+  const navRef = useRef<HTMLElement>(null)
 
-        {sidebar !== undefined && <aside className={styles.aside}>{sidebar}</aside>}
-      </div>
+  /*
+    На телефоне разделы — строка с горизонтальной прокруткой, и каждый переход
+    открывал её в начале: активный пункт («Заявки», «Сборы») оставался за краем.
+    Прокручиваем её так, чтобы он был виден. Мгновенно — это не движение, а
+    исходное положение страницы.
+  */
+  useEffect(() => {
+    const nav = navRef.current
+    const active = nav?.querySelector<HTMLElement>('[aria-current="page"]')
 
-      <div className={styles.content}>
-        <div className={styles.head}>
-          <div className={styles.headText}>
-            <Heading level={1} size="lg">
-              {title}
-            </Heading>
-            {summary !== undefined && (
-              <Text tone="secondary" size="sm" className={styles.summary}>
-                {summary}
-              </Text>
-            )}
-          </div>
+    if (nav === null || nav === undefined || active === null || active === undefined) {
+      return
+    }
 
-          {actions !== undefined && <div className={styles.actions}>{actions}</div>}
+    if (nav.scrollWidth > nav.clientWidth) {
+      nav.scrollLeft = active.offsetLeft - (nav.clientWidth - active.offsetWidth) / 2
+    }
+  }, [currentHref])
+
+  return (
+    <Container as="section" width="wide" className={clsx(styles.container, className)}>
+      <div className={styles.body}>
+        <div className={styles.side}>
+          {/* Активный пункт подсвечивается по `aria-current` в CSS — как в шапке. */}
+          <nav ref={navRef} className={styles.nav} aria-label="Разделы админки">
+            {navigation.map(item => (
+              <AppLink
+                key={item.link.href}
+                {...item.link}
+                className={styles.navLink}
+                aria-current={item.link.href === currentHref ? 'page' : undefined}
+              >
+                {item.icon !== undefined && <span className={styles.navIcon}>{item.icon}</span>}
+                {item.label}
+              </AppLink>
+            ))}
+          </nav>
+
+          {sidebar !== undefined && <aside className={styles.aside}>{sidebar}</aside>}
         </div>
 
-        <div className={styles.main}>{children}</div>
+        <div className={styles.content}>
+          <div className={styles.head}>
+            <div className={styles.headText}>
+              <Heading level={1} size="lg">
+                {title}
+              </Heading>
+              {summary !== undefined && (
+                <Text tone="secondary" size="sm" className={styles.summary}>
+                  {summary}
+                </Text>
+              )}
+            </div>
+
+            {actions !== undefined && <div className={styles.actions}>{actions}</div>}
+          </div>
+
+          <div className={styles.main}>{children}</div>
+        </div>
       </div>
-    </div>
-  </Container>
-)
+    </Container>
+  )
+}

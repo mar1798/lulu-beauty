@@ -22,7 +22,9 @@ registration endpoint, no password column and no OTP — see [telegram.md](teleg
 
 - ADMIN and SUPER_ADMIN see the same admin panel (`require_admin` accepts both, via
   `ADMIN_ROLES` in `app/auth/models.py`). They differ over exactly one thing: who may
-  change roles.
+  change roles. Both checks read the role from the `users` row, not the token, so a
+  demotion takes effect on the next request; it also revokes the demoted account's
+  refresh tokens (`UsersService.set_role`).
 - `PATCH /admin/users/{id}/role` is **SUPER_ADMIN-only** (`require_super_admin`, otherwise
   `super_admin_only`). It grants and revokes `ADMIN`, and nothing else: `SUPER_ADMIN`
   cannot be handed out (`super_admin_not_assignable`) and the row that holds it cannot be
@@ -92,7 +94,10 @@ rows, and the site posts `/api/auth/logout` straight after the `DELETE`, which c
 `lb_at`/`lb_rt` cookies whatever the backend answers. What cannot be taken back is an
 access token already copied out of a cookie: those are verified without a DB lookup by
 design, so one keeps opening the customer endpoints until it expires (up to
-`JWT_ACCESS_TTL_SECONDS`, 15 minutes), exactly as it does after `revoke_all_for_user`.
+`JWT_ACCESS_TTL_SECONDS`, 15 minutes), exactly as it does after `revoke_all_for_user`. The
+exceptions are the paths that create something on the account's behalf — checkout and
+`POST /cart/items` go through `require_live_user`, which reads `deleted_at` — and the admin
+surface, whose role check reads the database too (see the roles above).
 
 ## The order cycle
 
@@ -137,6 +142,9 @@ deliberately so — half of it would leave carts nobody can rescue:
 5. Only **after the commit** does anything go out: the owner's summary, the cart-rescue
    notices, and a "cycle ended" notice to customers whose orders are in it. A summary of a
    close that then rolled back would send the owner shopping against a live cycle.
+   On the owner's early close (`POST /admin/cycles/{id}/close`) only the summary goes out in
+   the request; the two customer broadcasts run as a background task
+   (`notify_cycle_closed_in_background`), or the button spun for half a minute on a phone.
 
 ### Deadline reminders
 
@@ -269,7 +277,13 @@ edit endpoints — a ceiling on one side only just moves where the overflow land
 ## Orders
 
 Checkout turns a cart into an `Order` with denormalized `OrderItem` lines (name, slug, price,
-**volume**, image snapshot) and a `total_cents`.
+**volume**, image snapshot) and a `total_cents`. Only the lines that went into the order leave
+the cart: a line hidden from it (product discontinued or out of stock) stays and reappears
+when the product does.
+
+A customer's cancel/restore/edit and the owner's status change lock the order row
+(`get_for_user(for_update=True)`, `update_status`), so the two sides cannot both pass their
+checks against the same PENDING and have the later commit win.
 
 The volume is a snapshot on the line, unlike brand and category, which are read from the live
 catalogue (`OrdersService.load_item_tags`): it is what the customer _chose_ between, and once
@@ -406,6 +420,15 @@ keeps every `description` and every photo the catalogue already has. Both are ed
 product page instead. Soft-deleted products are left out too — the import matches on slug
 and knows nothing about `deleted_at`, so a deleted row coming back would resurrect the
 product.
+
+Inside Telegram (the Mini App, the in-app browser, or Telegram Web's frame) the site can't
+save a fetched blob — `<a download>` on a blob URL is silently ignored. There the site asks
+`POST /admin/export/links` for a signed link instead, and Telegram downloads
+`GET /export/download/{token}` itself (`WebApp.downloadFile`, or the external browser via
+`openLink` in clients older than Bot API 8.0). The token names the export and its filters,
+lives two minutes, is typed `download` so it can never pass as an access token, and the
+download re-reads the account's role (`load_admin`), so a demotion kills an unused link.
+Client side: `apps/website/src/utils/exportDownload.ts`.
 
 ## Money
 

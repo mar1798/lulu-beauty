@@ -86,10 +86,17 @@ export const OrderDetails: FC<IOrderDetailsProps & IBasicStyling> = ({
     setIsEditingNote(true)
   }
 
-  const submitNote = (): void => {
+  /*
+    Редактор закрывается только после успешного сохранения: при сбое сети или
+    после дедлайна набранный на телефоне текст пропадал вместе с редактором.
+  */
+  const submitNote = async (): Promise<void> => {
     const trimmed = note.trim()
-    onNoteSave?.(trimmed === '' ? null : trimmed)
-    setIsEditingNote(false)
+    const isSaved = await onNoteSave?.(trimmed === '' ? null : trimmed)
+
+    if (isSaved !== false) {
+      setIsEditingNote(false)
+    }
   }
 
   /*
@@ -289,7 +296,13 @@ export const OrderDetails: FC<IOrderDetailsProps & IBasicStyling> = ({
           />
 
           <div className={styles.noteActions}>
-            <Button size="sm" onClick={submitNote} isLoading={isBusy}>
+            <Button
+              size="sm"
+              onClick={() => {
+                void submitNote()
+              }}
+              isLoading={isBusy}
+            >
               Сохранить комментарий
             </Button>
             <Button

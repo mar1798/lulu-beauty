@@ -87,7 +87,9 @@ async def test_send_reminder_links_to_checkout_when_the_site_is_public(
     await service.send_reminder(_user(telegram_chat_id=42), _cycle())
 
     markup = bot.send_message.await_args.kwargs["reply_markup"]
-    assert markup.inline_keyboard[0][0].url == "https://lulu.example.com/checkout"
+    assert (
+        keyboards.button_target(markup.inline_keyboard[0][0]) == "https://lulu.example.com/checkout"
+    )
 
 
 async def test_send_reminder_still_goes_out_without_a_linkable_site(
@@ -140,7 +142,7 @@ async def test_send_order_deleted_tells_a_customer_still_waiting() -> None:
     # The text sends them to the owner, so the keyboard has to carry the only address
     # the owner answers at.
     markup = bot.send_message.await_args.kwargs["reply_markup"]
-    urls = [button.url for row in markup.inline_keyboard for button in row]
+    urls = [keyboards.button_target(button) for row in markup.inline_keyboard for button in row]
     assert keyboards.INSTAGRAM_URL in urls
 
 
@@ -154,7 +156,7 @@ async def test_send_order_status_offers_the_instagram_on_the_owners_cancellation
     )
 
     markup = bot.send_message.await_args.kwargs["reply_markup"]
-    urls = [button.url for row in markup.inline_keyboard for button in row]
+    urls = [keyboards.button_target(button) for row in markup.inline_keyboard for button in row]
     assert keyboards.INSTAGRAM_URL in urls
 
 
@@ -279,7 +281,9 @@ async def test_send_customer_cancellation_reaches_the_owner_without_order_button
     assert "отменена покупателем" in message
     markup = bot.send_message.await_args.kwargs["reply_markup"]
     buttons = [button for row in markup.inline_keyboard for button in row]
-    assert [button.url for button in buttons] == ["https://lulu.example.com/admin/orders"]
+    assert [keyboards.button_target(button) for button in buttons] == [
+        "https://lulu.example.com/admin/orders"
+    ]
 
 
 async def test_send_customer_cancellation_stays_quiet_on_a_dead_binding() -> None:
@@ -309,7 +313,9 @@ async def test_send_stale_orders_points_the_owner_at_the_panel(
     assert "2 заявки без ответа" in message
     markup = bot.send_message.await_args.kwargs["reply_markup"]
     buttons = [button for row in markup.inline_keyboard for button in row]
-    assert [button.url for button in buttons] == ["https://lulu.example.com/admin/orders"]
+    assert [keyboards.button_target(button) for button in buttons] == [
+        "https://lulu.example.com/admin/orders"
+    ]
 
 
 async def test_send_stale_orders_stays_quiet_on_a_dead_binding() -> None:

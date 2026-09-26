@@ -13,6 +13,7 @@ import { listAdminUsers, updateUserRole } from '@/services/endpoints/admin'
 import { adminUsersKey, isAdminUsersKey } from '@/services/swrKeys'
 import { scrollToTop } from '@/utils/scroll'
 import * as styles from '@/styles/admin.css'
+import { useClampedPage } from '@/hooks/useClampedPage'
 
 /**
  * Аккаунты и доступ в админку.
@@ -85,6 +86,16 @@ const AdminUsersPage: React.FC = () => {
     // Смена страницы или запроса не должна ронять таблицу в скелетон.
     { keepPreviousData: true }
   )
+
+  // Опустевшая страница — назад, на последнюю существующую (`useClampedPage`).
+  const replacePage = useCallback(
+    (next: number) => {
+      setParams({ page: next }, { replace: true })
+    },
+    [setParams]
+  )
+
+  useClampedPage(data, page, replacePage)
 
   /*
     `isLoading` ложно ровно тогда, когда на экране выдача по текущему ключу.

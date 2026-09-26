@@ -1,5 +1,5 @@
 import clsx from 'clsx'
-import { type FC, useMemo, useState } from 'react'
+import { type FC, useMemo, useRef, useState } from 'react'
 import type { IAdminCycleCalendarProps, IBasicStyling, ICycleDraft, IOrderCycle } from '../../types'
 import { IconChevronLeft, IconChevronRight } from '../../svg/icons'
 import { Alert } from '../../atoms/alert'
@@ -100,6 +100,9 @@ const buildMonth = (month: string): IMonthGrid => {
 
   return { days, title: formatMonth(month) }
 }
+
+/** С `lg` редактор стоит рядом с календарём — см. `AdminCycleCalendar.css.ts`. */
+const WIDE_SCREEN_QUERY = '(min-width: 1024px)'
 
 export const AdminCycleCalendar: FC<IAdminCycleCalendarProps & IBasicStyling> = ({
   cycles,
@@ -202,8 +205,24 @@ export const AdminCycleCalendar: FC<IAdminCycleCalendarProps & IBasicStyling> = 
       ? { date: '', time: DEFAULT_TIME, label: '' }
       : draftForDate(selectedDate))
 
+  const editorRef = useRef<HTMLDivElement>(null)
+
+  /*
+    До `lg` редактор стоит под календарём, и тап по дню внешне ничего не менял:
+    выбранный день редактировался где-то ниже экрана. Там — прокрутка к нему; на
+    широком экране он и так рядом.
+  */
   const selectDay = (date: string): void => {
     setSelection(draftForDate(date))
+
+    if (!window.matchMedia(WIDE_SCREEN_QUERY).matches) {
+      const isReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+
+      editorRef.current?.scrollIntoView({
+        block: 'start',
+        behavior: isReduced ? 'auto' : 'smooth',
+      })
+    }
   }
 
   /** Правка поля редактора: первая же фиксирует черновик как выбор владельца. */
@@ -336,7 +355,7 @@ export const AdminCycleCalendar: FC<IAdminCycleCalendarProps & IBasicStyling> = 
         )}
       </div>
 
-      <div className={styles.editor}>
+      <div ref={editorRef} className={styles.editor}>
         {selectedDate === null ? (
           <Text tone="secondary" size="sm">
             Выберите день в календаре, чтобы назначить дедлайн сбора или изменить назначенный

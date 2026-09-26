@@ -33,35 +33,54 @@ export const SearchField: FC<ISearchFieldProps & IBasicStyling> = ({
   isBusy = false,
   className,
 }) => (
-  <Input
-    className={clsx(styles.container, className)}
-    type="search"
-    value={value}
-    onChange={onChange}
-    label={label}
-    ariaLabel={placeholder}
-    placeholder={placeholder}
-    prefix={
-      isBusy ? (
-        <span className={styles.spinner}>
-          {/* «Загрузку» объявляет контейнер выдачи (`aria-busy`) — здесь молча. */}
-          <Spinner size="sm" label={null} />
-        </span>
-      ) : (
-        <IconSearch className={styles.icon} />
-      )
-    }
-    suffix={
-      value === '' ? undefined : (
-        <IconButton
-          className={styles.clear}
-          size="sm"
-          variant="ghost"
-          icon={<IconClose />}
-          label="Очистить поиск"
-          onClick={() => onChange('')}
-        />
-      )
-    }
-  />
+  /*
+    Форма — ради клавиши «Найти» на экранной клавиатуре: без неё Enter в поле на
+    телефоне не делает ничего, и клавиатура так и закрывает выдачу. Искать по
+    Enter нечего — выдача уже обновляется на ходу, — поэтому отправка только
+    убирает клавиатуру.
+  */
+  <form
+    className={styles.form}
+    role="search"
+    onSubmit={event => {
+      event.preventDefault()
+
+      if (document.activeElement instanceof HTMLElement) {
+        document.activeElement.blur()
+      }
+    }}
+  >
+    <Input
+      className={clsx(styles.container, className)}
+      type="search"
+      enterKeyHint="search"
+      value={value}
+      onChange={onChange}
+      label={label}
+      ariaLabel={placeholder}
+      placeholder={placeholder}
+      prefix={
+        isBusy ? (
+          <span className={styles.spinner}>
+            {/* «Загрузку» объявляет контейнер выдачи (`aria-busy`) — здесь молча. */}
+            <Spinner size="sm" label={null} />
+          </span>
+        ) : (
+          <IconSearch className={styles.icon} />
+        )
+      }
+      suffix={
+        value === '' ? undefined : (
+          <IconButton
+            className={styles.clear}
+            size="sm"
+            variant="ghost"
+            icon={<IconClose />}
+            label="Очистить поиск"
+            onClick={() => onChange('')}
+          />
+        )
+      }
+    />
+  </form>
 )

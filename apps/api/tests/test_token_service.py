@@ -80,3 +80,32 @@ def test_refresh_tokens_issued_in_the_same_second_are_distinct() -> None:
     assert first != second
     assert token_service.decode_refresh_token(first).sub == str(user_id)
     assert token_service.decode_refresh_token(second).sub == str(user_id)
+
+
+def test_download_token_roundtrip() -> None:
+    user_id = uuid.uuid4()
+    params = {"cycleId": None, "status": "PENDING", "includePrices": False}
+
+    payload = token_service.decode_download_token(
+        token_service.create_download_token(user_id, "orders", params)
+    )
+
+    assert payload.sub == str(user_id)
+    assert payload.export == "orders"
+    assert payload.params == params
+
+
+def test_a_download_token_is_not_an_access_token() -> None:
+    """Signed with the access secret, so only the type claim keeps a leaked download
+    link from working as a bearer token for the whole API."""
+    token = token_service.create_download_token(uuid.uuid4(), "products", {})
+
+    with pytest.raises(token_service.InvalidTokenError):
+        token_service.decode_access_token(token)
+
+
+def test_an_access_token_is_not_a_download_token() -> None:
+    token = token_service.create_access_token(uuid.uuid4(), Role.ADMIN)
+
+    with pytest.raises(token_service.InvalidTokenError):
+        token_service.decode_download_token(token)

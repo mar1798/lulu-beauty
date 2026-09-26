@@ -1,5 +1,5 @@
 import type { NextApiRequest, NextApiResponse } from 'next'
-import { apiUrl, methodNotAllowed } from '@/server/apiFetch'
+import { UpstreamUnavailableError, apiUrl, callApi, methodNotAllowed } from '@/server/apiFetch'
 import { clientHeaders } from '@/server/clientAddress'
 import { clearLoginSession, readLoginSession, setAuthCookies } from '@/server/cookies'
 import { rejectCrossOrigin } from '@/server/sameOrigin'
@@ -39,11 +39,23 @@ const handler = async (req: NextApiRequest, res: NextApiResponse): Promise<void>
     return
   }
 
-  const response = await fetch(apiUrl('/auth/telegram/claim'), {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...clientHeaders(req) },
-    body: JSON.stringify(session),
-  })
+  let response: Response
+
+  try {
+    response = await callApi(apiUrl('/auth/telegram/claim'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...clientHeaders(req) },
+      body: JSON.stringify(session),
+    })
+  } catch (error) {
+    // Транзиентный сбой: cookie не трогаем, вкладка опросит снова.
+    if (error instanceof UpstreamUnavailableError) {
+      res.status(error.status).json({ detail: 'upstream_unavailable' })
+      return
+    }
+
+    throw error
+  }
 
   if (!response.ok) {
     // Тупик — только когда бэкенд сказал, что сессии нет или она истекла. `lb_ls`
@@ -52,7 +64,7 @@ const handler = async (req: NextApiRequest, res: NextApiResponse): Promise<void>
     // будет подтверждён ботом. Транзиентный ответ просто пересылаем — вкладка
     // опросит снова.
     if (response.status === NOT_FOUND || response.status === GONE) {
-      clearLoginSession(res)
+      clearLoginSession(res, req)
     }
 
     const detail = (await response.json().catch(() => null)) as { detail?: string } | null
@@ -67,18 +79,18 @@ const handler = async (req: NextApiRequest, res: NextApiResponse): Promise<void>
     return
   }
 
-  setAuthCookies(res, claim.tokens)
-  clearLoginSession(res)
+  setAuthCookies(res, claim.tokens, req)
+  clearLoginSession(res, req)
 
   /*
     Профиль тянем той же парой токенов, а не из cookie: `req.cookies` — это уже
     прочитанный запрос, выставленных мгновение назад cookie там нет.
   */
-  const me = await fetch(apiUrl('/users/me'), {
+  const me = await callApi(apiUrl('/users/me'), {
     headers: { Authorization: `Bearer ${claim.tokens.accessToken}`, ...clientHeaders(req) },
-  })
+  }).catch(() => null)
 
-  if (!me.ok) {
+  if (me === null || !me.ok) {
     res.status(200).json({ status: 'AUTHORIZED', user: null })
     return
   }

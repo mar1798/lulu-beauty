@@ -115,7 +115,8 @@ export const unit = style({
 export const placeholderBlocks = style({
   /* Колонка растягивает по ширине, а блоки стоят от левого края. */
   alignSelf: 'flex-start',
-  width: rem(270),
+  // Не шире колонки: на 320px заглушка в 270px вылезала из панели до гидрации.
+  width: `min(100%, ${rem(270)})`,
   height: rem(56),
   borderRadius: vars.radius.lg,
 })

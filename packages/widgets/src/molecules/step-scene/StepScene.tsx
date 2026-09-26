@@ -1,6 +1,6 @@
 import clsx from 'clsx'
 import { type FC } from 'react'
-import { motion, type Variants } from 'motion/react'
+import { m, type Variants } from 'motion/react'
 import type { IBasicStyling, IStepSceneProps } from '../../types'
 import { IconBox, IconCart, IconCheck } from '../../svg/icons'
 import {
@@ -46,27 +46,27 @@ const popVariants = (delay: number): Variants => ({
 /** Товар кладут в корзину: карточка с «фото», пилюля «+1», корзина с бейджем. */
 const CartScene: FC<{ base: number }> = ({ base }) => (
   <>
-    <motion.span className={styles.cartCard} variants={enterVariants(partDelay(base, 0))}>
+    <m.span className={styles.cartCard} variants={enterVariants(partDelay(base, 0))}>
       <span className={styles.cartPhoto} />
       <span className={clsx(styles.bar, styles.barWide)} />
       <span className={clsx(styles.bar, styles.barNarrow)} />
 
-      <motion.span className={styles.plusPill} variants={popVariants(partDelay(base, 2))}>
+      <m.span className={styles.plusPill} variants={popVariants(partDelay(base, 2))}>
         +1
-      </motion.span>
-    </motion.span>
+      </m.span>
+    </m.span>
 
-    <motion.span className={styles.cartCorner} variants={enterVariants(partDelay(base, 1))}>
+    <m.span className={styles.cartCorner} variants={enterVariants(partDelay(base, 1))}>
       <IconCart className={styles.cartIcon} />
       <span className={styles.cartBadge}>3</span>
-    </motion.span>
+    </m.span>
   </>
 )
 
 /** Корзина превращается в заявку: строки с ценами, «Итого», пилюля «Заявка». */
 const RequestScene: FC<{ base: number }> = ({ base }) => (
   <>
-    <motion.span className={styles.requestRows} variants={enterVariants(partDelay(base, 0))}>
+    <m.span className={styles.requestRows} variants={enterVariants(partDelay(base, 0))}>
       {[styles.barWide, styles.barMid, styles.barWide].map((width, index) => (
         <span key={index} className={styles.requestRow}>
           <span className={clsx(styles.bar, width)} />
@@ -80,36 +80,36 @@ const RequestScene: FC<{ base: number }> = ({ base }) => (
         <span className={styles.totalLabel}>Итого</span>
         <span className={clsx(styles.bar, styles.barTotal)} />
       </span>
-    </motion.span>
+    </m.span>
 
-    <motion.span className={styles.requestPill} variants={popVariants(partDelay(base, 2))}>
+    <m.span className={styles.requestPill} variants={popVariants(partDelay(base, 2))}>
       Заявка
-    </motion.span>
+    </m.span>
   </>
 )
 
 /** Решение приходит в чат: пузырь сообщения с галочкой и полосками текста. */
 const ConfirmScene: FC<{ base: number }> = ({ base }) => (
-  <motion.span className={styles.bubble} variants={enterVariants(partDelay(base, 0))}>
-    <motion.span className={styles.bubbleCheck} variants={popVariants(partDelay(base, 2))}>
+  <m.span className={styles.bubble} variants={enterVariants(partDelay(base, 0))}>
+    <m.span className={styles.bubbleCheck} variants={popVariants(partDelay(base, 2))}>
       <IconCheck />
-    </motion.span>
+    </m.span>
 
     <span className={styles.bubbleLines}>
       <span className={clsx(styles.bar, styles.barWide)} />
       <span className={clsx(styles.bar, styles.barNarrow)} />
     </span>
-  </motion.span>
+  </m.span>
 )
 
 /** Товар получен: коробка и чек-лист с галочками. */
 const HandoverScene: FC<{ base: number }> = ({ base }) => (
   <>
-    <motion.span className={styles.boxTile} variants={enterVariants(partDelay(base, 0))}>
+    <m.span className={styles.boxTile} variants={enterVariants(partDelay(base, 0))}>
       <IconBox className={styles.boxIcon} />
-    </motion.span>
+    </m.span>
 
-    <motion.span className={styles.checkList} variants={enterVariants(partDelay(base, 1))}>
+    <m.span className={styles.checkList} variants={enterVariants(partDelay(base, 1))}>
       {[styles.barMid, styles.barNarrow].map((width, index) => (
         <span key={index} className={styles.checkRow}>
           <span className={styles.checkDot}>
@@ -118,7 +118,7 @@ const HandoverScene: FC<{ base: number }> = ({ base }) => (
           <span className={clsx(styles.bar, width)} />
         </span>
       ))}
-    </motion.span>
+    </m.span>
   </>
 )
 

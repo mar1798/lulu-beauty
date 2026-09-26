@@ -1,4 +1,4 @@
-import { style } from '@vanilla-extract/css'
+import { fallbackVar, style } from '@vanilla-extract/css'
 import { border, color, font, rem, transition } from '../../styling/lib'
 import {
   fieldError,
@@ -10,6 +10,7 @@ import {
   focusVisibleRing,
   richTextContent,
 } from '../../styling/mixin'
+import { headerOffset } from '../../styling/properties.css'
 import { vars } from '../../styling/themes/contract.css'
 
 export const container = style(flexColumn(6))
@@ -54,12 +55,16 @@ export const disabled = style({
 /**
  * Панель прилипает к верху при прокрутке длинного описания: иначе, чтобы
  * сделать жирным слово в конце текста, пришлось бы листать к кнопкам и назад.
+ *
+ * Не к самому верху, а под шапку сайта: та тоже прилипает, и `top: 0` прятал
+ * кнопки под ней. Отступ задаёт `Header.css.ts` — там же он обнуляется, когда
+ * шапка не прилипает.
  */
 export const toolbar = style({
   ...flexRow(2),
   flexWrap: 'wrap',
   position: 'sticky',
-  top: 0,
+  top: fallbackVar(headerOffset, '0px'),
   zIndex: 1,
   padding: vars.space.xxs,
   backgroundColor: 'inherit',

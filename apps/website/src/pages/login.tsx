@@ -9,6 +9,7 @@ import { TelegramLoginWidget, isTelegramLoginWidgetEnabled } from '@/components/
 import { useRedirectIfAuthenticated } from '@/hooks/useRedirectIfAuthenticated'
 import { useQrCode } from '@/hooks/useQrCode'
 import { useTelegramLogin } from '@/hooks/useTelegramLogin'
+import { useMediaQuery } from '@/hooks/useMediaQuery'
 import { safeRedirectPath } from '@/utils/redirect'
 import * as layout from '@/styles/layout.css'
 import * as styles from '@/styles/login.css'
@@ -24,6 +25,9 @@ import * as styles from '@/styles/login.css'
  * Вошедшего уводит `useRedirectIfAuthenticated` — тем же способом, что и
  * раньше: опрос кладёт профиль в кеш сессии, и редирект случается сам.
  */
+/** Тач-экран или узкое окно — ширина `md` из `widgets/breakpoints`. */
+const HANDHELD_QUERY = '(pointer: coarse), (max-width: 767px)'
+
 const LoginPage: React.FC = () => {
   const router = useRouter()
   // Сюда уводит гейт админки: `/admin/*` у гостя даёт `/login?next=/admin/...`.
@@ -33,7 +37,13 @@ const LoginPage: React.FC = () => {
   // Пока сессия проверяется, вход не начинаем: вошедший всё равно уедет отсюда,
   // а лишняя ссылка на бота была бы выдана и брошена.
   const { botUrl, status, error, retry } = useTelegramLogin(!isRedirecting)
-  const { dataUrl: qrDataUrl, isFailed: isQrFailed } = useQrCode(botUrl)
+  /*
+    QR — для тех, кто сканирует его другим телефоном. На самом телефоне бот
+    открывается кнопкой, а код пришлось бы наводить сам на себя: его не рисуем и
+    кодировщик не грузим.
+  */
+  const isHandheld = useMediaQuery(HANDHELD_QUERY)
+  const { dataUrl: qrDataUrl, isFailed: isQrFailed } = useQrCode(isHandheld ? null : botUrl)
 
   return (
     <SiteLayout>
@@ -104,7 +114,7 @@ const LoginPage: React.FC = () => {
                 вовсе: держать пустой квадрат, в котором ничего не появится,
                 хуже, чем не обещать кода совсем.
               */
-              isQrFailed ? null : (
+              isHandheld || isQrFailed ? null : (
                 <div className={styles.qr}>
                   {qrDataUrl !== null && (
                     /*

@@ -19,7 +19,7 @@ from app.db import get_session
 from app.telegram.notify import (
     notify_carts_rescued,
     notify_cycle_closed,
-    notify_cycle_closed_for_customers,
+    notify_cycle_closed_in_background,
     notify_cycle_deadline_changed,
     notify_cycle_opened,
 )
@@ -139,14 +139,16 @@ async def update_cycle(
 @router.post("/admin/cycles/{cycle_id}/close", response_model=OrderCycleResponse)
 async def close_cycle(
     cycle_id: uuid.UUID,
+    background_tasks: BackgroundTasks,
     session: AsyncSession = Depends(get_session),
     _admin: CurrentUser = Depends(require_admin),
 ) -> OrderCycleResponse:
     """Closes a cycle early — everything the deadline would have done, on demand.
 
-    Notifications go out after the commit and *in this request*, not as a background
-    task: the owner pressed the button and is looking at the answer, and the closing
-    tally is the thing they pressed it for.
+    The owner's tally goes out after the commit and *in this request*: the owner pressed
+    the button and is looking at the answer, and the tally is what they pressed it for.
+    The customer broadcasts are a throttled fan-out and go to the background — waiting
+    on them kept the button spinning for half a minute on a phone.
     """
     service = CycleSchedulerService(session)
     try:
@@ -159,8 +161,9 @@ async def close_cycle(
     response = _cycle_response(closure.cycle)
     await session.commit()
     await notify_cycle_closed(session, closure.cycle, closure.orders_count, closure.total_cents)
-    await notify_carts_rescued(session, closure.cycle, closure.rescued_carts)
-    await notify_cycle_closed_for_customers(session, closure.cycle)
+    background_tasks.add_task(
+        notify_cycle_closed_in_background, closure.cycle.id, closure.rescued_carts
+    )
     return response
 
 

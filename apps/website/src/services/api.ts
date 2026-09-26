@@ -1,6 +1,7 @@
 import { serverConfig } from '@/сonfig'
 import { ApiError, toApiError } from './apiErrors'
 import { notifySessionExpired } from './session'
+import { EMBEDDED_HEADER, isEmbeddedWindow } from '@/utils/embedding'
 
 /**
  * Тонкий HTTP-клиент над `fetch`. Ничего не знает про конкретные ручки —
@@ -80,10 +81,28 @@ const buildInit = (method: string, options: IRequestOptions): RequestInit => {
   }
 }
 
+/**
+ * Во фрейме Telegram Web каждый запрос несёт пометку: по ней сервер ставит cookie,
+ * которые браузер сохранит в стороннем контексте (`utils/embedding.ts`). Ставится
+ * здесь, в единственной точке выхода, — запрос без неё обновил бы пару токенов
+ * обычными `Lax`-cookie, и фрейм тут же потерял бы сессию.
+ */
+const withEmbeddingHeader = (init: RequestInit): RequestInit => {
+  if (!isEmbeddedWindow()) {
+    return init
+  }
+
+  const headers = new Headers(init.headers)
+
+  headers.set(EMBEDDED_HEADER, '1')
+
+  return { ...init, headers }
+}
+
 /** `fetch`, у которого любая сетевая осечка тоже становится `ApiError`. */
 const send = async (url: string, init: RequestInit): Promise<Response> => {
   try {
-    return await fetch(url, init)
+    return await fetch(url, withEmbeddingHeader(init))
   } catch (error) {
     if (error instanceof Error && error.name === 'AbortError') {
       throw error
@@ -200,6 +219,9 @@ export const download = async (
   }
 }
 
+/** Сколько живёт blob-адрес скачанного файла — см. `saveBlob`. */
+const BLOB_URL_TTL_MS = 60_000
+
 /**
  * Отдаёт уже скачанный блоб браузеру под именем из `Content-Disposition`.
  *
@@ -216,6 +238,11 @@ export const saveBlob = ({ blob, filename }: IDownload, fallbackName: string): v
   document.body.append(link)
   link.click()
   link.remove()
-  // Отзываем сразу: браузер уже забрал содержимое, а ссылка держала бы blob в памяти.
-  URL.revokeObjectURL(url)
+  /*
+    Отзываем не сразу: `click()` лишь запускает скачивание, и часть браузеров
+    (webview в первую очередь) читает blob уже после возврата отсюда — сразу
+    отозванная ссылка давала пустое ничего без единой ошибки. Минуты на это
+    хватает с запасом, а дольше держать blob в памяти незачем.
+  */
+  window.setTimeout(() => URL.revokeObjectURL(url), BLOB_URL_TTL_MS)
 }
