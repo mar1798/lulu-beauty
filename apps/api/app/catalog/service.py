@@ -14,7 +14,7 @@ from app.catalog.results import CatalogSuggestions, VariantSpec
 from app.catalog.rich_text import Description, description_from_html
 from app.catalog.search import normalize_search
 from app.catalog.sorting import DEFAULT_ORDER, ProductOrder
-from app.common.limits import MAX_PRODUCT_VARIANTS
+from app.common.limits import MAX_FEATURED_PRODUCTS, MAX_PRODUCT_VARIANTS
 from app.orders.models import OrderItem
 
 
@@ -89,6 +89,15 @@ class ProductHasVariantsError(Exception):
     xlsx import and every older client working. Once the owner adds a second volume,
     those fields are derived and the only way to move them is the variants list itself;
     silently applying one price to every volume would undo the split.
+    """
+
+
+class FeaturedLimitError(Exception):
+    """A product was pinned to the home page while `MAX_FEATURED_PRODUCTS` already are.
+
+    Refused rather than resolved by unpinning the oldest: which card leaves the home page
+    is the owner's call, and a save that silently took another product off it would be
+    noticed, if at all, on the storefront.
     """
 
 
@@ -200,6 +209,7 @@ class ProductService:
         include_deleted: bool,
         brand: str | None = None,
         search_category_ids: Sequence[uuid.UUID] = (),
+        featured: bool | None = None,
     ) -> Select[tuple[Product]]:
         query = select(Product)
         if not include_deleted:
@@ -214,6 +224,8 @@ class ProductService:
             query = query.where(func.lower(Product.brand) == brand.lower())
         if in_stock is not None:
             query = query.where(Product.in_stock.is_(in_stock))
+        if featured is not None:
+            query = query.where(Product.is_featured.is_(featured))
         if search:
             pattern = like_pattern(search)
             # Name, brand and category together, because the header search is one field
@@ -255,6 +267,7 @@ class ProductService:
         search: str | None = None,
         brand: str | None = None,
         order: ProductOrder = DEFAULT_ORDER,
+        featured: bool | None = None,
     ) -> tuple[list[Product], int]:
         query = self._filtered_query(
             category_slug,
@@ -263,6 +276,7 @@ class ProductService:
             include_deleted=False,
             brand=brand,
             search_category_ids=await self._search_category_ids(search) if search else (),
+            featured=featured,
         )
         return await self._paginate(query, page, page_size, order)
 
@@ -276,6 +290,7 @@ class ProductService:
         include_deleted: bool = False,
         brand: str | None = None,
         order: ProductOrder = DEFAULT_ORDER,
+        featured: bool | None = None,
     ) -> tuple[list[Product], int]:
         """Admin listing — unlike list_public it can surface soft-deleted products."""
         query = self._filtered_query(
@@ -285,6 +300,7 @@ class ProductService:
             include_deleted,
             brand,
             search_category_ids=await self._search_category_ids(search) if search else (),
+            featured=featured,
         )
         return await self._paginate(query, page, page_size, order)
 
@@ -472,6 +488,7 @@ class ProductService:
         volume_ml: int | None = None,
         variants: Sequence[VariantSpec] | None = None,
         description_html: str | None = None,
+        is_featured: bool = False,
     ) -> Product:
         """A new product, with at least one variant — always.
 
@@ -486,6 +503,8 @@ class ProductService:
         if await self._slug_taken(slug):
             raise SlugAlreadyExistsError
         await self._require_category(category_id)
+        if is_featured:
+            await self._require_featured_slot()
         specs = self._require_specs(
             variants
             if variants is not None
@@ -506,6 +525,7 @@ class ProductService:
             volume_ml=volume_ml,
             category_id=category_id,
             in_stock=in_stock,
+            is_featured=is_featured,
         )
         self._apply_specs(product, specs)
         async with _slug_conflict_as_error(self._session):
@@ -553,6 +573,11 @@ class ProductService:
 
         if "category_id" in updates:
             await self._require_category(updates["category_id"])
+
+        # Only a product that is not pinned yet takes a slot: re-saving one of the three
+        # with the switch still on must not be refused for being the third.
+        if updates.get("is_featured") and not product.is_featured:
+            await self._require_featured_slot()
 
         single_fields = {
             field: value for field, value in updates.items() if field in self._SINGLE_VARIANT_FIELDS
@@ -692,6 +717,20 @@ class ProductService:
         product.volume_ml = live[0].volume_ml if len(live) == 1 else None
         product.in_stock = any(variant.in_stock for variant in live)
 
+    async def _require_featured_slot(self) -> None:
+        """Refuse a new pin while the home page already holds as many as it shows.
+
+        Counted over live products only — `soft_delete` unpins, but a row pinned before
+        that rule, or by hand in the database, must not hold a slot from nowhere.
+        """
+        pinned = await self._session.scalar(
+            select(func.count())
+            .select_from(Product)
+            .where(Product.is_featured.is_(True), Product.deleted_at.is_(None))
+        )
+        if (pinned or 0) >= MAX_FEATURED_PRODUCTS:
+            raise FeaturedLimitError
+
     async def _require_category(self, category_id: uuid.UUID | None) -> None:
         """Checked here rather than left to the foreign key.
 
@@ -707,6 +746,11 @@ class ProductService:
     async def soft_delete(self, product_id: uuid.UUID) -> None:
         product = await self.get_by_id(product_id)
         product.deleted_at = datetime.now(UTC)
+        # A withdrawn product leaves the home page with the catalogue, and gives its slot
+        # back: kept pinned, it would hold one of the three while showing nowhere, and the
+        # owner would be refused a new pick with no visible reason. A restore does not
+        # pin it again — that is a choice to make afresh.
+        product.is_featured = False
 
     async def restore(self, product_id: uuid.UUID) -> Product:
         """Undo a soft-delete. Mirrors what a catalog re-import already does by slug."""

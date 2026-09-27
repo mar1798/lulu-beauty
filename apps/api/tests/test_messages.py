@@ -372,6 +372,7 @@ def _wishlist(names: list[str]) -> WishlistResponse:
                     volume_ml=None,
                     category_id=None,
                     in_stock=True,
+                    is_featured=False,
                     images=[],
                     deleted_at=None,
                     created_at=datetime(2030, 5, 1, tzinfo=UTC),

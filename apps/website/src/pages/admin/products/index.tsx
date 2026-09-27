@@ -62,13 +62,23 @@ const AdminProductsPage: React.FC = () => {
   const { confirm } = useConfirm()
 
   const [
-    { q: query, category: categorySlug, brand, deleted: includeDeleted, page, sort, order },
+    {
+      q: query,
+      category: categorySlug,
+      brand,
+      deleted: includeDeleted,
+      featured: onlyFeatured,
+      page,
+      sort,
+      order,
+    },
     setParams,
   ] = useQueryParams({
     q: textParam,
     category: optionalTextParam,
     brand: optionalTextParam,
     deleted: flagParam,
+    featured: flagParam,
     page: pageParam,
     // Колонка и направление — двумя параметрами, как их принимает API.
     sort: enumParam(ADMIN_PRODUCT_SORT_FIELDS, ADMIN_PRODUCT_SORT_DEFAULT.field),
@@ -121,13 +131,24 @@ const AdminProductsPage: React.FC = () => {
     isLoading,
     mutate,
   } = useSWR(
-    adminProductsKey(query, categorySlug ?? '', brand ?? '', includeDeleted, page, sort, order),
+    adminProductsKey(
+      query,
+      categorySlug ?? '',
+      brand ?? '',
+      includeDeleted,
+      onlyFeatured,
+      page,
+      sort,
+      order
+    ),
     () =>
       listAdminProducts({
         q: query === '' ? undefined : query,
         category: categorySlug ?? undefined,
         brand: brand ?? undefined,
         includeDeleted,
+        // Выключенный фильтр — «все», а не «только не отмеченные».
+        featured: onlyFeatured ? true : undefined,
         page,
         pageSize: PAGE_SIZE,
         sort: sorting,
@@ -300,11 +321,23 @@ const AdminProductsPage: React.FC = () => {
           onChange={next => setParams({ brand: next === ALL_BRANDS ? null : next, page: 1 })}
         />
 
-        <Switch
-          label="Показывать удалённые"
-          checked={includeDeleted}
-          onChange={next => setParams({ deleted: next, page: 1 })}
-        />
+        <div className={styles.filterSwitches}>
+          <Switch
+            label="Показывать удалённые"
+            checked={includeDeleted}
+            onChange={next => setParams({ deleted: next, page: 1 })}
+          />
+
+          {/*
+            Отмеченных для главной не больше трёх, и когда место кончилось, этот
+            фильтр — способ увидеть, с какого товара снять отметку.
+          */}
+          <Switch
+            label="Только на главной"
+            checked={onlyFeatured}
+            onChange={next => setParams({ featured: next, page: 1 })}
+          />
+        </div>
       </div>
 
       {(error ?? actionError) !== null && (

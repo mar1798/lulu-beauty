@@ -45,6 +45,7 @@ async def make_product(
     deleted_at: datetime | None = None,
     description: str | None = None,
     variants: list[tuple[int | None, int, bool]] | None = None,
+    is_featured: bool = False,
 ) -> Product:
     """A product and the volumes it is sold in.
 
@@ -64,6 +65,7 @@ async def make_product(
         category_id=category_id,
         price_cents=price_cents,
         in_stock=in_stock,
+        is_featured=is_featured,
         deleted_at=deleted_at,
         variants=(
             [

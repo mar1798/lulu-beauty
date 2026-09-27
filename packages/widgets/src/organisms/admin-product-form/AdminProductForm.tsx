@@ -235,6 +235,7 @@ export const AdminProductForm: FC<IAdminProductFormProps & IBasicStyling> = ({
   const [brand, setBrand] = useState(product?.brand ?? '')
   const [variants, setVariants] = useState<IVariantRow[]>(() => toVariantRows(product))
   const [categoryId, setCategoryId] = useState(product?.categoryId ?? '')
+  const [isFeatured, setIsFeatured] = useState(product?.isFeatured ?? false)
   const [isSubmitted, setIsSubmitted] = useState(false)
 
   /*
@@ -450,6 +451,7 @@ export const AdminProductForm: FC<IAdminProductFormProps & IBasicStyling> = ({
       volumeMl: submittedVariants.length === 1 ? submittedVariants[0].volumeMl : null,
       categoryId: categoryId === '' ? null : categoryId,
       inStock: submittedVariants.some(variant => variant.inStock),
+      isFeatured,
       image: pendingImage === null ? null : { file: pendingImage, alt: pendingImageAlt.trim() },
     }
 
@@ -509,6 +511,18 @@ export const AdminProductForm: FC<IAdminProductFormProps & IBasicStyling> = ({
             hint="Необязательно. По ней товар отбирают в каталоге."
             onChange={setCategoryId}
           />
+        </div>
+
+        {/*
+          Лимит в подсказке, а не только в ошибке: владелец узнаёт о нём до
+          того, как упрётся, — и понимает, почему четвёртый товар не встал.
+        */}
+        <div className={styles.featured}>
+          <Switch label="Показывать на главной" checked={isFeatured} onChange={setIsFeatured} />
+
+          <Text tone="secondary" size="sm">
+            Карточка встанет рядом с заголовком главной. Таких товаров не больше трёх.
+          </Text>
         </div>
 
         <fieldset className={styles.variants}>

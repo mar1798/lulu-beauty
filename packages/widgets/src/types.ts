@@ -186,6 +186,11 @@ export interface IProduct {
   /** Публичный `GET /products?category=` фильтрует по **слагу**, а не по id — маппинг держит фронт. */
   categoryId: string | null
   inStock: boolean
+  /**
+   * Отмечен владельцем для героя главной — не больше трёх товаров сразу
+   * (сверх того бэкенд отвечает `featured_limit_reached`).
+   */
+  isFeatured: boolean
   images: IProductImage[]
   /**
    * Объёмы, в которых товар продаётся, в порядке, заданном владельцем. Пустым
@@ -1996,6 +2001,8 @@ export interface IAdminProductValues {
   volumeMl: number | null
   categoryId: string | null
   inStock: boolean
+  /** Показывать карточку в герое главной. */
+  isFeatured: boolean
   /** `null` в режиме редактирования и когда при создании фото не выбрано. */
   image: IAdminProductPendingImage | null
 }

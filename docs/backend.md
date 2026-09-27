@@ -197,7 +197,7 @@ camelCase while Python stays snake_case. `PageResponse[T]` is the paging envelop
 > Query parameters are **not** covered by that, and the casing is inconsistent
 > purpose-by-accident: public `GET /products` takes `in_stock` / `page_size`, admin
 > `GET /admin/products` takes `inStock` / `pageSize` / `includeDeleted` via `Query(alias=…)`.
-> Both take `sort`, but with different values — see [Catalogue order](#catalogue-order).
+> Both take `featured` (one word, so the same either way) and `sort`, but with different values — see [Catalogue order](#catalogue-order).
 > **Check the router before adding a param on the frontend.**
 
 **Errors** are `raise HTTPException(status, "<machine_code>")` — snake_case codes, never human
@@ -218,6 +218,7 @@ order_item_not_found      order_not_editable        order_not_found
 order_not_restorable      order_status_not_assignable
 order_status_transition_invalid                     super_admin_immutable
 super_admin_not_assignable                          super_admin_only
+featured_limit_reached
 product_gone              product_image_not_found   product_not_found
 product_has_variants      product_variants_empty    slug_already_exists
 too_many_variants         variant_volume_duplicate

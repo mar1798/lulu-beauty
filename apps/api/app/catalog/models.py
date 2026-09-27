@@ -127,6 +127,11 @@ class Product(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     # True when *any* live variant is in stock. Stock itself is a property of the
     # variant — 30 ml can run out while 50 ml sits on the shelf.
     in_stock: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Picked by the owner for the cards beside the home page's headline — at most
+    # `MAX_FEATURED_PRODUCTS` live products at a time (`ProductService._require_featured_slot`).
+    # A server default rather than only a Python one, so the release before this one can
+    # still insert products after a rollback (`docs/backend.md`, "Migrations").
+    is_featured: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     category: Mapped["Category | None"] = relationship(back_populates="products")

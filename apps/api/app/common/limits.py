@@ -28,6 +28,10 @@ MAX_VOLUME_ML = 10_000
 # stuck form cannot grow a product page into a wall of buttons, not to police the shop.
 MAX_PRODUCT_VARIANTS = 20
 
+# Products the owner may pin to the home page's hero. Not a policy but the layout: the
+# hero shows a row of three cards, and a fourth pick would simply never be seen.
+MAX_FEATURED_PRODUCTS = 3
+
 # A wish written where the search came back empty ("нужен крем такой-то"). Long enough for
 # a few products with shades, short enough to stay one readable Telegram message — which is
 # where the owner actually reads it.

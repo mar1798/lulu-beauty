@@ -105,6 +105,9 @@ export const thumbDelete = style({
  * с вырезом под легенду в этой форме выглядит чужеродно, а группировка нужна
  * ради скринридера, а не ради рамки.
  */
+/** Тумблер «Показывать на главной» и подсказка под ним: у `Switch` своей нет. */
+export const featured = style(flexColumn(6))
+
 export const variants = style({
   ...flexColumn(12),
   margin: 0,
