@@ -46,6 +46,14 @@ from app.catalog.service import (
     SlugAlreadyExistsError,
     TooManyVariantsError,
 )
+from app.catalog.sorting import (
+    CATALOG_ORDERS,
+    DEFAULT_ORDER,
+    CatalogSort,
+    ProductOrder,
+    SortDirection,
+    SortField,
+)
 from app.common.schemas import PageResponse
 from app.db import get_session
 from app.orders.service import OrdersService
@@ -187,10 +195,14 @@ async def list_products(
     q: str | None = Query(default=None, min_length=1, max_length=255),
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=100),
+    # Newest first unless asked otherwise. An unknown value is a 422 rather than a quiet
+    # fall back to the default: a link with a mistyped `sort` should look broken, not
+    # silently show a different order than the one it claims.
+    sort: CatalogSort = Query(default=CatalogSort.NEW),
     session: AsyncSession = Depends(get_session),
 ) -> PageResponse[ProductResponse]:
     products, total = await ProductService(session).list_public(
-        category, in_stock, page, page_size, q, brand
+        category, in_stock, page, page_size, q, brand, CATALOG_ORDERS[sort]
     )
     return PageResponse(
         items=[product_response(product) for product in products],
@@ -265,11 +277,15 @@ async def list_products_admin(
     include_deleted: bool = Query(default=False, alias="includeDeleted"),
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=100, alias="pageSize"),
+    # A column and a direction apart, unlike the storefront's finished choices: the
+    # admin table sorts by clicking a header, and a second click turns it around.
+    sort: SortField = Query(default=DEFAULT_ORDER.field),
+    order: SortDirection = Query(default=DEFAULT_ORDER.direction),
     session: AsyncSession = Depends(get_session),
     _admin: CurrentUser = Depends(require_admin),
 ) -> PageResponse[ProductResponse]:
     products, total = await ProductService(session).list_admin(
-        category, in_stock, page, page_size, q, include_deleted, brand
+        category, in_stock, page, page_size, q, include_deleted, brand, ProductOrder(sort, order)
     )
     return PageResponse(
         items=[product_response(product) for product in products],

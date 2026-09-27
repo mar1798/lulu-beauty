@@ -200,6 +200,11 @@ export interface IProduct {
    * это единственный способ отличить удалённую строку от живой.
    */
   deletedAt: string | null
+  /**
+   * Когда товар появился в каталоге, ISO-8601. По нему сортируют «Новинки»,
+   * и его же показывает админская таблица, чтобы этот порядок было видно.
+   */
+  createdAt: string
   /** Время последней правки строки, ISO-8601. Карта сайта пишет его как `<lastmod>`. */
   updatedAt: string
 }
@@ -1925,8 +1930,24 @@ export interface IAdminLayoutProps {
   children: ReactNode
 }
 
+/** Колонка, по которой админка сортирует товары: то же, что `sort` у `GET /admin/products`. */
+export type IAdminProductSortField = 'name' | 'price' | 'created'
+
+export type ISortDirection = 'asc' | 'desc'
+
+export interface IAdminProductSort {
+  field: IAdminProductSortField
+  direction: ISortDirection
+}
+
 export interface IAdminProductsTableProps {
   products: IProduct[]
+  /**
+   * Текущая сортировка. Таблица её не хранит: порядок строк считает бэкенд,
+   * а состояние живёт там же, где остальные параметры выборки, — в адресе.
+   */
+  sort: IAdminProductSort
+  onSortChange: (sort: IAdminProductSort) => void
   /** Название категории по её id: у товара приходит только `categoryId`. */
   categoryNames: Record<string, string>
   buildEditHref: (product: IProduct) => string

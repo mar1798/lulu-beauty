@@ -50,6 +50,19 @@ export const flagParam: IQueryParam<boolean> = {
   serialize: value => (value ? '1' : null),
 }
 
+/**
+ * Одно значение из известного набора (сортировка). Незнакомое — из старой
+ * ссылки или набранное руками — схлопывается в значение по умолчанию, а не
+ * уходит в API, который ответил бы на него 422 и оставил страницу пустой.
+ */
+export const enumParam = <TValue extends string>(
+  values: readonly TValue[],
+  fallback: TValue
+): IQueryParam<TValue> => ({
+  parse: raw => values.find(value => value === raw) ?? fallback,
+  serialize: value => (value === fallback ? null : value),
+})
+
 const firstQueryValue = (value: string | string[] | undefined): string | null => {
   if (Array.isArray(value)) {
     return value[0] ?? null

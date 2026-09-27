@@ -49,6 +49,7 @@ def product_response(product: Product) -> ProductResponse:
             for variant in product.live_variants
         ],
         deleted_at=product.deleted_at,
+        created_at=product.created_at,
         updated_at=product.updated_at,
         images=[
             ProductImageResponse(

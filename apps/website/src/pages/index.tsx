@@ -24,6 +24,7 @@ import { AddToCartButton } from '@/components/AddToCartButton'
 import { JsonLd } from '@/components/JsonLd'
 import { PageMeta } from '@/components/PageMeta'
 import { WishlistButton } from '@/components/WishlistButton'
+import { useActiveCycle } from '@/hooks/useActiveCycle'
 import { useCycleExpiryRefresh } from '@/hooks/useCycleExpiryRefresh'
 import { useTelegramWebview } from '@/hooks/useTelegramWebview'
 import { getActiveCycleOrNull } from '@/services/endpoints/cycles'
@@ -491,6 +492,16 @@ const HomePage: React.FC<IHomePageProps> = ({
 
   const botUsername = publicConfig('telegramBotUsername')
 
+  /*
+    Сбор героя — из общего кеша, а не пропс как есть: пропс замер вместе с
+    ISR-копией страницы, а та бывает многодневной, и герой говорил «сбора нет»
+    при открытом сборе. Кеш начинается с того же значения (`fallback`) и
+    перечитывается, если страница несвежая (`useActiveCycle`). Пока ответа нет —
+    статика.
+  */
+  const { cycle: liveCycle, isLoading: isCycleLoading } = useActiveCycle()
+  const currentCycle = isCycleLoading ? cycle : liveCycle
+
   return (
     <SiteLayout>
       <PageMeta title={SITE_TITLE} description={SITE_DESCRIPTION} path="/" />
@@ -502,7 +513,7 @@ const HomePage: React.FC<IHomePageProps> = ({
         hero={
           <div ref={heroRef}>
             <HeroCycle
-              cycle={cycle}
+              cycle={currentCycle}
               note={heroNote}
               background={<DecorField spots={HERO_SPOTS} containerRef={heroRef} />}
               /*

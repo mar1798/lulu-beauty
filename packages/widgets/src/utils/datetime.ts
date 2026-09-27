@@ -36,6 +36,12 @@ const isValid = (value: Date): boolean => !Number.isNaN(value.getTime())
 */
 const DATE_FORMAT = new Intl.DateTimeFormat(LOCALE, DATE_OPTIONS)
 const DATE_TIME_FORMAT = new Intl.DateTimeFormat(LOCALE, { ...DATE_OPTIONS, ...TIME_OPTIONS })
+const SHORT_DATE_FORMAT = new Intl.DateTimeFormat(LOCALE, {
+  timeZone: TIME_ZONE,
+  day: '2-digit',
+  month: '2-digit',
+  year: 'numeric',
+})
 const MONTH_FORMAT = new Intl.DateTimeFormat(LOCALE, {
   timeZone: 'UTC',
   month: 'long',
@@ -47,6 +53,16 @@ export const formatDate = (iso: string): string => {
   const date = new Date(iso)
 
   return isValid(date) ? DATE_FORMAT.format(date) : ''
+}
+
+/**
+ * «04.08.2026» — для узкой колонки таблицы, где месяц словом раздвигал
+ * строку настолько, что кнопки действий уезжали за край.
+ */
+export const formatShortDate = (iso: string): string => {
+  const date = new Date(iso)
+
+  return isValid(date) ? SHORT_DATE_FORMAT.format(date) : ''
 }
 
 /** «4 августа 2026 г., 19:32». */

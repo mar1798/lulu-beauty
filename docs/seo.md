@@ -63,7 +63,7 @@ them when those routes exist.
 
 `<link rel="canonical">` comes free with `PageMeta`: it is built from the same `path` prop as
 `og:url`, so the two can never disagree, and every public page is self-canonical. `path` is a
-**path**, never a query string — the catalogue's `?category=`, `?brand=`, `?q=` and `?page=`
+**path**, never a query string — the catalogue's `?category=`, `?brand=`, `?q=`, `?sort=` and `?page=`
 select a view on the client out of one and the same static HTML, so `/catalog` is the honest
 canonical for all of them. Absolute URLs come from `NEXT_PUBLIC_SITE_URL`, which is what Next
 would otherwise call `metadataBase`.

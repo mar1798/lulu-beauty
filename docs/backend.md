@@ -91,7 +91,7 @@ Public and customer-facing:
 | `POST`                        | `/auth/telegram/mini-app`                     | Same, for Mini App `initData`.                                                                                                   |
 | `POST`                        | `/auth/refresh`, `/auth/logout`               |                                                                                                                                  |
 | `GET`                         | `/categories`, `/brands`                      |                                                                                                                                  |
-| `GET`                         | `/products`                                   | Paged. Query params **snake_case**: `in_stock`, `page_size`.                                                                     |
+| `GET`                         | `/products`                                   | Paged. Query params **snake_case**: `in_stock`, `page_size`. `sort`: `new` (default), `price_asc`, `price_desc`.                 |
 | `GET`                         | `/products/{slug}`                            |                                                                                                                                  |
 | `GET`                         | `/search/suggest`                             | Header search: categories + brands + 5 products. `q` 1–255.                                                                      |
 | `GET`                         | `/cycles/active`                              |                                                                                                                                  |
@@ -197,6 +197,7 @@ camelCase while Python stays snake_case. `PageResponse[T]` is the paging envelop
 > Query parameters are **not** covered by that, and the casing is inconsistent
 > purpose-by-accident: public `GET /products` takes `in_stock` / `page_size`, admin
 > `GET /admin/products` takes `inStock` / `pageSize` / `includeDeleted` via `Query(alias=…)`.
+> Both take `sort`, but with different values — see [Catalogue order](#catalogue-order).
 > **Check the router before adding a param on the frontend.**
 
 **Errors** are `raise HTTPException(status, "<machine_code>")` — snake_case codes, never human
@@ -245,6 +246,24 @@ price/volume/stock sent to a product sold in several. The alternative to the thi
 
 **Money** is integer `*_cents`. **Products are soft-deleted**, and so are their variants.
 See [domain.md](domain.md).
+
+## Catalogue order
+
+Both listings are newest first unless asked otherwise (`app/catalog/sorting.py`), and they
+ask differently. The storefront's `GET /products?sort=` takes one of three finished choices
+— `new`, `price_asc`, `price_desc` — because a buyer has no use for "oldest first" or "by
+name". The admin `GET /admin/products` takes a column and a direction apart,
+`sort=name|price|created` and `order=asc|desc`, because its table sorts by clicking a
+header and a second click turns it around. An unknown value is a 422 on both, not a quiet
+fall back. Everything reduces to a `ProductOrder`, and only that reaches the query.
+
+"Price" is `price_cents`, the cheapest live volume — the same "от N ₽" the card shows.
+"Newest" is `created_at`, which an xlsx import writes as **one** value for every product it
+creates (`now()` is the start of the transaction). So the order always ends on tie-breakers
+— the name, then the id — or a paginated listing would repeat one product on page two and
+skip another. Tests that care about age set `created_at` by hand for the same reason: inside
+one test transaction every product is the same age. Two partial btrees carry the new orders,
+`ix_products_live_created_at` and `ix_products_live_price_cents`, beside the name one.
 
 ## Catalogue search
 
