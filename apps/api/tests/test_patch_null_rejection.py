@@ -26,6 +26,7 @@ NOT_NULL_FIELDS = [
     (ProductUpdateRequest, "slug", "toner"),
     (ProductUpdateRequest, "priceCents", 1000),
     (ProductUpdateRequest, "inStock", False),
+    (ProductUpdateRequest, "isFeatured", True),
     (CycleUpdateRequest, "deadlineAt", "2030-09-01T12:00:00+00:00"),
 ]
 

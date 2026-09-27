@@ -1,6 +1,7 @@
 import { type FC } from 'react'
 import type { IBasicStyling, ICategoryFilterProps } from '../../types'
 import { Select } from '../../atoms/select'
+import { categoryOptions } from '../../utils/categories'
 
 /** Сентинел для «все категории» — у `Select` нет значения `null`. */
 const ALL_VALUE = ''
@@ -21,6 +22,11 @@ const ALL_VALUE = ''
  * Обёртка над `Select` живёт отдельным компонентом ради того, что нужно
  * обоим экранам: подстановки «все категории» и перевода слага в `null`
  * и обратно.
+ *
+ * Список идёт деревом: раздел, под ним с отступом его подкатегории. Раздел
+ * выбирается так же, как подкатегория, — и показывает весь раздел: товары
+ * подкатегорий к нему добавляет бэкенд. Поэтому не `optgroup`: заголовок группы
+ * выбрать нельзя.
  */
 export const CategoryFilter: FC<ICategoryFilterProps & IBasicStyling> = ({
   categories,
@@ -36,7 +42,7 @@ export const CategoryFilter: FC<ICategoryFilterProps & IBasicStyling> = ({
     onChange={next => onSelect(next === ALL_VALUE ? null : next)}
     options={[
       { value: ALL_VALUE, label: allLabel },
-      ...categories.map(category => ({ value: category.slug, label: category.name })),
+      ...categoryOptions(categories, category => category.slug),
     ]}
   />
 )

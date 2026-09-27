@@ -576,11 +576,13 @@ export const feedHomeCta = (): IHomeCtaProps => ({
 const PRICE_MIN = 25_000
 const PRICE_MAX = 450_000
 
-export const feedCategory = (name?: string): ICategory => ({
+/** Категория; с `parentId` — подкатегория этого раздела. */
+export const feedCategory = (name?: string, parentId: string | null = null): ICategory => ({
   id: faker.string.uuid(),
   name: name ?? faker.commerce.department(),
   slug: faker.lorem.slug(2),
   sortOrder: faker.number.int({ min: 0, max: 10 }),
+  parentId,
 })
 
 export const feedProductImageDto = (isPrimary = false, sortOrder = 0): IProductImage => ({
@@ -613,6 +615,7 @@ export const feedProduct = (overrides: Partial<IProduct> = {}): IProduct => {
     volumeMl,
     categoryId: faker.string.uuid(),
     inStock: true,
+    isFeatured: false,
     images: [feedProductImageDto(true, 0), feedProductImageDto(false, 1)],
     variants: [{ id: faker.string.uuid(), volumeMl, priceCents, inStock: true }],
     deletedAt: null,
@@ -671,16 +674,22 @@ export const feedPagination = (): IPaginationProps => ({
   onChange: noop,
 })
 
-export const feedCategoryFilter = (): ICategoryFilterProps => ({
-  categories: [
-    feedCategory('Уход за кожей'),
-    feedCategory('Макияж'),
-    feedCategory('Волосы'),
-    feedCategory('Парфюмерия'),
-  ],
-  selectedSlug: null,
-  onSelect: noop,
-})
+export const feedCategoryFilter = (): ICategoryFilterProps => {
+  const skincare = feedCategory('Уход за кожей')
+
+  return {
+    categories: [
+      skincare,
+      feedCategory('Макияж'),
+      feedCategory('Волосы'),
+      feedCategory('Парфюмерия'),
+      feedCategory('Умывашки', skincare.id),
+      feedCategory('Тонеры', skincare.id),
+    ],
+    selectedSlug: null,
+    onSelect: noop,
+  }
+}
 
 /**
  * Длинный список с длинными названиями: на нём видно и перенос подписи в
@@ -1107,11 +1116,18 @@ export const feedAdminLayout = (): IAdminLayoutProps => ({
   children: 'Сюда встаёт содержимое раздела',
 })
 
-const feedCategorySet = (): ICategory[] => [
-  feedCategory('Уход за кожей'),
-  feedCategory('Макияж'),
-  feedCategory('Волосы'),
-]
+/** Три раздела, у первого — две подкатегории (они в конце списка, как их отдаёт бэкенд по `sortOrder`). */
+const feedCategorySet = (): ICategory[] => {
+  const skincare = feedCategory('Уход за кожей')
+
+  return [
+    skincare,
+    feedCategory('Макияж'),
+    feedCategory('Волосы'),
+    feedCategory('Умывашки', skincare.id),
+    feedCategory('Тонеры', skincare.id),
+  ]
+}
 
 export const feedAdminProductsTable = (): IAdminProductsTableProps => {
   const categories = feedCategorySet()

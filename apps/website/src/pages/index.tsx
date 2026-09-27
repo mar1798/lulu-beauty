@@ -18,7 +18,7 @@ import {
 import { useCountdown } from 'widgets/hooks'
 import { FaqAccordion, HomeCta, HomeHero, ProductGrid } from 'widgets/organisms'
 import { HomeTemplate } from 'widgets/templates'
-import { pluralize, staggerDelay } from 'widgets/utils'
+import { pluralize, staggerDelay, topLevelCategories } from 'widgets/utils'
 import { SiteLayout } from '@/layouts/SiteLayout'
 import { AddToCartButton } from '@/components/AddToCartButton'
 import { JsonLd } from '@/components/JsonLd'
@@ -49,7 +49,14 @@ import { publicConfig } from '@/сonfig'
 const REVALIDATE_SECONDS = 60
 
 /** Подборка на главной — одна строка сетки на широком экране. */
-const FEATURED_COUNT = 8
+const FRESH_COUNT = 8
+
+/**
+ * Сколько карточек стоит в витрине героя. Ряд, а не сетка: см. `HomeHero`.
+ * Столько же товаров владелец может отметить для главной
+ * (`MAX_FEATURED_PRODUCTS` на бэкенде).
+ */
+const SHOWCASE_COUNT = 3
 
 /**
  * Ручная лесенка страницы: сначала заголовок секции, через две ступени —
@@ -269,11 +276,18 @@ const FAQ_SPOTS = [
 interface IHomePageProps {
   /** `null` — открытого сбора нет либо API был недоступен на сборке. */
   cycle: IOrderCycle | null
-  featured: IProduct[]
+  /** Свежая подборка: новые товары в наличии. */
+  fresh: IProduct[]
+  /**
+   * Карточки героя: сперва отмеченные владельцем (`isFeatured`), а свободные
+   * места — свежими товарами из подборки. Отметок может не быть вовсе или
+   * быть меньше трёх, и полупустой ряд на первом экране читался бы как поломка.
+   */
+  showcase: IProduct[]
   /**
    * Сколько товаров сейчас в наличии — для строки доверия под кнопками и
-   * подписи замыкающей плитки витрины. Не `featured.length`: тот ограничен
-   * `FEATURED_COUNT` и сообщил бы «8 товаров» про каталог из двух сотен.
+   * подписи замыкающей плитки витрины. Не `fresh.length`: тот ограничен
+   * `FRESH_COUNT` и сообщил бы «8 товаров» про каталог из двух сотен.
    *
    * Именно в наличии, а не всего: это `total` того же запроса, которым набрана
    * витрина (`inStock: true`), и обещать сотню позиций, половина которых
@@ -291,21 +305,36 @@ export const getStaticProps: GetStaticProps<IHomePageProps> = async () => {
     Каждый запрос со своим `catch`: недоступный на сборке API не должен ронять
     `next build`, а пустая подборка не повод прятать сбор (и наоборот).
   */
-  const [cycle, page, categories, brands] = await Promise.all([
+  const [cycle, page, picked, categories, brands] = await Promise.all([
     getActiveCycleOrNull().catch(() => null),
     /* Тот же запрос отдаёт и подборку, и общее число товаров — второй не нужен. */
-    listProducts({ pageSize: FEATURED_COUNT, inStock: true }).catch(() => ({
+    listProducts({ pageSize: FRESH_COUNT, inStock: true }).catch(() => ({
       items: [] as IProduct[],
       total: 0,
+    })),
+    /*
+      Без `inStock`: отметку ставит владелец, и молча прятать выбранный им
+      товар, когда он кончился, значило бы спорить с его выбором. Снять
+      отметку — его же решение.
+    */
+    listProducts({ featured: true, pageSize: SHOWCASE_COUNT }).catch((): { items: IProduct[] } => ({
+      items: [],
     })),
     listCategories().catch((): ICategory[] => []),
     listBrands().catch((): string[] => []),
   ])
 
+  const pickedIds = new Set(picked.items.map(product => product.id))
+  const showcase = [
+    ...picked.items,
+    ...page.items.filter(product => !pickedIds.has(product.id)),
+  ].slice(0, SHOWCASE_COUNT)
+
   return {
     props: {
       cycle,
-      featured: page.items,
+      fresh: page.items,
+      showcase,
       productCount: page.total,
       categories,
       brands,
@@ -314,9 +343,6 @@ export const getStaticProps: GetStaticProps<IHomePageProps> = async () => {
     revalidate: REVALIDATE_SECONDS,
   }
 }
-
-/** Сколько карточек стоит в витрине героя. Ряд, а не сетка: см. `HomeHero`. */
-const SHOWCASE_COUNT = 3
 
 /**
  * Левитация карточек витрины: у каждой своя.
@@ -460,7 +486,8 @@ const HeroCycle: React.FC<{
 
 const HomePage: React.FC<IHomePageProps> = ({
   cycle,
-  featured,
+  fresh,
+  showcase,
   productCount,
   categories,
   brands,
@@ -517,13 +544,13 @@ const HomePage: React.FC<IHomePageProps> = ({
               note={heroNote}
               background={<DecorField spots={HERO_SPOTS} containerRef={heroRef} />}
               /*
-                Витрина прячется целиком, когда подборка пуста: три пустые
+                Витрина прячется целиком, когда товаров нет: три пустые
                 карточки на первом экране читаются как поломка, а герой без
                 `showcase` штатно раскладывается в одну колонку.
               */
               showcase={
-                featured.length > 0
-                  ? featured.slice(0, SHOWCASE_COUNT).map((product, index) => (
+                showcase.length > 0
+                  ? showcase.map((product, index) => (
                       <Float
                         key={product.id}
                         phase={SHOWCASE_FLOAT[index]?.phase ?? 0}
@@ -557,7 +584,7 @@ const HomePage: React.FC<IHomePageProps> = ({
                 кластере на десктопе герой прячет её сам.
               */
               showcaseMore={
-                featured.length > 0 ? (
+                showcase.length > 0 ? (
                   <ShowcaseMore
                     label="Смотреть каталог"
                     hint={
@@ -593,7 +620,7 @@ const HomePage: React.FC<IHomePageProps> = ({
           нашлось» на главной читается как поломка, хотя это ровно то же
           состояние, что каталог показывает честно и с объяснением.
         */}
-        {featured.length > 0 && (
+        {fresh.length > 0 && (
           <HomeSection>
             <Reveal>
               <SectionHeading
@@ -610,7 +637,7 @@ const HomePage: React.FC<IHomePageProps> = ({
 
             {/* Лесенка здесь по карточке, а не по блоку целиком — см. §7.3 контракта. */}
             <ProductGrid
-              products={featured}
+              products={fresh}
               isStaggered={true}
               buildHref={product => `/catalog/${product.slug}`}
               renderAction={product =>
@@ -641,7 +668,8 @@ const HomePage: React.FC<IHomePageProps> = ({
 
             {categories.length > 0 && (
               <CategoryTiles
-                categories={categories}
+                /* Только разделы: подкатегории видны в фильтре каталога под ними. */
+                categories={topLevelCategories(categories)}
                 buildHref={category => `/catalog?category=${encodeURIComponent(category.slug)}`}
               />
             )}

@@ -133,6 +133,12 @@ export interface ICategory {
   name: string
   slug: string
   sortOrder: number
+  /**
+   * Раздел, в котором стоит подкатегория («Умывашки» в «Уходе за лицом»); `null` —
+   * верхний уровень. Вложенность одна: у раздела своего раздела нет. Фильтр по
+   * разделу бэкенд расширяет на его подкатегории сам.
+   */
+  parentId: string | null
 }
 
 export interface IProductImage {
@@ -186,6 +192,11 @@ export interface IProduct {
   /** Публичный `GET /products?category=` фильтрует по **слагу**, а не по id — маппинг держит фронт. */
   categoryId: string | null
   inStock: boolean
+  /**
+   * Отмечен владельцем для героя главной — не больше трёх товаров сразу
+   * (сверх того бэкенд отвечает `featured_limit_reached`).
+   */
+  isFeatured: boolean
   images: IProductImage[]
   /**
    * Объёмы, в которых товар продаётся, в порядке, заданном владельцем. Пустым
@@ -533,6 +544,11 @@ export interface ISelectOption {
   value: string
   label: string
   disabled?: boolean
+  /**
+   * Строка на ступень глубже соседей — подкатегория под своим разделом. Отступ
+   * только в списке: в самом поле выбранное пишется без него.
+   */
+  isNested?: boolean
 }
 
 export interface ISelectProps {
@@ -1996,6 +2012,8 @@ export interface IAdminProductValues {
   volumeMl: number | null
   categoryId: string | null
   inStock: boolean
+  /** Показывать карточку в герое главной. */
+  isFeatured: boolean
   /** `null` в режиме редактирования и когда при создании фото не выбрано. */
   image: IAdminProductPendingImage | null
 }
@@ -2039,6 +2057,8 @@ export interface IAdminProductFormProps {
 export interface IAdminCategoryValues {
   name: string
   slug: string
+  /** Раздел подкатегории; `null` — верхний уровень. */
+  parentId: string | null
 }
 
 export interface IAdminCategoriesPanelProps {

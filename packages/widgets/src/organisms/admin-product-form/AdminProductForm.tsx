@@ -22,6 +22,7 @@ import { Switch } from '../../atoms/switch'
 import { Text } from '../../atoms/text'
 import { FileDropzone } from '../../molecules/file-dropzone'
 import { RichTextEditor } from '../../molecules/rich-text-editor'
+import { categoryOptions } from '../../utils/categories'
 import { plainTextToHtml, richTextLength } from '../../utils/richText'
 import { slugify } from '../../utils/slug'
 import * as styles from './AdminProductForm.css'
@@ -235,6 +236,7 @@ export const AdminProductForm: FC<IAdminProductFormProps & IBasicStyling> = ({
   const [brand, setBrand] = useState(product?.brand ?? '')
   const [variants, setVariants] = useState<IVariantRow[]>(() => toVariantRows(product))
   const [categoryId, setCategoryId] = useState(product?.categoryId ?? '')
+  const [isFeatured, setIsFeatured] = useState(product?.isFeatured ?? false)
   const [isSubmitted, setIsSubmitted] = useState(false)
 
   /*
@@ -387,10 +389,11 @@ export const AdminProductForm: FC<IAdminProductFormProps & IBasicStyling> = ({
     volume: validateVolume(index),
   }))
 
-  const categoryOptions: ISelectOption[] = categories.map(category => ({
-    value: category.id,
-    label: category.name,
-  }))
+  // Деревом, как в фильтрах: подкатегория под своим разделом.
+  const categorySelectOptions: ISelectOption[] = categoryOptions(
+    categories,
+    category => category.id
+  )
 
   const updateRow = (index: number, patch: Partial<IVariantRow>): void => {
     setVariants(current =>
@@ -450,6 +453,7 @@ export const AdminProductForm: FC<IAdminProductFormProps & IBasicStyling> = ({
       volumeMl: submittedVariants.length === 1 ? submittedVariants[0].volumeMl : null,
       categoryId: categoryId === '' ? null : categoryId,
       inStock: submittedVariants.some(variant => variant.inStock),
+      isFeatured,
       image: pendingImage === null ? null : { file: pendingImage, alt: pendingImageAlt.trim() },
     }
 
@@ -504,11 +508,23 @@ export const AdminProductForm: FC<IAdminProductFormProps & IBasicStyling> = ({
           <Select
             label="Категория"
             value={categoryId}
-            options={categoryOptions}
+            options={categorySelectOptions}
             placeholder="Без категории"
             hint="Необязательно. По ней товар отбирают в каталоге."
             onChange={setCategoryId}
           />
+        </div>
+
+        {/*
+          Лимит в подсказке, а не только в ошибке: владелец узнаёт о нём до
+          того, как упрётся, — и понимает, почему четвёртый товар не встал.
+        */}
+        <div className={styles.featured}>
+          <Switch label="Показывать на главной" checked={isFeatured} onChange={setIsFeatured} />
+
+          <Text tone="secondary" size="sm">
+            Карточка встанет рядом с заголовком главной. Таких товаров не больше трёх.
+          </Text>
         </div>
 
         <fieldset className={styles.variants}>

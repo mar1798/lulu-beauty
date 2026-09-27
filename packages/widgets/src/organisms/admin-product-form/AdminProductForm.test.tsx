@@ -200,4 +200,18 @@ describe('AdminProductForm и несколько объёмов', () => {
 
     expect(screen.queryByRole('button', { name: /^Убрать объём/ })).not.toBeInTheDocument()
   })
+
+  it('отправляет отметку «на главной» вместе с остальными полями', async () => {
+    const onSubmit = vi.fn()
+
+    renderWidget(<AdminProductForm {...feedAdminProductForm()} onSubmit={onSubmit} />)
+
+    const toggle = screen.getByRole('switch', { name: 'Показывать на главной' })
+    expect(toggle).not.toBeChecked()
+
+    await userEvent.click(toggle)
+    await userEvent.click(screen.getByRole('button', { name: 'Сохранить' }))
+
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ isFeatured: true }))
+  })
 })

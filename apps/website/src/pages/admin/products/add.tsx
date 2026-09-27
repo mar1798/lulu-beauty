@@ -55,6 +55,7 @@ const AdminProductCreatePage: React.FC = () => {
         volumeMl: values.volumeMl,
         categoryId: values.categoryId,
         inStock: values.inStock,
+        isFeatured: values.isFeatured,
       })
 
       if (values.image !== null) {

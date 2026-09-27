@@ -5,15 +5,18 @@ import type {
   IAdminCategoryValues,
   IBasicStyling,
   ICategory,
+  ISelectOption,
 } from '../../types'
 import { IconCheck, IconClose, IconPencil, IconTrash } from '../../svg/icons'
 import { Alert } from '../../atoms/alert'
 import { Button } from '../../atoms/button'
 import { IconButton } from '../../atoms/icon-button'
 import { Input } from '../../atoms/input'
+import { Select } from '../../atoms/select'
 import { Skeleton } from '../../atoms/skeleton'
 import { Text } from '../../atoms/text'
 import { SearchField } from '../../molecules/search-field'
+import { categoryTree } from '../../utils/categories'
 import { slugify } from '../../utils/slug'
 import * as styles from './AdminCategoriesPanel.css'
 
@@ -33,6 +36,11 @@ import * as styles from './AdminCategoriesPanel.css'
  * Поиск — по загруженному списку, а не запросом: категорий десятки, они уже все
  * здесь, и ходить за подмножеством того, что лежит в памяти, незачем. Ищет и по
  * названию, и по слагу: в импорте категория адресуется именно слагом.
+ *
+ * Список идёт деревом, как фильтр каталога: раздел, под ним с отступом его
+ * подкатегории. Раздел выбирается полем «Раздел» при создании и правке. Вложенность
+ * одна, и поле это знает: в нём только категории верхнего уровня, а у раздела с
+ * подкатегориями оно заблокировано — бэкенд такое всё равно отклонит.
  */
 
 const DEFAULT_SKELETON_ROWS = 4
@@ -41,7 +49,10 @@ const DEFAULT_SKELETON_ROWS = 4
 const NAME_MAX_LENGTH = 255
 const SLUG_MAX_LENGTH = 255
 
-const emptyValues: IAdminCategoryValues = { name: '', slug: '' }
+const emptyValues: IAdminCategoryValues = { name: '', slug: '', parentId: null }
+
+/** Заглушка поля «Раздел» — она же значение «верхний уровень». */
+const NO_PARENT_LABEL = 'Без раздела'
 
 /** Совпадение по названию или слагу, без учёта регистра и краевых пробелов. */
 const matches = (category: ICategory, query: string): boolean => {
@@ -101,9 +112,18 @@ export const AdminCategoriesPanel: FC<IAdminCategoriesPanelProps & IBasicStyling
   const createErrors = validate(created)
   const draftErrors = validate(draft)
 
+  /** Куда можно поставить категорию: разделы верхнего уровня, кроме неё самой. */
+  const parentOptions = (except: string | null): ISelectOption[] =>
+    categories
+      .filter(category => category.parentId === null && category.id !== except)
+      .map(category => ({ value: category.id, label: category.name }))
+
+  const hasChildren = (category: ICategory): boolean =>
+    categories.some(other => other.parentId === category.id)
+
   const startEditing = (category: ICategory): void => {
     setEditingId(category.id)
-    setDraft({ name: category.name, slug: category.slug })
+    setDraft({ name: category.name, slug: category.slug, parentId: category.parentId })
   }
 
   const submitCreate = async (event: FormEvent): Promise<void> => {
@@ -132,7 +152,9 @@ export const AdminCategoriesPanel: FC<IAdminCategoriesPanelProps & IBasicStyling
     }
   }
 
-  const found = categories.filter(category => matches(category, query))
+  // Дерево строится по всему списку, а поиск лишь прячет строки: иначе подкатегория,
+  // чей раздел не совпал с запросом, теряла бы отступ и читалась как раздел.
+  const found = categoryTree(categories).filter(({ category }) => matches(category, query))
 
   return (
     <div className={clsx(styles.container, className)}>
@@ -166,9 +188,9 @@ export const AdminCategoriesPanel: FC<IAdminCategoriesPanelProps & IBasicStyling
             {`По запросу «${query.trim()}» ничего не нашлось`}
           </Text>
         ) : (
-          found.map(category =>
+          found.map(({ category, isNested }) =>
             editingId === category.id ? (
-              <div key={category.id} className={styles.editRow}>
+              <div key={category.id} className={clsx(styles.editRow, isNested && styles.nested)}>
                 {/*
                   Ошибка здесь видна сразу, без ожидания сабмита: строка открылась
                   с уже верными значениями, и всё негодное в ней — то, что человек
@@ -194,6 +216,17 @@ export const AdminCategoriesPanel: FC<IAdminCategoriesPanelProps & IBasicStyling
                     setDraft(current => ({ ...current, slug: next }))
                   }}
                 />
+                <Select
+                  label="Раздел"
+                  value={draft.parentId ?? ''}
+                  placeholder={NO_PARENT_LABEL}
+                  options={parentOptions(category.id)}
+                  disabled={hasChildren(category)}
+                  hint={hasChildren(category) ? 'Это раздел: в нём есть подкатегории' : undefined}
+                  onChange={next => {
+                    setDraft(current => ({ ...current, parentId: next === '' ? null : next }))
+                  }}
+                />
                 <div className={styles.rowActions}>
                   <IconButton
                     icon={<IconCheck />}
@@ -217,7 +250,7 @@ export const AdminCategoriesPanel: FC<IAdminCategoriesPanelProps & IBasicStyling
                 </div>
               </div>
             ) : (
-              <div key={category.id} className={styles.row}>
+              <div key={category.id} className={clsx(styles.row, isNested && styles.nested)}>
                 <div className={styles.info}>
                   <span className={styles.name}>{category.name}</span>
                   <span className={styles.slug}>/{category.slug}</span>
@@ -285,6 +318,16 @@ export const AdminCategoriesPanel: FC<IAdminCategoriesPanelProps & IBasicStyling
             onChange={next => {
               setIsSlugTouched(true)
               setCreated(current => ({ ...current, slug: next }))
+            }}
+          />
+          <Select
+            label="Раздел"
+            value={created.parentId ?? ''}
+            placeholder={NO_PARENT_LABEL}
+            options={parentOptions(null)}
+            hint="Для подкатегории: «Умывашки» в «Уходе за лицом»"
+            onChange={next => {
+              setCreated(current => ({ ...current, parentId: next === '' ? null : next }))
             }}
           />
         </div>

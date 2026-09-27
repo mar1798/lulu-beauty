@@ -40,6 +40,14 @@ class Category(UUIDPrimaryKeyMixin, Base):
     name_norm: Mapped[str] = mapped_column(String(255), _norm("name"))
     slug: Mapped[str] = mapped_column(String(255), unique=True, index=True)
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    # A subcategory's section ("Умывашки" inside "Уход за лицом"). One level only, which
+    # `CategoryService._check_parent` enforces: a section cannot itself have a parent, and
+    # a category that has subcategories cannot become one. Filtering by a section takes
+    # in its subcategories' products (`ProductService._category_ids`). Deleting a section
+    # promotes its subcategories to the top level rather than taking them with it.
+    parent_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("categories.id", ondelete="SET NULL"), index=True
+    )
 
     products: Mapped[list["Product"]] = relationship(back_populates="category")
 
@@ -127,6 +135,11 @@ class Product(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     # True when *any* live variant is in stock. Stock itself is a property of the
     # variant — 30 ml can run out while 50 ml sits on the shelf.
     in_stock: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Picked by the owner for the cards beside the home page's headline — at most
+    # `MAX_FEATURED_PRODUCTS` live products at a time (`ProductService._require_featured_slot`).
+    # A server default rather than only a Python one, so the release before this one can
+    # still insert products after a rollback (`docs/backend.md`, "Migrations").
+    is_featured: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     category: Mapped["Category | None"] = relationship(back_populates="products")

@@ -30,6 +30,8 @@ export interface ICategoryInput {
   name: string
   slug: string
   sortOrder?: number
+  /** Раздел подкатегории. `null` в правке возвращает её на верхний уровень. */
+  parentId?: string | null
 }
 
 export const createCategory = (input: ICategoryInput): Promise<ICategory> =>
@@ -83,6 +85,8 @@ export interface IAdminProductListParams {
   q?: string
   /** Товары удаляются мягко; по умолчанию удалённые скрыты. */
   includeDeleted?: boolean
+  /** Только отмеченные для главной — найти, с какого снять отметку, когда их уже три. */
+  featured?: boolean
   page?: number
   pageSize?: number
   /** Без него бэкенд сортирует новыми вперёд — как витрина (`ADMIN_PRODUCT_SORT_DEFAULT`). */
@@ -152,6 +156,11 @@ export interface IProductInput {
   volumeMl?: number | null
   categoryId?: string | null
   inStock?: boolean
+  /**
+   * Карточка в герое главной. Сверх `MAX_FEATURED_PRODUCTS` бэкенд отвечает
+   * 409 `featured_limit_reached` — какую отметку снять, решает владелец.
+   */
+  isFeatured?: boolean
 }
 
 export const listAdminProducts = (params: IAdminProductListParams = {}): Promise<IPage<IProduct>> =>
@@ -162,6 +171,7 @@ export const listAdminProducts = (params: IAdminProductListParams = {}): Promise
       inStock: params.inStock,
       q: params.q,
       includeDeleted: params.includeDeleted,
+      featured: params.featured,
       page: params.page,
       pageSize: params.pageSize,
       sort: params.sort?.field,

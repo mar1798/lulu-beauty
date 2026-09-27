@@ -94,6 +94,12 @@ export const filters = style({
   }),
 })
 
+/**
+ * Тумблеры фильтров — одной ячейкой сетки `filters`, друг под другом: по
+ * отдельности они сдвинули бы раскладку «два на два» и «четыре в ряд».
+ */
+export const filterSwitches = style(flexColumn(8))
+
 export const filtersWide = style({
   ...flexColumn(12),
   width: '100%',

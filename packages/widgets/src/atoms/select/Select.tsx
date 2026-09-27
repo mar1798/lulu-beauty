@@ -49,6 +49,15 @@ const VIEWPORT_MARGIN = 8
 /** Потолок высоты списка: дальше он превращается в самостоятельную страницу. */
 const MAX_HEIGHT = 288
 
+/**
+ * Отступ вложенной строки в нативном списке. Системный `<option>` стилей не
+ * принимает, поэтому сдвиг — неразрывными пробелами в самой подписи: обычные
+ * браузер схлопнул бы. Набору по первым буквам они не мешают: нативный список
+ * рендерится только на сенсорном экране (`TOUCH_QUERY`), где выбор — системное
+ * колесо или лист без набора, а скринридер пробелы не зачитывает.
+ */
+const NATIVE_INDENT = '\u00A0\u00A0\u00A0\u00A0'
+
 /** Сколько миллисекунд набранные буквы считаются одним поисковым запросом. */
 const TYPEAHEAD_RESET_MS = 500
 
@@ -560,7 +569,7 @@ export const Select: FC<ISelectProps & IBasicStyling> = ({
           >
             {items.map(option => (
               <option key={option.value} value={option.value} disabled={option.disabled}>
-                {option.label}
+                {option.isNested === true ? `${NATIVE_INDENT}${option.label}` : option.label}
               </option>
             ))}
           </select>
@@ -654,6 +663,7 @@ export const Select: FC<ISelectProps & IBasicStyling> = ({
                       id={optionId(index)}
                       className={clsx(
                         styles.option,
+                        option.isNested === true && styles.nested,
                         isActive && styles.active,
                         isSelected && styles.selected,
                         isDisabled && styles.disabled

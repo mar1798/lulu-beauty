@@ -35,10 +35,13 @@ from app.catalog.schemas import (
 )
 from app.catalog.serializers import category_response, product_response, suggest_response
 from app.catalog.service import (
+    CategoryNestingError,
     CategoryNotFoundError,
+    CategoryParentNotFoundError,
     CategoryService,
     DuplicateVariantVolumeError,
     EmptyVariantsError,
+    FeaturedLimitError,
     ProductHasVariantsError,
     ProductImageNotFoundError,
     ProductNotFoundError,
@@ -141,9 +144,15 @@ async def create_category(
     _admin: CurrentUser = Depends(require_admin),
 ) -> CategoryResponse:
     try:
-        category = await CategoryService(session).create(body.name, body.slug, body.sort_order)
+        category = await CategoryService(session).create(
+            body.name, body.slug, body.sort_order, body.parent_id
+        )
     except SlugAlreadyExistsError as error:
         raise HTTPException(status.HTTP_409_CONFLICT, "slug_already_exists") from error
+    except CategoryParentNotFoundError as error:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "category_parent_not_found") from error
+    except CategoryNestingError as error:
+        raise HTTPException(status.HTTP_409_CONFLICT, "category_nesting_too_deep") from error
 
     await session.commit()
     return category_response(category)
@@ -163,6 +172,10 @@ async def update_category(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "category_not_found") from error
     except SlugAlreadyExistsError as error:
         raise HTTPException(status.HTTP_409_CONFLICT, "slug_already_exists") from error
+    except CategoryParentNotFoundError as error:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "category_parent_not_found") from error
+    except CategoryNestingError as error:
+        raise HTTPException(status.HTTP_409_CONFLICT, "category_nesting_too_deep") from error
 
     await session.commit()
     return category_response(category)
@@ -199,10 +212,12 @@ async def list_products(
     # fall back to the default: a link with a mistyped `sort` should look broken, not
     # silently show a different order than the one it claims.
     sort: CatalogSort = Query(default=CatalogSort.NEW),
+    # The owner's picks for the home page's hero (`is_featured`).
+    featured: bool | None = Query(default=None),
     session: AsyncSession = Depends(get_session),
 ) -> PageResponse[ProductResponse]:
     products, total = await ProductService(session).list_public(
-        category, in_stock, page, page_size, q, brand, CATALOG_ORDERS[sort]
+        category, in_stock, page, page_size, q, brand, CATALOG_ORDERS[sort], featured=featured
     )
     return PageResponse(
         items=[product_response(product) for product in products],
@@ -275,6 +290,9 @@ async def list_products_admin(
     in_stock: bool | None = Query(default=None, alias="inStock"),
     q: str | None = Query(default=None, min_length=1, max_length=255),
     include_deleted: bool = Query(default=False, alias="includeDeleted"),
+    # "Which three are on the home page" — what the owner needs to know when a new pick is
+    # refused for the limit.
+    featured: bool | None = Query(default=None),
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=100, alias="pageSize"),
     # A column and a direction apart, unlike the storefront's finished choices: the
@@ -285,7 +303,15 @@ async def list_products_admin(
     _admin: CurrentUser = Depends(require_admin),
 ) -> PageResponse[ProductResponse]:
     products, total = await ProductService(session).list_admin(
-        category, in_stock, page, page_size, q, include_deleted, brand, ProductOrder(sort, order)
+        category,
+        in_stock,
+        page,
+        page_size,
+        q,
+        include_deleted,
+        brand,
+        ProductOrder(sort, order),
+        featured=featured,
     )
     return PageResponse(
         items=[product_response(product) for product in products],
@@ -326,11 +352,14 @@ async def create_product(
             body.volume_ml,
             _variant_specs(body.variants),
             body.description_html,
+            body.is_featured,
         )
     except SlugAlreadyExistsError as error:
         raise HTTPException(status.HTTP_409_CONFLICT, "slug_already_exists") from error
     except CategoryNotFoundError as error:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "category_not_found") from error
+    except FeaturedLimitError as error:
+        raise HTTPException(status.HTTP_409_CONFLICT, "featured_limit_reached") from error
     except _VARIANT_ERRORS as error:
         raise _variant_http_error(error) from error
 
@@ -364,6 +393,8 @@ async def update_product(
         raise HTTPException(status.HTTP_409_CONFLICT, "slug_already_exists") from error
     except CategoryNotFoundError as error:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "category_not_found") from error
+    except FeaturedLimitError as error:
+        raise HTTPException(status.HTTP_409_CONFLICT, "featured_limit_reached") from error
     except _VARIANT_ERRORS as error:
         raise _variant_http_error(error) from error
 

@@ -98,8 +98,11 @@ export function storeLd(): IJsonLdNode {
  * цен столько же, сколько объёмов. Тогда пишется `AggregateOffer` с вилкой от
  * дешёвого к дорогому — это ровно то, что schema.org для такого и заводил, и
  * единственный честный способ не объявить цену 30 мл ценой товара.
+ *
+ * `categoryPath` — категория с разделом впереди через « > »: так schema.org
+ * записывает вложенную категорию.
  */
-export function productLd(product: IProduct, categoryName: string | null): IJsonLdNode {
+export function productLd(product: IProduct, categoryPath: string | null): IJsonLdNode {
   const path = `/catalog/${product.slug}`
   const url = absoluteUrl(path)
   const hasSeveralVolumes = product.variants.length > 1
@@ -122,7 +125,7 @@ export function productLd(product: IProduct, categoryName: string | null): IJson
     ...(images.length > 0 && { image: images }),
     ...(product.brand !== null && { brand: { '@type': 'Brand', name: product.brand } }),
     ...(volume !== null && { size: volume }),
-    ...(categoryName !== null && { category: categoryName }),
+    ...(categoryPath !== null && { category: categoryPath }),
     offers: hasSeveralVolumes
       ? {
           '@type': 'AggregateOffer',

@@ -10,6 +10,7 @@ from app.auth.dependencies import CurrentUser, require_admin
 from app.auth.models import Role
 from app.catalog.models import Category, Product, ProductImage, ProductVariant
 from app.catalog.results import CatalogSuggestions
+from app.catalog.service import FeaturedLimitError
 from app.catalog.sorting import DEFAULT_ORDER, ProductOrder, SortDirection, SortField
 from app.db import get_session
 from app.main import app
@@ -35,6 +36,7 @@ def _product(*, deleted_at: datetime | None = None) -> Product:
         volume_ml=30,
         category_id=None,
         in_stock=True,
+        is_featured=False,
         deleted_at=deleted_at,
     )
     product.images = []
@@ -196,3 +198,29 @@ async def test_suggest_returns_the_three_groups(client: AsyncClient) -> None:
             }
         ],
     }
+
+
+async def test_catalog_passes_the_featured_filter_through(client: AsyncClient) -> None:
+    with patch("app.catalog.router.ProductService") as mock_service_cls:
+        listing = _listing(mock_service_cls, "list_public")
+        plain = await client.get("/products")
+        featured = await client.get("/products", params={"featured": "true"})
+
+    assert (plain.status_code, featured.status_code) == (200, 200)
+    first, second = listing.await_args_list
+    assert first.kwargs["featured"] is None
+    assert second.kwargs["featured"] is True
+    assert featured.json()["items"][0]["isFeatured"] is False
+
+
+async def test_a_pin_past_the_limit_is_a_conflict(client: AsyncClient) -> None:
+    app.dependency_overrides[require_admin] = lambda: CurrentUser(id=uuid.uuid4(), role=Role.ADMIN)
+    with patch("app.catalog.router.ProductService") as mock_service_cls:
+        service = mock_service_cls.return_value
+        service.variant_prices = AsyncMock(return_value={})
+        service.live_variant_ids = AsyncMock(return_value=set())
+        service.update = AsyncMock(side_effect=FeaturedLimitError)
+        response = await client.patch(f"/admin/products/{uuid.uuid4()}", json={"isFeatured": True})
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == "featured_limit_reached"

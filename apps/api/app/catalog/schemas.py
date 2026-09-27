@@ -82,6 +82,9 @@ class CategoryResponse(CamelModel):
     name: str
     slug: str
     sort_order: int
+    # The section this category sits in; None for a section (or a category with no
+    # subcategories, which is the same thing to every reader).
+    parent_id: uuid.UUID | None
 
 
 class CategoryCreateRequest(CamelModel):
@@ -92,6 +95,7 @@ class CategoryCreateRequest(CamelModel):
     # Left in the schema because the field still exists and still orders the list — a
     # category created without one goes last, exactly as the xlsx import does it.
     sort_order: int | None = None
+    parent_id: uuid.UUID | None = None
 
 
 class CategoryUpdateRequest(CamelModel):
@@ -101,6 +105,9 @@ class CategoryUpdateRequest(CamelModel):
     name: str | None = Field(default=None, min_length=1, max_length=255)
     slug: str | None = Field(default=None, min_length=1, max_length=255, pattern=SLUG_PATTERN)
     sort_order: int | None = None
+    # Unlike the three above, `null` is a value here: it moves a subcategory back to the
+    # top level. Omitted still means "leave it alone".
+    parent_id: uuid.UUID | None = None
 
     @field_validator("name", "slug", "sort_order", mode="before")
     @classmethod
@@ -122,6 +129,8 @@ class ProductResponse(CamelModel):
     volume_ml: int | None
     category_id: uuid.UUID | None
     in_stock: bool
+    # Pinned by the owner to the home page's hero (at most `MAX_FEATURED_PRODUCTS`).
+    is_featured: bool
     images: list[ProductImageResponse]
     # Every volume the product is sold in, in the order the owner arranged them
     # (`sort_order`) — not by price: the selector on the page is read left to right as a
@@ -160,6 +169,8 @@ class ProductCreateRequest(CamelModel):
     volume_ml: int | None = Field(default=None, gt=0, le=MAX_VOLUME_ML)
     category_id: uuid.UUID | None = None
     in_stock: bool = True
+    # Past the limit this is a 409 `featured_limit_reached`, not a quiet `false`.
+    is_featured: bool = False
     # Omitted means "sold in one form", described by price_cents/volume_ml/in_stock
     # above — the shape the xlsx import sends and the shape most products have.
     variants: list[ProductVariantRequest] | None = Field(
@@ -193,6 +204,9 @@ class ProductUpdateRequest(CamelModel):
     volume_ml: int | None = Field(default=None, gt=0, le=MAX_VOLUME_ML)
     category_id: uuid.UUID | None = None
     in_stock: bool | None = None
+    # Pinning a product that is not pinned yet is refused past the limit (409
+    # `featured_limit_reached`); unpinning always goes through.
+    is_featured: bool | None = None
     # A full replacement of the volume list when present, omitted to leave it alone.
     # `null` is not a way to clear it: a product without volumes has no price to show
     # (409 product_variants_empty says so), so there is nothing to mean by it.
@@ -210,9 +224,9 @@ class ProductUpdateRequest(CamelModel):
     def _validate_description_html(cls, value: str | None) -> str | None:
         return require_description_length(value)
 
-    # The columns behind these four are NOT NULL — unlike description/volume_ml/category_id
+    # The columns behind these five are NOT NULL — unlike description/volume_ml/category_id
     # just above, which a PATCH may legitimately clear.
-    @field_validator("name", "slug", "price_cents", "in_stock", mode="before")
+    @field_validator("name", "slug", "price_cents", "in_stock", "is_featured", mode="before")
     @classmethod
     def _reject_null(cls, value: object) -> object:
         return require_not_null(value)

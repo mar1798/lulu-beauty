@@ -20,6 +20,8 @@ export interface IProductListParams {
    */
   brand?: string
   inStock?: boolean
+  /** Только отмеченные владельцем для героя главной (`IProduct.isFeatured`). */
+  featured?: boolean
   q?: string
   page?: number
   pageSize?: number
@@ -50,6 +52,7 @@ export const listProducts = (params: IProductListParams = {}): Promise<IPage<IPr
       category: params.category,
       brand: params.brand,
       in_stock: params.inStock,
+      featured: params.featured,
       q: params.q,
       page: params.page,
       page_size: params.pageSize,

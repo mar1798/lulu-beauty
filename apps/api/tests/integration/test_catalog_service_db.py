@@ -1,3 +1,4 @@
+import uuid
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -10,7 +11,13 @@ from app.catalog.import_service import CatalogImportService
 from app.catalog.models import Category, Product, ProductImage
 from app.catalog.search import NOISE, normalize_search
 from app.catalog.serializers import product_response
-from app.catalog.service import ProductNotFoundError, ProductService
+from app.catalog.service import (
+    CategoryNestingError,
+    CategoryParentNotFoundError,
+    CategoryService,
+    ProductNotFoundError,
+    ProductService,
+)
 from app.catalog.sorting import CATALOG_ORDERS, CatalogSort, ProductOrder, SortDirection, SortField
 from app.orders.service import OrdersService
 from tests.integration.factories import (
@@ -606,6 +613,99 @@ async def test_suggest_groups_categories_brands_and_products(db_session: AsyncSe
     by_brand = await service.suggest("tony")
     assert by_brand.brands == ["Tonymoly"]
     assert [item.name for item in by_brand.products] == ["Rose Toner"]
+
+
+async def test_a_section_filter_takes_in_its_subcategories(db_session: AsyncSession) -> None:
+    face = await make_category(db_session, name="Уход за лицом", slug="face")
+    cleansers = await make_category(
+        db_session, name="Умывашки", slug="cleansers", parent_id=face.id
+    )
+    body = await make_category(db_session, name="Уход за телом", slug="body")
+    await make_product(db_session, name="Face Cream", category_id=face.id)
+    await make_product(db_session, name="Foam", category_id=cleansers.id)
+    await make_product(db_session, name="Scrub", category_id=body.id)
+    service = ProductService(db_session)
+
+    in_section, total = await service.list_public("face", None, 1, 20)
+    assert sorted(product.name for product in in_section) == ["Face Cream", "Foam"]
+    assert total == 2
+
+    in_subcategory, _ = await service.list_public("cleansers", None, 1, 20)
+    assert [product.name for product in in_subcategory] == ["Foam"]
+
+    in_admin, _ = await service.list_admin("face", None, 1, 20)
+    assert sorted(product.name for product in in_admin) == ["Face Cream", "Foam"]
+
+
+async def test_searching_a_section_name_finds_its_subcategories(db_session: AsyncSession) -> None:
+    face = await make_category(db_session, name="Уход за лицом", slug="face")
+    cleansers = await make_category(
+        db_session, name="Умывашки", slug="cleansers", parent_id=face.id
+    )
+    await make_product(db_session, name="Foam", category_id=cleansers.id)
+    await make_product(db_session, name="Scrub")
+    service = ProductService(db_session)
+
+    found, _ = await service.list_public(None, None, 1, 20, "уход за лицом")
+
+    assert [product.name for product in found] == ["Foam"]
+
+
+async def test_suggest_offers_a_section_whose_products_sit_in_subcategories(
+    db_session: AsyncSession,
+) -> None:
+    """The section itself is empty, but it is not an empty catalogue behind the link.
+
+    Its subcategory does not match the query, so it is not offered alongside.
+    """
+    face = await make_category(db_session, name="Уход за лицом", slug="face")
+    cleansers = await make_category(
+        db_session, name="Умывашки", slug="cleansers", parent_id=face.id
+    )
+    await make_product(db_session, name="Foam", category_id=cleansers.id)
+
+    suggestions = await ProductService(db_session).suggest("уход")
+
+    assert [category.slug for category in suggestions.categories] == ["face"]
+    assert [product.name for product in suggestions.products] == ["Foam"]
+
+
+async def test_categories_nest_one_level_deep(db_session: AsyncSession) -> None:
+    service = CategoryService(db_session)
+    face = await service.create("Уход за лицом", "face")
+    cleansers = await service.create("Умывашки", "cleansers", parent_id=face.id)
+    await db_session.flush()
+    assert cleansers.parent_id == face.id
+
+    # Under a subcategory — a second level.
+    with pytest.raises(CategoryNestingError):
+        await service.create("Пенки", "foams", parent_id=cleansers.id)
+    # A section with subcategories cannot become one itself.
+    body = await service.create("Уход за телом", "body")
+    with pytest.raises(CategoryNestingError):
+        await service.update(face.id, {"parent_id": body.id})
+    # Nor go inside itself.
+    with pytest.raises(CategoryNestingError):
+        await service.update(body.id, {"parent_id": body.id})
+    with pytest.raises(CategoryParentNotFoundError):
+        await service.create("Маски", "masks", parent_id=uuid.uuid4())
+
+    # `null` moves a subcategory back to the top.
+    await service.update(cleansers.id, {"parent_id": None})
+    assert cleansers.parent_id is None
+
+
+async def test_deleting_a_section_promotes_its_subcategories(db_session: AsyncSession) -> None:
+    face = await make_category(db_session, name="Уход за лицом", slug="face")
+    cleansers = await make_category(
+        db_session, name="Умывашки", slug="cleansers", parent_id=face.id
+    )
+
+    await CategoryService(db_session).delete(face.id)
+    await db_session.flush()
+    await db_session.refresh(cleansers)
+
+    assert cleansers.parent_id is None
 
 
 async def test_suggest_collapses_brand_casing_and_hides_deleted(db_session: AsyncSession) -> None:

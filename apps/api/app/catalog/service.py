@@ -7,14 +7,14 @@ from typing import Any
 from sqlalchemy import Select, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import aliased, selectinload
 
 from app.catalog.models import Category, Product, ProductImage, ProductVariant
 from app.catalog.results import CatalogSuggestions, VariantSpec
 from app.catalog.rich_text import Description, description_from_html
 from app.catalog.search import normalize_search
 from app.catalog.sorting import DEFAULT_ORDER, ProductOrder
-from app.common.limits import MAX_PRODUCT_VARIANTS
+from app.common.limits import MAX_FEATURED_PRODUCTS, MAX_PRODUCT_VARIANTS
 from app.orders.models import OrderItem
 
 
@@ -56,6 +56,18 @@ class CategoryNotFoundError(Exception):
     pass
 
 
+class CategoryParentNotFoundError(Exception):
+    """The section a category was put into does not exist (deleted in another tab)."""
+
+
+class CategoryNestingError(Exception):
+    """A second level of nesting was asked for, or a category was put inside itself.
+
+    Categories nest one level deep: a section and its subcategories. That is all a
+    cosmetics catalogue needs, and a filter list indented twice stops being readable.
+    """
+
+
 class ProductNotFoundError(Exception):
     pass
 
@@ -92,6 +104,15 @@ class ProductHasVariantsError(Exception):
     """
 
 
+class FeaturedLimitError(Exception):
+    """A product was pinned to the home page while `MAX_FEATURED_PRODUCTS` already are.
+
+    Refused rather than resolved by unpinning the oldest: which card leaves the home page
+    is the owner's call, and a save that silently took another product off it would be
+    noticed, if at all, on the storefront.
+    """
+
+
 class CategoryService:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
@@ -102,12 +123,19 @@ class CategoryService:
         )
         return list(result.scalars().all())
 
-    async def create(self, name: str, slug: str, sort_order: int | None = None) -> Category:
+    async def create(
+        self,
+        name: str,
+        slug: str,
+        sort_order: int | None = None,
+        parent_id: uuid.UUID | None = None,
+    ) -> Category:
         if await self._slug_taken(slug):
             raise SlugAlreadyExistsError
+        await self._check_parent(None, parent_id)
         if sort_order is None:
             sort_order = await self._next_sort_order()
-        category = Category(name=name, slug=slug, sort_order=sort_order)
+        category = Category(name=name, slug=slug, sort_order=sort_order, parent_id=parent_id)
         async with _slug_conflict_as_error(self._session):
             self._session.add(category)
         return category
@@ -121,6 +149,9 @@ class CategoryService:
         if new_slug is not None and new_slug != category.slug and await self._slug_taken(new_slug):
             raise SlugAlreadyExistsError
 
+        if "parent_id" in updates:
+            await self._check_parent(category, updates["parent_id"])
+
         for field, value in updates.items():
             setattr(category, field, value)
 
@@ -133,6 +164,42 @@ class CategoryService:
         if category is None:
             raise CategoryNotFoundError
         await self._session.delete(category)
+
+    async def _check_parent(self, category: Category | None, parent_id: uuid.UUID | None) -> None:
+        """Refuses a parent that would make the tree deeper than one level.
+
+        `category` is None on create, where there are no subcategories to worry about.
+
+        Both rows are locked, and re-read under the lock, for the rest of the transaction.
+        Without that, two tabs could each pass the check against the other's unwritten
+        change (X into Y, Z into X) and commit a second level, which no list shows. Every
+        change of parent locks the parent it names, so a concurrent one waits on the
+        shared row and then sees the committed state. The rows are locked in id order in
+        one statement, so two moves in opposite directions cannot deadlock.
+        """
+        if parent_id is None:
+            return
+        if category is not None and parent_id == category.id:
+            raise CategoryNestingError
+        ids = [parent_id] if category is None else [parent_id, category.id]
+        locked = await self._session.scalars(
+            select(Category)
+            .where(Category.id.in_(ids))
+            .order_by(Category.id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+        parent = next((row for row in locked if row.id == parent_id), None)
+        if parent is None:
+            raise CategoryParentNotFoundError
+        if parent.parent_id is not None:
+            raise CategoryNestingError
+        if category is not None:
+            has_children = await self._session.scalar(
+                select(Category.id).where(Category.parent_id == category.id).limit(1)
+            )
+            if has_children is not None:
+                raise CategoryNestingError
 
     async def _next_sort_order(self) -> int:
         """One past the last category — the same rule the xlsx import follows.
@@ -186,9 +253,17 @@ class ProductService:
         third arm into `category_id IN (…)`, which a bitmap OR combines with them
         (`ix_products_category_id`). Categories are tens of rows; the scan this removes
         is the whole catalogue.
+
+        A matching section brings its subcategories along, for the same reason the
+        `category=` filter does: "уход за лицом" means the cleansers inside it too.
         """
+        matching = select(Category.id).where(
+            Category.name_norm.ilike(like_pattern(search), escape="\\")
+        )
         result = await self._session.execute(
-            select(Category.id).where(Category.name_norm.ilike(like_pattern(search), escape="\\"))
+            select(Category.id).where(
+                or_(Category.id.in_(matching), Category.parent_id.in_(matching))
+            )
         )
         return list(result.scalars().all())
 
@@ -200,12 +275,23 @@ class ProductService:
         include_deleted: bool,
         brand: str | None = None,
         search_category_ids: Sequence[uuid.UUID] = (),
+        featured: bool | None = None,
     ) -> Select[tuple[Product]]:
         query = select(Product)
         if not include_deleted:
             query = query.where(Product.deleted_at.is_(None))
         if category_slug is not None:
-            query = query.join(Category).where(Category.slug == category_slug)
+            # The category itself and, for a section, every subcategory in it. A subquery
+            # rather than a join, so the search arm below never meets a second `categories`
+            # in the FROM; unlike that arm it is ANDed, so the planner keeps its indexes.
+            named = select(Category.id).where(Category.slug == category_slug)
+            query = query.where(
+                Product.category_id.in_(
+                    select(Category.id).where(
+                        or_(Category.id.in_(named), Category.parent_id.in_(named))
+                    )
+                )
+            )
         if brand is not None:
             # Case-insensitive, like everything else brand-related: writes go
             # through canonical_brand(), but rows imported before that (or by a
@@ -214,6 +300,8 @@ class ProductService:
             query = query.where(func.lower(Product.brand) == brand.lower())
         if in_stock is not None:
             query = query.where(Product.in_stock.is_(in_stock))
+        if featured is not None:
+            query = query.where(Product.is_featured.is_(featured))
         if search:
             pattern = like_pattern(search)
             # Name, brand and category together, because the header search is one field
@@ -255,6 +343,7 @@ class ProductService:
         search: str | None = None,
         brand: str | None = None,
         order: ProductOrder = DEFAULT_ORDER,
+        featured: bool | None = None,
     ) -> tuple[list[Product], int]:
         query = self._filtered_query(
             category_slug,
@@ -263,6 +352,7 @@ class ProductService:
             include_deleted=False,
             brand=brand,
             search_category_ids=await self._search_category_ids(search) if search else (),
+            featured=featured,
         )
         return await self._paginate(query, page, page_size, order)
 
@@ -276,6 +366,7 @@ class ProductService:
         include_deleted: bool = False,
         brand: str | None = None,
         order: ProductOrder = DEFAULT_ORDER,
+        featured: bool | None = None,
     ) -> tuple[list[Product], int]:
         """Admin listing — unlike list_public it can surface soft-deleted products."""
         query = self._filtered_query(
@@ -285,6 +376,7 @@ class ProductService:
             include_deleted,
             brand,
             search_category_ids=await self._search_category_ids(search) if search else (),
+            featured=featured,
         )
         return await self._paginate(query, page, page_size, order)
 
@@ -329,18 +421,29 @@ class ProductService:
         a brand) under whichever products happened to sort first alphabetically.
 
         Only live products count, and a category is offered only when it still has
-        one — an empty catalog behind a suggestion is worse than no suggestion.
+        one, directly or in a subcategory — an empty catalog behind a suggestion is
+        worse than no suggestion. Only categories whose own name matches are offered:
+        the subcategories `_search_category_ids` adds widen the products, not the list.
         """
         pattern = like_pattern(search)
         # Resolved once and used twice: the offered categories are these, and the same
         # ids are what makes the product query's category arm indexable.
         category_ids = await self._search_category_ids(search)
+        subcategory = aliased(Category)
 
         category_result = await self._session.execute(
             select(Category)
             .where(
                 Category.id.in_(category_ids),
-                Category.products.any(Product.deleted_at.is_(None)),
+                Category.name_norm.ilike(pattern, escape="\\"),
+                or_(
+                    Category.products.any(Product.deleted_at.is_(None)),
+                    Category.id.in_(
+                        select(subcategory.parent_id).where(
+                            subcategory.products.any(Product.deleted_at.is_(None))
+                        )
+                    ),
+                ),
             )
             .order_by(Category.sort_order, Category.name)
             .limit(group_limit)
@@ -472,6 +575,7 @@ class ProductService:
         volume_ml: int | None = None,
         variants: Sequence[VariantSpec] | None = None,
         description_html: str | None = None,
+        is_featured: bool = False,
     ) -> Product:
         """A new product, with at least one variant — always.
 
@@ -486,6 +590,8 @@ class ProductService:
         if await self._slug_taken(slug):
             raise SlugAlreadyExistsError
         await self._require_category(category_id)
+        if is_featured:
+            await self._require_featured_slot()
         specs = self._require_specs(
             variants
             if variants is not None
@@ -506,6 +612,7 @@ class ProductService:
             volume_ml=volume_ml,
             category_id=category_id,
             in_stock=in_stock,
+            is_featured=is_featured,
         )
         self._apply_specs(product, specs)
         async with _slug_conflict_as_error(self._session):
@@ -553,6 +660,11 @@ class ProductService:
 
         if "category_id" in updates:
             await self._require_category(updates["category_id"])
+
+        # Only a product that is not pinned yet takes a slot: re-saving one of the three
+        # with the switch still on must not be refused for being the third.
+        if updates.get("is_featured") and not product.is_featured:
+            await self._require_featured_slot()
 
         single_fields = {
             field: value for field, value in updates.items() if field in self._SINGLE_VARIANT_FIELDS
@@ -692,6 +804,20 @@ class ProductService:
         product.volume_ml = live[0].volume_ml if len(live) == 1 else None
         product.in_stock = any(variant.in_stock for variant in live)
 
+    async def _require_featured_slot(self) -> None:
+        """Refuse a new pin while the home page already holds as many as it shows.
+
+        Counted over live products only — `soft_delete` unpins, but a row pinned before
+        that rule, or by hand in the database, must not hold a slot from nowhere.
+        """
+        pinned = await self._session.scalar(
+            select(func.count())
+            .select_from(Product)
+            .where(Product.is_featured.is_(True), Product.deleted_at.is_(None))
+        )
+        if (pinned or 0) >= MAX_FEATURED_PRODUCTS:
+            raise FeaturedLimitError
+
     async def _require_category(self, category_id: uuid.UUID | None) -> None:
         """Checked here rather than left to the foreign key.
 
@@ -707,6 +833,11 @@ class ProductService:
     async def soft_delete(self, product_id: uuid.UUID) -> None:
         product = await self.get_by_id(product_id)
         product.deleted_at = datetime.now(UTC)
+        # A withdrawn product leaves the home page with the catalogue, and gives its slot
+        # back: kept pinned, it would hold one of the three while showing nowhere, and the
+        # owner would be refused a new pick with no visible reason. A restore does not
+        # pin it again — that is a choice to make afresh.
+        product.is_featured = False
 
     async def restore(self, product_id: uuid.UUID) -> Product:
         """Undo a soft-delete. Mirrors what a catalog re-import already does by slug."""

@@ -92,11 +92,22 @@ export const adminProductsKey = (
   category: string,
   brand: string,
   includeDeleted: boolean,
+  featured: boolean,
   page: number,
   sortField: string,
   sortDirection: string
 ) =>
-  [ADMIN_PRODUCTS_TAG, q, category, brand, includeDeleted, page, sortField, sortDirection] as const
+  [
+    ADMIN_PRODUCTS_TAG,
+    q,
+    category,
+    brand,
+    includeDeleted,
+    featured,
+    page,
+    sortField,
+    sortDirection,
+  ] as const
 
 export const adminProductKey = (id: string) => ['admin-product', id] as const
 
