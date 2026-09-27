@@ -210,9 +210,9 @@ Codes currently raised:
 ```
 active_cycle_exists       admin_only                auth_session_expired
 auth_session_not_found    cart_is_empty             cart_item_not_found
-category_not_found        cycle_already_closed      cycle_has_orders
-cycle_not_found           export_link_invalid       invalid_refresh_token
-invalid_token
+category_nesting_too_deep category_not_found        category_parent_not_found
+cycle_already_closed      cycle_has_orders          cycle_not_found
+export_link_invalid       invalid_refresh_token     invalid_token
 last_order_item           no_active_cycle           not_authenticated
 order_item_not_found      order_not_editable        order_not_found
 order_not_restorable      order_status_not_assignable
@@ -271,7 +271,9 @@ one test transaction every product is the same age. Two partial btrees carry the
 `q` is **one field over three things**: it matches a product's name, its brand, or its
 category's name (`ProductService._filtered_query`). That holds for the admin listing too —
 `GET /admin/products?q=` shares the same builder, so a query naming a category returns
-everything in it, which is what the admin product picker and the product list now do. The category arm is a plain list of ids
+everything in it, which is what the admin product picker and the product list now do. A
+section's name brings its subcategories along, exactly as `category=` does (see
+[domain.md](domain.md#categories-nest-one-level-deep)). The category arm is a plain list of ids
 resolved first by `_search_category_ids`, not a join and not an EXISTS: a join would collide
 with the one `category=` may already have made, and a subquery inside the `OR` makes the
 whole disjunction unindexable — the planner then reads every product row, the name arm
@@ -334,7 +336,8 @@ answering the first keystroke.
 product there is trimmed to one image, and the whole thing is unpaged. Products with the
 query in their **name** are ordered ahead of those matched only by brand or category — five
 rows are the entire dropdown, and a literal hit must not be crowded out of them. A category
-is offered only when it still has a live product behind it, and brands collapse by case the
+is offered only when its own name matches and it still has a live product behind it, in
+itself or in a subcategory, and brands collapse by case the
 same way `/brands` does — with the difference that the brand query is capped in SQL as well
 (`BRAND_CASING_HEADROOM` times the group size, since the collapsing happens after the
 fetch): this one runs on every debounced keystroke, and a one-letter query must not drag

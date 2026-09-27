@@ -30,6 +30,8 @@ export interface ICategoryInput {
   name: string
   slug: string
   sortOrder?: number
+  /** Раздел подкатегории. `null` в правке возвращает её на верхний уровень. */
+  parentId?: string | null
 }
 
 export const createCategory = (input: ICategoryInput): Promise<ICategory> =>

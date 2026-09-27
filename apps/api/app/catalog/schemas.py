@@ -82,6 +82,9 @@ class CategoryResponse(CamelModel):
     name: str
     slug: str
     sort_order: int
+    # The section this category sits in; None for a section (or a category with no
+    # subcategories, which is the same thing to every reader).
+    parent_id: uuid.UUID | None
 
 
 class CategoryCreateRequest(CamelModel):
@@ -92,6 +95,7 @@ class CategoryCreateRequest(CamelModel):
     # Left in the schema because the field still exists and still orders the list — a
     # category created without one goes last, exactly as the xlsx import does it.
     sort_order: int | None = None
+    parent_id: uuid.UUID | None = None
 
 
 class CategoryUpdateRequest(CamelModel):
@@ -101,6 +105,9 @@ class CategoryUpdateRequest(CamelModel):
     name: str | None = Field(default=None, min_length=1, max_length=255)
     slug: str | None = Field(default=None, min_length=1, max_length=255, pattern=SLUG_PATTERN)
     sort_order: int | None = None
+    # Unlike the three above, `null` is a value here: it moves a subcategory back to the
+    # top level. Omitted still means "leave it alone".
+    parent_id: uuid.UUID | None = None
 
     @field_validator("name", "slug", "sort_order", mode="before")
     @classmethod

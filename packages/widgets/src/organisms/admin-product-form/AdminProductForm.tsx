@@ -22,6 +22,7 @@ import { Switch } from '../../atoms/switch'
 import { Text } from '../../atoms/text'
 import { FileDropzone } from '../../molecules/file-dropzone'
 import { RichTextEditor } from '../../molecules/rich-text-editor'
+import { categoryOptions } from '../../utils/categories'
 import { plainTextToHtml, richTextLength } from '../../utils/richText'
 import { slugify } from '../../utils/slug'
 import * as styles from './AdminProductForm.css'
@@ -388,10 +389,11 @@ export const AdminProductForm: FC<IAdminProductFormProps & IBasicStyling> = ({
     volume: validateVolume(index),
   }))
 
-  const categoryOptions: ISelectOption[] = categories.map(category => ({
-    value: category.id,
-    label: category.name,
-  }))
+  // Деревом, как в фильтрах: подкатегория под своим разделом.
+  const categorySelectOptions: ISelectOption[] = categoryOptions(
+    categories,
+    category => category.id
+  )
 
   const updateRow = (index: number, patch: Partial<IVariantRow>): void => {
     setVariants(current =>
@@ -506,7 +508,7 @@ export const AdminProductForm: FC<IAdminProductFormProps & IBasicStyling> = ({
           <Select
             label="Категория"
             value={categoryId}
-            options={categoryOptions}
+            options={categorySelectOptions}
             placeholder="Без категории"
             hint="Необязательно. По ней товар отбирают в каталоге."
             onChange={setCategoryId}

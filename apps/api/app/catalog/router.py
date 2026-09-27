@@ -35,7 +35,9 @@ from app.catalog.schemas import (
 )
 from app.catalog.serializers import category_response, product_response, suggest_response
 from app.catalog.service import (
+    CategoryNestingError,
     CategoryNotFoundError,
+    CategoryParentNotFoundError,
     CategoryService,
     DuplicateVariantVolumeError,
     EmptyVariantsError,
@@ -142,9 +144,15 @@ async def create_category(
     _admin: CurrentUser = Depends(require_admin),
 ) -> CategoryResponse:
     try:
-        category = await CategoryService(session).create(body.name, body.slug, body.sort_order)
+        category = await CategoryService(session).create(
+            body.name, body.slug, body.sort_order, body.parent_id
+        )
     except SlugAlreadyExistsError as error:
         raise HTTPException(status.HTTP_409_CONFLICT, "slug_already_exists") from error
+    except CategoryParentNotFoundError as error:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "category_parent_not_found") from error
+    except CategoryNestingError as error:
+        raise HTTPException(status.HTTP_409_CONFLICT, "category_nesting_too_deep") from error
 
     await session.commit()
     return category_response(category)
@@ -164,6 +172,10 @@ async def update_category(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "category_not_found") from error
     except SlugAlreadyExistsError as error:
         raise HTTPException(status.HTTP_409_CONFLICT, "slug_already_exists") from error
+    except CategoryParentNotFoundError as error:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "category_parent_not_found") from error
+    except CategoryNestingError as error:
+        raise HTTPException(status.HTTP_409_CONFLICT, "category_nesting_too_deep") from error
 
     await session.commit()
     return category_response(category)

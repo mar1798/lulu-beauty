@@ -72,6 +72,11 @@ interface IProductPageProps {
   product: IProduct
   /** У товара приходит только `categoryId` — имя резолвится здесь, на сервере. */
   categoryName: string | null
+  /**
+   * Та же категория с разделом впереди — «Уход за лицом > Умывашки», в JSON-LD.
+   * Для категории верхнего уровня совпадает с `categoryName`.
+   */
+  categoryPath: string | null
   /** Состояние сбора для кеша SWR — см. `services/swrFallback.ts`. */
   fallback: ISwrFallback
 }
@@ -129,11 +134,18 @@ export const getStaticProps: GetStaticProps<IProductPageProps, { slug: string }>
     ])
 
     const category = categories.find(item => item.id === product.categoryId)
+    const section = categories.find(item => item.id === category?.parentId)
 
     return {
       props: {
         product,
         categoryName: category?.name ?? null,
+        categoryPath:
+          category === undefined
+            ? null
+            : section === undefined
+              ? category.name
+              : `${section.name} > ${category.name}`,
         fallback: activeCycleFallback(cycle),
       },
       revalidate: REVALIDATE_SECONDS,
@@ -187,7 +199,7 @@ function previewImage(product: IProduct): { url: string; alt: string } | undefin
   Пропсы всегда полные: `fallback: 'blocking'` не отдаёт кадр без данных —
   страница либо отрендерена с товаром, либо это уже 404.
 */
-const ProductPage: React.FC<IProductPageProps> = ({ product, categoryName }) => {
+const ProductPage: React.FC<IProductPageProps> = ({ product, categoryName, categoryPath }) => {
   const path = `/catalog/${product.slug}`
   const { cart } = useCart()
 
@@ -250,7 +262,7 @@ const ProductPage: React.FC<IProductPageProps> = ({ product, categoryName }) => 
         image={previewImage(product)}
       />
 
-      <JsonLd data={productLd(product, categoryName)} />
+      <JsonLd data={productLd(product, categoryPath)} />
       <JsonLd data={breadcrumbsLd(breadcrumbs)} />
 
       <ProductTemplate

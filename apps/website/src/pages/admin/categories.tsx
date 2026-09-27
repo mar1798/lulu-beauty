@@ -59,9 +59,13 @@ const AdminCategoriesPage: React.FC = () => {
   }
 
   const handleDelete = async (category: ICategory): Promise<void> => {
+    // Подкатегории раздела бэкенд не удаляет, а поднимает наверх (`ON DELETE SET NULL`).
+    const hasSubcategories = (data ?? []).some(other => other.parentId === category.id)
     const confirmed = await confirm({
       title: 'Удалить категорию?',
-      description: `Товары категории «${category.name}» останутся в каталоге, но потеряют её - фильтр по ней исчезнет`,
+      description: `Товары категории «${category.name}» останутся в каталоге, но потеряют её - фильтр по ней исчезнет${
+        hasSubcategories ? '. Её подкатегории станут самостоятельными разделами' : ''
+      }`,
       confirmLabel: 'Удалить',
     })
 

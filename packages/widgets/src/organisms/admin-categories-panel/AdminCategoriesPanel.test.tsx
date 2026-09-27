@@ -67,6 +67,57 @@ describe('AdminCategoriesPanel', () => {
     await userEvent.type(names[names.length - 1], 'Тонеры')
     await userEvent.click(screen.getByRole('button', { name: 'Добавить' }))
 
-    expect(onCreate).toHaveBeenCalledWith({ name: 'Тонеры', slug: 'tonery' })
+    expect(onCreate).toHaveBeenCalledWith({ name: 'Тонеры', slug: 'tonery', parentId: null })
+  })
+
+  it('заводит подкатегорию в выбранном разделе', async () => {
+    const onCreate = vi.fn()
+    const props = feedAdminCategoriesPanel()
+    const section = props.categories[0]
+
+    renderWidget(<AdminCategoriesPanel {...props} onCreate={onCreate} />)
+
+    const names = screen.getAllByLabelText('Название')
+    await userEvent.type(names[names.length - 1], 'Пенки')
+    await userEvent.click(screen.getByRole('combobox', { name: 'Раздел' }))
+    await userEvent.click(screen.getByRole('option', { name: section.name }))
+    await userEvent.click(screen.getByRole('button', { name: 'Добавить' }))
+
+    expect(onCreate).toHaveBeenCalledWith({ name: 'Пенки', slug: 'penki', parentId: section.id })
+  })
+
+  /* Вложенность одна: в разделе нельзя выбрать подкатегорию. */
+  it('предлагает в разделы только категории верхнего уровня', async () => {
+    renderWidget(<AdminCategoriesPanel {...feedAdminCategoriesPanel()} />)
+    await userEvent.click(screen.getByRole('combobox', { name: 'Раздел' }))
+
+    expect(screen.getAllByRole('option').map(option => option.textContent)).toEqual([
+      'Без раздела',
+      'Уход за кожей',
+      'Макияж',
+      'Волосы',
+    ])
+  })
+
+  it('показывает подкатегории сразу под их разделом', () => {
+    renderWidget(<AdminCategoriesPanel {...feedAdminCategoriesPanel()} />)
+
+    const names = ['Уход за кожей', 'Умывашки', 'Тонеры', 'Макияж', 'Волосы']
+    const positions = names.map(name => document.body.textContent?.indexOf(name) ?? -1)
+
+    expect(positions.every(position => position !== -1)).toBe(true)
+    expect([...positions].sort((left, right) => left - right)).toEqual(positions)
+  })
+
+  it('не даёт поставить в раздел категорию, у которой есть подкатегории', async () => {
+    const props = feedAdminCategoriesPanel()
+
+    renderWidget(<AdminCategoriesPanel {...props} />)
+    await userEvent.click(
+      screen.getByRole('button', { name: `Изменить «${props.categories[0].name}»` })
+    )
+
+    const [editParent] = screen.getAllByRole('combobox', { name: 'Раздел' })
+    expect(editParent).toBeDisabled()
   })
 })

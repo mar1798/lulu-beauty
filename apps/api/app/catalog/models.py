@@ -40,6 +40,14 @@ class Category(UUIDPrimaryKeyMixin, Base):
     name_norm: Mapped[str] = mapped_column(String(255), _norm("name"))
     slug: Mapped[str] = mapped_column(String(255), unique=True, index=True)
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    # A subcategory's section ("Умывашки" inside "Уход за лицом"). One level only, which
+    # `CategoryService._check_parent` enforces: a section cannot itself have a parent, and
+    # a category that has subcategories cannot become one. Filtering by a section takes
+    # in its subcategories' products (`ProductService._category_ids`). Deleting a section
+    # promotes its subcategories to the top level rather than taking them with it.
+    parent_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("categories.id", ondelete="SET NULL"), index=True
+    )
 
     products: Mapped[list["Product"]] = relationship(back_populates="category")
 

@@ -21,7 +21,11 @@ from app.catalog.schemas import (
 
 def category_response(category: Category) -> CategoryResponse:
     return CategoryResponse(
-        id=category.id, name=category.name, slug=category.slug, sort_order=category.sort_order
+        id=category.id,
+        name=category.name,
+        slug=category.slug,
+        sort_order=category.sort_order,
+        parent_id=category.parent_id,
     )
 
 

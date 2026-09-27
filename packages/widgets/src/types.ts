@@ -133,6 +133,12 @@ export interface ICategory {
   name: string
   slug: string
   sortOrder: number
+  /**
+   * Раздел, в котором стоит подкатегория («Умывашки» в «Уходе за лицом»); `null` —
+   * верхний уровень. Вложенность одна: у раздела своего раздела нет. Фильтр по
+   * разделу бэкенд расширяет на его подкатегории сам.
+   */
+  parentId: string | null
 }
 
 export interface IProductImage {
@@ -538,6 +544,11 @@ export interface ISelectOption {
   value: string
   label: string
   disabled?: boolean
+  /**
+   * Строка на ступень глубже соседей — подкатегория под своим разделом. Отступ
+   * только в списке: в самом поле выбранное пишется без него.
+   */
+  isNested?: boolean
 }
 
 export interface ISelectProps {
@@ -2046,6 +2057,8 @@ export interface IAdminProductFormProps {
 export interface IAdminCategoryValues {
   name: string
   slug: string
+  /** Раздел подкатегории; `null` — верхний уровень. */
+  parentId: string | null
 }
 
 export interface IAdminCategoriesPanelProps {

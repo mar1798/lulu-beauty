@@ -163,6 +163,37 @@ send: for a deadline nudge a duplicate is a nuisance and a miss is a lost order.
 `name`, `slug` (unique), `brand`, `description`, a category and images; a **variant** carries
 `volume_ml`, `price_cents` and `in_stock`.
 
+### Categories nest one level deep
+
+A category can sit inside another one (`categories.parent_id`): "Умывашки" is a
+subcategory of the section "Уход за лицом". A product still has exactly one category,
+usually the subcategory, and reaches the section through it.
+
+- **One level only.** A section cannot itself have a parent, and a category that has
+  subcategories cannot become one (`CategoryService._check_parent`,
+  `category_nesting_too_deep`). A catalogue of cosmetics needs no more, and a list indented
+  twice stops being readable. The check locks both rows (`SELECT … FOR UPDATE`), so two
+  tabs moving categories at once cannot each pass it and build a second level together;
+  should one exist anyway, `categoryTree` lists the stray category at the top level rather
+  than hiding it.
+- **A section filter takes in its subcategories.** `category=face` returns the products in
+  "Уход за лицом" itself and in every subcategory of it; `category=cleansers` narrows to the
+  one. The same holds for the admin listing, and for the search: a query naming a section
+  finds the products of its subcategories too. The header suggestions offer only
+  categories whose own name matched, but count a section as non-empty when its products sit
+  in a subcategory.
+- **Deleting a section promotes its subcategories** to the top level (`ON DELETE SET
+NULL`), the same way deleting any category leaves its products without one.
+- **Every list shows the tree** — section, then its subcategories indented beneath it:
+  the catalogue filter (storefront and admin alike, `CategoryFilter`), the category select
+  on the product form, and the admin categories panel (`categoryTree` in
+  `packages/widgets/src/utils/categories.ts`). The home page tiles show sections only.
+- **The import and export stay flat.** The `category` column names one category by slug,
+  as before; a category the file invents is created at the top level, and the owner moves
+  it into a section on the categories page.
+- The product's JSON-LD writes the category as a path, "Уход за лицом > Умывашки"; the
+  card and the order tags show the subcategory alone.
+
 ### A description has two forms
 
 The owner writes the description in a rich-text editor in the admin panel (Tiptap), with a

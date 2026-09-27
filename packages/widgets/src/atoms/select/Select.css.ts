@@ -130,6 +130,11 @@ export const option = style({
   transition: transition('background-color', 'color'),
 })
 
+/** Подкатегория: сдвинута под свой раздел. */
+export const nested = style({
+  paddingLeft: rem(28),
+})
+
 /**
  * Подсветка «на что нажмётся» одна и для мыши, и для клавиатуры: фокус
  * остаётся на самом поле (`aria-activedescendant`), поэтому своей рамки

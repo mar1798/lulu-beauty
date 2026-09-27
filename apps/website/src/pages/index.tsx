@@ -18,7 +18,7 @@ import {
 import { useCountdown } from 'widgets/hooks'
 import { FaqAccordion, HomeCta, HomeHero, ProductGrid } from 'widgets/organisms'
 import { HomeTemplate } from 'widgets/templates'
-import { pluralize, staggerDelay } from 'widgets/utils'
+import { pluralize, staggerDelay, topLevelCategories } from 'widgets/utils'
 import { SiteLayout } from '@/layouts/SiteLayout'
 import { AddToCartButton } from '@/components/AddToCartButton'
 import { JsonLd } from '@/components/JsonLd'
@@ -668,7 +668,8 @@ const HomePage: React.FC<IHomePageProps> = ({
 
             {categories.length > 0 && (
               <CategoryTiles
-                categories={categories}
+                /* Только разделы: подкатегории видны в фильтре каталога под ними. */
+                categories={topLevelCategories(categories)}
                 buildHref={category => `/catalog?category=${encodeURIComponent(category.slug)}`}
               />
             )}

@@ -45,6 +45,14 @@ export const editRow = style({
   }),
 })
 
+/**
+ * Подкатегория: сдвинута под свой раздел — так же дерево читается в фильтре
+ * каталога.
+ */
+export const nested = style({
+  paddingLeft: rem(24),
+})
+
 export const info = style({
   ...flexColumn(2),
   minWidth: 0,
@@ -80,8 +88,8 @@ export const createFields = style({
   ...media({
     sm: {
       display: 'grid',
-      // Две колонки: третья в 120px осталась от убранного поля и стояла пустой.
-      gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)',
+      // Название, адрес и раздел.
+      gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
       gap: vars.space.md,
       alignItems: 'start',
     },

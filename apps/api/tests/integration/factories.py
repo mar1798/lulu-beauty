@@ -101,11 +101,13 @@ async def make_category(
     name: str = "Test Category",
     slug: str | None = None,
     sort_order: int = 0,
+    parent_id: uuid.UUID | None = None,
 ) -> Category:
     category = Category(
         name=name,
         slug=slug or f"test-category-{uuid.uuid4().hex[:12]}",
         sort_order=sort_order,
+        parent_id=parent_id,
     )
     session.add(category)
     await session.flush()
