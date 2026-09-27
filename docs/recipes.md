@@ -20,7 +20,7 @@ forgetting one of its steps produces a failure that looks like something else.
 
 **Watch the query-parameter casing** — it is inconsistent by accident: public `GET /products`
 takes `in_stock`/`page_size`, admin `GET /admin/products` takes `inStock`/`pageSize`/
-`includeDeleted` via `Query(alias=…)`. Check the router before adding a param on the frontend.
+`includeDeleted` via `Query(alias=…)`; `sort` means different things on the two. Check the router before adding a param on the frontend.
 
 ## Add an API error code
 

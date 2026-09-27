@@ -23,7 +23,20 @@ export interface IProductListParams {
   q?: string
   page?: number
   pageSize?: number
+  /** Без значения бэкенд отдаёт новинки первыми (`CATALOG_SORT_DEFAULT`). */
+  sort?: ICatalogSort
 }
+
+/**
+ * Порядок витрины — три готовых варианта, а не колонка с направлением, как в
+ * админке: «сначала старые» или «по названию» покупателю не нужны.
+ */
+export const CATALOG_SORTS = ['new', 'price_asc', 'price_desc'] as const
+
+export type ICatalogSort = (typeof CATALOG_SORTS)[number]
+
+/** То, что бэкенд делает без параметра, — поэтому в адрес оно не пишется. */
+export const CATALOG_SORT_DEFAULT: ICatalogSort = 'new'
 
 export const listCategories = (): Promise<ICategory[]> => api.get('/categories')
 
@@ -40,6 +53,7 @@ export const listProducts = (params: IProductListParams = {}): Promise<IPage<IPr
       q: params.q,
       page: params.page,
       page_size: params.pageSize,
+      sort: params.sort,
     },
   })
 

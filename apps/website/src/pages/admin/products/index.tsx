@@ -8,6 +8,7 @@ import { useConfirm, useToast } from 'widgets/contexts'
 import { IconPlus } from 'widgets/svg'
 import { AdminShell } from '@/layouts/AdminShell'
 import {
+  enumParam,
   flagParam,
   optionalTextParam,
   pageParam,
@@ -17,6 +18,9 @@ import {
 } from '@/hooks/useQueryParams'
 import { messageForError, type ErrorScope } from '@/services/apiErrors'
 import {
+  ADMIN_PRODUCT_SORT_DEFAULT,
+  ADMIN_PRODUCT_SORT_FIELDS,
+  SORT_DIRECTIONS,
   deleteProduct,
   listAdminBrands,
   listAdminProducts,
@@ -30,7 +34,8 @@ import * as styles from '@/styles/admin.css'
 import { useClampedPage } from '@/hooks/useClampedPage'
 
 /**
- * Список товаров: поиск, фильтр по категории, показ удалённых, пагинация.
+ * Список товаров: поиск, фильтр по категории, показ удалённых, сортировка,
+ * пагинация.
  *
  * Все параметры выборки — в адресной строке, поэтому конкретный вид списка
  * можно переслать или положить в закладки, а «назад» возвращает к прошлому
@@ -56,14 +61,21 @@ const AdminProductsPage: React.FC = () => {
   const { notify } = useToast()
   const { confirm } = useConfirm()
 
-  const [{ q: query, category: categorySlug, brand, deleted: includeDeleted, page }, setParams] =
-    useQueryParams({
-      q: textParam,
-      category: optionalTextParam,
-      brand: optionalTextParam,
-      deleted: flagParam,
-      page: pageParam,
-    })
+  const [
+    { q: query, category: categorySlug, brand, deleted: includeDeleted, page, sort, order },
+    setParams,
+  ] = useQueryParams({
+    q: textParam,
+    category: optionalTextParam,
+    brand: optionalTextParam,
+    deleted: flagParam,
+    page: pageParam,
+    // Колонка и направление — двумя параметрами, как их принимает API.
+    sort: enumParam(ADMIN_PRODUCT_SORT_FIELDS, ADMIN_PRODUCT_SORT_DEFAULT.field),
+    order: enumParam(SORT_DIRECTIONS, ADMIN_PRODUCT_SORT_DEFAULT.direction),
+  })
+
+  const sorting = useMemo(() => ({ field: sort, direction: order }), [sort, order])
 
   /*
     Поиск заменяет запись в истории, а не добавляет новую: набранное оказывается
@@ -109,7 +121,7 @@ const AdminProductsPage: React.FC = () => {
     isLoading,
     mutate,
   } = useSWR(
-    adminProductsKey(query, categorySlug ?? '', brand ?? '', includeDeleted, page),
+    adminProductsKey(query, categorySlug ?? '', brand ?? '', includeDeleted, page, sort, order),
     () =>
       listAdminProducts({
         q: query === '' ? undefined : query,
@@ -118,6 +130,7 @@ const AdminProductsPage: React.FC = () => {
         includeDeleted,
         page,
         pageSize: PAGE_SIZE,
+        sort: sorting,
       }),
     // Смена фильтра/страницы не должна сбрасывать таблицу в скелетон.
     { keepPreviousData: true }
@@ -302,6 +315,9 @@ const AdminProductsPage: React.FC = () => {
 
       <AdminProductsTable
         products={data?.items ?? []}
+        sort={sorting}
+        // Новый порядок — с первой страницы: на третьей он показал бы середину списка.
+        onSortChange={next => setParams({ sort: next.field, order: next.direction, page: 1 })}
         categoryNames={categoryNames}
         buildEditHref={product => `/admin/products/${product.id}`}
         /*

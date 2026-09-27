@@ -53,6 +53,17 @@ class Product(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __table_args__ = (
         Index("ix_products_live_name", "name", postgresql_where=text("deleted_at IS NULL")),
         Index("ix_products_live_brand", "brand", postgresql_where=text("deleted_at IS NULL")),
+        # The other two orders a listing is read in (`catalog/sorting.py`): newest first,
+        # which is the default of both the storefront and the admin table, and by price.
+        # A btree scans either way, so one index serves both directions.
+        Index(
+            "ix_products_live_created_at", "created_at", postgresql_where=text("deleted_at IS NULL")
+        ),
+        Index(
+            "ix_products_live_price_cents",
+            "price_cents",
+            postgresql_where=text("deleted_at IS NULL"),
+        ),
         # Catalogue search is `ILIKE '%…%'`, which no btree index can serve — the leading
         # wildcard rules it out — so it read every row. A trigram GIN index is the one
         # thing that indexes an infix match. pg_trgm is a *trusted* extension, so the

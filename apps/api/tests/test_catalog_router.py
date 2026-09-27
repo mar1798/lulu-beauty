@@ -6,8 +6,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from httpx import ASGITransport, AsyncClient
 
+from app.auth.dependencies import CurrentUser, require_admin
+from app.auth.models import Role
 from app.catalog.models import Category, Product, ProductImage, ProductVariant
 from app.catalog.results import CatalogSuggestions
+from app.catalog.sorting import DEFAULT_ORDER, ProductOrder, SortDirection, SortField
 from app.db import get_session
 from app.main import app
 
@@ -87,6 +90,51 @@ async def test_live_product_carries_its_modification_time(client: AsyncClient) -
     assert body["slug"] == "rose-serum"
     # The envelope writes UTC as `Z`, `datetime.isoformat` as `+00:00` — same instant.
     assert datetime.fromisoformat(body["updatedAt"]) == product.updated_at
+
+
+def _listing(mock_service_cls: MagicMock, method: str) -> AsyncMock:
+    listing = AsyncMock(return_value=([_product()], 1))
+    setattr(mock_service_cls.return_value, method, listing)
+    return listing
+
+
+async def test_catalog_lists_newest_first_by_default(client: AsyncClient) -> None:
+    with patch("app.catalog.router.ProductService") as mock_service_cls:
+        listing = _listing(mock_service_cls, "list_public")
+        response = await client.get("/products")
+
+    assert response.status_code == 200
+    assert listing.await_args.args[-1] == DEFAULT_ORDER
+    assert "createdAt" in response.json()["items"][0]
+
+
+async def test_catalog_sorts_by_price_on_request(client: AsyncClient) -> None:
+    with patch("app.catalog.router.ProductService") as mock_service_cls:
+        listing = _listing(mock_service_cls, "list_public")
+        response = await client.get("/products", params={"sort": "price_desc"})
+
+    assert response.status_code == 200
+    assert listing.await_args.args[-1] == ProductOrder(SortField.PRICE, SortDirection.DESC)
+
+
+async def test_catalog_refuses_an_unknown_sort(client: AsyncClient) -> None:
+    """A buyer has no "by name" and no direction of their own — only the three choices."""
+    for sort in ["name", "created", "bogus"]:
+        response = await client.get("/products", params={"sort": sort})
+        assert response.status_code == 422, sort
+
+
+async def test_admin_list_takes_a_column_and_a_direction(client: AsyncClient) -> None:
+    app.dependency_overrides[require_admin] = lambda: CurrentUser(id=uuid.uuid4(), role=Role.ADMIN)
+    with patch("app.catalog.router.ProductService") as mock_service_cls:
+        listing = _listing(mock_service_cls, "list_admin")
+        default = await client.get("/admin/products")
+        by_price = await client.get("/admin/products", params={"sort": "price", "order": "asc"})
+
+    assert (default.status_code, by_price.status_code) == (200, 200)
+    first, second = listing.await_args_list
+    assert first.args[-1] == DEFAULT_ORDER
+    assert second.args[-1] == ProductOrder(SortField.PRICE, SortDirection.ASC)
 
 
 async def test_suggest_refuses_an_empty_query(client: AsyncClient) -> None:

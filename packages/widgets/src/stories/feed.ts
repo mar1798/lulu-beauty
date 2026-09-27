@@ -616,6 +616,7 @@ export const feedProduct = (overrides: Partial<IProduct> = {}): IProduct => {
     images: [feedProductImageDto(true, 0), feedProductImageDto(false, 1)],
     variants: [{ id: faker.string.uuid(), volumeMl, priceCents, inStock: true }],
     deletedAt: null,
+    createdAt: faker.date.past({ years: 1 }).toISOString(),
     updatedAt: faker.date.recent({ days: 30 }).toISOString(),
     ...overrides,
   }
@@ -1126,6 +1127,8 @@ export const feedAdminProductsTable = (): IAdminProductsTableProps => {
 
   return {
     products,
+    sort: { field: 'created', direction: 'desc' },
+    onSortChange: noop,
     categoryNames: Object.fromEntries(categories.map(category => [category.id, category.name])),
     buildEditHref: product => `/admin/products/${product.id}`,
     onDelete: noop,

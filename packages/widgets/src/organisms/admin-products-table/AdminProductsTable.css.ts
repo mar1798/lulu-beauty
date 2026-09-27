@@ -13,23 +13,100 @@ import {
 } from '../../styling/mixin/table'
 import { vars } from '../../styling/themes/contract.css'
 
+/**
+ * До какой ширины строки остаются карточками: `xl`, а не `md`, как у заявок.
+ * В таблице шесть колонок, и рядом с сайдбаром админки (с `lg`) им нужно около
+ * 960px — на 1024px «Наличие» и «Действия» уезжали под горизонтальную
+ * прокрутку, где их никто не искал. Карточки на планшете читаются целиком.
+ */
+const CARD_UNTIL = 'xl'
+
 export const wrap = style(tableWrap())
 
-export const table = style(tableCardBase())
+export const table = style(tableCardBase(CARD_UNTIL))
 
-export const head = style(tableCardHead())
+export const head = style(tableCardHead(CARD_UNTIL))
 
-export const body = style(tableCardBody())
+export const body = style(tableCardBody(CARD_UNTIL))
 
-export const row = style(tableCardRow())
+export const row = style(tableCardRow(CARD_UNTIL))
 
 export const headCell = style(tableHeadCell())
 
 export const headActionsCell = style([tableHeadCell(), { textAlign: 'right' }])
 
-export const cell = style(tableCardCell())
+/**
+ * Заголовок сортируемой колонки — кнопка во всю его подпись. Шрифт, регистр и
+ * разрядка наследуются от ячейки: внешне заголовок остаётся заголовком, и
+ * выдаёт его только стрелка и смена цвета под курсором.
+ */
+export const sortButton = style([
+  {
+    ...flexRow(4),
+    alignItems: 'center',
+    padding: 0,
+    border: 'none',
+    background: 'none',
+    font: 'inherit',
+    letterSpacing: 'inherit',
+    textTransform: 'inherit',
+    color: 'inherit',
+    cursor: 'pointer',
+    borderRadius: vars.radius.sm,
+    transition: transition('color'),
+    selectors: {
+      '&:hover': { color: color.text('primary') },
+    },
+  },
+  focusVisibleRing(),
+])
 
-export const actionsCell = style(tableCardActionsCell())
+/** Колонка, по которой сейчас отсортировано, — ярче остальных заголовков. */
+export const sortButtonActive = style({
+  color: color.text('primary'),
+})
+
+/**
+ * Стрелка направления. У неактивной колонки она проявляется только под
+ * курсором и в фокусе: шесть стрелок в ряд читались бы как шум, а подсказка
+ * «здесь можно сортировать» нужна ровно в момент наведения.
+ */
+export const sortIcon = style({
+  flexShrink: 0,
+  fontSize: rem(14),
+  opacity: 0,
+  transition: transition('opacity', 'transform'),
+  selectors: {
+    [`${sortButton}:hover &, ${sortButton}:focus-visible &`]: { opacity: 0.5 },
+    [`${sortButtonActive} &, ${sortButtonActive}:hover &`]: { opacity: 1 },
+  },
+})
+
+/** Шеврон нарисован вниз; по возрастанию он смотрит вверх. */
+export const sortIconAscending = style({
+  transform: 'rotate(180deg)',
+})
+
+/**
+ * Выбор сортировки для карточного режима. Шапка таблицы до `CARD_UNTIL`
+ * спрятана, и вместе с ней пропадали бы кликабельные заголовки; начиная с неё,
+ * наоборот, прячется поле — сортировкой там служит сама шапка.
+ */
+export const mobileSort = style({
+  ...media({
+    [CARD_UNTIL]: { display: 'none' },
+  }),
+})
+
+/** Дата добавления не переносится: разорванная на две строки, она читалась бы как две даты. */
+export const date = style({
+  whiteSpace: 'nowrap',
+  color: color.text('muted'),
+})
+
+export const cell = style(tableCardCell(CARD_UNTIL))
+
+export const actionsCell = style(tableCardActionsCell(CARD_UNTIL))
 
 /**
  * Удалённая строка приглушена, но читаема: она нужна ровно для того, чтобы
@@ -61,7 +138,7 @@ export const product = style({
   minWidth: 0,
   width: '100%',
   ...media({
-    md: { minWidth: rem(240), maxWidth: rem(360), width: 'auto' },
+    [CARD_UNTIL]: { minWidth: rem(240), maxWidth: rem(340), width: 'auto' },
   }),
 })
 
@@ -122,6 +199,6 @@ export const actions = style({
   ...flexRow(8),
   alignItems: 'center',
   ...media({
-    md: { justifyContent: 'flex-end' },
+    [CARD_UNTIL]: { justifyContent: 'flex-end' },
   }),
 })

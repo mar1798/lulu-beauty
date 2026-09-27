@@ -15,6 +15,7 @@ import { PageMeta } from '@/components/PageMeta'
 import { WantedProductPrompt } from '@/components/WantedProductPrompt'
 import { WishlistButton } from '@/components/WishlistButton'
 import {
+  enumParam,
   optionalTextParam,
   pageParam,
   textParam,
@@ -22,7 +23,14 @@ import {
   useQueryTextInput,
 } from '@/hooks/useQueryParams'
 import { messageForError } from '@/services/apiErrors'
-import { listBrands, listCategories, listProducts } from '@/services/endpoints/catalog'
+import {
+  CATALOG_SORTS,
+  CATALOG_SORT_DEFAULT,
+  listBrands,
+  listCategories,
+  listProducts,
+  type ICatalogSort,
+} from '@/services/endpoints/catalog'
 import { getActiveCycleOrNull } from '@/services/endpoints/cycles'
 import { activeCycleFallback, isFreshRender, type ISwrFallback } from '@/services/swrFallback'
 import { productListLd } from '@/utils/jsonLd'
@@ -34,9 +42,9 @@ import * as styles from '@/styles/catalog.css'
  * Витрина.
  *
  * Первая страница каталога приезжает статикой (SSG + ISR), поэтому пустой
- * каталог никогда не «мигает» спиннером. Категория, поиск и номер страницы —
- * всё, что уходит в запрос, — живут в query-параметрах, так что ссылкой на
- * конкретную выборку можно поделиться.
+ * каталог никогда не «мигает» спиннером. Категория, поиск, сортировка и номер
+ * страницы — всё, что уходит в запрос, — живут в query-параметрах, так что
+ * ссылкой на конкретную выборку можно поделиться.
  *
  * `getStaticProps` не имеет доступа к query-параметрам, поэтому любой вид,
  * отличный от первой страницы без фильтров, догружается на клиенте — через
@@ -116,16 +124,18 @@ type ICatalogKey = readonly [
   category: string | null,
   brand: string | null,
   q: string,
+  sort: ICatalogSort,
   page: number,
 ]
 
-const fetchCatalogPage = async ([, category, brand, q, page]: ICatalogKey): Promise<
+const fetchCatalogPage = async ([, category, brand, q, sort, page]: ICatalogKey): Promise<
   IPage<IProduct>
 > =>
   listProducts({
     category: category ?? undefined,
     brand: brand ?? undefined,
     q: q === '' ? undefined : q,
+    sort: sort === CATALOG_SORT_DEFAULT ? undefined : sort,
     page,
     pageSize: PAGE_SIZE,
   })
@@ -133,11 +143,20 @@ const fetchCatalogPage = async ([, category, brand, q, page]: ICatalogKey): Prom
 /** Сентинел «все бренды»: у `Select` нет значения `null`, пустая строка — сброс. */
 const ALL_BRANDS = ''
 
+const SORT_OPTIONS: Array<ISelectOption & { value: ICatalogSort }> = [
+  { value: 'new', label: 'Новинки' },
+  { value: 'price_asc', label: 'Сначала дешевле' },
+  { value: 'price_desc', label: 'Сначала дороже' },
+]
+
+const sortParam = enumParam(CATALOG_SORTS, CATALOG_SORT_DEFAULT)
+
 const CatalogPage: React.FC<ICatalogPageProps> = ({ categories, brands, initial, fallback }) => {
-  const [{ category: categorySlug, brand, q, page: pageNumber }, setParams] = useQueryParams({
+  const [{ category: categorySlug, brand, q, sort, page: pageNumber }, setParams] = useQueryParams({
     category: optionalTextParam,
     brand: optionalTextParam,
     q: textParam,
+    sort: sortParam,
     page: pageParam,
   })
 
@@ -170,7 +189,12 @@ const CatalogPage: React.FC<ICatalogPageProps> = ({ categories, brands, initial,
     [setParams]
   )
 
-  const isDefaultParams = categorySlug === null && brand === null && pageNumber === 1 && q === ''
+  const isDefaultParams =
+    categorySlug === null &&
+    brand === null &&
+    pageNumber === 1 &&
+    q === '' &&
+    sort === CATALOG_SORT_DEFAULT
 
   /*
     Первая страница без фильтров уже пришла статикой. `fallbackData` сам по
@@ -193,7 +217,7 @@ const CatalogPage: React.FC<ICatalogPageProps> = ({ categories, brands, initial,
     isValidating,
     mutate,
   } = useSWR<IPage<IProduct>>(
-    ['catalog-products', categorySlug, brand, q, pageNumber],
+    ['catalog-products', categorySlug, brand, q, sort, pageNumber],
     fetchCatalogPage,
     {
       fallbackData: staticPage,
@@ -283,33 +307,48 @@ const CatalogPage: React.FC<ICatalogPageProps> = ({ categories, brands, initial,
         // приходят по ссылке на категорию и поиском, минуя главную вовсе.
         aside={<CycleCountdown />}
         filter={
-          // `> 1` — кроме «Все бренды» в списке есть хоть что-то выбираемое.
-          categories.length === 0 && brandOptions.length <= 1 ? undefined : (
-            <div className={styles.filters}>
-              {categories.length > 0 && (
-                <CategoryFilter
-                  className={styles.field}
-                  categories={categories}
-                  selectedSlug={categorySlug}
-                  onSelect={slug => setParams({ category: slug, page: 1 })}
-                />
-              )}
+          /*
+            Панель есть всегда: даже без категорий и брендов в ней остаётся
+            сортировка. Сами фильтры появляются, когда в них есть что выбрать.
+          */
+          <div className={styles.filters}>
+            {categories.length > 0 && (
+              <CategoryFilter
+                className={styles.field}
+                categories={categories}
+                selectedSlug={categorySlug}
+                onSelect={slug => setParams({ category: slug, page: 1 })}
+              />
+            )}
 
-              {brandOptions.length > 1 && (
-                <Select
-                  className={styles.field}
-                  label="Бренд"
-                  value={brand ?? ALL_BRANDS}
-                  options={brandOptions}
-                  onChange={next =>
-                    setParams({ brand: next === ALL_BRANDS ? null : next, page: 1 })
-                  }
-                />
-              )}
-            </div>
-          )
+            {/* `> 1` — кроме «Все бренды» в списке есть хоть что-то выбираемое. */}
+            {brandOptions.length > 1 && (
+              <Select
+                className={styles.field}
+                label="Бренд"
+                value={brand ?? ALL_BRANDS}
+                options={brandOptions}
+                onChange={next => setParams({ brand: next === ALL_BRANDS ? null : next, page: 1 })}
+              />
+            )}
+
+            <Select
+              className={styles.field}
+              label="Сортировка"
+              value={sort}
+              options={SORT_OPTIONS}
+              onChange={next => setParams({ sort: sortParam.parse(next), page: 1 })}
+            />
+          </div>
         }
-        search={<SearchField value={search} onChange={setSearch} isBusy={isStale} />}
+        search={
+          <SearchField
+            className={styles.search}
+            value={search}
+            onChange={setSearch}
+            isBusy={isStale}
+          />
+        }
         pagination={
           <Pagination page={pageNumber} pageSize={PAGE_SIZE} total={total} onChange={goToPage} />
         }

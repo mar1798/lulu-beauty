@@ -85,7 +85,8 @@ Lighthouse — prefetching three routes right as the first screen was finishing.
 
 **Query-parameter casing is inconsistent by accident.** Public `GET /products` takes
 `in_stock` / `page_size`; admin `GET /admin/products` takes `inStock` / `pageSize` /
-`includeDeleted`. Check the router.
+`includeDeleted`. Both take `sort`, with different values (and the admin one adds `order`).
+Check the router.
 
 **A new backend error code without an entry in `src/services/apiErrors.ts`** shows the user a
 status-based placeholder instead of an explanation.

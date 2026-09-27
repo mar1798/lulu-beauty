@@ -198,8 +198,8 @@ Client-side fetching is [SWR](https://swr.vercel.app/), configured globally in `
   `activeCycleFallback` stamps the render time next to the cycle, and `isFreshFallback(fallback,
 key)` answers "prefilled on this page and rendered less than 60 s ago" — `useActiveCycle`
   passes it to `revalidateOnMount`. `pages/catalog/index.tsx` does the same for the first,
-  unfiltered product page with `isFreshRender(fallback)`, and the home hero reads the cycle
-  through `useActiveCycle` rather than straight from its prop. Changing a filter or page
+  unfiltered, default-sorted product page with `isFreshRender(fallback)`, and the home hero reads the cycle
+  through `useActiveCycle` rather than straight from its prop. Changing a filter, the sort or the page
   changes the key and fetches as usual.
 - `src/services/apiErrors.ts` — `ApiError { status, code, fields }` plus the machine-code →
   Russian-message table. The backend emits codes only, so **every new `HTTPException` detail

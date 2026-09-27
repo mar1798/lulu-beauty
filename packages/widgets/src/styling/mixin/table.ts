@@ -1,6 +1,7 @@
 import type { StyleRule } from '@vanilla-extract/css'
 import { border, color, font, media, rem } from '../lib'
 import { vars } from '../themes/contract.css'
+import type { breakpoints } from '../../breakpoints'
 
 /**
  * Табличная внешность админки. Вынесено в миксин: таблиц три (товары, заявки
@@ -88,7 +89,15 @@ export function tableActionsCell(): StyleRule {
  * телефоне строка перестала бы объявляться строкой.
  */
 
-export function tableCardBase(): StyleRule {
+/**
+ * С какой ширины карточки снова становятся таблицей. По умолчанию `md`; таблица
+ * с колонками, которым рядом с сайдбаром админки тесно (товары), передаёт
+ * `xl` — и тогда **все** функции этой группы в ней получают одно и то же
+ * значение, иначе шапка вернётся раньше строк.
+ */
+export type ITableCardBreakpoint = keyof typeof breakpoints
+
+export function tableCardBase(from: ITableCardBreakpoint = 'md'): StyleRule {
   return {
     ...tableBase(),
     display: 'block',
@@ -96,32 +105,32 @@ export function tableCardBase(): StyleRule {
     /* Поля карточек: горизонтального отступа у ячеек в этом режиме нет. */
     paddingInline: vars.space.md,
     ...media({
-      md: { display: 'table', minWidth: rem(720), paddingInline: 0 },
+      [from]: { display: 'table', minWidth: rem(720), paddingInline: 0 },
     }),
   }
 }
 
 /** Шапку заменяют подписи из `data-label`. */
-export function tableCardHead(): StyleRule {
+export function tableCardHead(from: ITableCardBreakpoint = 'md'): StyleRule {
   return {
     display: 'none',
     ...media({
-      md: { display: 'table-header-group' },
+      [from]: { display: 'table-header-group' },
     }),
   }
 }
 
-export function tableCardBody(): StyleRule {
+export function tableCardBody(from: ITableCardBreakpoint = 'md'): StyleRule {
   return {
     display: 'block',
     ...media({
-      md: { display: 'table-row-group' },
+      [from]: { display: 'table-row-group' },
     }),
   }
 }
 
 /** Строка: на телефоне — карточка с волосяной линией снизу, на широком — `tr`. */
-export function tableCardRow(): StyleRule {
+export function tableCardRow(from: ITableCardBreakpoint = 'md'): StyleRule {
   return {
     display: 'flex',
     flexDirection: 'column',
@@ -132,13 +141,13 @@ export function tableCardRow(): StyleRule {
       '&:last-child': { borderBottom: 'none' },
     },
     ...media({
-      md: { display: 'table-row', paddingBlock: 0, borderBottom: 'none' },
+      [from]: { display: 'table-row', paddingBlock: 0, borderBottom: 'none' },
     }),
   }
 }
 
 /**
- * То, что возвращает ячейке табличность от `md` и вверх. Отдельная функция,
+ * То, что возвращает ячейке табличность от точки перехода (`md` по умолчанию) и вверх. Отдельная функция,
  * потому что `media()` собирает объект `{ '@media': … }` целиком: два вызова
  * подряд в одном правиле затирали бы друг друга, а ячейке действий нужны и
  * эти правила, и свои.
@@ -160,7 +169,7 @@ function cellAtTableWidth(extra: StyleRule = {}): StyleRule {
  * `data-label`; ячейки без этого атрибута (главная — с названием товара или
  * номером заявки) занимают всю ширину без подписи.
  */
-export function tableCardCell(): StyleRule {
+export function tableCardCell(from: ITableCardBreakpoint = 'md'): StyleRule {
   return {
     ...tableCell(),
     display: 'flex',
@@ -179,16 +188,16 @@ export function tableCardCell(): StyleRule {
         color: color.text('muted'),
       },
     },
-    ...media({ md: cellAtTableWidth() }),
+    ...media({ [from]: cellAtTableWidth() }),
   }
 }
 
 /** Ячейка с кнопками: в настоящей таблице прижата вправо, на карточке — строка. */
-export function tableCardActionsCell(): StyleRule {
+export function tableCardActionsCell(from: ITableCardBreakpoint = 'md'): StyleRule {
   return {
-    ...tableCardCell(),
+    ...tableCardCell(from),
     ...media({
-      md: cellAtTableWidth({ width: rem(1), whiteSpace: 'nowrap', textAlign: 'right' }),
+      [from]: cellAtTableWidth({ width: rem(1), whiteSpace: 'nowrap', textAlign: 'right' }),
     }),
   }
 }

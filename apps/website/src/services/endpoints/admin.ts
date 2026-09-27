@@ -1,5 +1,7 @@
 import type {
   IAdminOrder,
+  IAdminProductSort,
+  IAdminProductSortField,
   IAdminUser,
   ICategory,
   IImportSummary,
@@ -8,6 +10,7 @@ import type {
   IProduct,
   IProductImage,
   OrderStatus,
+  ISortDirection,
   Role,
 } from 'widgets/types'
 import { api } from '../api'
@@ -82,6 +85,21 @@ export interface IAdminProductListParams {
   includeDeleted?: boolean
   page?: number
   pageSize?: number
+  /** Без него бэкенд сортирует новыми вперёд — как витрина (`ADMIN_PRODUCT_SORT_DEFAULT`). */
+  sort?: IAdminProductSort
+}
+
+export const ADMIN_PRODUCT_SORT_FIELDS: readonly IAdminProductSortField[] = [
+  'name',
+  'price',
+  'created',
+]
+
+export const SORT_DIRECTIONS: readonly ISortDirection[] = ['asc', 'desc']
+
+export const ADMIN_PRODUCT_SORT_DEFAULT: IAdminProductSort = {
+  field: 'created',
+  direction: 'desc',
 }
 
 /**
@@ -146,6 +164,8 @@ export const listAdminProducts = (params: IAdminProductListParams = {}): Promise
       includeDeleted: params.includeDeleted,
       page: params.page,
       pageSize: params.pageSize,
+      sort: params.sort?.field,
+      order: params.sort?.direction,
     },
   })
 

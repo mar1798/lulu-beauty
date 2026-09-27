@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from sqlalchemy import select
@@ -11,6 +11,7 @@ from app.catalog.models import Category, Product, ProductImage
 from app.catalog.search import NOISE, normalize_search
 from app.catalog.serializers import product_response
 from app.catalog.service import ProductNotFoundError, ProductService
+from app.catalog.sorting import CATALOG_ORDERS, CatalogSort, ProductOrder, SortDirection, SortField
 from app.orders.service import OrdersService
 from tests.integration.factories import (
     make_category,
@@ -934,3 +935,77 @@ async def test_a_plain_description_drops_the_html_it_replaces(db_session: AsyncS
     assert summary.errors == []
     await db_session.refresh(product)
     assert (product.description, product.description_html) == ("Из файла", None)
+
+
+async def _product_added(
+    session: AsyncSession, name: str, days_ago: int, price_cents: int = 1000
+) -> Product:
+    """A product with its own `created_at`.
+
+    Set by hand because inside one test everything shares a transaction, and `now()` is
+    the start of the transaction: left alone, every product here would be the same age.
+    """
+    product = await make_product(session, name=name, price_cents=price_cents)
+    product.created_at = datetime.now(UTC) - timedelta(days=days_ago)
+    await session.flush()
+    return product
+
+
+async def test_listings_default_to_newest_first(db_session: AsyncSession) -> None:
+    await _product_added(db_session, "Old", days_ago=30)
+    await _product_added(db_session, "New", days_ago=1)
+    await _product_added(db_session, "Middle", days_ago=10)
+    service = ProductService(db_session)
+
+    public, _ = await service.list_public(None, None, 1, 20)
+    admin, _ = await service.list_admin(None, None, 1, 20)
+
+    assert [product.name for product in public] == ["New", "Middle", "Old"]
+    assert [product.name for product in admin] == ["New", "Middle", "Old"]
+
+
+async def test_catalog_sorts_by_the_cheapest_volume(db_session: AsyncSession) -> None:
+    """By `price_cents`, i.e. the "от N ₽" on the card, not by the first volume listed."""
+    await make_product(db_session, name="Mid", price_cents=2000)
+    await make_product(db_session, name="Several", variants=[(100, 5000, True), (30, 500, True)])
+    await make_product(db_session, name="Dear", price_cents=9000)
+    service = ProductService(db_session)
+
+    cheap_first, _ = await service.list_public(
+        None, None, 1, 20, order=CATALOG_ORDERS[CatalogSort.PRICE_ASC]
+    )
+    dear_first, _ = await service.list_public(
+        None, None, 1, 20, order=CATALOG_ORDERS[CatalogSort.PRICE_DESC]
+    )
+
+    assert [product.name for product in cheap_first] == ["Several", "Mid", "Dear"]
+    assert [product.name for product in dear_first] == ["Dear", "Mid", "Several"]
+
+
+async def test_products_added_together_page_by_name(db_session: AsyncSession) -> None:
+    """One import writes one `created_at`; the name keeps its pages from overlapping."""
+    for name in ["Delta", "Alpha", "Charlie", "Bravo"]:
+        await make_product(db_session, name=name)
+    service = ProductService(db_session)
+
+    first, total = await service.list_public(None, None, 1, 2)
+    second, _ = await service.list_public(None, None, 2, 2)
+
+    assert total == 4
+    assert [product.name for product in first + second] == ["Alpha", "Bravo", "Charlie", "Delta"]
+
+
+async def test_admin_sorts_by_any_column_both_ways(db_session: AsyncSession) -> None:
+    await _product_added(db_session, "Bravo", days_ago=2, price_cents=3000)
+    await _product_added(db_session, "Alpha", days_ago=1, price_cents=2000)
+    await _product_added(db_session, "Charlie", days_ago=3, price_cents=1000)
+    service = ProductService(db_session)
+
+    async def names(field: SortField, direction: SortDirection) -> list[str]:
+        found, _ = await service.list_admin(None, None, 1, 20, order=ProductOrder(field, direction))
+        return [product.name for product in found]
+
+    assert await names(SortField.NAME, SortDirection.ASC) == ["Alpha", "Bravo", "Charlie"]
+    assert await names(SortField.NAME, SortDirection.DESC) == ["Charlie", "Bravo", "Alpha"]
+    assert await names(SortField.PRICE, SortDirection.ASC) == ["Charlie", "Alpha", "Bravo"]
+    assert await names(SortField.CREATED, SortDirection.ASC) == ["Charlie", "Bravo", "Alpha"]

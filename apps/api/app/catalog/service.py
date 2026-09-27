@@ -13,6 +13,7 @@ from app.catalog.models import Category, Product, ProductImage, ProductVariant
 from app.catalog.results import CatalogSuggestions, VariantSpec
 from app.catalog.rich_text import Description, description_from_html
 from app.catalog.search import normalize_search
+from app.catalog.sorting import DEFAULT_ORDER, ProductOrder
 from app.common.limits import MAX_PRODUCT_VARIANTS
 from app.orders.models import OrderItem
 
@@ -231,16 +232,15 @@ class ProductService:
         return query
 
     async def _paginate(
-        self, query: Select[tuple[Product]], page: int, page_size: int
+        self, query: Select[tuple[Product]], page: int, page_size: int, order: ProductOrder
     ) -> tuple[list[Product], int]:
         total = await self._session.scalar(select(func.count()).select_from(query.subquery())) or 0
 
         result = await self._session.execute(
             query.options(selectinload(Product.images), selectinload(Product.variants))
-            # Product names are not unique (two volumes of the same toner, a re-imported
-            # duplicate), so name alone leaves the order of the equal rows to the planner
-            # — and a paginated listing then repeats one product and skips another.
-            .order_by(Product.name, Product.id)
+            # Always a total order — see `ProductOrder.clauses` for why the tie-breakers
+            # are not optional under pagination.
+            .order_by(*order.clauses())
             .offset((page - 1) * page_size)
             .limit(page_size)
         )
@@ -254,6 +254,7 @@ class ProductService:
         page_size: int,
         search: str | None = None,
         brand: str | None = None,
+        order: ProductOrder = DEFAULT_ORDER,
     ) -> tuple[list[Product], int]:
         query = self._filtered_query(
             category_slug,
@@ -263,7 +264,7 @@ class ProductService:
             brand=brand,
             search_category_ids=await self._search_category_ids(search) if search else (),
         )
-        return await self._paginate(query, page, page_size)
+        return await self._paginate(query, page, page_size, order)
 
     async def list_admin(
         self,
@@ -274,6 +275,7 @@ class ProductService:
         search: str | None = None,
         include_deleted: bool = False,
         brand: str | None = None,
+        order: ProductOrder = DEFAULT_ORDER,
     ) -> tuple[list[Product], int]:
         """Admin listing — unlike list_public it can surface soft-deleted products."""
         query = self._filtered_query(
@@ -284,7 +286,7 @@ class ProductService:
             brand,
             search_category_ids=await self._search_category_ids(search) if search else (),
         )
-        return await self._paginate(query, page, page_size)
+        return await self._paginate(query, page, page_size, order)
 
     async def list_brands(self, include_deleted: bool = False) -> list[str]:
         """Distinct brands actually present in the catalog.
