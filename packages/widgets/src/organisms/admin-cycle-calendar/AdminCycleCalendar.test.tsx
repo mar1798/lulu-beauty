@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { AdminCycleCalendar } from '.'
@@ -31,6 +31,22 @@ const activeDay = (props: ReturnType<typeof feedAdminCycleCalendar>): number => 
  * сюда же — чисто презентационным компонентам хватает этого теста и Storybook.
  */
 describe('AdminCycleCalendar', () => {
+  /*
+    Фикстура ставит сборы через 3 и 20 дней от «сейчас», а календарь открывается на
+    текущем месяце. В последние три дня месяца идущий сбор уезжал в следующий, и тест
+    щёлкал по пустой клетке. Середина месяца держит оба сбора на экране. Подменяется
+    только `Date`: таймеры нужны `userEvent` настоящими.
+  */
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    /* Полдень 10 марта по магазину (`Asia/Bishkek`, UTC+6). */
+    vi.setSystemTime(new Date('2026-03-10T06:00:00.000Z'))
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
   it('рендерится с фикстурой из feed', () => {
     const { container } = renderWidget(<AdminCycleCalendar {...feedAdminCycleCalendar()} />)
 
