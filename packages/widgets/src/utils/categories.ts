@@ -38,18 +38,28 @@ export const categoryTree = (categories: ICategory[]): ICategoryTreeEntry[] => {
 /**
  * Строки выпадающего списка категорий — деревом, с отступом у подкатегорий.
  *
+ * Разделами помечаются все строки верхнего уровня, а не только те, у которых
+ * есть подкатегории: иначе раздел без детей стоял бы обычной строкой между
+ * заголовками и читался бы как подкатегория предыдущего. В плоском списке
+ * (подкатегорий нет вовсе) заголовков нет — группировать там нечего.
+ *
  * `valueOf` — потому что фильтры каталога адресуют категорию слагом
  * (`GET /products?category=`), а форма товара — id.
  */
 export const categoryOptions = (
   categories: ICategory[],
   valueOf: (category: ICategory) => string
-): ISelectOption[] =>
-  categoryTree(categories).map(({ category, isNested }) => ({
+): ISelectOption[] => {
+  const tree = categoryTree(categories)
+  const hasNesting = tree.some(({ isNested }) => isNested)
+
+  return tree.map(({ category, isNested }) => ({
     value: valueOf(category),
     label: category.name,
     isNested,
+    isSection: hasNesting && !isNested,
   }))
+}
 
 /** Разделы — категории верхнего уровня. */
 export const topLevelCategories = (categories: ICategory[]): ICategory[] =>

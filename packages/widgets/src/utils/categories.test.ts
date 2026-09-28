@@ -60,9 +60,17 @@ describe('categoryOptions', () => {
     expect(
       categoryOptions([category('face'), category('toners', 'face')], item => item.slug)
     ).toEqual([
-      { value: 'face-slug', label: 'face', isNested: false },
-      { value: 'toners-slug', label: 'toners', isNested: true },
+      { value: 'face-slug', label: 'face', isNested: false, isSection: true },
+      { value: 'toners-slug', label: 'toners', isNested: true, isSection: false },
     ])
+  })
+
+  it('не делает заголовков в плоском списке', () => {
+    expect(
+      categoryOptions([category('face'), category('hair')], item => item.slug).map(
+        option => option.isSection
+      )
+    ).toEqual([false, false])
   })
 })
 

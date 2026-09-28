@@ -148,6 +148,55 @@ describe('Select', () => {
  * отдельно от разметки: в jsdom все прямоугольники нулевые, и через рендер
  * этот расчёт не увидеть.
  */
+/**
+ * На тач-экране вместо своего списка — нативный `<select>`. `matchMedia` в
+ * тестах всегда отвечает «нет», поэтому сенсорный экран включается подменой.
+ */
+describe('Select · тач-экран', () => {
+  const touchOptions = [
+    { value: '', label: 'Все категории' },
+    { value: 'face', label: 'Уход за лицом', isSection: true },
+    { value: 'serum', label: 'Сыворотка', isNested: true },
+    { value: 'cream', label: 'Крем', isNested: true },
+    { value: 'sets', label: 'Наборы', isSection: true },
+  ]
+
+  it('собирает раздел с подкатегориями в optgroup, оставляя раздел выбираемым', () => {
+    const original = window.matchMedia
+
+    window.matchMedia = (query: string): MediaQueryList =>
+      ({
+        ...original(query),
+        matches: query === '(pointer: coarse)',
+      }) as MediaQueryList
+
+    try {
+      const { container } = renderWidget(
+        <Select value="" onChange={vi.fn()} label="Категория" options={touchOptions} />
+      )
+
+      const groups = container.querySelectorAll('optgroup')
+
+      expect(groups).toHaveLength(1)
+      expect(groups[0]).toHaveAttribute('label', 'Уход за лицом')
+      expect(Array.from(groups[0].querySelectorAll('option'), option => option.value)).toEqual([
+        'face',
+        'serum',
+        'cream',
+      ])
+      // Раздел без подкатегорий и «Все категории» — обычные строки.
+      expect(
+        Array.from(
+          container.querySelectorAll<HTMLOptionElement>('select > option'),
+          option => option.value
+        )
+      ).toEqual(['', 'sets'])
+    } finally {
+      window.matchMedia = original
+    }
+  })
+})
+
 describe('Select · раскладка списка', () => {
   it('раскрывается вниз, когда снизу есть место', () => {
     const anchor = anchorTo(triggerAt({ top: 100, bottom: 144 }))
