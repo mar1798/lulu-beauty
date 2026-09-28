@@ -98,3 +98,35 @@ NearViewportEdge.parameters = {
   layout: 'fullscreen',
 }
 NearViewportEdge.args = feedSelect()
+
+/**
+ * Дерево категорий, как в фильтре каталога: разделы — заголовками групп,
+ * прилипают к верху при прокрутке; подкатегории мельче и с отступом.
+ */
+export const CategoryTree = Template.bind({})
+CategoryTree.parameters = {
+  layout: 'centered',
+}
+CategoryTree.args = {
+  ...feedSelect(),
+  label: 'Категория',
+  value: '',
+  options: [
+    { value: '', label: 'Все категории' },
+    ...(
+      [
+        [
+          'Уход за лицом',
+          ['Сыворотка', 'Крем', 'Тонер', 'Мист', 'SPF', 'Пады', 'Маски', 'Очищение'],
+        ],
+        ['Макияж', ['Тональные средства', 'Помада и тинты', 'Тени', 'Тушь']],
+        ['Уход за волосами', ['Шампунь', 'Маски для волос']],
+        ['Наборы', []],
+        ['Уход за телом', ['Лосьоны', 'Гели для душа', 'Скрабы']],
+      ] as const
+    ).flatMap(([section, children]) => [
+      { value: section, label: section, isSection: true },
+      ...children.map(child => ({ value: child, label: child, isNested: true })),
+    ]),
+  ],
+}

@@ -4,6 +4,7 @@ import {
   type CSSProperties,
   type FC,
   type KeyboardEvent,
+  type ReactElement,
   useCallback,
   useEffect,
   useId,
@@ -50,13 +51,11 @@ const VIEWPORT_MARGIN = 8
 const MAX_HEIGHT = 288
 
 /**
- * Отступ вложенной строки в нативном списке. Системный `<option>` стилей не
- * принимает, поэтому сдвиг — неразрывными пробелами в самой подписи: обычные
- * браузер схлопнул бы. Набору по первым буквам они не мешают: нативный список
- * рендерится только на сенсорном экране (`TOUCH_QUERY`), где выбор — системное
- * колесо или лист без набора, а скринридер пробелы не зачитывает.
+ * Потолок для дерева категорий. Строки там сгруппированы под разделами, и
+ * в 288px помещалось шесть-семь штук — одна группа, да и та не целиком.
+ * Страницей список всё равно не станет: высоту режет место в окне (`anchorTo`).
  */
-const NATIVE_INDENT = '\u00A0\u00A0\u00A0\u00A0'
+const TREE_MAX_HEIGHT = 420
 
 /** Сколько миллисекунд набранные буквы считаются одним поисковым запросом. */
 const TYPEAHEAD_RESET_MS = 500
@@ -120,6 +119,34 @@ const seek = (options: ISelectOption[], from: number, step: number): number => {
 
   return -1
 }
+
+interface IOptionEntry {
+  option: ISelectOption
+  /** Место в плоском `items`: по нему живут `activeIndex` и id строки. */
+  index: number
+}
+
+/**
+ * Строки, собранные в группы: раздел со своими подкатегориями — одна группа,
+ * любая другая строка («Все категории», обычный плоский список) — сама по себе.
+ *
+ * Группа нужна ради прилипающего заголовка: `sticky` держится только в
+ * пределах своего контейнера, и в общем списке раздел висел бы наверху и
+ * тогда, когда его подкатегории давно уехали, — следующий раздел наползал бы
+ * на него, а не выталкивал.
+ */
+const groupOptions = (items: ISelectOption[]): IOptionEntry[][] =>
+  items.reduce<IOptionEntry[][]>((groups, option, index) => {
+    const last = groups.at(-1)
+
+    if (option.isNested === true && last?.[0].option.isSection === true) {
+      last.push({ option, index })
+    } else {
+      groups.push([{ option, index }])
+    }
+
+    return groups
+  }, [])
 
 const firstEnabled = (options: ISelectOption[]): number => seek(options, 0, 1)
 
@@ -209,6 +236,11 @@ export const Select: FC<ISelectProps & IBasicStyling> = ({
     [options, placeholder, required]
   )
 
+  const hasSections = useMemo(() => items.some(option => option.isSection === true), [items])
+  const maxHeight = hasSections ? TREE_MAX_HEIGHT : MAX_HEIGHT
+
+  const groups = useMemo(() => groupOptions(items), [items])
+
   const selectedIndex = items.findIndex(option => option.value === value)
   const selected = selectedIndex === -1 ? null : items[selectedIndex]
 
@@ -231,9 +263,9 @@ export const Select: FC<ISelectProps & IBasicStyling> = ({
    */
   const measure = useCallback(() => {
     if (triggerRef.current !== null) {
-      setAnchor(anchorTo(triggerRef.current))
+      setAnchor(anchorTo(triggerRef.current, maxHeight))
     }
-  }, [])
+  }, [maxHeight])
 
   const reanchor = useCallback(() => {
     if (reanchorFrame.current !== null) {
@@ -247,11 +279,11 @@ export const Select: FC<ISelectProps & IBasicStyling> = ({
         return
       }
 
-      const next = anchorTo(triggerRef.current)
+      const next = anchorTo(triggerRef.current, maxHeight)
 
       setAnchor(current => (isSameAnchor(current, next) ? current : next))
     })
-  }, [])
+  }, [maxHeight])
 
   useEffect(
     () => () => {
@@ -489,6 +521,10 @@ export const Select: FC<ISelectProps & IBasicStyling> = ({
    * Прокручивается сам контейнер, а не `scrollIntoView`: тот при
    * `block: 'nearest'` вправе подвинуть и предков — то есть страницу под
    * порталом.
+   *
+   * Над строкой может висеть прилипший заголовок раздела: при ходе вверх
+   * строка встаёт под него, а не под край панели, иначе она окажется ровно
+   * за заголовком. Сам раздел ни под кого не прячется.
    */
   useEffect(() => {
     const active = activeRef.current
@@ -502,9 +538,14 @@ export const Select: FC<ISelectProps & IBasicStyling> = ({
 
     const top = active.offsetTop
     const bottom = top + active.offsetHeight
+    const header =
+      active.dataset.section === undefined
+        ? popover.querySelector<HTMLElement>('[data-section]')
+        : null
+    const covered = header?.offsetHeight ?? 0
 
-    if (top < popover.scrollTop) {
-      popover.scrollTop = top
+    if (top - covered < popover.scrollTop) {
+      popover.scrollTop = top - covered
     } else if (bottom > popover.scrollTop + popover.clientHeight) {
       popover.scrollTop = bottom - popover.clientHeight
     }
@@ -526,6 +567,47 @@ export const Select: FC<ISelectProps & IBasicStyling> = ({
     return isReduced
       ? { opacity: 0 }
       : { opacity: 0, transform: `translateY(${shift}px) scale(0.97)` }
+  }
+
+  const renderNativeOption = ({ option }: IOptionEntry): ReactElement => (
+    <option key={option.value} value={option.value} disabled={option.disabled}>
+      {option.label}
+    </option>
+  )
+
+  const renderOption = ({ option, index }: IOptionEntry): ReactElement => {
+    const isSelected = option.value === value
+    const isActive = index === activeIndex
+    const isDisabled = option.disabled === true
+
+    return (
+      <li
+        key={option.value}
+        ref={isActive ? activeRef : undefined}
+        id={optionId(index)}
+        data-section={option.isSection === true ? '' : undefined}
+        className={clsx(
+          styles.option,
+          option.isNested === true && styles.nested,
+          option.isSection === true && styles.section,
+          isActive && styles.active,
+          isSelected && styles.selected,
+          isDisabled && styles.disabled
+        )}
+        role="option"
+        aria-selected={isSelected}
+        aria-disabled={isDisabled}
+        onMouseMove={() => {
+          if (!isDisabled && !isActive) {
+            setActiveIndex(index)
+          }
+        }}
+        onClick={() => commit(index)}
+      >
+        <span className={styles.optionLabel}>{option.label}</span>
+        {isSelected && <IconCheck className={styles.check} />}
+      </li>
+    )
   }
 
   const footnote = hasError ? (
@@ -567,11 +649,23 @@ export const Select: FC<ISelectProps & IBasicStyling> = ({
             aria-describedby={describedBy}
             onChange={event => onChange(event.target.value)}
           >
-            {items.map(option => (
-              <option key={option.value} value={option.value} disabled={option.disabled}>
-                {option.isNested === true ? `${NATIVE_INDENT}${option.label}` : option.label}
-              </option>
-            ))}
+            {/*
+              Раздел с подкатегориями — `optgroup`: системный список (колесо на
+              iOS, лист на Android) рисует его заголовком, и иерархия видна без
+              отступов пробелами, которые там почти терялись. Заголовок группы
+              выбрать нельзя, поэтому сам раздел повторяется первой строкой
+              внутри неё — ею и выбирается весь раздел. Раздел без подкатегорий
+              остаётся обычной строкой: группа из одного пункта — лишний шум.
+            */}
+            {groups.map(group =>
+              group.length > 1 ? (
+                <optgroup key={group[0].option.value} label={group[0].option.label}>
+                  {group.map(renderNativeOption)}
+                </optgroup>
+              ) : (
+                group.map(renderNativeOption)
+              )
+            )}
           </select>
 
           <IconChevronDown className={styles.chevron} />
@@ -651,38 +745,19 @@ export const Select: FC<ISelectProps & IBasicStyling> = ({
                 aria-labelledby={label === undefined ? undefined : labelId}
                 aria-label={label === undefined ? ariaLabel : undefined}
               >
-                {items.map((option, index) => {
-                  const isSelected = option.value === value
-                  const isActive = index === activeIndex
-                  const isDisabled = option.disabled === true
-
-                  return (
-                    <li
-                      key={option.value}
-                      ref={isActive ? activeRef : undefined}
-                      id={optionId(index)}
-                      className={clsx(
-                        styles.option,
-                        option.isNested === true && styles.nested,
-                        isActive && styles.active,
-                        isSelected && styles.selected,
-                        isDisabled && styles.disabled
-                      )}
-                      role="option"
-                      aria-selected={isSelected}
-                      aria-disabled={isDisabled}
-                      onMouseMove={() => {
-                        if (!isDisabled && !isActive) {
-                          setActiveIndex(index)
-                        }
-                      }}
-                      onClick={() => commit(index)}
-                    >
-                      <span className={styles.optionLabel}>{option.label}</span>
-                      {isSelected && <IconCheck className={styles.check} />}
+                {groups.map(group =>
+                  group[0].option.isSection === true ? (
+                    // Обёртки прозрачны для скринридера: строки по-прежнему
+                    // принадлежат самому `listbox`.
+                    <li key={group[0].option.value} className={styles.group} role="none">
+                      <ul className={styles.list} role="none">
+                        {group.map(renderOption)}
+                      </ul>
                     </li>
+                  ) : (
+                    group.map(renderOption)
                   )
-                })}
+                )}
               </ul>
             </m.div>
           )}
