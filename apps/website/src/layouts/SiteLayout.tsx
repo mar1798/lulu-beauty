@@ -204,7 +204,7 @@ export const SiteLayout: React.FC<ISiteLayoutProps> = ({ children, isCartCountSh
         <Footer
           columns={footerColumns}
           copyright={`© ${START_YEAR} Sululu`}
-          note="Оплата и доставка обсуждаются лично"
+          note="Оплата - переводом по счёту из Telegram, выдача обсуждается лично"
         />
       }
     >

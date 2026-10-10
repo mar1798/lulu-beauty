@@ -2,8 +2,9 @@
 
 Sululu is an online catalog and ordering platform for a single shop. Customers browse a
 catalog, fill a cart and submit a **request** (заявка) before an owner-set deadline. There is
-**no online payment**: the owner confirms requests, buys the goods, and hands them over
-offline. Everything the customer and the owner hear from the system arrives over Telegram.
+**no online payment**: the owner confirms requests, the bot sends the customer the bill and
+the requisites, the customer pays by transfer and sends the receipt back to the bot, and the
+owner buys the goods and hands them over offline. Everything the customer and the owner hear from the system arrives over Telegram.
 
 ## Repository layout
 

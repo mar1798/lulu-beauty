@@ -403,7 +403,7 @@ export const feedFooter = (): IFooterProps => ({
     },
   ],
   copyright: '© 2026 Sululu',
-  note: 'Оплата и доставка обсуждаются лично',
+  note: 'Оплата - переводом по счёту из Telegram, выдача обсуждается лично',
 })
 
 export const feedBaseLayout = (): IBaseLayoutProps => ({
@@ -546,7 +546,7 @@ export const feedFaqAccordion = (): IFaqAccordionProps => ({
     {
       question: 'Почему нельзя оплатить на сайте?',
       answer:
-        'Онлайн-оплаты нет вовсе: мы подтверждаем заявки после закрытия сбора, а оплата обсуждается лично.',
+        'Онлайн-оплаты нет вовсе: мы подтверждаем заявки после закрытия сбора, и бот присылает реквизиты для перевода.',
     },
     {
       question: 'Сбора сейчас нет - что делать?',
@@ -937,6 +937,7 @@ export const feedOrder = (overrides: Partial<IOrder> = {}): IOrder => {
     isRestorable: false,
     isCancellable: true,
     pendingStage: 'COLLECTING',
+    paidAt: null,
     ...overrides,
   }
 }
@@ -1228,6 +1229,7 @@ export const feedAdminOrder = (overrides: Partial<IAdminOrder> = {}): IAdminOrde
   ...feedOrder(),
   customerName: faker.person.fullName(),
   customerPhone: '+996555123456',
+  hasReceipt: false,
   ...overrides,
 })
 
@@ -1252,8 +1254,12 @@ export const feedAdminUsersTable = (): IAdminUsersTableProps => ({
 export const feedAdminOrdersTable = (): IAdminOrdersTableProps => ({
   orders: [
     feedAdminOrder({ note: 'Позвоните после 18:00.' }),
-    feedAdminOrder({ status: 'CONFIRMED' }),
-    feedAdminOrder({ status: 'COMPLETED' }),
+    feedAdminOrder({ status: 'CONFIRMED', hasReceipt: true }),
+    feedAdminOrder({
+      status: 'COMPLETED',
+      hasReceipt: true,
+      paidAt: new Date(Date.now() - DAY_MS).toISOString(),
+    }),
   ],
   onStatusChange: noop,
   buildProductHref: slug => `/catalog/${slug}`,

@@ -2,7 +2,7 @@ import asyncio
 import enum
 import logging
 import uuid
-from collections.abc import Sequence
+from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 
@@ -13,6 +13,7 @@ from aiogram.types import InlineKeyboardMarkup
 from app.auth.models import User
 from app.cycles.models import OrderCycle
 from app.orders.models import Order, OrderStatus
+from app.payments.models import PaymentReceipt, ReceiptKind
 from app.telegram import keyboards, messages
 from app.wanted.models import WantedProduct
 
@@ -53,6 +54,45 @@ class BroadcastResult:
 
     sent: int
     blocked_chat_ids: list[int]
+
+
+# Telegram's limit on one text message, counted in UTF-16 code units, not characters.
+MAX_MESSAGE_LENGTH = 4096
+
+
+def _telegram_length(text: str) -> int:
+    return len(text.encode("utf-16-le")) // 2
+
+
+def split_message(text: str, limit: int = MAX_MESSAGE_LENGTH) -> list[str]:
+    """`text` in as few messages as Telegram takes, cut between lines.
+
+    A line longer than a whole message on its own is cut where it has to be; none of the
+    texts here has one, but sending nothing at all would be the worse failure.
+    """
+    parts: list[str] = []
+    current: list[str] = []
+    length = 0
+    for line in text.split("\n"):
+        while _telegram_length(line) > limit:
+            cut = limit
+            while _telegram_length(line[:cut]) > limit:
+                cut -= 1
+            text_before, line = line[:cut], line[cut:]
+            if current:
+                parts.append("\n".join(current))
+                current, length = [], 0
+            parts.append(text_before)
+        added = _telegram_length(line) + (1 if current else 0)
+        if current and length + added > limit:
+            parts.append("\n".join(current))
+            current, length = [], 0
+            added = _telegram_length(line)
+        current.append(line)
+        length += added
+    if current:
+        parts.append("\n".join(current))
+    return parts
 
 
 class NotificationsService:
@@ -122,7 +162,15 @@ class NotificationsService:
             order.id,
         )
 
-    async def send_order_status(self, user: User, order: Order) -> None:
+    async def send_order_status(
+        self, user: User, order: Order, *, first_cycle: bool = False
+    ) -> None:
+        # Always unpaid here: going back to PENDING clears `paid_at`, and only PENDING
+        # leads to CONFIRMED.
+        if order.status is OrderStatus.CONFIRMED:
+            await self._send_bill(user, order, first_cycle=first_cycle)
+            return
+
         message = messages.order_status_changed(order)
         if message is None:
             return
@@ -143,6 +191,80 @@ class NotificationsService:
             self._fallback_reason(user),
             order.status,
             order.id,
+        )
+
+    async def _send_bill(self, user: User, order: Order, *, first_cycle: bool) -> None:
+        """Confirmation is where the customer is asked to pay, so it carries the bill and
+        the button that sends the receipt back.
+
+        Every line is listed, so a big order outgrows one message: the bill then goes out
+        in parts, with the button under the last — next to the total and the requisites.
+        """
+        parts = split_message(messages.order_confirmed(order, first_cycle=first_cycle))
+        for index, part in enumerate(parts):
+            last = index == len(parts) - 1
+            keyboard = keyboards.receipt_actions(order.id) if last else None
+            if not await self._try_send(
+                user.telegram_chat_id, part, reply_markup=keyboard, parse_mode="HTML"
+            ):
+                logger.warning(
+                    "%s; bill for order %s not sent (part %d of %d)",
+                    self._fallback_reason(user),
+                    order.id,
+                    index + 1,
+                    len(parts),
+                )
+                return
+        logger.info("Sent the bill for order %s to %s", order.id, user.phone)
+
+    async def send_receipt(
+        self, owner: User, receipt: PaymentReceipt, order: Order, customer: User | None
+    ) -> None:
+        """The customer's receipt, re-sent by `file_id` with the order under it.
+
+        Sent rather than forwarded: a forward carries no buttons, and a customer with
+        forwarding privacy on would arrive as a name with no link anyway.
+        """
+        caption = messages.receipt_for_owner(order, customer)
+        keyboard = keyboards.payment_actions(receipt.id)
+
+        async def send(bot: Bot, chat_id: int) -> object:
+            if receipt.kind is ReceiptKind.PHOTO:
+                return await bot.send_photo(
+                    chat_id, receipt.file_id, caption=caption, reply_markup=keyboard
+                )
+            return await bot.send_document(
+                chat_id, receipt.file_id, caption=caption, reply_markup=keyboard
+            )
+
+        if await self._attempt(owner.telegram_chat_id, send) is Delivery.SENT:
+            logger.info("Sent receipt %s for order %s to %s", receipt.id, order.id, owner.phone)
+            return
+        logger.warning(
+            "%s; receipt %s for order %s not delivered",
+            self._fallback_reason(owner),
+            receipt.id,
+            order.id,
+        )
+
+    async def send_payment_reviewed(self, user: User, order: Order, *, accepted: bool) -> None:
+        if accepted:
+            message = messages.payment_accepted(order)
+            keyboard = keyboards.orders_link()
+        else:
+            # The text sends them to the owner if the receipt was right after all.
+            message = messages.payment_rejected(order)
+            keyboard = keyboards.owner_contact_actions()
+        if await self._try_send(user.telegram_chat_id, message, reply_markup=keyboard):
+            logger.info(
+                "Told %s the payment for order %s was %s",
+                user.phone,
+                order.id,
+                "accepted" if accepted else "rejected",
+            )
+            return
+        logger.warning(
+            "%s; payment verdict on order %s not announced", self._fallback_reason(user), order.id
         )
 
     async def send_order_deleted(
@@ -345,9 +467,17 @@ class NotificationsService:
     # ─── Delivery ────────────────────────────────────────────────────────────────
 
     async def _try_send(
-        self, chat_id: int | None, message: str, *, reply_markup: InlineKeyboardMarkup | None = None
+        self,
+        chat_id: int | None,
+        message: str,
+        *,
+        reply_markup: InlineKeyboardMarkup | None = None,
+        parse_mode: str | None = None,
     ) -> bool:
-        return await self._deliver(chat_id, message, reply_markup=reply_markup) is Delivery.SENT
+        delivery = await self._deliver(
+            chat_id, message, reply_markup=reply_markup, parse_mode=parse_mode
+        )
+        return delivery is Delivery.SENT
 
     async def _deliver(
         self,
@@ -355,13 +485,30 @@ class NotificationsService:
         message: str,
         *,
         reply_markup: InlineKeyboardMarkup | None = None,
+        parse_mode: str | None = None,
         retry_on_flood: bool = True,
     ) -> Delivery:
+        async def send(bot: Bot, chat_id: int) -> object:
+            return await bot.send_message(
+                chat_id, message, reply_markup=reply_markup, parse_mode=parse_mode
+            )
+
+        return await self._attempt(chat_id, send, retry_on_flood=retry_on_flood)
+
+    async def _attempt(
+        self,
+        chat_id: int | None,
+        send: Callable[[Bot, int], Awaitable[object]],
+        *,
+        retry_on_flood: bool = True,
+    ) -> Delivery:
+        """One delivery of anything — a text, a photo, a document — with the same
+        failure handling for all of them."""
         if self._bot is None or chat_id is None:
             return Delivery.NO_BINDING
 
         try:
-            await self._bot.send_message(chat_id, message, reply_markup=reply_markup)
+            await send(self._bot, chat_id)
         except TelegramForbiddenError:
             # The user blocked the bot or deleted the chat. Nothing to retry — the
             # binding itself is dead, and the caller is expected to drop it.
@@ -374,9 +521,7 @@ class NotificationsService:
             # Telegram states exactly how long to wait, and one retry clears the bursts
             # that cause this. Anything past that is the broadcast's problem, not ours.
             await asyncio.sleep(error.retry_after)
-            return await self._deliver(
-                chat_id, message, reply_markup=reply_markup, retry_on_flood=False
-            )
+            return await self._attempt(chat_id, send, retry_on_flood=False)
         except Exception:  # noqa: BLE001 - delivery is best-effort; any failure falls back to the log
             logger.exception("Failed to send Telegram message to chat_id=%s", chat_id)
             return Delivery.FAILED

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { AdminOrdersTable } from '.'
-import { feedAdminOrdersTable } from '../../stories/feed'
+import { feedAdminOrder, feedAdminOrdersTable } from '../../stories/feed'
 import { renderWidget } from '../../testing/render'
 
 /**
@@ -28,5 +28,19 @@ describe('AdminOrdersTable', () => {
     )
 
     expect(container.querySelector('tfoot')).toBeNull()
+  })
+
+  it('метит оплату: оплаченная важнее присланного чека, без чека метки нет', () => {
+    const orders = [
+      feedAdminOrder({ status: 'CONFIRMED', hasReceipt: true }),
+      feedAdminOrder({ status: 'READY', hasReceipt: true, paidAt: new Date().toISOString() }),
+      feedAdminOrder({ status: 'CONFIRMED' }),
+    ]
+    const { getAllByText } = renderWidget(
+      <AdminOrdersTable {...feedAdminOrdersTable()} orders={orders} />
+    )
+
+    expect(getAllByText('Чек на проверке')).toHaveLength(1)
+    expect(getAllByText('Оплачено')).toHaveLength(1)
   })
 })

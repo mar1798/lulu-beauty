@@ -132,6 +132,50 @@ path into the bot opens a database session on behalf of an unauthenticated sende
 throttled update should not even be matched against handlers. It is a token bucket, so
 tapping three buttons in a row is fine and only a sustained burst is refused.
 
+### Payment receipts
+
+Any photo or document sent to the bot is taken for a receipt (`handle_receipt`, registered
+**before** `handle_fallback`, which catches every message and would swallow it). A document
+must be a PDF or an image; anything else is refused in words. Which order it pays for is
+worked out on arrival, **not remembered from the button press** — the dispatcher's FSM
+storage is in memory and a restart between the tap and the photo would lose it:
+
+- a reply to a bot message naming exactly one order (`#xxxxxxxx`) takes that one if it is
+  the customer's and still payable, at any age; if it is theirs but paid or cancelled since,
+  they are told it no longer takes payment — never guessed onto another order. The
+  «📎 Отправить чек» button checks the same before prompting. «📎 Отправить чек» sends its prompt as a `ForceReply`, so the client makes the file
+  a reply to the prompt by itself, and the prompt names the order — no state, nothing a
+  restart could lose. A reply to the bill works the same way. The acknowledgement brings
+  the reply keyboard back, since the `ForceReply` displaced it;
+- otherwise the candidates are the customer's unpaid **CONFIRMED** orders confirmed within
+  the last week (`RECEIPT_GUESS_WINDOW`, measured from `orders.confirmed_at`) — READY ones
+  and old cycles' leftovers are not guessed at. One candidate takes it;
+- several: the bot replies to the file with one button per order, and the answer
+  (`ReceiptOrderChoice`) finds the file again as the question's `reply_to_message`;
+- none: the customer is told nothing is waiting for payment.
+
+The same file twice (`file_unique_id`) is one receipt — unless the owner already decided on
+it (rejected, or accepted before the order lost its payment), or it was sent against a bill
+from before the order went back to PENDING: sent again, that row goes
+back for review and to the owners, since the customer evidently holds
+it to be right. An album arrives as one message per
+page: each page is filed and sent to the owners, the customer is thanked once
+(`_acknowledged_albums`, in memory). Owners receive the file re-sent by `file_id` — not
+forwarded, since a forward cannot carry buttons — with `PaymentAction` buttons that work
+like the order ones: role checked on the presser, caption rewritten to drop them, customer
+told after the commit.
+
+A bill longer than Telegram's 4096 (every line is listed) goes out in several messages cut
+between lines (`service.split_message`), the receipt button under the last.
+
+The bill greets the customers of the **first** cycle (no earlier deadline) as the shop's
+first; every later one gets the same text without that word (`notify._is_first_cycle`).
+
+The bill is the one message sent with `parse_mode="HTML"`: «Sululu» and the sum to pay are
+bold, so every product name in it goes through `html.escape`. Every other text is plain and
+escapes nothing. Its amounts are written without the thousands separator («3050 сом»),
+unlike every other message and the site («3 050 сом»).
+
 ### Polling vs webhook
 
 Long polling by default. Webhook mode needs **all three** of `TELEGRAM_USE_WEBHOOK`,
@@ -157,6 +201,9 @@ with admin rights — `ADMIN` and `SUPER_ADMIN` alike (`recipients.get_owners`).
 | --------------------------------------------------------------------- | ------------------------------- |
 | New order at checkout                                                 | Owner                           |
 | Order status change (incl. the owner undoing their own cancel)        | Customer                        |
+| Order confirmed: the bill, requisites and «📎 Отправить чек»          | Customer                        |
+| Payment receipt sent to the bot                                       | Owner (the file, with verdict)  |
+| Owner accepted / rejected a receipt                                   | Customer                        |
 | Order cancelled by its customer, and that cancellation taken back     | Owner                           |
 | Order deleted by owner (unless it was already completed or cancelled) | Customer                        |
 | Catalog price change repricing PENDING orders                         | Each affected customer          |

@@ -117,6 +117,8 @@ export const date = style({
 
 export const customer = style(flexColumn(2))
 
+export const total = style([flexColumn(4), { alignItems: 'flex-start' }])
+
 export const customerName = style({
   font: font('14/20', 500),
   color: color.text('primary'),

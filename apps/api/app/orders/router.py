@@ -36,6 +36,7 @@ from app.orders.service import (
     StatusNotAssignableError,
     StatusTransitionError,
 )
+from app.payments.service import PaymentsService
 from app.telegram.notify import (
     notify_new_order,
     notify_order_cancelled_by_customer,
@@ -101,6 +102,7 @@ def _order_response(
         is_restorable=flags.is_restorable,
         is_cancellable=flags.is_cancellable,
         pending_stage=flags.pending_stage,
+        paid_at=order.paid_at,
     )
 
 
@@ -112,7 +114,10 @@ async def _one_order_response(service: OrdersService, order: Order) -> OrderResp
 
 
 def _admin_order_response(
-    order: Order, customer: User | None, tags: Mapping[uuid.UUID, ProductTags]
+    order: Order,
+    customer: User | None,
+    tags: Mapping[uuid.UUID, ProductTags],
+    with_receipts: set[uuid.UUID],
 ) -> AdminOrderResponse:
     # `None` is the erased account, not a rarity: `load_customers` leaves it out of the map
     # so its placeholder name and filled-in phone are never read back, and the dash this
@@ -128,6 +133,8 @@ def _admin_order_response(
         items=_order_items(order, tags),
         customer_name=customer.name if customer is not None else "-",
         customer_phone=customer.phone if customer is not None else "-",
+        paid_at=order.paid_at,
+        has_receipt=order.id in with_receipts,
     )
 
 
@@ -355,9 +362,11 @@ async def list_orders_admin(
     item_count, total_cents = await service.admin_summary(cycle_id, order_status)
     customers = await service.load_customers(orders)
     tags = await service.load_item_tags(orders)
+    with_receipts = await PaymentsService(session).orders_with_receipts(o.id for o in orders)
     return AdminOrderPageResponse(
         items=[
-            _admin_order_response(order, customers.get(order.user_id), tags) for order in orders
+            _admin_order_response(order, customers.get(order.user_id), tags, with_receipts)
+            for order in orders
         ],
         total=total,
         page=page,
@@ -387,10 +396,11 @@ async def update_order_status(
 
     customers = await service.load_customers([order])
     tags = await service.load_item_tags([order])
+    with_receipts = await PaymentsService(session).orders_with_receipts([order.id])
     await session.commit()
     if changed:
         background_tasks.add_task(notify_order_status, order.id)
-    return _admin_order_response(order, customers.get(order.user_id), tags)
+    return _admin_order_response(order, customers.get(order.user_id), tags, with_receipts)
 
 
 @router.delete("/admin/orders/{order_id}", status_code=status.HTTP_204_NO_CONTENT)

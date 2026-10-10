@@ -50,8 +50,10 @@ Read-only git needs no asking: `git status`, `git diff`, `git log`, `git show`,
 
 ## Repository overview
 
-Turborepo monorepo for the Sululu online catalog/ordering platform. No payments —
-customers submit requests (заявки) before a deadline, and the owner fulfills them offline.
+Turborepo monorepo for the Sululu online catalog/ordering platform. No online payments —
+customers submit requests (заявки) before a deadline; once the owner confirms one, the bot
+sends the bill and requisites, the customer pays by transfer and sends the receipt back to
+the bot, and the owner fulfills the order offline.
 
 - `apps/website` — Next.js 16 (Pages Router) site: public catalog/product/cart/checkout/
   wishlist, Telegram-only auth (no password, no code — the bot confirms a waiting tab),

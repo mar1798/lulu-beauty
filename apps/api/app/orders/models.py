@@ -1,8 +1,8 @@
 import enum
 import uuid
-from datetime import timedelta
+from datetime import datetime, timedelta
 
-from sqlalchemy import BigInteger, ForeignKey, Index, Integer, String, Text, text
+from sqlalchemy import BigInteger, DateTime, ForeignKey, Index, Integer, String, Text, text
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -31,6 +31,11 @@ CANCELLED_STATUSES = frozenset({OrderStatus.CANCELLED_BY_CUSTOMER, OrderStatus.C
 # a short list has room only for what still needs the person's attention (the bot's
 # "Мои заявки"), never on the site — there the full history is the point.
 OPEN_STATUSES = frozenset({OrderStatus.PENDING, OrderStatus.CONFIRMED, OrderStatus.READY})
+
+# Where the customer is asked to pay and may send a receipt: confirmation is the message
+# that carries the amount and the requisites, and READY can come before the money does.
+# PENDING has nothing to pay for yet — its total still moves with the catalog price.
+PAYABLE_STATUSES = frozenset({OrderStatus.CONFIRMED, OrderStatus.READY})
 
 # Where an order may go from where it is. The owner's panel used to accept any target at
 # all, so a promise about an order — "подтверждена", "готова к выдаче" — could be made
@@ -119,6 +124,15 @@ class Order(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     # on checkout, with no way for the customer to get past it.
     total_cents: Mapped[int] = mapped_column(BigInteger)
     note: Mapped[str | None] = mapped_column(Text)
+    # When the owner pressed «Оплата получена» under a receipt. Not a status: payment runs
+    # alongside CONFIRMED → READY → COMPLETED rather than between them, and a status of its
+    # own would have to be threaded through every `OPEN_STATUSES` check in the codebase.
+    paid_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # The last time the order went PENDING → CONFIRMED, i.e. when its bill went out. The
+    # bot offers only recently confirmed orders when it has to ask which one a receipt
+    # pays for; `created_at` would not do, since a cycle collects for weeks before any
+    # of its orders is confirmed.
+    confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     items: Mapped[list["OrderItem"]] = relationship(
         back_populates="order", cascade="all, delete-orphan"

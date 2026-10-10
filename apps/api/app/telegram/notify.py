@@ -18,7 +18,7 @@ import uuid
 from collections.abc import Sequence
 from datetime import UTC, datetime
 
-from sqlalchemy import select
+from sqlalchemy import exists, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -28,6 +28,7 @@ from app.cycles.scheduler_service import CartRescue, CycleReminder
 from app.db import async_session
 from app.orders.models import Order, OrderStatus
 from app.orders.service import OrderItemDrop, OrderPriceChange
+from app.payments.models import PaymentReceipt
 from app.telegram import messages, recipients
 from app.telegram.client import notifications_service
 from app.telegram.service import CartRescueNotice
@@ -88,9 +89,62 @@ async def notify_order_status(order_id: uuid.UUID) -> None:
             customer = await _load_customer(session, order.user_id)
             if customer is None:
                 return
-            await notifications_service.send_order_status(customer, order)
+            first_cycle = order.status is OrderStatus.CONFIRMED and await _is_first_cycle(
+                session, order.cycle_id
+            )
+            await notifications_service.send_order_status(customer, order, first_cycle=first_cycle)
     except Exception:  # noqa: BLE001 - the status is already committed; see module docstring
         logger.exception("Failed to announce status of order %s", order_id)
+
+
+async def _is_first_cycle(session: AsyncSession, cycle_id: uuid.UUID) -> bool:
+    """Whether no cycle has an earlier deadline than this one. The bill greets the
+    first cycle's customers as the shop's first, and only them."""
+    cycle = await session.get(OrderCycle, cycle_id)
+    if cycle is None:
+        return False
+    earlier = await session.scalar(
+        select(exists().where(OrderCycle.deadline_at < cycle.deadline_at))
+    )
+    return not earlier
+
+
+async def notify_receipt_received(receipt_id: uuid.UUID) -> None:
+    """Hands a customer's payment receipt to every owner, with the verdict buttons."""
+    try:
+        async with async_session() as session:
+            receipt = await session.get(PaymentReceipt, receipt_id)
+            if receipt is None:  # the order was deleted in the meantime
+                return
+            order = await _load_order(session, receipt.order_id)
+            if order is None:
+                return
+
+            owners = await recipients.get_owners(session)
+            if not owners:
+                logger.warning("No ADMIN user to send receipt %s to", receipt_id)
+                return
+
+            customer = await _load_customer(session, order.user_id)
+            for owner in owners:
+                await notifications_service.send_receipt(owner, receipt, order, customer)
+    except Exception:  # noqa: BLE001 - the receipt is already committed; see module docstring
+        logger.exception("Failed to hand receipt %s to the owners", receipt_id)
+
+
+async def notify_payment_reviewed(order_id: uuid.UUID, *, accepted: bool) -> None:
+    """Tells the customer what the owner made of their receipt."""
+    try:
+        async with async_session() as session:
+            order = await _load_order(session, order_id)
+            if order is None:
+                return
+            customer = await _load_customer(session, order.user_id)
+            if customer is None:
+                return
+            await notifications_service.send_payment_reviewed(customer, order, accepted=accepted)
+    except Exception:  # noqa: BLE001 - the verdict is already committed; see module docstring
+        logger.exception("Failed to announce the payment verdict on order %s", order_id)
 
 
 async def notify_order_cancelled_by_customer(order_id: uuid.UUID, *, restored: bool) -> None:

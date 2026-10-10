@@ -125,7 +125,9 @@ async def _patch_status(client: AsyncClient, order: Order, *, changed: bool) -> 
     with (
         patch("app.orders.router.OrdersService") as mock_service_cls,
         patch("app.orders.router.notify_order_status", new_callable=AsyncMock) as notify,
+        patch("app.orders.router.PaymentsService") as mock_payments_cls,
     ):
+        mock_payments_cls.return_value.orders_with_receipts = AsyncMock(return_value=set())
         service = mock_service_cls.return_value
         service.update_status = AsyncMock(return_value=(order, changed))
         service.load_customers = AsyncMock(return_value={})

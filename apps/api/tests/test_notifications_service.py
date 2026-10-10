@@ -7,10 +7,16 @@ from aiogram.exceptions import TelegramForbiddenError, TelegramRetryAfter
 
 from app.auth.models import User
 from app.cycles.models import OrderCycle
-from app.orders.models import Order, OrderStatus
-from app.telegram import keyboards
-from app.telegram.keyboards import OrderAction
-from app.telegram.service import CartRescueNotice, NotificationsService
+from app.orders.models import Order, OrderItem, OrderStatus
+from app.payments.models import PaymentReceipt, ReceiptKind
+from app.telegram import keyboards, messages
+from app.telegram.keyboards import OrderAction, PaymentAction, ReceiptAction
+from app.telegram.service import (
+    MAX_MESSAGE_LENGTH,
+    CartRescueNotice,
+    NotificationsService,
+    split_message,
+)
 
 
 def _user(telegram_chat_id: int | None) -> User:
@@ -330,3 +336,105 @@ async def test_send_stale_orders_stays_quiet_on_a_dead_binding() -> None:
     assert await service.send_stale_orders(_user(telegram_chat_id=None), _cycle(), 2) is False
 
     bot.send_message.assert_not_awaited()
+
+
+async def test_confirmation_sends_the_bill_with_the_receipt_button() -> None:
+    bot = AsyncMock()
+    service = NotificationsService(bot)
+    order = _order(OrderStatus.CONFIRMED)
+
+    await service.send_order_status(_user(telegram_chat_id=42), order)
+
+    message = bot.send_message.await_args.args[1]
+    assert "Итого к оплате" in message
+    assert bot.send_message.await_args.kwargs["parse_mode"] == "HTML"
+    markup = bot.send_message.await_args.kwargs["reply_markup"]
+    first = markup.inline_keyboard[0][0]
+    assert first.callback_data == ReceiptAction(order_id=order.id).pack()
+
+
+async def test_a_bill_too_long_for_one_message_goes_out_in_parts() -> None:
+    """Every line is listed, so a big order passes Telegram's 4096; one refused message
+    used to leave the customer with no bill at all."""
+    bot = AsyncMock()
+    service = NotificationsService(bot)
+    order = _order(OrderStatus.CONFIRMED)
+    order.items = [
+        OrderItem(
+            product_name=f"Увлажняющая сыворотка с центеллой и ниацинамидом №{n}",
+            product_volume_ml=50,
+            product_price_cents=125_000,
+            quantity=2,
+        )
+        for n in range(80)
+    ]
+
+    await service.send_order_status(_user(telegram_chat_id=42), order)
+
+    calls = bot.send_message.await_args_list
+    assert len(calls) > 1
+    texts = [call.args[1] for call in calls]
+    assert all(len(text) <= MAX_MESSAGE_LENGTH for text in texts)
+    assert "\n".join(texts) == messages.order_confirmed(order, first_cycle=False)
+    # The button sits under the last part, next to the total and the requisites.
+    assert [call.kwargs["reply_markup"] is None for call in calls[:-1]] == [True] * (len(calls) - 1)
+    assert "Итого к оплате" in texts[-1]
+    first = calls[-1].kwargs["reply_markup"].inline_keyboard[0][0]
+    assert first.callback_data == ReceiptAction(order_id=order.id).pack()
+
+
+def test_split_message_keeps_a_short_text_whole_and_cuts_between_lines() -> None:
+    assert split_message("одна\nдве") == ["одна\nдве"]
+    assert split_message("aaa\nbbb\nccc", limit=7) == ["aaa\nbbb", "ccc"]
+    # Counted in UTF-16 units: an emoji takes two of them.
+    assert split_message("🛍🛍\nab", limit=5) == ["🛍🛍", "ab"]
+    assert split_message("abcdefgh", limit=3) == ["abc", "def", "gh"]
+
+
+@pytest.mark.parametrize(
+    ("kind", "method"), [(ReceiptKind.PHOTO, "send_photo"), (ReceiptKind.DOCUMENT, "send_document")]
+)
+async def test_a_receipt_reaches_the_owner_as_what_it_was_sent_as(
+    kind: ReceiptKind, method: str
+) -> None:
+    bot = AsyncMock()
+    service = NotificationsService(bot)
+    order = _order(OrderStatus.CONFIRMED)
+    receipt = PaymentReceipt(
+        id=uuid.uuid4(), order_id=order.id, kind=kind, file_id="FILE", file_unique_id="U"
+    )
+
+    await service.send_receipt(_user(telegram_chat_id=7), receipt, order, _user(None))
+
+    send = getattr(bot, method)
+    chat_id, file_id = send.await_args.args
+    assert (chat_id, file_id) == (7, "FILE")
+    assert "Чек об оплате" in send.await_args.kwargs["caption"]
+    accept = send.await_args.kwargs["reply_markup"].inline_keyboard[0][0]
+    assert accept.callback_data == PaymentAction(action="accept", receipt_id=receipt.id).pack()
+
+
+async def test_a_receipt_to_a_blocked_owner_falls_back_to_the_log() -> None:
+    bot = AsyncMock()
+    bot.send_photo.side_effect = TelegramForbiddenError(method=AsyncMock(), message="blocked")
+    service = NotificationsService(bot)
+    order = _order(OrderStatus.CONFIRMED)
+    receipt = PaymentReceipt(
+        id=uuid.uuid4(), order_id=order.id, kind=ReceiptKind.PHOTO, file_id="F", file_unique_id="U"
+    )
+
+    # Must not raise: the receipt is already filed, and other owners are still to come.
+    await service.send_receipt(_user(telegram_chat_id=7), receipt, order, None)
+
+
+async def test_a_rejected_receipt_points_the_customer_at_the_owner() -> None:
+    bot = AsyncMock()
+    service = NotificationsService(bot)
+
+    await service.send_payment_reviewed(
+        _user(telegram_chat_id=42), _order(OrderStatus.CONFIRMED), accepted=False
+    )
+
+    markup = bot.send_message.await_args.kwargs["reply_markup"]
+    urls = [keyboards.button_target(button) for row in markup.inline_keyboard for button in row]
+    assert keyboards.INSTAGRAM_URL in urls
