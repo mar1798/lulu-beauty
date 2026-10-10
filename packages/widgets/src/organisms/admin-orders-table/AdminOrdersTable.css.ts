@@ -83,6 +83,7 @@ export const number = style({
 export const date = style({
   font: font('12/18'),
   color: color.text('muted'),
+  whiteSpace: 'nowrap',
 })
 
 export const customer = style(flexColumn(2))
@@ -90,6 +91,7 @@ export const customer = style(flexColumn(2))
 export const customerName = style({
   font: font('14/20', 500),
   color: color.text('primary'),
+  whiteSpace: 'nowrap',
 })
 
 export const phone = style([
@@ -112,6 +114,7 @@ export const toggle = style([
     border: 'none',
     padding: 0,
     cursor: 'pointer',
+    whiteSpace: 'nowrap',
     textDecorationLine: 'underline',
     textDecorationStyle: 'dotted',
     textUnderlineOffset: rem(3),
