@@ -1,5 +1,5 @@
 import { style } from '@vanilla-extract/css'
-import { color, font, media, rem, transition } from '../../styling/lib'
+import { border, color, font, media, rem, transition } from '../../styling/lib'
 import { flexColumn, flexRow, focusVisibleRing } from '../../styling/mixin'
 import {
   tableCardActionsCell,
@@ -32,6 +32,35 @@ export const row = style({
   flexDirection: 'row',
   flexWrap: 'wrap',
   columnGap: vars.space.sm,
+})
+
+/* Итоги — та же раскладка, что у `tbody`: ниже `md` блок, выше — группа строк. */
+export const foot = style({
+  display: 'block',
+  ...media({
+    md: { display: 'table-footer-group' },
+  }),
+})
+
+/*
+ * Линия сверху нужна карточкам: у последней карточки `tbody` нижней линии нет.
+ * В таблице она сливается с нижней границей ячеек над ней (`border-collapse`).
+ */
+export const footRow = style({
+  ...tableCardRow(),
+  borderTop: border(1, color.border('subtle')),
+})
+
+export const footCell = style({
+  ...tableCardCell(),
+  flexBasis: '100%',
+  fontWeight: 600,
+})
+
+/** Пустой хвост под статусом и действиями: на карточке ему нечего показывать. */
+export const footFillerCell = style({
+  ...tableCardCell(),
+  display: 'none',
 })
 
 export const headCell = style(tableHeadCell())

@@ -264,6 +264,30 @@ async def test_list_admin_page_filters_by_status_and_paginates(
     assert len(second_page) == 1
 
 
+async def test_admin_summary_counts_lines_and_money_across_every_page(
+    db_session: AsyncSession,
+) -> None:
+    user = await make_user(db_session)
+    await make_cycle(db_session)
+    cheap = await make_product(db_session, name="Cheap", price_cents=1000)
+    dear = await make_product(db_session, name="Dear", price_cents=2500)
+    cart = CartService(db_session)
+    service = OrdersService(db_session)
+
+    await cart.add_item(user.id, variant_id(cheap), 2)
+    await cart.add_item(user.id, variant_id(dear), 1)
+    two_lines = await service.checkout(user.id, note=None)
+    await cart.add_item(user.id, variant_id(cheap), 1)
+    await service.checkout(user.id, note=None)
+
+    await service.update_status(two_lines.id, OrderStatus.CONFIRMED)
+
+    # Lines, not units: the first order is two lines however many of each it holds.
+    assert await service.admin_summary(None, None) == (3, 2 * 1000 + 2500 + 1000)
+    assert await service.admin_summary(None, OrderStatus.CONFIRMED) == (2, 2 * 1000 + 2500)
+    assert await service.admin_summary(uuid.uuid4(), None) == (0, 0)
+
+
 async def test_list_admin_filters_by_cycle(db_session: AsyncSession) -> None:
     user = await make_user(db_session)
     cycle_a = await make_cycle(db_session, label="Cycle A")

@@ -1,5 +1,6 @@
 import type {
   IAdminOrder,
+  IAdminOrderPage,
   IAdminProductSort,
   IAdminProductSortField,
   IAdminUser,
@@ -274,7 +275,7 @@ export interface IAdminOrderListParams {
   pageSize?: number
 }
 
-export const listAdminOrders = (params: IAdminOrderListParams = {}): Promise<IPage<IAdminOrder>> =>
+export const listAdminOrders = (params: IAdminOrderListParams = {}): Promise<IAdminOrderPage> =>
   api.get('/admin/orders', {
     query: {
       cycleId: params.cycleId,

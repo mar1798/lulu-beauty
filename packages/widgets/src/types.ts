@@ -347,6 +347,20 @@ export interface IAdminOrder extends IOrder {
   customerPhone: string
 }
 
+/**
+ * Итоги по всем заявкам под фильтрами, а не по странице на экране. Позиции —
+ * строки состава, как в колонке «Состав», а не штуки.
+ */
+export interface IAdminOrdersSummary {
+  itemCount: number
+  totalCents: number
+}
+
+/** Страница заявок владельца: число заявок — это `total` самой страницы. */
+export interface IAdminOrderPage extends IPage<IAdminOrder> {
+  summary: IAdminOrdersSummary
+}
+
 export interface IOrderCycle {
   id: string
   deadlineAt: string
@@ -2182,4 +2196,10 @@ export interface IAdminOrdersTableProps {
   skeletonRows?: number
   busyId?: string | null
   emptyState?: ReactNode
+  /**
+   * Строка «Итого» под таблицей. Считается по всем заявкам под фильтрами, а не
+   * по странице: таблица листается, и сумма двадцати строк владельцу ничего не
+   * говорит. Без неё строки итогов нет.
+   */
+  summary?: IAdminOrdersSummary & { orderCount: number }
 }

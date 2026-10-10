@@ -857,6 +857,32 @@ class OrdersService:
         result = await self._session.execute(self._admin_query(cycle_id, status))
         return list(result.scalars().all())
 
+    async def admin_summary(
+        self, cycle_id: uuid.UUID | None, status: OrderStatus | None
+    ) -> tuple[int, int]:
+        """Line count and money total across every order the admin filters match.
+
+        Same scope as the listing and the export, cancelled orders included when the
+        status filter lets them in — the footer has to add up to what the table and the
+        sheet show. Two aggregates rather than one join: summing `Order.total_cents`
+        over a join with its items would count each order once per line.
+        """
+        filters = []
+        if cycle_id is not None:
+            filters.append(Order.cycle_id == cycle_id)
+        if status is not None:
+            filters.append(Order.status == status)
+
+        total_cents = await self._session.scalar(
+            select(func.coalesce(func.sum(Order.total_cents), 0)).where(*filters)
+        )
+        item_count = await self._session.scalar(
+            select(func.count(OrderItem.id))
+            .join(Order, Order.id == OrderItem.order_id)
+            .where(*filters)
+        )
+        return int(item_count or 0), int(total_cents or 0)
+
     async def list_admin_page(
         self,
         cycle_id: uuid.UUID | None,

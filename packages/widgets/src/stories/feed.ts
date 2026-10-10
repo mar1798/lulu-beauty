@@ -1257,4 +1257,5 @@ export const feedAdminOrdersTable = (): IAdminOrdersTableProps => ({
   ],
   onStatusChange: noop,
   buildProductHref: slug => `/catalog/${slug}`,
+  summary: { orderCount: 42, itemCount: 118, totalCents: 18_450_000 },
 })
