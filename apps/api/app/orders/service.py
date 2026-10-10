@@ -962,5 +962,13 @@ class OrdersService:
 
         changed = order.status != new_status
         order.status = new_status
+        if changed and new_status is OrderStatus.CONFIRMED:
+            order.confirmed_at = datetime.now(UTC)
+        if new_status is OrderStatus.PENDING:
+            # Back in PENDING the order is repriced and loses lines like any other, so a
+            # payment taken against its old total no longer covers it. Confirming it again
+            # sends a fresh bill, and the owner settles the earlier money with the customer.
+            order.paid_at = None
+            order.confirmed_at = None
         await self._session.flush()
         return order, changed

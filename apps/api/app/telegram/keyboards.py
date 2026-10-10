@@ -21,7 +21,7 @@ from aiogram.types import (
 )
 
 from app.config import settings
-from app.orders.models import OrderStatus
+from app.orders.models import Order, OrderStatus
 from app.telegram import messages
 
 logger = logging.getLogger("app.telegram.keyboards")
@@ -126,6 +126,88 @@ def order_actions(order_id: uuid.UUID) -> InlineKeyboardMarkup:
     if admin is not None:
         rows.append([admin])
     return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+class ReceiptAction(CallbackData, prefix="rcpt"):
+    """«📎 Отправить чек» under the bill. 37 bytes packed.
+
+    It only asks for the file: whatever the customer sends next is matched to an order by
+    `handle_receipt` on its own, so nothing has to remember that the button was pressed —
+    a restart between the tap and the photo loses nothing.
+    """
+
+    order_id: uuid.UUID
+
+
+def receipt_actions(order_id: uuid.UUID) -> InlineKeyboardMarkup:
+    """Under the bill: the receipt button, then the order list when the site is linkable."""
+    rows = [
+        [
+            InlineKeyboardButton(
+                text=messages.RECEIPT_BUTTON,
+                callback_data=ReceiptAction(order_id=order_id).pack(),
+            )
+        ]
+    ]
+    orders = _site_button(ORDERS_PATH, messages.ORDERS_BUTTON)
+    if orders is not None:
+        rows.append([orders])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+class ReceiptOrderChoice(CallbackData, prefix="rcptfor"):
+    """The customer's answer to «за какую заявку этот чек?». 40 bytes packed.
+
+    The file is not in here — it is the message the question replies to, which Telegram
+    hands back with the callback.
+    """
+
+    order_id: uuid.UUID
+
+
+def receipt_order_choice(orders: list[Order]) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text=messages.receipt_order_choice(order),
+                    callback_data=ReceiptOrderChoice(order_id=order.id).pack(),
+                )
+            ]
+            for order in orders
+        ]
+    )
+
+
+PaymentActionName = Literal["accept", "reject"]
+
+
+class PaymentAction(CallbackData, prefix="pay"):
+    """The owner's verdict on one receipt. "pay:accept:" plus a dash-less UUID — 43 bytes.
+
+    Carries the receipt, not the order: rejecting is about this file, and the customer may
+    have sent another one since.
+    """
+
+    action: PaymentActionName
+    receipt_id: uuid.UUID
+
+
+def payment_actions(receipt_id: uuid.UUID) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text=messages.PAYMENT_ACCEPT_BUTTON,
+                    callback_data=PaymentAction(action="accept", receipt_id=receipt_id).pack(),
+                ),
+                InlineKeyboardButton(
+                    text=messages.PAYMENT_REJECT_BUTTON,
+                    callback_data=PaymentAction(action="reject", receipt_id=receipt_id).pack(),
+                ),
+            ]
+        ]
+    )
 
 
 class LoginAction(CallbackData, prefix="login"):

@@ -5,7 +5,14 @@ import pytest
 
 from app.orders.models import OrderStatus
 from app.telegram import keyboards, messages
-from app.telegram.keyboards import MenuAction, OrderAction, OrderActionName
+from app.telegram.keyboards import (
+    MenuAction,
+    OrderAction,
+    OrderActionName,
+    PaymentAction,
+    ReceiptAction,
+    ReceiptOrderChoice,
+)
 
 # Telegram's hard limit on callback_data; exceeding it is rejected at send time, so the
 # message with the buttons never arrives at all.
@@ -323,3 +330,29 @@ def test_site_buttons_stay_url_buttons_on_public_http(monkeypatch: pytest.Monkey
     button = markup.inline_keyboard[0][0]
     assert button.url == "http://lulu.example.com/checkout"
     assert button.web_app is None
+
+
+@pytest.mark.parametrize(
+    "action",
+    [
+        ReceiptAction(order_id=uuid.uuid4()),
+        ReceiptOrderChoice(order_id=uuid.uuid4()),
+        PaymentAction(action="accept", receipt_id=uuid.uuid4()),
+        PaymentAction(action="reject", receipt_id=uuid.uuid4()),
+    ],
+)
+def test_payment_callbacks_fit_telegrams_limit_and_round_trip(
+    action: ReceiptAction | ReceiptOrderChoice | PaymentAction,
+) -> None:
+    packed = action.pack()
+
+    assert len(packed.encode()) <= MAX_CALLBACK_DATA_BYTES
+    assert type(action).unpack(packed) == action
+
+
+def test_payment_callbacks_do_not_shadow_each_other() -> None:
+    """aiogram matches a callback by prefix: «rcpt» must not swallow «rcptfor»."""
+    choice = ReceiptOrderChoice(order_id=uuid.uuid4()).pack()
+
+    with pytest.raises(ValueError):
+        ReceiptAction.unpack(choice)

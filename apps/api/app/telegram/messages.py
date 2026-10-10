@@ -19,7 +19,7 @@ from app.cart.schemas import CartItemResponse, CartResponse
 from app.common.limits import MAX_WISHLIST_ITEMS
 from app.config import settings
 from app.cycles.models import OrderCycle
-from app.orders.models import CANCELLED_STATUSES, Order, OrderStatus
+from app.orders.models import CANCELLED_STATUSES, Order, OrderItem, OrderStatus
 from app.orders.service import OrderItemDrop, OrderPriceChange
 from app.wanted.models import WantedProduct
 from app.wishlist.schemas import WishlistResponse
@@ -253,7 +253,8 @@ _ORDER_STATUS_NEWS = {
     # Владелец отменил заявку и передумал: покупатель уже получил «отменена магазином»,
     # и без этой строки заявка воскресала бы у него молча.
     OrderStatus.PENDING: "снова ждёт подтверждения - мы вернули её в работу",
-    OrderStatus.CONFIRMED: "подтверждена - мы начали закупку",
+    # CONFIRMED is not here: it gets a message of its own, with the bill and the
+    # requisites (`order_confirmed`), sent instead of a one-line status update.
     OrderStatus.READY: "готова к выдаче. О получении договоритесь лично.",
     OrderStatus.COMPLETED: "выдана. Спасибо за заказ!",
     OrderStatus.CANCELLED_BY_OWNER: (
@@ -275,6 +276,126 @@ def order_status_changed(order: Order) -> str | None:
     if news is None:
         return None
     return f"Заявка {order_reference(order.id)} {news}"
+
+
+# Where the money goes. Written into the text rather than kept in settings: it is part
+# of the wording, and the owner reads and changes it the same way as the rest of it.
+PAYMENT_DETAILS = (
+    "💳 996509817818\n(доступны переводы по номеру телефона на обанк, симбу, бакай и оптиму)"
+)
+
+
+def _order_line(item: OrderItem) -> str:
+    label = product_label(item.product_name, item.product_volume_ml)
+    quantity = f" × {item.quantity}" if item.quantity > 1 else ""
+    return f"• {label}{quantity} - {format_price(item.product_price_cents * item.quantity)}"
+
+
+def order_confirmed(order: Order, *, first_cycle: bool) -> str:
+    """The bill: what was confirmed, how much, where to pay, and to send the receipt here.
+
+    Lists every line, unlike the cart or the order list: this is what the customer checks
+    before sending money, and «и ещё 2» would leave them paying for what they cannot see.
+    The total is the order's own and no longer moves — prices are rewritten only on
+    PENDING orders.
+
+    `first_cycle` keeps the owner's greeting true: «первый сбор» is said only while it
+    is one.
+    """
+    welcome = (
+        "Вы стали частью нашего первого сбора, и мне очень приятно видеть вас "
+        "среди первых покупателей!🛍"
+        if first_cycle
+        else "Вы стали частью нашего сбора, и мне очень приятно видеть вас среди покупателей!🛍"
+    )
+    return "\n".join(
+        [
+            "Спасибо, что оформили заказ в Sululu😇",
+            welcome,
+            "",
+            f"Ваш заказ {order_reference(order.id)}:",
+            f"🛍{_items_count(order)}",
+            *(_order_line(item) for item in order.items),
+            "",
+            f"Итого к оплате: {format_price(order.total_cents)}",
+            "Если всё верно, можете произвести оплату по реквизитам:",
+            "",
+            PAYMENT_DETAILS,
+            "После оплаты, пожалуйста, отправьте сюда чек🤍",
+            "Доставка будет осуществлена в течение 3 рабочих дней🫶🫧",
+            "Спасибо за доверие к Sululu!✨",
+        ]
+    )
+
+
+def receipt_prompt(order_id: uuid.UUID) -> str:
+    return (
+        f"Пришлите чек об оплате заявки {order_reference(order_id)} ответом на это сообщение"
+        " - фото или PDF-файлом."
+    )
+
+
+def receipt_received(order_id: uuid.UUID) -> str:
+    return (
+        f"Спасибо! Чек по заявке {order_reference(order_id)} получен🤍\n"
+        "Как только мы сверим оплату, я напишу сюда."
+    )
+
+
+def receipt_duplicate(order_id: uuid.UUID) -> str:
+    return f"Этот чек по заявке {order_reference(order_id)} уже у нас - сверяем оплату."
+
+
+RECEIPT_NOTHING_AWAITING = (
+    "Сейчас у вас нет заявок, которые ждут оплаты. Сумму и реквизиты я пришлю сюда, "
+    "когда заявку подтвердят."
+)
+RECEIPT_UNSUPPORTED = "Чек нужен фотографией или PDF-файлом - другие файлы я не принимаю."
+RECEIPT_WHICH_ORDER = "За какую заявку этот чек?"
+# In the input field while the receipt prompt waits for its reply.
+RECEIPT_PLACEHOLDER = "Фото или PDF чека"
+
+
+def receipt_order_choice(order: Order) -> str:
+    """A button label: short, because Telegram cuts long ones on a phone."""
+    return f"{order_reference(order.id)} - {format_price(order.total_cents)}"
+
+
+def receipt_filed(order_id: uuid.UUID) -> str:
+    """Replaces the «за какую заявку» question once it has been answered."""
+    return f"Чек отнесён к заявке {order_reference(order_id)}."
+
+
+def receipt_for_owner(order: Order, customer: User | None) -> str:
+    """The caption under the forwarded receipt. A caption is capped at 1024 characters,
+    so it names the order and the sum to check against, not the lines."""
+    return "\n".join(
+        [
+            f"🧾 Чек об оплате заявки {order_reference(order.id)}",
+            f"Покупатель: {customer.name}, {customer.phone}" if customer else "Покупатель: -",
+            f"Сумма к оплате: {format_price(order.total_cents)}",
+        ]
+    )
+
+
+def payment_resolution(*, accepted: bool) -> str:
+    """Appended to the owner's caption once decided, like `order_resolution`."""
+    return "✅ Оплата получена" if accepted else "❌ Чек отклонён"
+
+
+def payment_accepted(order: Order) -> str:
+    return (
+        f"Оплата по заявке {order_reference(order.id)} получена - спасибо!🤍\n"
+        "Напишу сюда, когда заказ будет готов."
+    )
+
+
+def payment_rejected(order: Order) -> str:
+    return (
+        f"Не получилось сверить оплату по заявке {order_reference(order.id)} с этим чеком. "
+        f"Проверьте, пожалуйста, сумму ({format_price(order.total_cents)}) и пришлите чек "
+        "ещё раз - или напишите в Instagram магазина."
+    )
 
 
 # Статусы, на которых удаление заявки — уже не новость: выданную покупатель забрал,
@@ -581,6 +702,9 @@ MENU_PROMPT = "Чем помочь? Выберите кнопку ниже."
 
 CONFIRM_BUTTON = "✅ Подтвердить"
 CANCEL_BUTTON = "❌ Отменить"
+RECEIPT_BUTTON = "📎 Отправить чек"
+PAYMENT_ACCEPT_BUTTON = "✅ Оплата получена"
+PAYMENT_REJECT_BUTTON = "❌ Чек не подходит"
 CHECKOUT_BUTTON = "Оформить заявку"
 WISHLIST_BUTTON = "Посмотреть избранное"
 CATALOG_BUTTON = "Открыть каталог"
@@ -622,6 +746,11 @@ CALLBACK_ORDER_MOVED_ON = (
     "Откройте админку, чтобы посмотреть."
 )
 CALLBACK_NOT_LINKED = "Этот чат и так не привязан к аккаунту"
+CALLBACK_PAYMENT_ALREADY_ACCEPTED = "Оплата по этой заявке уже подтверждена"
+CALLBACK_PAYMENT_ACCEPTED = "Оплата отмечена"
+CALLBACK_RECEIPT_REJECTED = "Чек отклонён - покупатель получит сообщение"
+CALLBACK_RECEIPT_NOT_AWAITED = "Эта заявка уже не ждёт оплаты"
+CALLBACK_RECEIPT_FILE_GONE = "Не вижу файла - пришлите чек ещё раз"
 
 # Ответ на слишком частые нажатия (`throttling.py`). Про «секунду» — чтобы человек
 # понял, что ждать нужно мгновение, а не что бот сломался: молчание в ответ на нажатие
@@ -699,6 +828,7 @@ HELP = (
     f"{MENU_HELP} - этот экран; отсюда же можно отвязать чат\n\n"
     "Сам напишу, когда откроется новый сбор, когда до дедлайна останутся сутки "
     "и когда изменится статус вашей заявки.\n\n"
+    "Чек об оплате присылайте сюда - фотографией или PDF-файлом, я передам его магазину.\n\n"
     "Кнопки пропали? /menu вернёт их, /help - эта справка."
 )
 

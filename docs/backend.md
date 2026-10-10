@@ -65,6 +65,7 @@ Each domain module under `app/` is roughly `router.py` / `service.py` / `schemas
 | `cycles/`   | Cycle CRUD, `reminders.py` (stage definitions), `scheduler_service.py` (sweeps).                                                             |
 | `wishlist/` | Saved products, cycle-independent.                                                                                                           |
 | `wanted/`   | Wishes for products the catalog does not stock, written under an empty search. Write-only.                                                   |
+| `payments/` | Payment receipts sent to the bot and the owner's verdict on them; marks `orders.paid_at`. No router — the bot is its only door.              |
 | `export/`   | xlsx purchase list (`service.py`) and the catalogue export (`products.py`).                                                                  |
 | `telegram/` | Bot, handlers, keyboards, Russian messages, notifications, throttling, webhook.                                                              |
 | `storage/`  | Local disk file storage for images.                                                                                                          |

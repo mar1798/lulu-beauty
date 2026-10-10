@@ -100,6 +100,8 @@ class OrderResponse(CamelModel):
     # late, or never taken into a purchase. Copy only: nothing is permitted or refused
     # by it, and it is null for every status but PENDING.
     pending_stage: PendingStage | None = None
+    # When the owner confirmed the payment, from the receipt the customer sent the bot.
+    paid_at: datetime | None = None
 
 
 class AdminOrderResponse(OrderResponse):
@@ -111,6 +113,9 @@ class AdminOrderResponse(OrderResponse):
 
     customer_name: str
     customer_phone: str
+    # A receipt is waiting for the owner's verdict. `paid_at` says whether one was
+    # accepted, and the admin table shows that instead.
+    has_receipt: bool = False
 
 
 class AdminOrdersSummary(CamelModel):

@@ -8,7 +8,7 @@ truth: `apps/api/app/*/models.py` and `*/service.py`.
 | Term               | In code            | Meaning                                                                                                                                                                                         |
 | ------------------ | ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Order cycle / сбор | `OrderCycle`       | A collection window with a deadline. The shop buys once per cycle.                                                                                                                              |
-| Request / заявка   | `Order`            | What a customer submits. Called "order" in code, "заявка" in Russian copy — there is no payment, so it is a request to buy.                                                                     |
+| Request / заявка   | `Order`            | What a customer submits. Called "order" in code, "заявка" in Russian copy — nothing is paid on the site, so it is a request to buy.                                                             |
 | Admin              | `Role.ADMIN`       | Someone who runs the shop day to day. There may be several. Called "admin" in the UI too — Russian copy says "владелец" only about the person who owns the shop, never about a level of access. |
 | Super admin        | `Role.SUPER_ADMIN` | The shop's own account: the only one that hands out and takes back `ADMIN`, and the only one whose own role nothing can change. Exactly one, created by the seed.                               |
 | Customer           | `Role.CUSTOMER`    | Everyone else. Created by the bot when they share a contact.                                                                                                                                    |
@@ -431,6 +431,38 @@ must not move because the 50 ml did. Soft-deleting a product runs `drop_product`
 every PENDING order and cancels (as `CANCELLED_BY_OWNER`) any order left with nothing.
 
 **Therefore user-facing copy must say "snapshot as of confirmation", never "as of checkout".**
+
+### Payment
+
+Nothing is paid on the site. Confirming an order (`PENDING → CONFIRMED`) is what asks for
+the money: the customer's notification is the bill — every line, the total, the requisites
+(`messages.PAYMENT_DETAILS`) and a «📎 Отправить чек» button. The total is safe to quote
+there because confirmation is where repricing stops (above).
+
+The customer sends a photo or a PDF back to the bot; it becomes a `PaymentReceipt`
+(`app/payments/`) on one of their **payable** orders — `PAYABLE_STATUSES` (CONFIRMED, READY)
+with `paid_at` still empty — and is handed to every owner with «✅ Оплата получена» /
+«❌ Чек не подходит». Accepting stamps `orders.paid_at`; rejecting marks only that receipt,
+so the order stays payable and the customer can send another — or the same one again,
+which reopens it for review. Either way the customer is told. An order the owner takes
+back to PENDING loses its payment (`paid_at` cleared in `update_status`): in PENDING it is
+repriced and loses lines like any other, so the old total no longer holds — confirming it
+again sends a fresh bill, the receipt accepted before can be sent again for review, and
+the owner settles the earlier money with the customer. A receipt sent before the order's last
+confirmation (`payment_receipts.submitted_at` < `orders.confirmed_at`) belongs to the old bill:
+its buttons in the owners' chats refuse it, the admin table does not count it as waiting, and
+the same file sent again goes back for review (`PaymentsService.for_current_bill`). A
+receipt can no longer be rejected once the order is paid
+(`PaymentAlreadyAcceptedError`), and a payment cannot be confirmed on an order that has
+left the payable statuses unpaid — a cancelled one, say. `review` re-reads the receipt under
+the order's lock, so two owners rejecting the same file tell the customer once.
+
+**Payment is not a status.** It runs alongside CONFIRMED → READY → COMPLETED, not between
+them: `paid_at` is a stamp, and `ALLOWED_TRANSITIONS` knows nothing about it. The admin
+table shows it as a badge (`paidAt`, and `hasReceipt` for a receipt on the current bill of
+a payable order still waiting for the owner's verdict, on `AdminOrderResponse`). `orders.confirmed_at` records the last
+PENDING → CONFIRMED, i.e. when the bill went out. The file itself
+is never downloaded — only Telegram's `file_id` is stored, enough for the bot to send it on.
 
 ### Export
 

@@ -549,3 +549,42 @@ def test_stale_orders_for_owner_agrees_with_itself_about_one_order() -> None:
     assert "ждёт подтверждения" in text
     assert "Подтвердите её" in text
     assert "остальные" not in text
+
+
+def test_order_confirmed_is_the_bill_with_every_line_and_the_requisites() -> None:
+    order = _order(status=OrderStatus.CONFIRMED, total_cents=421_000, items=0)
+    order.items = [
+        OrderItem(
+            product_name="Anua Gua Sha Cream",
+            product_slug="anua",
+            product_image_url=None,
+            product_price_cents=176_000,
+            product_volume_ml=80,
+            quantity=1,
+        ),
+        OrderItem(
+            product_name="Relief Cream Mist",
+            product_slug="mist",
+            product_image_url=None,
+            product_price_cents=122_500,
+            product_volume_ml=None,
+            quantity=2,
+        ),
+    ]
+
+    text = _normalize(messages.order_confirmed(order, first_cycle=False))
+
+    assert "🛍2 позиции" in text
+    assert "• Anua Gua Sha Cream, 80 мл - 1 760 сом" in text
+    # The line total, not the unit price: the customer adds these up against the total.
+    assert "• Relief Cream Mist × 2 - 2 450 сом" in text
+    assert "Итого к оплате: 4 210 сом" in text
+    assert messages.PAYMENT_DETAILS in text
+    assert "отправьте сюда чек" in text
+
+
+def test_order_confirmed_greets_the_first_cycle_as_the_first_and_no_other() -> None:
+    order = _order(status=OrderStatus.CONFIRMED)
+
+    assert "первого сбора" in messages.order_confirmed(order, first_cycle=True)
+    assert "перв" not in messages.order_confirmed(order, first_cycle=False)

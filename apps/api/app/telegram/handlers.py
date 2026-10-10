@@ -15,11 +15,20 @@ command drifting apart into two implementations.
 """
 
 import logging
+import re
+import uuid
+from collections import OrderedDict
 from datetime import UTC, datetime
 
 from aiogram import F, Router
 from aiogram.filters import Command, CommandObject, CommandStart, or_f
-from aiogram.types import CallbackQuery, InlineKeyboardMarkup, Message, ReplyKeyboardRemove
+from aiogram.types import (
+    CallbackQuery,
+    ForceReply,
+    InlineKeyboardMarkup,
+    Message,
+    ReplyKeyboardRemove,
+)
 from aiogram.types import User as TelegramUser
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -33,9 +42,29 @@ from app.cycles.service import CyclesService
 from app.db import async_session
 from app.orders.models import OPEN_STATUSES
 from app.orders.service import OrderNotFoundError, OrdersService, StatusTransitionError
+from app.payments.models import ReceiptKind
+from app.payments.service import (
+    AddedReceipt,
+    OrderNotAwaitingPaymentError,
+    PaymentAlreadyAcceptedError,
+    PaymentsService,
+    ReceiptFile,
+    ReceiptNotFoundError,
+)
 from app.telegram import keyboards, messages, recipients
-from app.telegram.keyboards import LoginAction, MenuAction, OrderAction
-from app.telegram.notify import notify_order_status
+from app.telegram.keyboards import (
+    LoginAction,
+    MenuAction,
+    OrderAction,
+    PaymentAction,
+    ReceiptAction,
+    ReceiptOrderChoice,
+)
+from app.telegram.notify import (
+    notify_order_status,
+    notify_payment_reviewed,
+    notify_receipt_received,
+)
 from app.telegram.throttling import ThrottlingMiddleware
 from app.wishlist.service import WishlistService
 
@@ -472,6 +501,249 @@ async def handle_order_action(query: CallbackQuery, callback_data: OrderAction) 
         # Same customer-facing notification the admin panel triggers — pressing the button
         # here has to mean exactly what pressing it there means.
         await notify_order_status(order_id)
+
+
+# Telegram sends an album as one message per file, each carrying the same
+# `media_group_id`. Every file is filed and forwarded, but the customer is thanked once
+# per album, not once per page. In memory, like `notify._announcing`: losing it to a
+# restart costs at most a repeated «спасибо».
+_MAX_REMEMBERED_ALBUMS = 256
+_acknowledged_albums: OrderedDict[str, None] = OrderedDict()
+
+
+def _first_of_album(message: Message) -> bool:
+    album = message.media_group_id
+    if album is None:
+        return True
+    if album in _acknowledged_albums:
+        return False
+    _acknowledged_albums[album] = None
+    if len(_acknowledged_albums) > _MAX_REMEMBERED_ALBUMS:
+        _acknowledged_albums.popitem(last=False)
+    return True
+
+
+def _receipt_file(message: Message) -> ReceiptFile | None:
+    """The receipt in a message, or None when what it carries can't be one.
+
+    A photo comes in several sizes, smallest first; the owner needs to read the digits,
+    so the largest. A document has to be a PDF or a picture sent "as a file" — anything
+    else is not something the owner can check against a bank transfer.
+    """
+    if message.photo:
+        photo = message.photo[-1]
+        return ReceiptFile(ReceiptKind.PHOTO, photo.file_id, photo.file_unique_id)
+    document = message.document
+    if document is None:
+        return None
+    mime = document.mime_type or ""
+    if mime != "application/pdf" and not mime.startswith("image/"):
+        return None
+    return ReceiptFile(ReceiptKind.DOCUMENT, document.file_id, document.file_unique_id)
+
+
+async def _file_receipt(
+    session: AsyncSession, user: User, order_id: uuid.UUID, file: ReceiptFile
+) -> AddedReceipt | None:
+    """Files the receipt and commits; None when the order stopped taking payment."""
+    try:
+        added = await PaymentsService(session).add_receipt(user.id, order_id, file)
+    except OrderNotAwaitingPaymentError:
+        return None
+    await session.commit()
+    return added
+
+
+async def _acknowledge(message: Message, added: AddedReceipt, *, first_of_album: bool) -> None:
+    order_id = added.receipt.order_id
+    # With the menu: the receipt prompt's ForceReply takes the place of the reply
+    # keyboard, and this is the first message after it to hand the buttons back.
+    if not added.created:
+        await message.answer(
+            messages.receipt_duplicate(order_id), reply_markup=keyboards.main_menu()
+        )
+    elif first_of_album:
+        await message.answer(
+            messages.receipt_received(order_id), reply_markup=keyboards.main_menu()
+        )
+    if added.created:
+        await notify_receipt_received(added.receipt.id)
+
+
+@router.callback_query(ReceiptAction.filter())
+async def handle_receipt_prompt(query: CallbackQuery, callback_data: ReceiptAction) -> None:
+    """«📎 Отправить чек»: says what to send, as a ForceReply.
+
+    The customer's client then sends the file as a reply to this prompt, and the prompt
+    names the order — so `handle_receipt` knows which one without asking and without
+    anything remembered here, which a restart between the tap and the photo would lose.
+    """
+    # Checked here as well as on arrival: a bill keeps its button after the order was
+    # paid or cancelled, and asking for a file only to refuse it would waste a photo.
+    async with async_session() as session:
+        user = await recipients.find_user_by_chat_id(session, query.from_user.id)
+        order = (
+            await PaymentsService(session).payable_order(user.id, callback_data.order_id)
+            if user is not None
+            else None
+        )
+    if order is None:
+        await query.answer(messages.CALLBACK_RECEIPT_NOT_AWAITED, show_alert=True)
+        return
+
+    await query.answer()
+    if isinstance(query.message, Message):
+        await query.message.answer(
+            messages.receipt_prompt(callback_data.order_id),
+            reply_markup=ForceReply(input_field_placeholder=messages.RECEIPT_PLACEHOLDER),
+        )
+
+
+# `messages.order_reference`: «#» and the first eight hex digits of the order's UUID.
+_ORDER_REFERENCE = re.compile(r"#([0-9a-f]{8})(?![0-9a-f])")
+
+
+def _reference_replied_to(message: Message) -> str | None:
+    """The order a receipt names, when it is a reply to one of the bot's messages that
+    names exactly one — the receipt prompt, or the bill itself."""
+    replied = message.reply_to_message
+    if replied is None or replied.from_user is None or not replied.from_user.is_bot:
+        return None
+    references = set(_ORDER_REFERENCE.findall(replied.text or replied.caption or ""))
+    return references.pop() if len(references) == 1 else None
+
+
+@router.message(F.photo | F.document)
+async def handle_receipt(message: Message) -> None:
+    """A photo or a file sent to the bot: taken to be a payment receipt.
+
+    Which order it pays for is decided here rather than remembered from a button press:
+    a reply to the prompt or the bill names it; otherwise one recently confirmed order
+    waiting for money takes it, several get asked about, none gets told so.
+    """
+    file = _receipt_file(message)
+    async with async_session() as session:
+        user = await _linked_user(message, session)
+        if user is None:
+            return
+        if file is None:
+            await message.answer(messages.RECEIPT_UNSUPPORTED)
+            return
+
+        payments = PaymentsService(session)
+        reference = _reference_replied_to(message)
+        named = (
+            await payments.order_by_reference(user.id, reference) if reference is not None else None
+        )
+        if named is not None and not payments.takes_payment(named):
+            # A reply to the bill of an order paid or cancelled since: the customer meant
+            # that one, and guessing another in its place would file the money wrongly.
+            await message.answer(messages.CALLBACK_RECEIPT_NOT_AWAITED)
+            return
+        orders = [named] if named is not None else await payments.awaiting_payment(user.id)
+        if len(orders) > 1:
+            # A reply, so the answer to the question can find the file again: Telegram
+            # sends the replied-to message back along with the callback.
+            await message.reply(
+                messages.RECEIPT_WHICH_ORDER,
+                reply_markup=keyboards.receipt_order_choice(orders),
+            )
+            return
+        added = await _file_receipt(session, user, orders[0].id, file) if orders else None
+
+    if added is None:
+        await message.answer(messages.RECEIPT_NOTHING_AWAITING)
+        return
+    await _acknowledge(message, added, first_of_album=_first_of_album(message))
+
+
+@router.callback_query(ReceiptOrderChoice.filter())
+async def handle_receipt_choice(query: CallbackQuery, callback_data: ReceiptOrderChoice) -> None:
+    """The answer to «за какую заявку этот чек?» — the file is the message it replied to."""
+    question = query.message if isinstance(query.message, Message) else None
+    source = question.reply_to_message if question is not None else None
+    file = _receipt_file(source) if source is not None else None
+    if question is None or file is None:
+        await query.answer(messages.CALLBACK_RECEIPT_FILE_GONE, show_alert=True)
+        return
+
+    async with async_session() as session:
+        user = await recipients.find_user_by_chat_id(session, query.from_user.id)
+        added = (
+            await _file_receipt(session, user, callback_data.order_id, file)
+            if user is not None
+            else None
+        )
+    if added is None:
+        await query.answer(messages.CALLBACK_RECEIPT_NOT_AWAITED, show_alert=True)
+        return
+
+    await query.answer()
+    try:
+        # Drops the buttons: the question has been answered.
+        await question.edit_text(messages.receipt_filed(callback_data.order_id))
+    except Exception:  # noqa: BLE001 - cosmetic; the receipt is filed either way
+        logger.exception("Failed to close the receipt question for %s", callback_data.order_id)
+    await _acknowledge(question, added, first_of_album=True)
+
+
+@router.callback_query(PaymentAction.filter())
+async def handle_payment_action(query: CallbackQuery, callback_data: PaymentAction) -> None:
+    """The owner's verdict on a receipt, from under the receipt itself.
+
+    Shaped like `handle_order_action`: the role is checked on the presser, every branch
+    answers the query, and the customer hears about it only after the commit.
+    """
+    accept = callback_data.action == "accept"
+
+    async with async_session() as session:
+        actor = await recipients.find_user_by_chat_id(session, query.from_user.id)
+        if actor is None or actor.role not in ADMIN_ROLES:
+            await query.answer(messages.CALLBACK_NOT_FOR_YOU, show_alert=True)
+            return
+
+        try:
+            reviewed = await PaymentsService(session).review(
+                callback_data.receipt_id, accept=accept
+            )
+        except ReceiptNotFoundError:
+            await query.answer(messages.CALLBACK_ORDER_GONE, show_alert=True)
+            return
+        except OrderNotAwaitingPaymentError:
+            await query.answer(messages.CALLBACK_ORDER_MOVED_ON, show_alert=True)
+            return
+        except PaymentAlreadyAcceptedError:
+            await query.answer(messages.CALLBACK_PAYMENT_ALREADY_ACCEPTED, show_alert=True)
+            return
+
+        await session.commit()
+        order_id = reviewed.order.id
+        changed = reviewed.changed
+
+    if accept and not changed:
+        await query.answer(messages.CALLBACK_PAYMENT_ALREADY_ACCEPTED)
+    elif not changed:
+        # Rejected already, and the customer was told then: «покупатель получит
+        # сообщение» would promise a second message that is not coming.
+        await query.answer(messages.payment_resolution(accepted=False))
+    else:
+        await query.answer(
+            messages.CALLBACK_PAYMENT_ACCEPTED if accept else messages.CALLBACK_RECEIPT_REJECTED
+        )
+
+    if isinstance(query.message, Message):
+        # Same reasoning as in `handle_order_action`: the edit drops the buttons, and a
+        # failure to make it must not cost the customer their notification.
+        caption = query.message.caption or ""
+        try:
+            await query.message.edit_caption(
+                caption=f"{caption}\n\n{messages.payment_resolution(accepted=accept)}"
+            )
+        except Exception:  # noqa: BLE001 - cosmetic; the notification below is not
+            logger.exception("Failed to rewrite the receipt message for order %s", order_id)
+
+    if changed:
+        await notify_payment_reviewed(order_id, accepted=accept)
 
 
 @router.message()
