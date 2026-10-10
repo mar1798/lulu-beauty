@@ -347,6 +347,7 @@ async def test_confirmation_sends_the_bill_with_the_receipt_button() -> None:
 
     message = bot.send_message.await_args.args[1]
     assert "Итого к оплате" in message
+    assert bot.send_message.await_args.kwargs["parse_mode"] == "HTML"
     markup = bot.send_message.await_args.kwargs["reply_markup"]
     first = markup.inline_keyboard[0][0]
     assert first.callback_data == ReceiptAction(order_id=order.id).pack()

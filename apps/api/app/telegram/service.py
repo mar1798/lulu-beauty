@@ -204,7 +204,9 @@ class NotificationsService:
         for index, part in enumerate(parts):
             last = index == len(parts) - 1
             keyboard = keyboards.receipt_actions(order.id) if last else None
-            if not await self._try_send(user.telegram_chat_id, part, reply_markup=keyboard):
+            if not await self._try_send(
+                user.telegram_chat_id, part, reply_markup=keyboard, parse_mode="HTML"
+            ):
                 logger.warning(
                     "%s; bill for order %s not sent (part %d of %d)",
                     self._fallback_reason(user),
@@ -465,9 +467,17 @@ class NotificationsService:
     # ─── Delivery ────────────────────────────────────────────────────────────────
 
     async def _try_send(
-        self, chat_id: int | None, message: str, *, reply_markup: InlineKeyboardMarkup | None = None
+        self,
+        chat_id: int | None,
+        message: str,
+        *,
+        reply_markup: InlineKeyboardMarkup | None = None,
+        parse_mode: str | None = None,
     ) -> bool:
-        return await self._deliver(chat_id, message, reply_markup=reply_markup) is Delivery.SENT
+        delivery = await self._deliver(
+            chat_id, message, reply_markup=reply_markup, parse_mode=parse_mode
+        )
+        return delivery is Delivery.SENT
 
     async def _deliver(
         self,
@@ -475,10 +485,13 @@ class NotificationsService:
         message: str,
         *,
         reply_markup: InlineKeyboardMarkup | None = None,
+        parse_mode: str | None = None,
         retry_on_flood: bool = True,
     ) -> Delivery:
         async def send(bot: Bot, chat_id: int) -> object:
-            return await bot.send_message(chat_id, message, reply_markup=reply_markup)
+            return await bot.send_message(
+                chat_id, message, reply_markup=reply_markup, parse_mode=parse_mode
+            )
 
         return await self._attempt(chat_id, send, retry_on_flood=retry_on_flood)
 

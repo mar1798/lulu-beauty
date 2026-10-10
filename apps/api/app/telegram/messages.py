@@ -5,9 +5,12 @@ what to do when it fails) and how it is worded change for different reasons, and
 are now nine texts rather than the original two.
 
 Everything here is plain text — the bot sends without a `parse_mode`, so nothing needs
-escaping and a product name with an underscore in it can't break a message.
+escaping and a product name with an underscore in it can't break a message. The one
+exception is the bill (`order_confirmed`): it is HTML, sent with `parse_mode="HTML"`,
+and escapes every product name it lists.
 """
 
+import html
 import logging
 import uuid
 from collections.abc import Sequence
@@ -41,12 +44,13 @@ MAX_LISTED_CART_ITEMS = 10
 MAX_LISTED_WISHLIST_ITEMS = 10
 
 
-def format_price(cents: int) -> str:
+def format_price(cents: int, *, grouped: bool = True) -> str:
+    """`grouped=False` drops the thousands separator — "3050 сом", the way the bill writes it."""
     units, remainder = divmod(cents, CENTS_IN_UNIT)
-    grouped = f"{units:,}".replace(",", THOUSANDS_SEPARATOR)
+    digits = f"{units:,}".replace(",", THOUSANDS_SEPARATOR) if grouped else str(units)
     if remainder == 0:
-        return f"{grouped} {CURRENCY_LABEL}"
-    return f"{grouped},{remainder:02d} {CURRENCY_LABEL}"
+        return f"{digits} {CURRENCY_LABEL}"
+    return f"{digits},{remainder:02d} {CURRENCY_LABEL}"
 
 
 def format_deadline(deadline_at: datetime) -> str:
@@ -285,10 +289,12 @@ PAYMENT_DETAILS = (
 )
 
 
-def _order_line(item: OrderItem) -> str:
-    label = product_label(item.product_name, item.product_volume_ml)
+def _bill_line(item: OrderItem) -> str:
+    """A line of the bill — HTML, so the product name is escaped."""
+    label = html.escape(product_label(item.product_name, item.product_volume_ml))
     quantity = f" × {item.quantity}" if item.quantity > 1 else ""
-    return f"• {label}{quantity} - {format_price(item.product_price_cents * item.quantity)}"
+    price = format_price(item.product_price_cents * item.quantity, grouped=False)
+    return f"• {label}{quantity} - {price}"
 
 
 def order_confirmed(order: Order, *, first_cycle: bool) -> str:
@@ -301,6 +307,10 @@ def order_confirmed(order: Order, *, first_cycle: bool) -> str:
 
     `first_cycle` keeps the owner's greeting true: «первый сбор» is said only while it
     is one.
+
+    The only HTML text here: the shop's name and the sum to pay are bold, so it goes out
+    with `parse_mode="HTML"`. Amounts are written without the thousands separator —
+    "3050 сом", as the owner wants it in the bill.
     """
     welcome = (
         "Вы стали частью нашего первого сбора, и мне очень приятно видеть вас "
@@ -310,20 +320,20 @@ def order_confirmed(order: Order, *, first_cycle: bool) -> str:
     )
     return "\n".join(
         [
-            "Спасибо, что оформили заказ в Sululu😇",
+            "Спасибо, что оформили заказ в <b>Sululu</b>😇",
             welcome,
             "",
             f"Ваш заказ {order_reference(order.id)}:",
             f"🛍{_items_count(order)}",
-            *(_order_line(item) for item in order.items),
+            *(_bill_line(item) for item in order.items),
             "",
-            f"Итого к оплате: {format_price(order.total_cents)}",
+            f"Итого к оплате: <b>{format_price(order.total_cents, grouped=False)}</b>",
             "Если всё верно, можете произвести оплату по реквизитам:",
             "",
             PAYMENT_DETAILS,
             "После оплаты, пожалуйста, отправьте сюда чек🤍",
             "Доставка будет осуществлена в течение 3 рабочих дней🫶🫧",
-            "Спасибо за доверие к Sululu!✨",
+            "Спасибо за доверие к <b>Sululu</b>!✨",
         ]
     )
 

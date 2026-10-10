@@ -171,6 +171,11 @@ between lines (`service.split_message`), the receipt button under the last.
 The bill greets the customers of the **first** cycle (no earlier deadline) as the shop's
 first; every later one gets the same text without that word (`notify._is_first_cycle`).
 
+The bill is the one message sent with `parse_mode="HTML"`: «Sululu» and the sum to pay are
+bold, so every product name in it goes through `html.escape`. Every other text is plain and
+escapes nothing. Its amounts are written without the thousands separator («3050 сом»),
+unlike every other message and the site («3 050 сом»).
+
 ### Polling vs webhook
 
 Long polling by default. Webhook mode needs **all three** of `TELEGRAM_USE_WEBHOOK`,
