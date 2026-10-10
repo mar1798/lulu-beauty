@@ -3,6 +3,7 @@ import { Fragment, type FC, useState } from 'react'
 import type { IAdminOrdersTableProps, IBasicStyling } from '../../types'
 import { IconTrash } from '../../svg/icons'
 import { AppLink } from '../../atoms/app-link'
+import { Badge } from '../../atoms/badge'
 import { IconButton } from '../../atoms/icon-button'
 import { Price } from '../../atoms/price'
 import { Skeleton } from '../../atoms/skeleton'
@@ -18,6 +19,9 @@ import * as styles from './AdminOrdersTable.css'
  * Состав заявки раскрывается по строке, а не открывается отдельной страницей:
  * владельцу нужно собрать заказ, то есть видеть позиции нескольких заявок
  * подряд, и переходы туда-обратно этому мешают.
+ *
+ * Под суммой — метка оплаты: чек покупатель шлёт в бот, и там же владелец жмёт
+ * «Оплата получена»; здесь видно, у каких заявок чек ждёт проверки.
  *
  * Телефон — ссылка `tel:`: заявку владелец подтверждает в чате бота, но о выдаче
  * договаривается лично, и копировать номер для этого руками незачем.
@@ -146,7 +150,20 @@ export const AdminOrdersTable: FC<IAdminOrdersTableProps & IBasicStyling> = ({
                       </td>
 
                       <td className={styles.cell} role="cell" data-label="Сумма">
-                        <Price priceCents={order.totalCents} size="sm" />
+                        <div className={styles.total}>
+                          <Price priceCents={order.totalCents} size="sm" />
+                          {order.paidAt !== null ? (
+                            <Badge tone="success" withDot={true}>
+                              Оплачено
+                            </Badge>
+                          ) : (
+                            order.hasReceipt && (
+                              <Badge tone="warning" withDot={true}>
+                                Чек на проверке
+                              </Badge>
+                            )
+                          )}
+                        </div>
                       </td>
 
                       <td className={styles.statusCell} role="cell">

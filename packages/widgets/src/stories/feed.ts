@@ -937,6 +937,7 @@ export const feedOrder = (overrides: Partial<IOrder> = {}): IOrder => {
     isRestorable: false,
     isCancellable: true,
     pendingStage: 'COLLECTING',
+    paidAt: null,
     ...overrides,
   }
 }
@@ -1228,6 +1229,7 @@ export const feedAdminOrder = (overrides: Partial<IAdminOrder> = {}): IAdminOrde
   ...feedOrder(),
   customerName: faker.person.fullName(),
   customerPhone: '+996555123456',
+  hasReceipt: false,
   ...overrides,
 })
 
@@ -1252,8 +1254,12 @@ export const feedAdminUsersTable = (): IAdminUsersTableProps => ({
 export const feedAdminOrdersTable = (): IAdminOrdersTableProps => ({
   orders: [
     feedAdminOrder({ note: 'Позвоните после 18:00.' }),
-    feedAdminOrder({ status: 'CONFIRMED' }),
-    feedAdminOrder({ status: 'COMPLETED' }),
+    feedAdminOrder({ status: 'CONFIRMED', hasReceipt: true }),
+    feedAdminOrder({
+      status: 'COMPLETED',
+      hasReceipt: true,
+      paidAt: new Date(Date.now() - DAY_MS).toISOString(),
+    }),
   ],
   onStatusChange: noop,
   buildProductHref: slug => `/catalog/${slug}`,

@@ -335,6 +335,11 @@ export interface IOrder {
   isCancellable: boolean
   /** Стадия ожидания — только для `PENDING`, только ради текста. */
   pendingStage: PendingStage | null
+  /**
+   * Когда владелец нажал «Оплата получена» под чеком, присланным в бот.
+   * Не статус: оплата идёт рядом с `CONFIRMED → READY → COMPLETED`, а не между ними.
+   */
+  paidAt: string | null
 }
 
 /**
@@ -345,6 +350,8 @@ export interface IOrder {
 export interface IAdminOrder extends IOrder {
   customerName: string
   customerPhone: string
+  /** Покупатель прислал чек, и он ещё не отклонён. */
+  hasReceipt: boolean
 }
 
 /**
