@@ -4,12 +4,14 @@ from datetime import datetime
 from pydantic import Field
 
 from app.common.limits import MAX_ITEM_QUANTITY
-from app.common.schemas import CamelModel
+from app.common.schemas import CamelModel, PageResponse
 from app.orders.models import OrderStatus, PendingStage
 
 __all__ = [
     "MAX_ITEM_QUANTITY",
+    "AdminOrderPageResponse",
     "AdminOrderResponse",
+    "AdminOrdersSummary",
     "CheckoutRequest",
     "OrderItemAddRequest",
     "OrderItemQuantityRequest",
@@ -109,3 +111,18 @@ class AdminOrderResponse(OrderResponse):
 
     customer_name: str
     customer_phone: str
+
+
+class AdminOrdersSummary(CamelModel):
+    """Totals across every order the filters match, not just the page on screen.
+
+    The order count is the envelope's `total`; these are the two numbers it can't give.
+    `item_count` counts lines, the way each row of the table does ("3 позиции"), not units.
+    """
+
+    item_count: int
+    total_cents: int
+
+
+class AdminOrderPageResponse(PageResponse[AdminOrderResponse]):
+    summary: AdminOrdersSummary

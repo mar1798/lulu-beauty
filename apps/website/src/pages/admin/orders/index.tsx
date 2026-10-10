@@ -313,6 +313,7 @@ const AdminOrdersPage: React.FC = () => {
         orders={data?.items ?? []}
         isLoading={isFirstLoad}
         busyId={busyId}
+        summary={data === undefined ? undefined : { orderCount: data.total, ...data.summary }}
         buildProductHref={slug => `/catalog/${slug}`}
         onStatusChange={(order, next) => {
           void handleStatusChange(order, next)

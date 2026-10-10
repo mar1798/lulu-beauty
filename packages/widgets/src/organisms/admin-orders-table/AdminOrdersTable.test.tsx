@@ -14,4 +14,19 @@ describe('AdminOrdersTable', () => {
 
     expect(container.firstElementChild).not.toBeNull()
   })
+
+  it('показывает итоги из `summary`, а не считает их по строкам страницы', () => {
+    const { getByText } = renderWidget(<AdminOrdersTable {...feedAdminOrdersTable()} />)
+
+    expect(getByText('Итого: 42 заявки')).toBeTruthy()
+    expect(getByText('118 позиций')).toBeTruthy()
+  })
+
+  it('без `summary` строки итогов нет', () => {
+    const { container } = renderWidget(
+      <AdminOrdersTable {...feedAdminOrdersTable()} summary={undefined} />
+    )
+
+    expect(container.querySelector('tfoot')).toBeNull()
+  })
 })

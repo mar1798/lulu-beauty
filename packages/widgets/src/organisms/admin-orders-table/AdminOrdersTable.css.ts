@@ -1,5 +1,5 @@
 import { style } from '@vanilla-extract/css'
-import { color, font, media, rem, transition } from '../../styling/lib'
+import { border, color, font, media, rem, transition } from '../../styling/lib'
 import { flexColumn, flexRow, focusVisibleRing } from '../../styling/mixin'
 import {
   tableCardActionsCell,
@@ -32,6 +32,35 @@ export const row = style({
   flexDirection: 'row',
   flexWrap: 'wrap',
   columnGap: vars.space.sm,
+})
+
+/* Итоги — та же раскладка, что у `tbody`: ниже `md` блок, выше — группа строк. */
+export const foot = style({
+  display: 'block',
+  ...media({
+    md: { display: 'table-footer-group' },
+  }),
+})
+
+/*
+ * Линия сверху нужна карточкам: у последней карточки `tbody` нижней линии нет.
+ * В таблице она сливается с нижней границей ячеек над ней (`border-collapse`).
+ */
+export const footRow = style({
+  ...tableCardRow(),
+  borderTop: border(1, color.border('subtle')),
+})
+
+export const footCell = style({
+  ...tableCardCell(),
+  flexBasis: '100%',
+  fontWeight: 600,
+})
+
+/** Пустой хвост под статусом и действиями: на карточке ему нечего показывать. */
+export const footFillerCell = style({
+  ...tableCardCell(),
+  display: 'none',
 })
 
 export const headCell = style(tableHeadCell())
@@ -83,6 +112,7 @@ export const number = style({
 export const date = style({
   font: font('12/18'),
   color: color.text('muted'),
+  whiteSpace: 'nowrap',
 })
 
 export const customer = style(flexColumn(2))
@@ -90,6 +120,7 @@ export const customer = style(flexColumn(2))
 export const customerName = style({
   font: font('14/20', 500),
   color: color.text('primary'),
+  whiteSpace: 'nowrap',
 })
 
 export const phone = style([
@@ -112,6 +143,7 @@ export const toggle = style([
     border: 'none',
     padding: 0,
     cursor: 'pointer',
+    whiteSpace: 'nowrap',
     textDecorationLine: 'underline',
     textDecorationStyle: 'dotted',
     textUnderlineOffset: rem(3),

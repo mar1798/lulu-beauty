@@ -10,7 +10,9 @@ from app.common.schemas import PageResponse
 from app.db import get_session
 from app.orders.models import Order, OrderItem, OrderStatus
 from app.orders.schemas import (
+    AdminOrderPageResponse,
     AdminOrderResponse,
+    AdminOrdersSummary,
     CheckoutRequest,
     OrderItemAddRequest,
     OrderItemQuantityRequest,
@@ -339,7 +341,7 @@ async def restore_my_order(
     return response
 
 
-@router.get("/admin/orders", response_model=PageResponse[AdminOrderResponse])
+@router.get("/admin/orders", response_model=AdminOrderPageResponse)
 async def list_orders_admin(
     cycle_id: uuid.UUID | None = Query(default=None, alias="cycleId"),
     order_status: OrderStatus | None = Query(default=None, alias="status"),
@@ -347,18 +349,20 @@ async def list_orders_admin(
     page_size: int = Query(default=20, ge=1, le=100, alias="pageSize"),
     session: AsyncSession = Depends(get_session),
     _admin: CurrentUser = Depends(require_admin),
-) -> PageResponse[AdminOrderResponse]:
+) -> AdminOrderPageResponse:
     service = OrdersService(session)
     orders, total = await service.list_admin_page(cycle_id, order_status, page, page_size)
+    item_count, total_cents = await service.admin_summary(cycle_id, order_status)
     customers = await service.load_customers(orders)
     tags = await service.load_item_tags(orders)
-    return PageResponse(
+    return AdminOrderPageResponse(
         items=[
             _admin_order_response(order, customers.get(order.user_id), tags) for order in orders
         ],
         total=total,
         page=page,
         page_size=page_size,
+        summary=AdminOrdersSummary(item_count=item_count, total_cents=total_cents),
     )
 
 

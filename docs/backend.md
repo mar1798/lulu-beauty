@@ -193,6 +193,10 @@ survive a rollback (any `notify_*`) fire _after_ the commit.
 
 **Wire format.** Request/response schemas subclass `common.schemas.CamelModel`, so JSON is
 camelCase while Python stays snake_case. `PageResponse[T]` is the paging envelope.
+`GET /admin/orders` extends it (`AdminOrderPageResponse`) with a `summary` of `itemCount`
+(order lines, not units) and `totalCents` across **every** order the filters match, not
+the page — the table's "Итого" row; the order count is the envelope's `total`. Like the
+export, it counts cancelled orders whenever the status filter lets them in.
 
 > Query parameters are **not** covered by that, and the casing is inconsistent
 > purpose-by-accident: public `GET /products` takes `in_stock` / `page_size`, admin

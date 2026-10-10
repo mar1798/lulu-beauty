@@ -27,6 +27,7 @@ def client() -> Iterator[AsyncClient]:
 def _mock_service(mock_service_cls: MagicMock) -> MagicMock:
     service = mock_service_cls.return_value
     service.list_admin_page = AsyncMock(return_value=([], 0))
+    service.admin_summary = AsyncMock(return_value=(0, 0))
     service.load_customers = AsyncMock(return_value={})
     service.load_item_tags = AsyncMock(return_value={})
     return service
@@ -74,7 +75,25 @@ async def test_list_orders_admin_returns_pagination_envelope(client: AsyncClient
         async with client as c:
             response = await c.get("/admin/orders")
 
-    assert response.json() == {"items": [], "total": 0, "page": 1, "pageSize": 20}
+    assert response.json() == {
+        "items": [],
+        "total": 0,
+        "page": 1,
+        "pageSize": 20,
+        "summary": {"itemCount": 0, "totalCents": 0},
+    }
+
+
+async def test_list_orders_admin_summarises_under_the_same_filters(client: AsyncClient) -> None:
+    cycle_id = uuid.uuid4()
+    with patch("app.orders.router.OrdersService") as mock_service_cls:
+        service = _mock_service(mock_service_cls)
+        service.admin_summary = AsyncMock(return_value=(7, 12_300))
+        async with client as c:
+            response = await c.get(f"/admin/orders?cycleId={cycle_id}&status=CONFIRMED&page=2")
+
+    service.admin_summary.assert_awaited_once_with(cycle_id, OrderStatus.CONFIRMED)
+    assert response.json()["summary"] == {"itemCount": 7, "totalCents": 12_300}
 
 
 @pytest.fixture

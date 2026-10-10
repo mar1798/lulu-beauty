@@ -290,13 +290,12 @@ interface IHomePageProps {
    */
   showcase: IProduct[]
   /**
-   * Сколько товаров сейчас в наличии — для строки доверия под кнопками и
-   * подписи замыкающей плитки витрины. Не `fresh.length`: тот ограничен
-   * `FRESH_COUNT` и сообщил бы «8 товаров» про каталог из двух сотен.
+   * Сколько товаров в каталоге — для строки доверия под кнопками и подписи
+   * замыкающей плитки витрины. Не `fresh.length`: тот ограничен `FRESH_COUNT`
+   * и сообщил бы «8 товаров» про каталог из двух сотен.
    *
-   * Именно в наличии, а не всего: это `total` того же запроса, которым набрана
-   * витрина (`inStock: true`), и обещать сотню позиций, половина которых
-   * кончилась, страница не должна.
+   * Все товары, без фильтров, а не только в наличии: ссылка ведёт в каталог,
+   * и там «Найдено товаров» должно совпасть с обещанным здесь числом.
    */
   productCount: number
   categories: ICategory[]
@@ -310,13 +309,16 @@ export const getStaticProps: GetStaticProps<IHomePageProps> = async () => {
     Каждый запрос со своим `catch`: недоступный на сборке API не должен ронять
     `next build`, а пустая подборка не повод прятать сбор (и наоборот).
   */
-  const [cycle, page, picked, categories, brands] = await Promise.all([
+  const [cycle, page, all, picked, categories, brands] = await Promise.all([
     getActiveCycleOrNull().catch(() => null),
-    /* Тот же запрос отдаёт и подборку, и общее число товаров — второй не нужен. */
-    listProducts({ pageSize: FRESH_COUNT, inStock: true }).catch(() => ({
-      items: [] as IProduct[],
-      total: 0,
+    listProducts({ pageSize: FRESH_COUNT, inStock: true }).catch((): { items: IProduct[] } => ({
+      items: [],
     })),
+    /*
+      Счётчик — отдельным запросом: подборка набирается только из товаров в
+      наличии, а число должно совпасть с каталогом, где показаны все.
+    */
+    listProducts({ pageSize: 1 }).catch(() => ({ total: 0 })),
     /*
       Без `inStock`: отметку ставит владелец, и молча прятать выбранный им
       товар, когда он кончился, значило бы спорить с его выбором. Снять
@@ -340,7 +342,7 @@ export const getStaticProps: GetStaticProps<IHomePageProps> = async () => {
       cycle,
       fresh: page.items,
       showcase,
-      productCount: page.total,
+      productCount: all.total,
       categories,
       brands,
       fallback: activeCycleFallback(cycle),
@@ -498,9 +500,8 @@ const HomePage: React.FC<IHomePageProps> = ({
   brands,
 }) => {
   /*
-    Приписка под кнопками — только объём каталога, счётчиками. Считаем по
-    товарам в наличии: это та же выборка, что стоит в витрине, и обещать сотню
-    позиций, половина которых кончилась, страница не должна. Каждый пустой
+    Приписка под кнопками — только объём каталога, счётчиками. Считаем все
+    товары, как и каталог, куда ведёт кнопка. Каждый пустой
     счётчик опускается: «0 товаров» — не честность, а поломка. Не осталось
     ничего — приписки нет вовсе, пустой строкой место под ней не занимаем.
   */

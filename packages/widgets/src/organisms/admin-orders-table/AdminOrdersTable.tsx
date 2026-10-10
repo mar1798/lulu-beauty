@@ -35,6 +35,9 @@ const ORDER_NUMBER_LENGTH = 8
 /** Заявка, покупатель, состав, сумма, статус — колонка действий необязательна. */
 const BASE_COLUMNS = 5
 
+/** Сколько колонок перед «Составом» — их в строке итогов занимает подпись «Итого». */
+const LEADING_COLUMNS = 2
+
 const orderNumber = (id: string): string => id.slice(0, ORDER_NUMBER_LENGTH).toUpperCase()
 
 export const AdminOrdersTable: FC<IAdminOrdersTableProps & IBasicStyling> = ({
@@ -46,6 +49,7 @@ export const AdminOrdersTable: FC<IAdminOrdersTableProps & IBasicStyling> = ({
   skeletonRows = DEFAULT_SKELETON_ROWS,
   busyId = null,
   emptyState,
+  summary,
   className,
 }) => {
   const [expanded, setExpanded] = useState<string[]>([])
@@ -224,6 +228,27 @@ export const AdminOrdersTable: FC<IAdminOrdersTableProps & IBasicStyling> = ({
                 )
               })}
         </tbody>
+
+        {summary !== undefined && !isLoading && (
+          <tfoot className={styles.foot} role="rowgroup">
+            <tr className={styles.footRow} role="row">
+              <td className={styles.footCell} role="cell" colSpan={LEADING_COLUMNS}>
+                Итого: {pluralize(summary.orderCount, ['заявка', 'заявки', 'заявок'])}
+              </td>
+              <td className={styles.footCell} role="cell" data-label="Состав">
+                {pluralize(summary.itemCount, ['позиция', 'позиции', 'позиций'])}
+              </td>
+              <td className={styles.footCell} role="cell" data-label="Сумма">
+                <Price priceCents={summary.totalCents} size="sm" />
+              </td>
+              <td
+                className={styles.footFillerCell}
+                role="cell"
+                colSpan={columnCount - LEADING_COLUMNS - 2}
+              />
+            </tr>
+          </tfoot>
+        )}
       </table>
     </div>
   )
