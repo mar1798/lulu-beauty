@@ -404,7 +404,7 @@ export const feedFooter = (): IFooterProps => ({
     },
   ],
   copyright: '© 2026 Sululu',
-  note: 'Оплата - переводом по счёту из Telegram, выдача обсуждается лично',
+  note: 'Оплата - переводом, чек отправляете боту. Доставка обсуждается лично',
 })
 
 export const feedBaseLayout = (): IBaseLayoutProps => ({
@@ -556,7 +556,8 @@ export const feedFaqAccordion = (): IFaqAccordionProps => ({
     },
     {
       question: 'Как связаться с магазином?',
-      answer: 'Напишите напрямую в {link} - в остальном переписку ведёт бот.',
+      answer:
+        'Через бота в Telegram - кнопка «✍️ Написать Sululu» в меню. Или напишите напрямую в {link}.',
       action: {
         label: 'Instagram магазина',
         link: { href: 'https://www.instagram.com/sululu_kg', target: '_blank' },
@@ -567,9 +568,9 @@ export const feedFaqAccordion = (): IFaqAccordionProps => ({
 
 export const feedHomeCta = (): IHomeCtaProps => ({
   title: 'Вход и подтверждение - в Telegram',
-  description: 'Бот заводит аккаунт, подтверждает вход и присылает решение по заявке.',
+  description: 'Бот заводит аккаунт, подтверждает вход, присылает счёт по заявке и принимает чек.',
   actions: 'Сюда встают кнопки',
-  note: 'Оплата и доставка обсуждаются лично',
+  note: 'Оплата - переводом, чек отправляете боту. Доставка обсуждается лично',
 })
 
 /* --- Витрина --- */
