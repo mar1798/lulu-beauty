@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest'
+import { fireEvent } from '@testing-library/react'
+import { describe, expect, it, vi } from 'vitest'
 import { AdminOrdersTable } from '.'
 import { feedAdminOrder, feedAdminOrdersTable } from '../../stories/feed'
 import { renderWidget } from '../../testing/render'
@@ -42,5 +43,26 @@ describe('AdminOrdersTable', () => {
 
     expect(getAllByText('Чек на проверке')).toHaveLength(1)
     expect(getAllByText('Оплачено')).toHaveLength(1)
+  })
+
+  it('«Написать через бота» зовёт обработчик, а без привязки к боту недоступна', () => {
+    const onMessage = vi.fn()
+    const linked = feedAdminOrder({ canMessage: true })
+    const unlinked = feedAdminOrder({ canMessage: false })
+    const { getAllByRole } = renderWidget(
+      <AdminOrdersTable
+        {...feedAdminOrdersTable()}
+        orders={[linked, unlinked]}
+        onMessage={onMessage}
+      />
+    )
+
+    const [first, second] = getAllByRole('button', { name: /Написать покупателю заявки № .* через бота/ })
+    fireEvent.click(first)
+    fireEvent.click(second)
+
+    expect(onMessage).toHaveBeenCalledTimes(1)
+    expect(onMessage).toHaveBeenCalledWith(linked)
+    expect(second.getAttribute('aria-disabled')).toBe('true')
   })
 })

@@ -1,5 +1,6 @@
 import uuid
 from datetime import UTC, datetime
+from unittest.mock import MagicMock
 
 from app.auth.models import User
 from app.cart.schemas import CartItemResponse, CartResponse
@@ -9,6 +10,7 @@ from app.cycles.models import OrderCycle
 from app.orders.models import Order, OrderItem, OrderStatus
 from app.orders.service import OrderItemDrop, OrderPriceChange
 from app.telegram import messages
+from app.wanted.models import WantedProduct
 from app.wishlist.schemas import WishlistItemResponse, WishlistResponse
 
 
@@ -95,6 +97,29 @@ def test_order_status_changed_announces_the_owner_taking_a_cancellation_back() -
     """PENDING приходит только от владельца: покупатель уже получил «отменена
     владельцем», и без этой строки заявка воскресала бы у него молча."""
     assert messages.order_status_changed(_order(status=OrderStatus.PENDING)) is not None
+
+
+def test_owner_message_names_the_order_and_keeps_the_text_as_written() -> None:
+    """Номер заявки — чтобы покупатель с двумя заявками не гадал, о какой речь; текст
+    владельца — как есть, без экранирования: бот шлёт обычный текст, не HTML."""
+    order_id = uuid.UUID("a1b2c3d4-0000-0000-0000-000000000000")
+
+    text = messages.owner_message(messages.order_reference(order_id), "Крем <50 мл> закончился")
+
+    assert "#a1b2c3d4" in text
+    assert "Крем <50 мл> закончился" in text
+    assert "Ответьте на это сообщение или напишите в Instagram." in text
+
+
+def test_customer_reply_header_names_the_order_only_when_there_is_one() -> None:
+    """Из меню пишут магазину вообще — шапка без номера, а не «по заявке -»."""
+    customer = MagicMock()
+    customer.name, customer.phone = "Айсулуу", "+996555000111"
+
+    assert "#a1b2c3d4" in messages.customer_reply_for_owner("#a1b2c3d4", customer)
+    general = messages.customer_reply_for_owner(None, customer)
+    assert "заявк" not in general
+    assert "+996555000111" in general
 
 
 def test_order_deleted_stays_silent_on_what_was_already_finished() -> None:
@@ -609,3 +634,26 @@ def test_order_confirmed_greets_the_first_cycle_as_the_first_and_no_other() -> N
 
     assert "первого сбора" in messages.order_confirmed(order, first_cycle=True)
     assert "перв" not in messages.order_confirmed(order, first_cycle=False)
+
+
+def test_owner_message_without_an_order_or_a_text() -> None:
+    """Ответ владельца в чате: заявки может не быть, а фото идёт копией следом."""
+    text = messages.owner_message(None, None)
+
+    assert text.startswith(messages.OWNER_MESSAGE_HEADER)
+    assert "заявк" not in text
+    assert "ниже" in text
+
+
+def test_owner_message_answering_a_wish_says_so() -> None:
+    """Ответ на пожелание: заявки нет, и без этих слов сообщение не к чему привязать."""
+    text = messages.owner_message(None, "Привезём в следующий сбор", wish=True)
+
+    assert text.startswith(f"{messages.OWNER_MESSAGE_HEADER} по вашему пожеланию:")
+    assert "Привезём в следующий сбор" in text
+
+
+def test_a_wish_for_the_owner_opens_with_the_title_the_reply_is_matched_by() -> None:
+    wanted = WantedProduct(name="Айсулуу", phone="+996555000111", message="Крем с SPF")
+
+    assert messages.wanted_product_for_owner(wanted).startswith(messages.WANTED_PRODUCT_TITLE)

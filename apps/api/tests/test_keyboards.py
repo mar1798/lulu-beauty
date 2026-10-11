@@ -356,3 +356,21 @@ def test_payment_callbacks_do_not_shadow_each_other() -> None:
 
     with pytest.raises(ValueError):
         ReceiptAction.unpack(choice)
+
+
+def test_reply_action_round_trips_through_callback_data() -> None:
+    order_id = uuid.uuid4()
+
+    packed = keyboards.ReplyAction(order_id=order_id).pack()
+
+    assert len(packed.encode()) <= MAX_CALLBACK_DATA_BYTES
+    assert keyboards.ReplyAction.unpack(packed).order_id == order_id
+
+
+def test_owner_message_offers_the_reply_first_and_instagram_still() -> None:
+    """The text says «ответьте или напишите в Instagram» — both have to be buttons."""
+    markup = keyboards.owner_message_actions(uuid.uuid4())
+
+    assert markup.inline_keyboard[0][0].text == messages.REPLY_BUTTON
+    urls = [keyboards.button_target(b) for row in markup.inline_keyboard for b in row]
+    assert keyboards.INSTAGRAM_URL in urls

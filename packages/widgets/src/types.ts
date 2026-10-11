@@ -352,6 +352,11 @@ export interface IAdminOrder extends IOrder {
   customerPhone: string
   /** Покупатель прислал чек, и он ещё не отклонён. */
   hasReceipt: boolean
+  /**
+   * Чат покупателя привязан к боту — написать ему через бота есть куда. Ложь и у
+   * стёртого аккаунта: привязка ушла вместе с ним.
+   */
+  canMessage: boolean
 }
 
 /**
@@ -1847,6 +1852,26 @@ export interface IModalProps {
   isDismissable?: boolean
 }
 
+/**
+ * Окно сообщения покупателю через бота. Текст — снаружи (`value`/`onChange`):
+ * страница очищает его после отправки и держит, если отправка не удалась.
+ */
+export interface IAdminMessageDialogProps {
+  isOpen: boolean
+  /** Кому: имя покупателя и номер заявки — в шапке окна. */
+  customerName: string
+  orderNumber: string
+  value: string
+  onChange: (value: string) => void
+  /** Предел длины — счётчик под полем. */
+  maxLength: number
+  isBusy?: boolean
+  /** Почему не ушло — остаётся в окне, чтобы текст не пропал. */
+  error?: string | null
+  onSend: () => void
+  onClose: () => void
+}
+
 export interface IConfirmDialogProps {
   isOpen: boolean
   title: string
@@ -2200,6 +2225,11 @@ export interface IAdminOrdersTableProps {
    * действий не рендерится вовсе.
    */
   onDelete?: (order: IAdminOrder) => void
+  /**
+   * «Написать покупателю через бота» — для тех, кого по номеру в Telegram не
+   * найти. Кнопка стоит в колонке действий рядом с удалением.
+   */
+  onMessage?: (order: IAdminOrder) => void
   buildProductHref: (productSlug: string) => string
   isLoading?: boolean
   skeletonRows?: number

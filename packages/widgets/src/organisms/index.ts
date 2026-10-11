@@ -5,6 +5,7 @@
 export * from './admin-categories-panel/index'
 export * from './admin-cycle-calendar/index'
 export * from './admin-import-panel/index'
+export * from './admin-message-dialog/index'
 export * from './admin-orders-table/index'
 export * from './admin-product-form/index'
 export * from './admin-products-table/index'

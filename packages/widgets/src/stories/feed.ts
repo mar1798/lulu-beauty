@@ -5,6 +5,7 @@ import {
   IAdminCycleCalendarProps,
   IAdminImportPanelProps,
   IAdminLayoutProps,
+  IAdminMessageDialogProps,
   IAdminOrder,
   IAdminOrdersTableProps,
   IAdminProductFormProps,
@@ -1019,6 +1020,17 @@ export const feedModal = (): IModalProps => ({
   children: 'Товар пропадёт из каталога, но останется в уже оформленных заявках.',
 })
 
+export const feedAdminMessageDialog = (): IAdminMessageDialogProps => ({
+  isOpen: true,
+  customerName: 'Айгуль',
+  orderNumber: 'A1B2C3D4',
+  value: 'Здравствуйте! Крем закончился у поставщика - заменить на соседний объём?',
+  onChange: noop,
+  maxLength: 3500,
+  onSend: noop,
+  onClose: noop,
+})
+
 export const feedConfirmDialog = (): IConfirmDialogProps => ({
   isOpen: true,
   title: 'Удалить категорию?',
@@ -1233,6 +1245,7 @@ export const feedAdminOrder = (overrides: Partial<IAdminOrder> = {}): IAdminOrde
   customerName: faker.person.fullName(),
   customerPhone: '+996555123456',
   hasReceipt: false,
+  canMessage: true,
   ...overrides,
 })
 
@@ -1265,6 +1278,7 @@ export const feedAdminOrdersTable = (): IAdminOrdersTableProps => ({
     }),
   ],
   onStatusChange: noop,
+  onMessage: noop,
   buildProductHref: slug => `/catalog/${slug}`,
   summary: { orderCount: 42, itemCount: 118, totalCents: 18_450_000 },
 })

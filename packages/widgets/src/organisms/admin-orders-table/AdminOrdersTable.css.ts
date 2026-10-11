@@ -101,6 +101,9 @@ export const actionsCell = style({
   alignSelf: 'center',
 })
 
+/** Написать и удалить — вплотную друг к другу, без переноса. */
+export const actions = style([flexRow(4), { justifyContent: 'flex-end' }])
+
 export const order = style(flexColumn(2))
 
 export const number = style({

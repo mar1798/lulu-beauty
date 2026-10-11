@@ -10,6 +10,7 @@ from app.common.schemas import PageResponse
 from app.db import get_session
 from app.orders.models import Order, OrderItem, OrderStatus
 from app.orders.schemas import (
+    AdminOrderMessageRequest,
     AdminOrderPageResponse,
     AdminOrderResponse,
     AdminOrdersSummary,
@@ -37,12 +38,15 @@ from app.orders.service import (
     StatusTransitionError,
 )
 from app.payments.service import PaymentsService
+from app.telegram import recipients
+from app.telegram.client import notifications_service
 from app.telegram.notify import (
     notify_new_order,
     notify_order_cancelled_by_customer,
     notify_order_deleted,
     notify_order_status,
 )
+from app.telegram.service import Delivery
 
 router = APIRouter(tags=["orders"])
 
@@ -135,6 +139,7 @@ def _admin_order_response(
         customer_phone=customer.phone if customer is not None else "-",
         paid_at=order.paid_at,
         has_receipt=order.id in with_receipts,
+        can_message=customer is not None and customer.telegram_chat_id is not None,
     )
 
 
@@ -401,6 +406,47 @@ async def update_order_status(
     if changed:
         background_tasks.add_task(notify_order_status, order.id)
     return _admin_order_response(order, customers.get(order.user_id), tags, with_receipts)
+
+
+@router.post("/admin/orders/{order_id}/message", status_code=status.HTTP_204_NO_CONTENT)
+async def message_customer(
+    order_id: uuid.UUID,
+    body: AdminOrderMessageRequest,
+    session: AsyncSession = Depends(get_session),
+    _admin: CurrentUser = Depends(require_admin),
+) -> None:
+    """The owner writes to the order's customer through the bot.
+
+    For the customer the owner cannot reach by phone: Telegram hides an account from
+    search by number unless its owner allows it, while the bot holds the chat itself.
+
+    Sent inside the request rather than as a background task, unlike every notification:
+    nothing was committed that the send could contradict, and the owner is waiting to
+    learn whether it got through. Each way it can fail is its own code, because each
+    means a different next step — ask in Instagram, try later, or nothing to be done.
+    """
+    order = await session.get(Order, order_id)
+    if order is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "order_not_found")
+    customers = await OrdersService(session).load_customers([order])
+    customer = customers.get(order.user_id)
+    if customer is None or customer.telegram_chat_id is None:
+        raise HTTPException(status.HTTP_409_CONFLICT, "customer_not_in_bot")
+
+    chat_id = customer.telegram_chat_id
+    # Nothing was written; ending the read transaction hands the connection back
+    # instead of holding it idle for the length of a Telegram round-trip.
+    await session.commit()
+    outcome = await notifications_service.send_owner_message(customer, order.id, body.text)
+    if outcome is Delivery.SENT:
+        return
+    if outcome is Delivery.BLOCKED:
+        # Telegram has just said the binding is dead; dropping it is what every broadcast
+        # does with the same answer, and it hides the button until the customer re-links.
+        await recipients.clear_stale_bindings(session, [chat_id])
+        await session.commit()
+        raise HTTPException(status.HTTP_409_CONFLICT, "customer_blocked_bot")
+    raise HTTPException(status.HTTP_502_BAD_GATEWAY, "telegram_send_failed")
 
 
 @router.delete("/admin/orders/{order_id}", status_code=status.HTTP_204_NO_CONTENT)

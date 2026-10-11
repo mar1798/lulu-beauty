@@ -8,7 +8,7 @@ from datetime import datetime
 
 from aiogram import Bot
 from aiogram.exceptions import TelegramForbiddenError, TelegramRetryAfter
-from aiogram.types import InlineKeyboardMarkup
+from aiogram.types import InlineKeyboardMarkup, Message, ReplyParameters
 
 from app.auth.models import User
 from app.cycles.models import OrderCycle
@@ -58,6 +58,30 @@ class BroadcastResult:
 
 # Telegram's limit on one text message, counted in UTF-16 code units, not characters.
 MAX_MESSAGE_LENGTH = 4096
+
+
+# Telegram's limit on a media caption, counted the same way as a message.
+MAX_CAPTION_LENGTH = 1024
+
+
+def _takes_caption(message: Message) -> bool:
+    """Whether a copy of this message can carry a caption — a sticker, a video note or a
+    location cannot, and Telegram refuses the copy outright if it is given one."""
+    return any(
+        kind is not None
+        for kind in (
+            message.photo,
+            message.video,
+            message.document,
+            message.audio,
+            message.voice,
+            message.animation,
+        )
+    )
+
+
+def _with_header(header: str, caption: str | None) -> str:
+    return header if not caption else f"{header}\n\n{caption}"
 
 
 def _telegram_length(text: str) -> int:
@@ -286,6 +310,144 @@ class NotificationsService:
             "%s; deletion of order %s not announced", self._fallback_reason(user), order_id
         )
 
+    async def send_owner_message(self, user: User, order_id: uuid.UUID, text: str) -> Delivery:
+        """The owner writing to a customer through the bot, from the orders panel.
+
+        The one send here whose outcome goes back to a person waiting on it: the owner
+        presses «Отправить» and has to learn whether it arrived, so the `Delivery` is
+        returned instead of only logged. No bot at all is reported as FAILED rather than
+        NO_BINDING — the customer's binding is fine, it is this server that cannot send.
+        """
+        if self._bot is None:
+            logger.warning("Telegram bot not configured; message about order %s not sent", order_id)
+            return Delivery.FAILED
+
+        # No waiting out a flood limit: the owner is looking at a spinner, and Telegram's
+        # pause can run to half a minute. FAILED reads «попробуйте через минуту», which
+        # is exactly what the limit asks for.
+        outcome = await self._deliver(
+            user.telegram_chat_id,
+            messages.owner_message(messages.order_reference(order_id), text),
+            reply_markup=keyboards.owner_message_actions(order_id),
+            retry_on_flood=False,
+        )
+        if outcome is Delivery.SENT:
+            logger.info("Sent the owner's message about order %s to %s", order_id, user.phone)
+        return outcome
+
+    async def send_owner_reply(
+        self,
+        customer: User,
+        reference: str | None,
+        order_id: uuid.UUID | None,
+        reply: Message,
+        *,
+        with_header: bool = True,
+        wish: bool = False,
+    ) -> Delivery:
+        """The owner answering, in the bot's chat, a message `send_customer_reply` passed on
+        — or a wish for the next cycle (`wish`, which only changes the wording).
+
+        Worded like the panel's message (`messages.owner_message`), with the same buttons,
+        so the customer can answer it again the same way. A text goes inside it, and a text
+        too long for one message repeats the header on every part, so a reply to any of
+        them is recognised. A photo, a video, a file or a voice note carries the header in
+        its caption, for the same reason. Only what takes no caption — a sticker, a video
+        note — goes as a copy under a separate header saying «ниже», as a reply to it.
+
+        `with_header` is False for an album's later photos: those keep the header in the
+        caption, but the buttons — and, where no caption fits, the header message — come
+        once per album.
+        """
+        if self._bot is None:
+            logger.warning(
+                "Telegram bot not configured; owner's reply about %s not sent", reference or "-"
+            )
+            return Delivery.FAILED
+
+        chat_id = customer.telegram_chat_id
+        keyboard = keyboards.owner_message_actions(order_id)
+        if reply.text is not None:
+            room = MAX_MESSAGE_LENGTH - _telegram_length(
+                messages.owner_message(reference, "", wish=wish)
+            )
+            parts = [
+                messages.owner_message(reference, chunk, wish=wish)
+                for chunk in split_message(reply.text, room)
+            ]
+            for index, part in enumerate(parts):
+                last = index == len(parts) - 1
+                outcome = await self._deliver(
+                    chat_id, part, reply_markup=keyboard if last else None
+                )
+                if outcome is not Delivery.SENT:
+                    return outcome
+            return Delivery.SENT
+
+        caption = messages.owner_media_caption(reference, reply.caption, wish=wish)
+        if _takes_caption(reply) and _telegram_length(caption) <= MAX_CAPTION_LENGTH:
+            buttons = keyboard if with_header else None
+
+            async def copy_captioned(bot: Bot, chat_id: int) -> object:
+                return await bot.copy_message(
+                    chat_id,
+                    reply.chat.id,
+                    reply.message_id,
+                    caption=caption,
+                    reply_markup=buttons,
+                )
+
+            return await self._attempt(chat_id, copy_captioned)
+
+        header = messages.owner_message(reference, None, wish=wish) if with_header else None
+        return await self._send_copy_under(chat_id, header, reply, reply_markup=keyboard)
+
+    async def send_customer_reply(
+        self, owner: User, customer: User, reference: str | None, reply: Message
+    ) -> bool:
+        """A customer's message for the shop, passed on to one owner: an answer to
+        `send_owner_message`, or to the «Ответить» prompt (no `reference` from the menu).
+
+        A text travels inside the message under the header; a long one is cut, and every
+        part repeats the header, so the owner can answer any of them. Any other kind — a
+        photo, a voice note, a sticker — is copied rather than forwarded, because
+        forwarding privacy would strip the sender anyway and the header already says who
+        it is: in its caption where it takes one, or else in a message of its own, which
+        the copy answers.
+        """
+        header = messages.customer_reply_for_owner(reference, customer)
+        chat_id = owner.telegram_chat_id
+        if reply.text is not None:
+            room = MAX_MESSAGE_LENGTH - _telegram_length(header) - len("\n\n")
+            delivered = True
+            for chunk in split_message(reply.text, room):
+                delivered = await self._try_send(chat_id, f"{header}\n\n{chunk}") and delivered
+        elif _takes_caption(reply) and _telegram_length(
+            caption := _with_header(header, reply.caption)
+        ) <= MAX_CAPTION_LENGTH:
+            # The header rides in the caption, so the owner can answer by replying to
+            # the photo itself (`handlers.handle_owner_reply` reads it from there).
+
+            async def copy_captioned(bot: Bot, chat_id: int) -> object:
+                return await bot.copy_message(
+                    chat_id, reply.chat.id, reply.message_id, caption=caption
+                )
+
+            delivered = await self._attempt(chat_id, copy_captioned) is Delivery.SENT
+        else:
+            delivered = await self._send_copy_under(chat_id, header, reply) is Delivery.SENT
+        if delivered:
+            logger.info(
+                "Passed a reply about order %s on to owner %s", reference or "-", owner.phone
+            )
+        else:
+            logger.warning(
+                "%s; reply about order %s not passed on",
+                self._fallback_reason(owner),
+                reference or "-",
+            )
+        return delivered
+
     async def send_account_deleted(self, owner: User, order_ids: Sequence[uuid.UUID]) -> None:
         """A customer erased their account; these orders left the purchase list with them.
 
@@ -463,6 +625,47 @@ class NotificationsService:
                 blocked.append(user.telegram_chat_id)
 
         return BroadcastResult(sent=sent, blocked_chat_ids=blocked)
+
+    async def _send_copy_under(
+        self,
+        chat_id: int | None,
+        header: str | None,
+        original: Message,
+        *,
+        reply_markup: InlineKeyboardMarkup | None = None,
+    ) -> Delivery:
+        """`header` as a message of its own, then a copy of `original` as a reply to it.
+
+        For what takes no caption — a sticker, a video note — or one too long to carry
+        the header. A reply to the copy itself is not recognised (there is no header on
+        it to read), so the copy at least points at the message that is. No `header`
+        sends the bare copy: an album's later photos, under the first one's header.
+        """
+        header_id: int | None = None
+        if header is not None:
+
+            async def send_header(bot: Bot, chat_id: int) -> object:
+                nonlocal header_id
+                sent = await bot.send_message(chat_id, header, reply_markup=reply_markup)
+                if isinstance(sent, Message):
+                    header_id = sent.message_id
+                return sent
+
+            outcome = await self._attempt(chat_id, send_header)
+            if outcome is not Delivery.SENT:
+                return outcome
+
+        async def copy(bot: Bot, chat_id: int) -> object:
+            if header_id is None:
+                return await bot.copy_message(chat_id, original.chat.id, original.message_id)
+            return await bot.copy_message(
+                chat_id,
+                original.chat.id,
+                original.message_id,
+                reply_parameters=ReplyParameters(message_id=header_id),
+            )
+
+        return await self._attempt(chat_id, copy)
 
     # ─── Delivery ────────────────────────────────────────────────────────────────
 

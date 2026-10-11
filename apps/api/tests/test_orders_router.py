@@ -7,11 +7,12 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 
 from app.auth.dependencies import CurrentUser, get_current_user, require_admin
-from app.auth.models import Role
+from app.auth.models import Role, User
 from app.db import get_session
 from app.main import app
 from app.orders.models import Order, OrderStatus
 from app.orders.service import DeletedOrder
+from app.telegram.service import Delivery
 
 
 @pytest.fixture
@@ -233,3 +234,123 @@ async def test_taking_a_cancellation_back_reaches_the_owner_too(
     )
 
     notify.assert_awaited_once_with(order_id, restored=True)
+
+
+def _session_with(order: Order | None) -> AsyncMock:
+    session = AsyncMock()
+    session.get = AsyncMock(return_value=order)
+    return session
+
+
+async def _post_message(
+    session: AsyncMock,
+    order: Order,
+    customer: User | None,
+    outcome: Delivery = Delivery.SENT,
+    text: str = "Добрый день!",
+) -> tuple[int, str | None, AsyncMock, AsyncMock]:
+    app.dependency_overrides[get_session] = lambda: session
+    app.dependency_overrides[require_admin] = lambda: CurrentUser(id=uuid.uuid4(), role=Role.ADMIN)
+    try:
+        with (
+            patch("app.orders.router.OrdersService") as mock_service_cls,
+            patch("app.orders.router.notifications_service") as notifications,
+            patch(
+                "app.orders.router.recipients.clear_stale_bindings", new_callable=AsyncMock
+            ) as clear,
+        ):
+            mock_service_cls.return_value.load_customers = AsyncMock(
+                return_value={} if customer is None else {order.user_id: customer}
+            )
+            notifications.send_owner_message = AsyncMock(return_value=outcome)
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+                response = await c.post(f"/admin/orders/{order.id}/message", json={"text": text})
+    finally:
+        app.dependency_overrides.clear()
+
+    detail = response.json().get("detail") if response.content else None
+    return response.status_code, detail, notifications.send_owner_message, clear
+
+
+def _customer(chat_id: int | None) -> User:
+    return User(phone="+996700123456", name="Айгуль", telegram_chat_id=chat_id)
+
+
+async def test_message_goes_to_the_customer_through_the_bot() -> None:
+    order = _order(OrderStatus.CONFIRMED)
+    customer = _customer(42)
+
+    code, _, send, _ = await _post_message(_session_with(order), order, customer, text="  Привет  ")
+
+    assert code == 204
+    # Trimmed: a stray newline from the textarea is not part of what the owner meant.
+    send.assert_awaited_once_with(customer, order.id, "Привет")
+
+
+async def test_message_to_a_customer_without_a_chat_is_refused_before_sending() -> None:
+    order = _order(OrderStatus.CONFIRMED)
+
+    code, detail, send, _ = await _post_message(_session_with(order), order, _customer(None))
+
+    assert (code, detail) == (409, "customer_not_in_bot")
+    send.assert_not_awaited()
+
+
+async def test_message_to_an_erased_account_is_refused_the_same_way() -> None:
+    order = _order(OrderStatus.CONFIRMED)
+
+    code, detail, send, _ = await _post_message(_session_with(order), order, None)
+
+    assert (code, detail) == (409, "customer_not_in_bot")
+    send.assert_not_awaited()
+
+
+async def test_message_to_a_blocked_bot_drops_the_dead_binding() -> None:
+    order = _order(OrderStatus.CONFIRMED)
+    session = _session_with(order)
+
+    code, detail, _, clear = await _post_message(session, order, _customer(42), Delivery.BLOCKED)
+
+    assert (code, detail) == (409, "customer_blocked_bot")
+    clear.assert_awaited_once_with(session, [42])
+    # Once to end the read before the send, once for the dropped binding.
+    assert session.commit.await_count == 2
+
+
+async def test_message_that_telegram_did_not_take_is_a_gateway_error() -> None:
+    order = _order(OrderStatus.CONFIRMED)
+
+    code, detail, _, _ = await _post_message(
+        _session_with(order), order, _customer(42), Delivery.FAILED
+    )
+
+    assert (code, detail) == (502, "telegram_send_failed")
+
+
+async def test_blank_message_is_rejected() -> None:
+    order = _order(OrderStatus.CONFIRMED)
+
+    code, _, send, _ = await _post_message(_session_with(order), order, _customer(42), text="   ")
+
+    assert code == 422
+    send.assert_not_awaited()
+
+
+async def test_message_about_a_missing_order_is_not_found() -> None:
+    order = _order(OrderStatus.CONFIRMED)
+
+    code, detail, _, _ = await _post_message(_session_with(None), order, _customer(42))
+
+    assert (code, detail) == (404, "order_not_found")
+
+
+async def test_message_counts_length_the_way_telegram_does() -> None:
+    """An emoji is one character but two UTF-16 units — Telegram's and the textarea's."""
+    order = _order(OrderStatus.CONFIRMED)
+
+    code, _, send, _ = await _post_message(
+        _session_with(order), order, _customer(42), text="😀" * 1751
+    )
+
+    assert code == 422
+    send.assert_not_awaited()
