@@ -1,9 +1,11 @@
 import React, { useState } from 'react'
+import { useRouter } from 'next/router'
 import type { IWantedProductValues } from 'widgets/types'
 import { WantedProductForm } from 'widgets/organisms'
 import { useAuth } from '@/contexts/AuthContext'
 import { messageForError } from '@/services/apiErrors'
 import { submitWantedProduct } from '@/services/endpoints/wanted'
+import { INSTAGRAM_URL } from '@/utils/contacts'
 
 /**
  * Форма пожелания, подключённая к API.
@@ -15,10 +17,11 @@ import { submitWantedProduct } from '@/services/endpoints/wanted'
  * Про сбор не спрашивает ничего и намеренно: пожелание пишут как раз тогда,
  * когда в каталоге пусто, а сбора может не быть вовсе.
  *
- * Гостю форма показывает имя и телефон, вошедшему - нет: контакт бэкенд берёт
- * с аккаунта (`app/wanted/service.py`), и присланному в форме всё равно бы не
- * поверил. Пока сессия ещё проверяется (`isLoading`), человек считается гостем:
- * лишние два поля хуже, чем форма, которая на полсекунды переставляется.
+ * Пожелание оставляют только вошедшие: контакт для ответа бэкенд берёт с
+ * аккаунта (`app/wanted/service.py`). Гостю виджет показывает кнопку входа, и
+ * она ведёт на `/login` с возвратом сюда же - как сердце `WishlistButton`.
+ * Пока сессия ещё проверяется (`isLoading`), человек считается гостем: кнопка,
+ * которая на полсекунды сменяется полем, лучше поля, которое отправит 401.
  *
  * `isSent` не сбрасывается: отправленное пожелание - конец разговора, а вторую
  * копию того же текста владельцу слать незачем. Новая форма появится сама -
@@ -31,6 +34,7 @@ export const WantedProductPrompt: React.FC<{
   isCompact?: boolean
   className?: string
 }> = ({ title, description, isCompact = false, className }) => {
+  const router = useRouter()
   const { user } = useAuth()
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isSent, setIsSent] = useState(false)
@@ -52,11 +56,17 @@ export const WantedProductPrompt: React.FC<{
       })
   }
 
+  const signIn = (): void => {
+    void router.push({ pathname: '/login', query: { next: router.asPath } })
+  }
+
   return (
     <WantedProductForm
       title={title}
       description={description}
       isSignedIn={user !== null}
+      onSignIn={signIn}
+      contact={{ label: 'Instagram', link: { href: INSTAGRAM_URL, target: '_blank' } }}
       isCompact={isCompact}
       isSubmitting={isSubmitting}
       isSent={isSent}

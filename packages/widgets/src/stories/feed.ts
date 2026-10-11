@@ -720,6 +720,9 @@ export const feedEmptyState = (): IEmptyStateProps => ({
 })
 
 export const feedWantedProductForm = (): IWantedProductFormProps => ({
+  isSignedIn: true,
+  onSignIn: noop,
+  contact: { label: 'Instagram', link: { href: '#', target: '_blank' } },
   onSubmit: noop,
 })
 

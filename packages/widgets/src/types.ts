@@ -856,24 +856,26 @@ export interface IHeaderSearchProps {
   emptyAction?: ReactNode
 }
 
-/** Что покупатель написал в форме пожелания, и как с ним связаться. */
+/**
+ * Что покупатель написал в форме пожелания. Только текст: контакт для ответа
+ * бэкенд берёт с аккаунта.
+ */
 export interface IWantedProductValues {
   message: string
-  /** Пусто у вошедшего покупателя: контакт бэкенд берёт с аккаунта, а не отсюда. */
-  name: string
-  /** E.164 - в этом виде его отдаёт `PhoneInput` и ждёт бэкенд. */
-  phone: string
 }
 
 export interface IWantedProductFormProps {
   title?: string
   description?: string
   /**
-   * Покупатель вошёл: имени и телефона форма не спрашивает - их и так знает
-   * аккаунт, а поле, которое можно заполнить чужим номером, только уводит
-   * владельца не туда.
+   * Покупатель вошёл. Пожелание оставляют только вошедшие: гостю вместо поля
+   * показывается кнопка входа.
    */
   isSignedIn?: boolean
+  /** Кнопка входа у гостя. Куда вести - решает сайт. */
+  onSignIn?: () => void
+  /** Прямой контакт магазина - гостю предлагается рядом со входом. */
+  contact?: ILinkedLabel
   onSubmit: (values: IWantedProductValues) => void
   isSubmitting?: boolean
   error?: string | null

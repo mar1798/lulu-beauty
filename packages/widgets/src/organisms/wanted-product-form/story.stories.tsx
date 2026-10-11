@@ -20,15 +20,15 @@ Default.parameters = {
 }
 Default.args = feedWantedProductForm()
 
-/** Покупатель вошёл: контакт известен, остаётся одно поле. */
-export const SignedIn = Template.bind({})
-SignedIn.parameters = { layout: 'centered' }
-SignedIn.args = { ...feedWantedProductForm(), isSignedIn: true }
+/** Гость: пожелание оставляют только после входа. */
+export const Guest = Template.bind({})
+Guest.parameters = { layout: 'centered' }
+Guest.args = { ...feedWantedProductForm(), isSignedIn: false }
 
 /** Внутри выпадающего списка поиска: без своей карточки и с полем пониже. */
 export const Compact = Template.bind({})
 Compact.parameters = { layout: 'centered' }
-Compact.args = { ...feedWantedProductForm(), isCompact: true, isSignedIn: true }
+Compact.args = { ...feedWantedProductForm(), isCompact: true }
 
 export const Sent = Template.bind({})
 Sent.parameters = { layout: 'centered' }

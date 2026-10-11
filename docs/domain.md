@@ -524,17 +524,19 @@ stores a row and the owner is told over Telegram
 (`messages.wanted_product_for_owner`); there is no admin screen, because what this turns
 into is a line on the next cycle's shopping list.
 
-**No account is needed** — the catalog and its search work without one, and asking a guest
-to sign in before they may say what is missing would collect nothing. A guest leaves a name
-and a number in the form; a signed-in customer leaves neither, because the server takes both
-off the account and ignores what the form sent (`contact_required` when there is nothing to
-take). **The cycle is irrelevant on purpose**: the wish is worth most between cycles, when
+**An account is required.** The form still sits under a search that works without one, but
+a guest sees a «Войти через Telegram» button in its place, which leads to `/login` and back.
+The form asks for the text only: the server copies the name and the number off the account,
+because the owner answers a wish by that number and a number typed into a public form is
+whatever the writer chose. `POST /wanted-products` goes through `require_live_user`, so an
+erased account's leftover token gets `not_authenticated` too. **The cycle is irrelevant on
+purpose**: the wish is worth most between cycles, when
 adding a product is still possible.
 
 The row keeps its own copy of the name and the phone rather than reading them back through
 `user_id`, so **erasing an account deletes its wishes outright** (see "Erasing an account") —
-that copy is precisely the personal data the erasure is about. Guests' rows have no account
-behind them and stay.
+that copy is precisely the personal data the erasure is about. Rows left from before wishes
+required an account have `user_id` null and stay.
 
 ## Shared limits
 

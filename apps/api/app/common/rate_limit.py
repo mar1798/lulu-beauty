@@ -56,9 +56,9 @@ WEBHOOK_SECRET_HEADER = "x-telegram-bot-api-secret-token"
 # The anonymous, row-writing surface. Prefix match, so it covers every /auth/* endpoint.
 STRICT_PREFIX = "/auth/"
 
-# The other one: `POST /wanted-products` stores a wish typed into the catalog search, and
-# asks for no account either (see app/wanted/router.py). Same budget for the same reason —
-# a loop against it fills a table nothing else prunes.
+# Not anonymous, but metered the same way: `POST /wanted-products` stores a wish typed into
+# the catalog search (see app/wanted/router.py), and a loop against it — signed in or not —
+# fills a table nothing else prunes and floods the owner's chat with one message per row.
 STRICT_PATHS = frozenset({"/wanted-products"})
 
 # Polled, not called: the waiting tab asks this one every couple of seconds for as long as

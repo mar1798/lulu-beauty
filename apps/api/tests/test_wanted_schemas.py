@@ -18,12 +18,10 @@ def test_empty_message_is_rejected() -> None:
         WantedProductRequest(message="")
 
 
-def test_blank_message_and_name_are_rejected() -> None:
+def test_blank_message_is_rejected() -> None:
     """Whitespace is stripped before the length check, so it counts as nothing."""
     with pytest.raises(ValidationError):
         WantedProductRequest(message="   ")
-    with pytest.raises(ValidationError):
-        WantedProductRequest(message="Нужен крем", name="  ", phone="+996555123456")
 
 
 def test_message_longer_than_the_limit_is_rejected() -> None:
@@ -31,25 +29,13 @@ def test_message_longer_than_the_limit_is_rejected() -> None:
         WantedProductRequest(message="x" * (MAX_WANTED_MESSAGE_LENGTH + 1))
 
 
-def test_contact_is_optional_for_a_signed_in_caller() -> None:
-    """Both fields default to None: the service takes them off the account instead."""
-    request = WantedProductRequest(message="Нужен крем")
-
-    assert request.name is None
-    assert request.phone is None
-
-
-def test_phone_must_be_e164() -> None:
-    with pytest.raises(ValidationError):
-        WantedProductRequest(message="Нужен крем", name="Аня", phone="0555123456")
-
-
-def test_camel_case_contact_fields_are_accepted() -> None:
+def test_a_contact_in_the_payload_is_dropped() -> None:
+    """The form cannot name somebody else: the service copies the account's contact."""
     request = WantedProductRequest.model_validate(
-        {"message": "Нужен крем", "name": "Аня", "phone": "+996555123456"}
+        {"message": "Нужен крем", "name": "Кто-то ещё", "phone": "+996555999888"}
     )
 
-    assert request.phone == "+996555123456"
+    assert request.model_dump() == {"message": "Нужен крем"}
 
 
 def test_owner_message_carries_the_contact_and_the_text() -> None:
