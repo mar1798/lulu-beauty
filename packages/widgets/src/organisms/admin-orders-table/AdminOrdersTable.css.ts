@@ -79,7 +79,7 @@ export const cell = style({
  *
  * Делит строку с кнопкой и забирает всю ширину, кроме её. База ровно `0`, а не
  * `auto`: перенос flex решает по базовому размеру, а у `StatusSelect` это его
- * `min-width` в 210px — вместе с кнопкой они не помещались в 375px, и кнопка
+ * `min-width` — вместе с кнопкой они не помещались в 375px, и кнопка
  * уезжала на следующую строку, хотя по факту места хватает.
  */
 export const statusCell = style({
@@ -100,6 +100,9 @@ export const actionsCell = style({
   flexGrow: 0,
   alignSelf: 'center',
 })
+
+/** Написать и удалить — вплотную друг к другу, без переноса. */
+export const actions = style([flexRow(4), { justifyContent: 'flex-end' }])
 
 export const order = style(flexColumn(2))
 

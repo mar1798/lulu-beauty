@@ -100,7 +100,7 @@ Public and customer-facing:
 | `GET`                         | `/users/me/deletion`                          | Whether the caller may erase, and what blocks it.                                                                                |
 | `GET`/`POST`/`PATCH`/`DELETE` | `/cart`, `/cart/items[/{variant_id}]`         | 409 `no_active_cycle` without an open cycle. A line is a **volume**: `POST` takes `variantId`, and `PATCH`/`DELETE` address one. |
 | `GET`/`POST`/`DELETE`         | `/wishlist`, `/wishlist/items[/{product_id}]` | Cycle-independent.                                                                                                               |
-| `POST`                        | `/wanted-products`                            | A wish for something the catalog lacks. **No account needed**; strict rate-limit budget.                                         |
+| `POST`                        | `/wanted-products`                            | A wish for something the catalog lacks. Signed-in (live account); strict rate-limit budget.                                      |
 | `POST`                        | `/orders/checkout`                            |                                                                                                                                  |
 | `GET`                         | `/orders`, `/orders/{id}`                     |                                                                                                                                  |
 | `PATCH`                       | `/orders/{id}`                                | Note only.                                                                                                                       |
@@ -110,12 +110,12 @@ Public and customer-facing:
 Owner-only (`ADMIN` or `SUPER_ADMIN`, checked on the API — the frontend gate is UX only).
 `PATCH /admin/users/{id}/role` is the one exception: **SUPER_ADMIN only**.
 
-| Method   | Path                                                                                                                                                                                               |
-| -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GET`    | `/admin/users`, `/admin/brands`, `/admin/products`, `/admin/products/{id}`, `/admin/orders`, `/admin/cycles`, `/admin/export/orders`, `/admin/export/products`                                     |
-| `PATCH`  | `/admin/users/{id}/role`, `/admin/categories/{id}`, `/admin/products/{id}`, `/admin/cycles/{id}`, `/admin/orders/{id}/status`                                                                      |
-| `POST`   | `/admin/categories`, `/admin/products`, `/admin/products/{id}/restore`, `/admin/products/{id}/images`, `/admin/catalog/import`, `/admin/cycles`, `/admin/cycles/{id}/close`, `/admin/export/links` |
-| `DELETE` | `/admin/categories/{id}`, `/admin/products/{id}` (soft), `/admin/products/{id}/images/{image_id}`, `/admin/cycles/{id}`, `/admin/orders/{id}`                                                      |
+| Method   | Path                                                                                                                                                                                                                             |
+| -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET`    | `/admin/users`, `/admin/brands`, `/admin/products`, `/admin/products/{id}`, `/admin/orders`, `/admin/cycles`, `/admin/export/orders`, `/admin/export/products`                                                                   |
+| `PATCH`  | `/admin/users/{id}/role`, `/admin/categories/{id}`, `/admin/products/{id}`, `/admin/cycles/{id}`, `/admin/orders/{id}/status`                                                                                                    |
+| `POST`   | `/admin/categories`, `/admin/products`, `/admin/products/{id}/restore`, `/admin/products/{id}/images`, `/admin/catalog/import`, `/admin/cycles`, `/admin/cycles/{id}/close`, `/admin/export/links`, `/admin/orders/{id}/message` |
+| `DELETE` | `/admin/categories/{id}`, `/admin/products/{id}` (soft), `/admin/products/{id}/images/{image_id}`, `/admin/cycles/{id}`, `/admin/orders/{id}`                                                                                    |
 
 `GET /export/download/{token}` takes no session: the token from `POST /admin/export/links`
 is the authorisation — see "Export" in [domain.md](domain.md#export).
@@ -356,8 +356,9 @@ since it is NULL both for a product with no volume and for one sold in several.
 
 `app/common/rate_limit.py` — an in-process token bucket with two budgets:
 `RATE_LIMIT_PER_MINUTE` for everything and the stricter `RATE_LIMIT_AUTH_PER_MINUTE` for the
-anonymous surfaces that write rows: the `/auth/` prefix (`STRICT_PREFIX`) and
-`POST /wanted-products` (`STRICT_PATHS`). `/health` and `/telegram/webhook` are exempt.
+anonymous surface that writes rows, the `/auth/` prefix (`STRICT_PREFIX`), and for
+`POST /wanted-products` (`STRICT_PATHS`), which needs an account but turns each call into a
+row and a message in the owner's chat. `/health` and `/telegram/webhook` are exempt.
 
 Authenticated callers are keyed by the `sub` in their access token, anonymous ones by address
 — taken from `X-Forwarded-For` only when `RATE_LIMIT_TRUST_FORWARDED_FOR` is on. State is

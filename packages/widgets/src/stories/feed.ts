@@ -5,6 +5,7 @@ import {
   IAdminCycleCalendarProps,
   IAdminImportPanelProps,
   IAdminLayoutProps,
+  IAdminMessageDialogProps,
   IAdminOrder,
   IAdminOrdersTableProps,
   IAdminProductFormProps,
@@ -403,7 +404,7 @@ export const feedFooter = (): IFooterProps => ({
     },
   ],
   copyright: '© 2026 Sululu',
-  note: 'Оплата - переводом по счёту из Telegram, выдача обсуждается лично',
+  note: 'Оплата - переводом, чек отправляете боту. Доставка обсуждается лично',
 })
 
 export const feedBaseLayout = (): IBaseLayoutProps => ({
@@ -555,7 +556,8 @@ export const feedFaqAccordion = (): IFaqAccordionProps => ({
     },
     {
       question: 'Как связаться с магазином?',
-      answer: 'Напишите напрямую в {link} - в остальном переписку ведёт бот.',
+      answer:
+        'Через бота в Telegram - кнопка «✍️ Написать Sululu» в меню. Или напишите напрямую в {link}.',
       action: {
         label: 'Instagram магазина',
         link: { href: 'https://www.instagram.com/sululu_kg', target: '_blank' },
@@ -566,9 +568,9 @@ export const feedFaqAccordion = (): IFaqAccordionProps => ({
 
 export const feedHomeCta = (): IHomeCtaProps => ({
   title: 'Вход и подтверждение - в Telegram',
-  description: 'Бот заводит аккаунт, подтверждает вход и присылает решение по заявке.',
+  description: 'Бот заводит аккаунт, подтверждает вход, присылает счёт по заявке и принимает чек.',
   actions: 'Сюда встают кнопки',
-  note: 'Оплата и доставка обсуждаются лично',
+  note: 'Оплата - переводом, чек отправляете боту. Доставка обсуждается лично',
 })
 
 /* --- Витрина --- */
@@ -720,6 +722,9 @@ export const feedEmptyState = (): IEmptyStateProps => ({
 })
 
 export const feedWantedProductForm = (): IWantedProductFormProps => ({
+  isSignedIn: true,
+  onSignIn: noop,
+  contact: { label: 'Instagram', link: { href: '#', target: '_blank' } },
   onSubmit: noop,
 })
 
@@ -1016,6 +1021,17 @@ export const feedModal = (): IModalProps => ({
   children: 'Товар пропадёт из каталога, но останется в уже оформленных заявках.',
 })
 
+export const feedAdminMessageDialog = (): IAdminMessageDialogProps => ({
+  isOpen: true,
+  customerName: 'Айгуль',
+  orderNumber: 'A1B2C3D4',
+  value: 'Здравствуйте! Крем закончился у поставщика - заменить на соседний объём?',
+  onChange: noop,
+  maxLength: 3500,
+  onSend: noop,
+  onClose: noop,
+})
+
 export const feedConfirmDialog = (): IConfirmDialogProps => ({
   isOpen: true,
   title: 'Удалить категорию?',
@@ -1230,6 +1246,7 @@ export const feedAdminOrder = (overrides: Partial<IAdminOrder> = {}): IAdminOrde
   customerName: faker.person.fullName(),
   customerPhone: '+996555123456',
   hasReceipt: false,
+  canMessage: true,
   ...overrides,
 })
 
@@ -1262,6 +1279,7 @@ export const feedAdminOrdersTable = (): IAdminOrdersTableProps => ({
     }),
   ],
   onStatusChange: noop,
+  onMessage: noop,
   buildProductHref: slug => `/catalog/${slug}`,
   summary: { orderCount: 42, itemCount: 118, totalCents: 18_450_000 },
 })

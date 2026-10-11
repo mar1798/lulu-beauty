@@ -352,6 +352,11 @@ export interface IAdminOrder extends IOrder {
   customerPhone: string
   /** Покупатель прислал чек, и он ещё не отклонён. */
   hasReceipt: boolean
+  /**
+   * Чат покупателя привязан к боту — написать ему через бота есть куда. Ложь и у
+   * стёртого аккаунта: привязка ушла вместе с ним.
+   */
+  canMessage: boolean
 }
 
 /**
@@ -856,24 +861,26 @@ export interface IHeaderSearchProps {
   emptyAction?: ReactNode
 }
 
-/** Что покупатель написал в форме пожелания, и как с ним связаться. */
+/**
+ * Что покупатель написал в форме пожелания. Только текст: контакт для ответа
+ * бэкенд берёт с аккаунта.
+ */
 export interface IWantedProductValues {
   message: string
-  /** Пусто у вошедшего покупателя: контакт бэкенд берёт с аккаунта, а не отсюда. */
-  name: string
-  /** E.164 - в этом виде его отдаёт `PhoneInput` и ждёт бэкенд. */
-  phone: string
 }
 
 export interface IWantedProductFormProps {
   title?: string
   description?: string
   /**
-   * Покупатель вошёл: имени и телефона форма не спрашивает - их и так знает
-   * аккаунт, а поле, которое можно заполнить чужим номером, только уводит
-   * владельца не туда.
+   * Покупатель вошёл. Пожелание оставляют только вошедшие: гостю вместо поля
+   * показывается кнопка входа.
    */
   isSignedIn?: boolean
+  /** Кнопка входа у гостя. Куда вести - решает сайт. */
+  onSignIn?: () => void
+  /** Прямой контакт магазина - гостю предлагается рядом со входом. */
+  contact?: ILinkedLabel
   onSubmit: (values: IWantedProductValues) => void
   isSubmitting?: boolean
   error?: string | null
@@ -1845,6 +1852,26 @@ export interface IModalProps {
   isDismissable?: boolean
 }
 
+/**
+ * Окно сообщения покупателю через бота. Текст — снаружи (`value`/`onChange`):
+ * страница очищает его после отправки и держит, если отправка не удалась.
+ */
+export interface IAdminMessageDialogProps {
+  isOpen: boolean
+  /** Кому: имя покупателя и номер заявки — в шапке окна. */
+  customerName: string
+  orderNumber: string
+  value: string
+  onChange: (value: string) => void
+  /** Предел длины — счётчик под полем. */
+  maxLength: number
+  isBusy?: boolean
+  /** Почему не ушло — остаётся в окне, чтобы текст не пропал. */
+  error?: string | null
+  onSend: () => void
+  onClose: () => void
+}
+
 export interface IConfirmDialogProps {
   isOpen: boolean
   title: string
@@ -2198,6 +2225,11 @@ export interface IAdminOrdersTableProps {
    * действий не рендерится вовсе.
    */
   onDelete?: (order: IAdminOrder) => void
+  /**
+   * «Написать покупателю через бота» — для тех, кого по номеру в Telegram не
+   * найти. Кнопка стоит в колонке действий рядом с удалением.
+   */
+  onMessage?: (order: IAdminOrder) => void
   buildProductHref: (productSlug: string) => string
   isLoading?: boolean
   skeletonRows?: number

@@ -1,7 +1,6 @@
 import { style } from '@vanilla-extract/css'
-import { border, color, rem } from '../../styling/lib'
-import { media } from '../../styling/lib/media'
-import { flexColumn } from '../../styling/mixin'
+import { border, color, rem, transition } from '../../styling/lib'
+import { flexColumn, focusVisibleRing } from '../../styling/mixin'
 import { vars } from '../../styling/themes/contract.css'
 
 export const container = style({
@@ -32,18 +31,16 @@ export const heading = style({
   ...flexColumn(4),
 })
 
-/**
- * Имя и телефон — гостю. В строку с `md`: два коротких поля друг под другом
- * растягивают форму настолько, что поле «что искали» уезжает за нижний край
- * выпадающего списка.
- */
-export const contact = style({
-  ...flexColumn(12),
-  ...media({
-    md: {
-      display: 'grid',
-      gridTemplateColumns: '1fr 1fr',
-      gap: rem(12),
+/** Ссылка на прямой контакт у гостя — как в пустой выдаче `HeaderSearch`. */
+export const contactLink = style([
+  {
+    color: color.text('brand'),
+    textDecoration: 'underline',
+    borderRadius: vars.radius.sm,
+    transition: transition('color'),
+    ':hover': {
+      color: color.brand('700'),
     },
-  }),
-})
+  },
+  focusVisibleRing(),
+])

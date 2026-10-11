@@ -54,14 +54,12 @@ def main_menu() -> ReplyKeyboardMarkup:
         keyboard=[
             [KeyboardButton(text=messages.MENU_CART), KeyboardButton(text=messages.MENU_ORDERS)],
             [
-                KeyboardButton(text=messages.MENU_WISHLIST),
+                KeyboardButton(text=messages.MENU_LINKS),
                 KeyboardButton(text=messages.MENU_DEADLINE),
             ],
-            # Next to help rather than first in the list: the bot answers everything
-            # people come here for on its own, and leaving for the browser is the last
-            # option, not the first. A reply-keyboard button cannot be a url, so both
-            # addresses arrive as inline buttons in the answer (`handle_links`).
-            [KeyboardButton(text=messages.MENU_LINKS), KeyboardButton(text=messages.MENU_HELP)],
+            # The one button that reaches a person rather than the bot. The wishlist has
+            # no button of its own: the site shows it, and `/wishlist` still answers.
+            [KeyboardButton(text=messages.MENU_REPLY), KeyboardButton(text=messages.MENU_HELP)],
         ],
         resize_keyboard=True,
         is_persistent=True,
@@ -153,6 +151,17 @@ def receipt_actions(order_id: uuid.UUID) -> InlineKeyboardMarkup:
     if orders is not None:
         rows.append([orders])
     return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+class ReplyAction(CallbackData, prefix="reply"):
+    """«✍️ Ответить» under the owner's message. 38 bytes packed, 6 without an order.
+
+    Like `ReceiptAction`, it only asks: the prompt names the order, and the answer is a
+    reply to the prompt, so nothing is remembered between the tap and the text. No order
+    when the owner answered, in the chat, a message the customer wrote from the menu.
+    """
+
+    order_id: uuid.UUID | None = None
 
 
 class ReceiptOrderChoice(CallbackData, prefix="rcptfor"):
@@ -325,13 +334,25 @@ def orders_link() -> InlineKeyboardMarkup | None:
     return _site_link(ORDERS_PATH, messages.ORDERS_BUTTON)
 
 
+def owner_message_actions(order_id: uuid.UUID | None) -> InlineKeyboardMarkup:
+    """Under the owner's own message: answer it here, or the usual list and Instagram.
+
+    «Ответить» first — the text asks for a reply, and a swipe-to-reply is not something
+    everyone knows to do; the button sends a `ForceReply` prompt that does it for them.
+    """
+    reply = InlineKeyboardButton(
+        text=messages.REPLY_BUTTON, callback_data=ReplyAction(order_id=order_id).pack()
+    )
+    return InlineKeyboardMarkup(inline_keyboard=[[reply], *owner_contact_actions().inline_keyboard])
+
+
 def owner_contact_actions() -> InlineKeyboardMarkup:
     """Under the two messages that send the customer to the owner — a deleted order and
     one the owner cancelled: the list, and the way to ask about it.
 
-    Instagram is the point of this keyboard — both texts tell the customer to write if
-    it is a mistake, and the bot is one-way, so without the button «напишите» means
-    finding the shop's account by hand. Never `None` for the same reason as
+    Instagram is the point of this keyboard — both texts tell the customer to write in
+    Instagram if it is a mistake, so without the button «напишите» means finding the
+    shop's account by hand. Never `None` for the same reason as
     `site_links`: on a non-addressable host the orders row drops out and Instagram
     still stands.
     """
@@ -365,7 +386,7 @@ def site_link() -> InlineKeyboardMarkup | None:
 
 
 def site_links() -> InlineKeyboardMarkup:
-    """Both ways out of the chat, under the «Сайт» reply: the shop and the Instagram.
+    """Both ways out of the chat, under the «Ссылки» reply: the shop and the Instagram.
 
     Two rows, not two buttons side by side — they are different places, and a pair of
     equal pills reads as a choice between halves of one thing. The markup is never

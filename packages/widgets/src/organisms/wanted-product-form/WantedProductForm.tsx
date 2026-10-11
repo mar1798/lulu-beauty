@@ -2,13 +2,11 @@ import clsx from 'clsx'
 import { type FC, type FormEvent, useState } from 'react'
 import type { IBasicStyling, IWantedProductFormProps, IWantedProductValues } from '../../types'
 import { Alert } from '../../atoms/alert'
+import { AppLink } from '../../atoms/app-link'
 import { Button } from '../../atoms/button'
 import { Heading } from '../../atoms/heading'
-import { Input } from '../../atoms/input'
-import { PhoneInput } from '../../atoms/phone-input'
 import { Text } from '../../atoms/text'
 import { Textarea } from '../../atoms/textarea'
-import { validateName, validatePhone } from '../../utils/validation'
 import * as styles from './WantedProductForm.css'
 
 /**
@@ -16,8 +14,12 @@ import * as styles from './WantedProductForm.css'
  *
  * Стоит там, где поиск ничем не помог: под пустой выдачей в шапке и под
  * короткой выборкой каталога. Смысл у блока ровно один — не отпускать человека
- * с пустой страницы, поэтому он не спрашивает ничего, кроме текста: имя и номер
- * появляются только у гостя, которому иначе нечем ответить.
+ * с пустой страницы, поэтому он не спрашивает ничего, кроме текста.
+ *
+ * Только для вошедших: контакт для ответа бэкенд берёт с аккаунта, а гостю
+ * вместо поля показывается кнопка входа (`onSignIn`). Имени и телефона форма
+ * не спрашивает ни у кого — набранный в публичной форме номер может оказаться
+ * чьим угодно.
  *
  * Сбор здесь ни при чём, и это намеренно: пожелание тем и ценно, что его пишут
  * между сборами, когда добавить товар ещё можно.
@@ -37,16 +39,12 @@ const MESSAGE_LABEL = 'Что вы искали'
 const DEFAULT_DESCRIPTION =
   'Расскажите, что вы ищете, - постараемся добавить этот товар в следующий сбор'
 
-interface IFieldErrors {
-  name?: string
-  phone?: string
-  message?: string
-}
-
 export const WantedProductForm: FC<IWantedProductFormProps & IBasicStyling> = ({
   title = DEFAULT_TITLE,
   description = DEFAULT_DESCRIPTION,
   isSignedIn = false,
+  onSignIn,
+  contact,
   onSubmit,
   isSubmitting = false,
   error,
@@ -54,41 +52,48 @@ export const WantedProductForm: FC<IWantedProductFormProps & IBasicStyling> = ({
   isCompact = false,
   className,
 }) => {
-  const [values, setValues] = useState<IWantedProductValues>({ name: '', phone: '', message: '' })
-  const [errors, setErrors] = useState<IFieldErrors>({})
+  const [message, setMessage] = useState('')
+  const [messageError, setMessageError] = useState<string | undefined>(undefined)
 
-  const change = (field: keyof IWantedProductValues, next: string): void => {
-    setValues(current => ({ ...current, [field]: next }))
+  const change = (next: string): void => {
+    setMessage(next)
     /* Правка поля снимает его же ошибку: висящая подпись под уже исправленной
        строкой читается как вторая претензия, а не как прошлая. */
-    setErrors(current => ({ ...current, [field]: undefined }))
+    setMessageError(undefined)
   }
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>): void => {
     event.preventDefault()
 
-    /*
-      Имя и телефон проверяются только у гостя: у вошедшего их здесь и нет —
-      бэкенд берёт контакт с аккаунта, а не из формы (`WantedProductsService`).
-    */
-    const found: IFieldErrors = {
-      message: values.message.trim() === '' ? 'Напишите, что вы ищете' : undefined,
-      name: isSignedIn ? undefined : (validateName(values.name) ?? undefined),
-      phone: isSignedIn ? undefined : (validatePhone(values.phone) ?? undefined),
-    }
-
-    if (found.message !== undefined || found.name !== undefined || found.phone !== undefined) {
-      setErrors(found)
+    if (message.trim() === '') {
+      setMessageError('Напишите, что вы ищете')
       return
     }
 
-    setErrors({})
-    onSubmit({
-      name: values.name.trim(),
-      phone: values.phone,
-      message: values.message.trim(),
-    })
+    const values: IWantedProductValues = { message: message.trim() }
+    onSubmit(values)
   }
+
+  const heading = (
+    <div className={styles.heading}>
+      {/*
+        В выпадающем списке заголовка нет вовсе, и дело не только в высоте:
+        прямо над формой там уже написано «Извините, ничего не нашлось», и
+        второй раз сказать то же самое — значит потратить на повтор две
+        строки высоты попапа. Заодно снимается
+        вопрос об уровне: `h2` посреди подсказок ломал бы их порядок.
+      */}
+      {!isCompact && (
+        <Heading level={2} size="sm">
+          {title}
+        </Heading>
+      )}
+
+      <Text size="sm" tone="secondary">
+        {description}
+      </Text>
+    </div>
+  )
 
   /*
     Отправленная форма уходит целиком, а не блокируется: возвращаться в неё
@@ -105,57 +110,50 @@ export const WantedProductForm: FC<IWantedProductFormProps & IBasicStyling> = ({
     )
   }
 
+  /*
+    Гостю — то же приглашение, но вместо поля кнопка входа: писать текст,
+    который потом некуда отправить, хуже, чем узнать об этом сразу. Прямой
+    контакт — в той же фразе, как второй путь: входить ради одного вопроса
+    хочется не всем.
+  */
+  if (!isSignedIn) {
+    return (
+      <div className={clsx(styles.container, isCompact && styles.compact, className)}>
+        {heading}
+
+        <Text size="sm">
+          Оставить пожелание можно после входа - так мы сможем вам ответить.
+          {contact !== undefined && (
+            <>
+              {' '}
+              Или напишите нам напрямую в{' '}
+              <AppLink className={styles.contactLink} {...contact.link}>
+                {contact.label}
+              </AppLink>
+              .
+            </>
+          )}
+        </Text>
+
+        <Button type="button" size={isCompact ? 'sm' : 'md'} onClick={onSignIn}>
+          Войти через Telegram
+        </Button>
+      </div>
+    )
+  }
+
   return (
     <form
       className={clsx(styles.container, isCompact && styles.compact, className)}
       onSubmit={handleSubmit}
       noValidate={true}
     >
-      <div className={styles.heading}>
-        {/*
-          В выпадающем списке заголовка нет вовсе, и дело не только в высоте:
-          прямо над формой там уже написано «Извините, ничего не нашлось», и
-          второй раз сказать то же самое — значит потратить на повтор две
-          строки высоты попапа. Заодно снимается
-          вопрос об уровне: `h2` посреди подсказок ломал бы их порядок.
-        */}
-        {!isCompact && (
-          <Heading level={2} size="sm">
-            {title}
-          </Heading>
-        )}
-
-        <Text size="sm" tone="secondary">
-          {description}
-        </Text>
-      </div>
+      {heading}
 
       {error !== undefined && error !== null && (
         <Alert tone="danger" title="Пожелание не отправилось">
           {error}
         </Alert>
-      )}
-
-      {!isSignedIn && (
-        <div className={styles.contact}>
-          <Input
-            label="Как вас зовут"
-            value={values.name}
-            onChange={next => change('name', next)}
-            error={errors.name}
-            autoComplete="name"
-            disabled={isSubmitting}
-          />
-
-          <PhoneInput
-            label="Телефон"
-            hint="Ответим в WhatsApp или Telegram"
-            value={values.phone}
-            onChange={next => change('phone', next)}
-            error={errors.phone}
-            disabled={isSubmitting}
-          />
-        </div>
       )}
 
       {/*
@@ -168,9 +166,9 @@ export const WantedProductForm: FC<IWantedProductFormProps & IBasicStyling> = ({
         label={isCompact ? undefined : MESSAGE_LABEL}
         ariaLabel={MESSAGE_LABEL}
         placeholder="Например: тонер Anua с персиком, 250 мл"
-        value={values.message}
-        onChange={next => change('message', next)}
-        error={errors.message}
+        value={message}
+        onChange={change}
+        error={messageError}
         maxLength={MESSAGE_MAX_LENGTH}
         rows={isCompact ? 2 : 4}
         disabled={isSubmitting}

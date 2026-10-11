@@ -12,24 +12,38 @@ describe('WantedProductForm', () => {
     expect(container.firstElementChild).not.toBeNull()
   })
 
-  it('у гостя спрашивает имя и телефон', () => {
-    renderWidget(<WantedProductForm {...feedWantedProductForm()} />)
+  it('гостю вместо поля показывает вход', async () => {
+    const user = userEvent.setup()
+    const onSignIn = vi.fn()
+    renderWidget(
+      <WantedProductForm {...feedWantedProductForm()} isSignedIn={false} onSignIn={onSignIn} />
+    )
 
-    expect(screen.getByLabelText('Как вас зовут')).toBeInTheDocument()
-    expect(screen.getByLabelText('Телефон')).toBeInTheDocument()
+    expect(screen.queryByLabelText('Что вы искали')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Отправить пожелание' })).toBeNull()
+
+    await user.click(screen.getByRole('button', { name: 'Войти через Telegram' }))
+
+    expect(onSignIn).toHaveBeenCalledOnce()
   })
 
-  it('у вошедшего покупателя остаётся одно поле', () => {
-    renderWidget(<WantedProductForm {...feedWantedProductForm()} isSignedIn={true} />)
+  it('гостю рядом со входом предлагает прямой контакт', () => {
+    renderWidget(<WantedProductForm {...feedWantedProductForm()} isSignedIn={false} />)
+
+    expect(screen.getByText(/Или напишите нам напрямую в/)).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Instagram' })).toBeInTheDocument()
+  })
+
+  it('у вошедшего не спрашивает ни имени, ни телефона', () => {
+    renderWidget(<WantedProductForm {...feedWantedProductForm()} />)
 
     expect(screen.queryByLabelText('Как вас зовут')).toBeNull()
+    expect(screen.queryByLabelText('Телефон')).toBeNull()
     expect(screen.getByLabelText('Что вы искали')).toBeInTheDocument()
   })
 
   it('в тесной раскладке поле остаётся именованным, а заголовка нет', () => {
-    renderWidget(
-      <WantedProductForm {...feedWantedProductForm()} isCompact={true} isSignedIn={true} />
-    )
+    renderWidget(<WantedProductForm {...feedWantedProductForm()} isCompact={true} />)
 
     // Подписи нет - имя приходит из `aria-label`, иначе скринридер прочитал бы
     // «текстовое поле» и ничего больше.
@@ -40,9 +54,7 @@ describe('WantedProductForm', () => {
   it('пустое пожелание наружу не уходит', async () => {
     const user = userEvent.setup()
     const onSubmit = vi.fn()
-    renderWidget(
-      <WantedProductForm {...feedWantedProductForm()} isSignedIn={true} onSubmit={onSubmit} />
-    )
+    renderWidget(<WantedProductForm {...feedWantedProductForm()} onSubmit={onSubmit} />)
 
     await user.click(screen.getByRole('button', { name: 'Отправить пожелание' }))
 
@@ -50,34 +62,15 @@ describe('WantedProductForm', () => {
     expect(screen.getByText('Напишите, что вы ищете')).toBeInTheDocument()
   })
 
-  it('гостя без номера не выпускает', async () => {
+  it('отдаёт обрезанный текст', async () => {
     const user = userEvent.setup()
     const onSubmit = vi.fn()
     renderWidget(<WantedProductForm {...feedWantedProductForm()} onSubmit={onSubmit} />)
 
-    await user.type(screen.getByLabelText('Что вы искали'), 'Тонер Anua')
-    await user.type(screen.getByLabelText('Как вас зовут'), 'Аня')
-    await user.click(screen.getByRole('button', { name: 'Отправить пожелание' }))
-
-    expect(onSubmit).not.toHaveBeenCalled()
-    expect(screen.getByText('Укажите номер телефона')).toBeInTheDocument()
-  })
-
-  it('отдаёт телефон в E.164 и обрезанный текст', async () => {
-    const user = userEvent.setup()
-    const onSubmit = vi.fn()
-    renderWidget(<WantedProductForm {...feedWantedProductForm()} onSubmit={onSubmit} />)
-
-    await user.type(screen.getByLabelText('Как вас зовут'), ' Аня ')
-    await user.type(screen.getByLabelText('Телефон'), '555123456')
     await user.type(screen.getByLabelText('Что вы искали'), '  Тонер Anua  ')
     await user.click(screen.getByRole('button', { name: 'Отправить пожелание' }))
 
-    expect(onSubmit).toHaveBeenCalledWith({
-      name: 'Аня',
-      phone: '+996555123456',
-      message: 'Тонер Anua',
-    })
+    expect(onSubmit).toHaveBeenCalledWith({ message: 'Тонер Anua' })
   })
 
   it('отправленная форма сменяется благодарностью', () => {

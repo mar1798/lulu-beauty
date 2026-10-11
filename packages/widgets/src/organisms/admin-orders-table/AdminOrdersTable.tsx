@@ -1,12 +1,13 @@
 import clsx from 'clsx'
 import { Fragment, type FC, useState } from 'react'
 import type { IAdminOrdersTableProps, IBasicStyling } from '../../types'
-import { IconTrash } from '../../svg/icons'
+import { IconTelegram, IconTrash } from '../../svg/icons'
 import { AppLink } from '../../atoms/app-link'
 import { Badge } from '../../atoms/badge'
 import { IconButton } from '../../atoms/icon-button'
 import { Price } from '../../atoms/price'
 import { Skeleton } from '../../atoms/skeleton'
+import { orderNumber } from '../../molecules/order-card'
 import { StatusSelect } from '../../molecules/status-select'
 import { formatDateTime } from '../../utils/datetime'
 import { formatVolume } from '../../utils/volume'
@@ -29,12 +30,16 @@ import * as styles from './AdminOrdersTable.css'
  * Ниже `md` та же разметка раскладывается в карточки (см. миксин
  * `styling/mixin/table.ts`): название колонки берётся из `data-label`, а роли
  * проставлены явно — `display: block` снимает встроенные роли таблицы. Статус и
- * кнопка удаления делят на карточке одну строку: остальные ячейки занимают всю
- * ширину, эти две — нет, и подписи у статуса там тоже нет.
+ * кнопки действий (написать через бота, удалить) делят на карточке одну строку:
+ * остальные ячейки занимают всю ширину, эти две — нет, и подписи у статуса там
+ * тоже нет.
+ *
+ * «Написать через бота» — для покупателя, которого по номеру в Telegram не
+ * найти: поиск по номеру закрывается настройками приватности, а чат с ботом от
+ * номера не зависит. Без привязки к боту кнопка недоступна и говорит почему.
  */
 
 const DEFAULT_SKELETON_ROWS = 5
-const ORDER_NUMBER_LENGTH = 8
 
 /** Заявка, покупатель, состав, сумма, статус — колонка действий необязательна. */
 const BASE_COLUMNS = 5
@@ -42,12 +47,17 @@ const BASE_COLUMNS = 5
 /** Сколько колонок перед «Составом» — их в строке итогов занимает подпись «Итого». */
 const LEADING_COLUMNS = 2
 
-const orderNumber = (id: string): string => id.slice(0, ORDER_NUMBER_LENGTH).toUpperCase()
+/**
+ * Номер заявки в админке — тот же короткий номер, что у покупателя, только
+ * заглавными. Страница берёт его отсюда же для окна «Написать через бота».
+ */
+export const adminOrderNumber = (id: string): string => orderNumber(id).toUpperCase()
 
 export const AdminOrdersTable: FC<IAdminOrdersTableProps & IBasicStyling> = ({
   orders,
   onStatusChange,
   onDelete,
+  onMessage,
   buildProductHref,
   isLoading = false,
   skeletonRows = DEFAULT_SKELETON_ROWS,
@@ -68,8 +78,12 @@ export const AdminOrdersTable: FC<IAdminOrdersTableProps & IBasicStyling> = ({
     return <>{emptyState}</>
   }
 
-  /* Колонка действий необязательна, а `colSpan` у скелетонов и состава — нет. */
-  const columnCount = onDelete === undefined ? BASE_COLUMNS : BASE_COLUMNS + 1
+  /*
+    Колонка действий необязательна, а `colSpan` у скелетонов и состава — нет.
+    Она есть, если есть хоть одно действие.
+  */
+  const hasActions = onDelete !== undefined || onMessage !== undefined
+  const columnCount = hasActions ? BASE_COLUMNS + 1 : BASE_COLUMNS
 
   return (
     <div className={clsx(styles.wrap, className)}>
@@ -91,7 +105,7 @@ export const AdminOrdersTable: FC<IAdminOrdersTableProps & IBasicStyling> = ({
             <th className={styles.headCell} scope="col" role="columnheader">
               Статус
             </th>
-            {onDelete !== undefined && (
+            {hasActions && (
               <th className={styles.headActionsCell} scope="col" role="columnheader">
                 Действия
               </th>
@@ -118,7 +132,7 @@ export const AdminOrdersTable: FC<IAdminOrdersTableProps & IBasicStyling> = ({
                     <tr className={styles.row} role="row">
                       <td className={styles.cell} role="cell">
                         <div className={styles.order}>
-                          <span className={styles.number}>№ {orderNumber(order.id)}</span>
+                          <span className={styles.number}>№ {adminOrderNumber(order.id)}</span>
                           <span className={styles.date}>{formatDateTime(order.createdAt)}</span>
                         </div>
                       </td>
@@ -178,18 +192,37 @@ export const AdminOrdersTable: FC<IAdminOrdersTableProps & IBasicStyling> = ({
                         />
                       </td>
 
-                      {onDelete !== undefined && (
+                      {hasActions && (
                         <td className={styles.actionsCell} role="cell">
-                          <IconButton
-                            icon={<IconTrash />}
-                            label={`Удалить заявку № ${orderNumber(order.id)}`}
-                            variant="danger"
-                            size="sm"
-                            disabled={busyId === order.id}
-                            onClick={() => {
-                              onDelete(order)
-                            }}
-                          />
+                          <div className={styles.actions}>
+                            {onMessage !== undefined && (
+                              <IconButton
+                                icon={<IconTelegram />}
+                                label={`Написать покупателю заявки № ${adminOrderNumber(order.id)} через бота`}
+                                size="sm"
+                                hasPopup="dialog"
+                                disabled={busyId === order.id}
+                                unavailableReason={
+                                  order.canMessage ? null : 'Покупатель не привязан к боту'
+                                }
+                                onClick={() => {
+                                  onMessage(order)
+                                }}
+                              />
+                            )}
+                            {onDelete !== undefined && (
+                              <IconButton
+                                icon={<IconTrash />}
+                                label={`Удалить заявку № ${adminOrderNumber(order.id)}`}
+                                variant="danger"
+                                size="sm"
+                                disabled={busyId === order.id}
+                                onClick={() => {
+                                  onDelete(order)
+                                }}
+                              />
+                            )}
+                          </div>
                         </td>
                       )}
                     </tr>

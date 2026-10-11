@@ -289,6 +289,20 @@ export const updateOrderStatus = (orderId: string, status: OrderStatus): Promise
   api.patch(`/admin/orders/${encodeURIComponent(orderId)}/status`, { body: { status } })
 
 /**
+ * Предел длины сообщения покупателю — `MAX_OWNER_MESSAGE_LENGTH` на бэке.
+ * Ниже телеграмных 4096: бот добавляет к тексту шапку с номером заявки и строку
+ * про Instagram, и всё это должно уйти одним сообщением.
+ */
+export const OWNER_MESSAGE_MAX_LENGTH = 3500
+
+/**
+ * Сообщение покупателю через бота — для того, кого по номеру в Telegram не
+ * найти. Отправка синхронная: успех значит, что Telegram сообщение принял.
+ */
+export const messageCustomer = (orderId: string, text: string): Promise<void> =>
+  api.post(`/admin/orders/${encodeURIComponent(orderId)}/message`, { body: { text } })
+
+/**
  * Удаление заявки владельцем — настоящее, в отличие от покупательской отмены
  * (`POST /orders/{id}/cancel`): заявка уходит из базы вместе с позициями и
  * пропадает из выгрузок за прошлые сборы.

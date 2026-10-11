@@ -15,7 +15,9 @@ command drifting apart into two implementations.
 """
 
 import logging
+import math
 import re
+import time
 import uuid
 from collections import OrderedDict
 from datetime import UTC, datetime
@@ -52,6 +54,7 @@ from app.payments.service import (
     ReceiptNotFoundError,
 )
 from app.telegram import keyboards, messages, recipients
+from app.telegram.client import notifications_service
 from app.telegram.keyboards import (
     LoginAction,
     MenuAction,
@@ -59,12 +62,14 @@ from app.telegram.keyboards import (
     PaymentAction,
     ReceiptAction,
     ReceiptOrderChoice,
+    ReplyAction,
 )
 from app.telegram.notify import (
     notify_order_status,
     notify_payment_reviewed,
     notify_receipt_received,
 )
+from app.telegram.service import Delivery
 from app.telegram.throttling import ThrottlingMiddleware
 from app.wishlist.service import WishlistService
 
@@ -301,10 +306,12 @@ def _cart_actions(cart: CartResponse) -> InlineKeyboardMarkup | None:
     return keyboards.catalog_link()
 
 
-@router.message(or_f(Command("wishlist"), F.text == messages.MENU_WISHLIST))
+@router.message(Command("wishlist"))
 async def handle_wishlist(message: Message) -> None:
     """Saved products. New with the menu: the sweep has been moving abandoned carts into
     the wishlist for a while, and until now the bot could only mention it, never show it.
+
+    Typed only: its menu button gave way to «Ссылки», and the site shows the same list.
     """
     async with async_session() as session:
         user = await _linked_user(message, session)
@@ -359,6 +366,28 @@ async def handle_links(message: Message) -> None:
         return
 
     await message.answer(messages.LINKS_PROMPT, reply_markup=keyboard)
+
+
+@router.message(F.text == messages.MENU_REPLY)
+async def handle_reply_menu(message: Message) -> None:
+    """«✍️ Написать Sululu» in the menu: asks for the message, as a ForceReply.
+
+    Whatever the customer sends next is a reply to the prompt, and `handle_customer_reply`
+    passes it to the owner — so a plain text typed into the chat stays the fallback's,
+    and only what was meant for the shop reaches it. No order named: from the menu the
+    customer writes to the shop in general.
+    """
+    async with async_session() as session:
+        if await _linked_user(message, session) is None:
+            return
+    await _ask_for_reply(message, None)
+
+
+async def _ask_for_reply(message: Message, order_id: uuid.UUID | None) -> None:
+    await message.answer(
+        messages.reply_prompt(order_id),
+        reply_markup=ForceReply(input_field_placeholder=messages.REPLY_PLACEHOLDER),
+    )
 
 
 @router.message(Command("unlink"))
@@ -611,6 +640,223 @@ def _reference_replied_to(message: Message) -> str | None:
         return None
     references = set(_ORDER_REFERENCE.findall(replied.text or replied.caption or ""))
     return references.pop() if len(references) == 1 else None
+
+
+@router.callback_query(ReplyAction.filter())
+async def handle_reply_button(query: CallbackQuery, callback_data: ReplyAction) -> None:
+    """«✍️ Ответить» under the owner's message: the same prompt as the menu's, naming
+    the order, so the answer arrives at the owner with its number."""
+    async with async_session() as session:
+        user = await recipients.find_user_by_chat_id(session, query.from_user.id)
+    if user is None:
+        await query.answer(messages.NOT_LINKED, show_alert=True)
+        return
+
+    await query.answer()
+    if isinstance(query.message, Message):
+        await _ask_for_reply(query.message, callback_data.order_id)
+
+
+# The customer's phone on the second line of `messages.customer_reply_for_owner`, or of
+# `messages.wanted_product_for_owner`.
+_CUSTOMER_PHONE = re.compile(r"^(?:Покупатель|От кого): .*, (\+\d+)$", re.MULTILINE)
+
+
+@router.message(
+    F.reply_to_message.from_user.is_bot
+    & (
+        F.reply_to_message.text.startswith(messages.OWNER_REPLYABLE_TITLES)
+        | F.reply_to_message.caption.startswith(messages.OWNER_REPLYABLE_TITLES)
+    )
+)
+async def handle_owner_reply(message: Message) -> None:
+    """The owner answering, by a reply in the chat, a customer's message passed on to them
+    — or a wish for the next cycle (`messages.wanted_product_for_owner`).
+
+    The obvious thing to do with «💬 Ответ покупателя», and before this it got «не понял».
+    Nothing remembers whose message that was: the header names the customer by phone and
+    the order by number, the way the receipt prompt names its order — no state for a
+    restart to lose. Registered before `handle_customer_reply` and `handle_receipt`, so
+    an owner's photo in reply is passed on rather than filed as a receipt.
+    """
+    replied = message.reply_to_message
+    header = (replied.text or replied.caption or "") if replied is not None else ""
+    phone = _CUSTOMER_PHONE.search(header)
+    # The title line only: the customer's own words below it may hold a «#…» too.
+    reference = _ORDER_REFERENCE.search(header.split("\n", 1)[0])
+    wish = header.startswith(messages.WANTED_PRODUCT_TITLE)
+
+    async with async_session() as session:
+        owner = await _linked_user(message, session)
+        if owner is None:
+            return
+        if owner.role not in ADMIN_ROLES:
+            # Only owners receive these headers; anyone else quoting one is just typing.
+            await message.answer(messages.FALLBACK, reply_markup=keyboards.main_menu())
+            return
+        customer = (
+            await recipients.find_user_by_phone(session, phone.group(1))
+            if phone is not None
+            else None
+        )
+        order = (
+            await PaymentsService(session).order_by_reference(customer.id, reference.group(1))
+            if customer is not None and reference is not None
+            else None
+        )
+
+    if customer is None or customer.telegram_chat_id is None:
+        if wish and phone is not None:
+            # The writer unlinked the bot, or the wish predates the sign-in requirement
+            # and its number was typed by a guest: either way, a call still reaches them.
+            await message.answer(messages.owner_reply_wish_unreachable(phone.group(1)))
+        else:
+            await message.answer(messages.OWNER_REPLY_CUSTOMER_GONE)
+        return
+
+    chat_id = customer.telegram_chat_id
+    first = _first_of_album(message)
+    outcome = await notifications_service.send_owner_reply(
+        customer,
+        reference.group(0) if reference is not None else None,
+        order.id if order is not None else None,
+        message,
+        with_header=first,
+        wish=wish,
+    )
+    if outcome is Delivery.BLOCKED:
+        # The same answer every broadcast acts on: the binding is dead, so drop it.
+        async with async_session() as session:
+            await recipients.clear_stale_bindings(session, [chat_id])
+            await session.commit()
+        await message.answer(messages.OWNER_REPLY_BLOCKED)
+    elif outcome is not Delivery.SENT:
+        await message.answer(messages.OWNER_REPLY_FAILED)
+    elif first:
+        await message.answer(messages.OWNER_REPLY_SENT)
+
+
+@router.message(
+    F.reply_to_message.from_user.is_bot
+    & (
+        F.reply_to_message.text.startswith(messages.CUSTOMER_REPLY_HEADERS)
+        # The owner's photo or voice note, with the header in its caption.
+        | F.reply_to_message.caption.startswith(messages.CUSTOMER_REPLY_HEADERS)
+    )
+)
+async def handle_customer_reply(message: Message) -> None:
+    """The customer writing to the shop: a reply to the owner's own message
+    (`messages.owner_message`) or to the «Ответить» prompt (`messages.reply_prompt`).
+
+    Only a reply, never plain text typed into the chat — that one gets the fallback,
+    which says how to do this instead. It goes to every owner, whatever it is — text,
+    photo, voice.
+
+    Except a receipt: a photo or a file for an order still waiting for money is what
+    `handle_receipt` exists for, and passing it on as chat would leave it unfiled and
+    the owner without the accept/reject buttons.
+    """
+    replied = message.reply_to_message
+    header = (replied.text or replied.caption or "") if replied is not None else ""
+    # The first line only: the owner's own words below it may hold a «#…» too.
+    match = _ORDER_REFERENCE.search(header.split("\n", 1)[0])
+    async with async_session() as session:
+        user = await _linked_user(message, session)
+        if user is None:
+            return
+        payments = PaymentsService(session)
+        order = (
+            await payments.order_by_reference(user.id, match.group(1))
+            if match is not None
+            else None
+        )
+        is_receipt = (
+            (message.photo is not None or message.document is not None)
+            and order is not None
+            and payments.takes_payment(order)
+        )
+        owners = [] if is_receipt else await recipients.get_owners(session)
+
+    if is_receipt:
+        await handle_receipt(message)
+        return
+
+    now = _clock()
+    continues_album = _continues_shop_album(message)
+    wait = 0 if continues_album else _shop_message_wait(message.chat.id, now)
+    if wait > 0:
+        await message.answer(
+            messages.shop_message_too_soon(int(SHOP_MESSAGE_INTERVAL_SECONDS), wait),
+            reply_markup=keyboards.main_menu(),
+        )
+        return
+    if not continues_album:
+        # Taken before the send, not after: an album's photos arrive together and are
+        # handled concurrently, and the second has to find the first's mark already set.
+        _remember_shop_message(message, now)
+
+    reference = match.group(0) if match is not None else None
+    delivered = False
+    for owner in owners:
+        if await notifications_service.send_customer_reply(owner, user, reference, message):
+            delivered = True
+    if not delivered:
+        if not continues_album:
+            # Nothing reached the shop, so nothing to wait out before trying again.
+            _last_shop_message.pop(message.chat.id, None)
+        await message.answer(
+            messages.CUSTOMER_REPLY_NOT_DELIVERED, reply_markup=keyboards.main_menu()
+        )
+        return
+    if continues_album:
+        # The album's first photo was acknowledged already; one «передал» per message.
+        return
+    await message.answer(messages.CUSTOMER_REPLY_FORWARDED, reply_markup=keyboards.main_menu())
+
+
+# One message for the shop per customer per this long. The owner reads them by hand, and
+# without a limit a held-down send key fills every owner's chat — the bot's own throttle
+# (`throttling.py`) allows a message a second, which is a lot of them to scroll past.
+# Counted from the last one sent on, so a refused or undelivered message costs nothing.
+SHOP_MESSAGE_INTERVAL_SECONDS = 30.0
+
+# chat id → when its last message reached the shop, and the album it started, if any.
+# In memory, like the throttle: a restart forgets it, which at worst lets one message
+# through early. Bounded, since chat ids are unbounded input from outside.
+_last_shop_message: OrderedDict[int, tuple[float, str | None]] = OrderedDict()
+_MAX_REMEMBERED_SENDERS = 1000
+# A seam for the tests, which cannot patch `time.monotonic` without stopping asyncio too.
+_clock = time.monotonic
+
+
+def _shop_message_wait(chat_id: int, now: float) -> int:
+    """Whole seconds before this chat may write to the shop again; 0 when it may."""
+    last = _last_shop_message.get(chat_id)
+    if last is None:
+        return 0
+    left = SHOP_MESSAGE_INTERVAL_SECONDS - (now - last[0])
+    return math.ceil(left) if left > 0 else 0
+
+
+def _continues_shop_album(message: Message) -> bool:
+    """A later photo of an album whose first one already went to the shop.
+
+    An album arrives as one message per photo, seconds apart at most; the customer sent
+    it as one, so it is let through whole rather than refused from its second photo on.
+    """
+    last = _last_shop_message.get(message.chat.id)
+    return (
+        last is not None
+        and message.media_group_id is not None
+        and last[1] == message.media_group_id
+    )
+
+
+def _remember_shop_message(message: Message, now: float) -> None:
+    _last_shop_message[message.chat.id] = (now, message.media_group_id)
+    _last_shop_message.move_to_end(message.chat.id)
+    if len(_last_shop_message) > _MAX_REMEMBERED_SENDERS:
+        _last_shop_message.popitem(last=False)
 
 
 @router.message(F.photo | F.document)

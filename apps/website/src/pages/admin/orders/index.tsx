@@ -3,18 +3,20 @@ import useSWR, { mutate as globalMutate } from 'swr'
 import type { IAdminOrder, IOrderCycle, ISelectOption, OrderStatus } from 'widgets/types'
 import { Alert, Button, Select, Switch } from 'widgets/atoms'
 import { EmptyState, ORDER_STATUSES, Pagination, orderStatusLabel } from 'widgets/molecules'
-import { AdminOrdersTable } from 'widgets/organisms'
+import { AdminMessageDialog, AdminOrdersTable, adminOrderNumber } from 'widgets/organisms'
 import { useConfirm, useToast } from 'widgets/contexts'
 import { formatDate } from 'widgets/utils'
 import { IconDownload } from 'widgets/svg'
 import { AdminShell } from '@/layouts/AdminShell'
 import { useActiveCycle } from '@/hooks/useActiveCycle'
 import { saveBlob } from '@/services/api'
-import { messageForError } from '@/services/apiErrors'
+import { isApiError, messageForError } from '@/services/apiErrors'
 import {
+  OWNER_MESSAGE_MAX_LENGTH,
   deleteOrder,
   listAdminOrders,
   listCycles,
+  messageCustomer,
   updateOrderStatus,
 } from '@/services/endpoints/admin'
 import { createExportLink, downloadOrdersExport } from '@/services/endpoints/export'
@@ -36,6 +38,11 @@ import { useClampedPage } from '@/hooks/useClampedPage'
  * часто пересылают поставщику, и наши цены там лишние. Без цен строки одного
  * товара, купленного по разной цене, бэк сливает в одну — иначе в листе стояли
  * бы две неотличимые.
+ *
+ * «Написать через бота» — окно с текстом для покупателя, которого по номеру в
+ * Telegram не найти. Ошибка отправки остаётся в окне вместе с набранным
+ * текстом; «не привязан» и «заблокировал бота» вдобавок перечитывают список —
+ * привязки нет (или бэк её только что снял), и кнопка у заявки должна погаснуть.
  *
  * Качается через `fetch`, а не обычной ссылкой: ручка админская,
  * и отказ (403, 500) на ссылке превратился бы в скачанный файл с текстом
@@ -95,6 +102,17 @@ const AdminOrdersPage: React.FC = () => {
     ключ SWR от него не зависит, перезапрашивать нечего.
   */
   const [includePrices, setIncludePrices] = useState(true)
+
+  /*
+    Окно «Написать через бота»: открыто ли, чья заявка, набранный текст и исход
+    отправки. Заявка переживает закрытие — окно уезжает с анимацией, и пустое
+    имя в шапке мигнуло бы на выходе.
+  */
+  const [isMessageOpen, setIsMessageOpen] = useState(false)
+  const [messageOrder, setMessageOrder] = useState<IAdminOrder | null>(null)
+  const [messageText, setMessageText] = useState('')
+  const [isSendingMessage, setIsSendingMessage] = useState(false)
+  const [messageError, setMessageError] = useState<string | null>(null)
 
   /*
     Пагинация внизу таблицы: без прокрутки следующая страница начинается за
@@ -206,6 +224,53 @@ const AdminOrdersPage: React.FC = () => {
       notify({ tone: 'danger', title: 'Не получилось', description: message })
     } finally {
       setBusyId(null)
+    }
+  }
+
+  const openMessage = (order: IAdminOrder): void => {
+    // Текст не сбрасываем: окно закрыли случайно — набранное должно остаться.
+    if (messageOrder?.id !== order.id) {
+      setMessageText('')
+    }
+    setMessageError(null)
+    setMessageOrder(order)
+    setIsMessageOpen(true)
+  }
+
+  const closeMessage = (): void => {
+    if (!isSendingMessage) {
+      setIsMessageOpen(false)
+    }
+  }
+
+  const handleSendMessage = async (): Promise<void> => {
+    if (messageOrder === null) {
+      return
+    }
+
+    setIsSendingMessage(true)
+    setMessageError(null)
+
+    try {
+      await messageCustomer(messageOrder.id, messageText)
+      notify({
+        tone: 'success',
+        title: 'Сообщение отправлено',
+        description: messageOrder.customerName,
+      })
+      setIsMessageOpen(false)
+      setMessageText('')
+    } catch (cause: unknown) {
+      setMessageError(messageForError(cause, 'admin.orders'))
+
+      if (
+        isApiError(cause) &&
+        (cause.code === 'customer_blocked_bot' || cause.code === 'customer_not_in_bot')
+      ) {
+        void mutate()
+      }
+    } finally {
+      setIsSendingMessage(false)
     }
   }
 
@@ -321,12 +386,28 @@ const AdminOrdersPage: React.FC = () => {
         onDelete={order => {
           void handleDelete(order)
         }}
+        onMessage={openMessage}
         emptyState={
           <EmptyState
             title="Заявок нет"
             description="С выбранными фильтрами ничего не нашлось. Попробуйте выбрать другой сбор или статус."
           />
         }
+      />
+
+      <AdminMessageDialog
+        isOpen={isMessageOpen}
+        customerName={messageOrder?.customerName ?? ''}
+        orderNumber={messageOrder === null ? '' : adminOrderNumber(messageOrder.id)}
+        value={messageText}
+        onChange={setMessageText}
+        maxLength={OWNER_MESSAGE_MAX_LENGTH}
+        isBusy={isSendingMessage}
+        error={messageError}
+        onSend={() => {
+          void handleSendMessage()
+        }}
+        onClose={closeMessage}
       />
 
       {data !== undefined && data.total > PAGE_SIZE && (

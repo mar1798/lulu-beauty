@@ -116,8 +116,11 @@ renders and then refuses, which is worse than not offering it.
 `throttling.py`, `webhook.py`, `client.py`, `service.py`.
 
 Menu buttons, each also a command: 🛒 Корзина (`/cart`), 📦 Мои заявки (`/orders`),
-⭐ Избранное (`/wishlist`), 📅 Текущий сбор (`/deadline`), 🌐 Ссылки (`/links`, and
-`/site` for the older name), ℹ️ Помощь (`/help`), plus `/start`, `/menu` and unlinking.
+📅 Текущий сбор (`/deadline`), 🌐 Ссылки (`/links`, and `/site` for the older name),
+ℹ️ Помощь (`/help`), plus `/start`, `/menu` and unlinking. `/wishlist` has no button any
+more: it still answers with the saved products to whoever types it.
+✍️ Написать Sululu is the one without a command: it asks for a message to the shop (see
+"The owner writing to a customer" below).
 
 🌐 Ссылки and ℹ️ Помощь carry an **Instagram** button, and so do the two notifications
 that send the customer to the owner — an order deleted and one the owner cancelled, both
@@ -131,6 +134,84 @@ there); change one and change the other. Unlike every link to the site it needs 
 path into the bot opens a database session on behalf of an unauthenticated sender, and a
 throttled update should not even be matched against handlers. It is a token bucket, so
 tapping three buttons in a row is fine and only a sustained burst is refused.
+
+### The owner writing to a customer
+
+A customer the owner cannot find by phone in Telegram is the usual case, not a rare
+one: the number on the account is the one Telegram vouched for, but «Кто может найти
+меня по номеру: Мои контакты» makes Telegram answer a search, an «add contact» or a
+`t.me/+<number>` link as if the number had no account at all. The bot holds the chat
+itself, which no privacy setting touches — so the admin orders table has a
+«Написать покупателю через бота» button (`POST /admin/orders/{id}/message`).
+
+The text goes out wrapped by `messages.owner_message` — the order's `#xxxxxxxx` on top,
+and «Ответьте на это сообщение или напишите в Instagram» at the bottom, with
+`keyboards.owner_message_actions` under it: «✍️ Ответить» (`ReplyAction`), then the
+order list and Instagram. The length limit (`MAX_OWNER_MESSAGE_LENGTH`) is counted in UTF-16 code units,
+the way Telegram and the textarea's `maxLength` count, not in Python characters.
+
+A **reply to that message** goes to the owner, and so does a reply to the prompt that
+«✍️ Ответить» under the message and «✍️ Написать Sululu» in the menu both send:
+`messages.reply_prompt` as a `ForceReply` — naming the order from under the message, no
+order from the menu — so the client makes the next message a reply without the customer
+knowing how. `handle_customer_reply` (matched by `messages.OWNER_MESSAGE_HEADER` on the
+replied-to text or caption, or `REPLY_PROMPT_HEADER` / `SHOP_PROMPT_HEADER` on its text,
+registered before `handle_receipt`; the order is read off the header's first line only)
+passes it to every owner under `messages.customer_reply_for_owner` — a text inside the
+same message, anything else (photo, voice, sticker) as a `copy_message` — and
+tells the customer `CUSTOMER_REPLY_FORWARDED`, or `CUSTOMER_REPLY_NOT_DELIVERED` when no
+owner took it. One exception: a photo or file replying about an order that still takes
+payment is a receipt and goes to `handle_receipt`, so it gets filed with the verdict
+buttons instead of arriving as chat.
+
+The owner answers the same way, by replying in the chat to what was passed on —
+`handle_owner_reply`, matched by `messages.CUSTOMER_MESSAGE_TITLES` on the replied-to
+text **or caption**: a customer's photo, video, file or voice reaches the owner as a copy
+with the header put into its caption (`_takes_caption`; a sticker or a too-long caption
+keeps the header as a message of its own, the copy sent as a reply to it, and only the
+header can be answered). A text too long for one message is cut
+(`service.split_message`) and **every part repeats the header**, so a reply to any part
+is recognised; the same holds for the owner's long answer. The
+customer is found by the phone on the header's `Покупатель:` line, the order by the
+`#xxxxxxxx` on its title line — nothing is stored. The answer goes out as
+`messages.owner_message` with `owner_message_actions` (a text inside it; a photo, video,
+file or voice as a copy with `messages.owner_media_caption` as its caption, the buttons on
+an album's first photo only; a sticker as a copy replying to a «ниже» header), so the
+customer can answer it again. The owner hears `OWNER_REPLY_SENT`, or why not: the account is gone or unlinked,
+the customer blocked the bot (the binding is dropped), or Telegram refused. Only
+`ADMIN_ROLES` are passed on; anyone else quoting a header gets the fallback.
+
+A **wish for the next cycle** (`messages.wanted_product_for_owner`, opening with
+`WANTED_PRODUCT_TITLE`) is answered the same way: `handle_owner_reply` matches it too
+(`OWNER_REPLYABLE_TITLES`) and finds the writer by the phone on its `От кого:` line. The
+customer gets `owner_message(..., wish=True)` — «Сообщение от Sululu по вашему
+пожеланию» — with the same buttons, so they can answer back. Wishes now need an account, so
+the number is one the bot has seen; when it no longer leads to a linked chat (the account
+was unlinked, or the wish predates the sign-in requirement, when guests typed in any
+number), the owner hears `messages.owner_reply_wish_unreachable` with the number to call
+instead.
+
+Only a reply travels. Plain text typed into the chat is still `handle_fallback`'s, and
+`messages.FALLBACK` says how to reach the shop: press ✍️ Написать Sululu or reply to
+the shop's message. Nothing is stored about who pressed what — the prompt carries it all.
+
+**One message per customer per 30 seconds** (`SHOP_MESSAGE_INTERVAL_SECONDS`): anything
+sooner is not passed on, and the customer gets `messages.shop_message_too_soon` with the
+seconds left. The mark is set before the send and taken back if no owner got it, so an
+undelivered message costs no wait. An album counts as one message — its later photos
+(same `media_group_id`) go through and are not acknowledged again — and a receipt is
+never held back, since it goes to `handle_receipt` before the limit is looked at. Kept
+in memory like the throttle: a restart forgets it.
+
+Unlike every notification it is sent **inside the request**, not after it: nothing was
+committed for it to contradict, and the owner is waiting to learn whether it arrived.
+The read transaction is ended before the send, and a flood limit is not waited out
+(`retry_on_flood=False`) — it comes back as `telegram_send_failed` at once.
+Each failure is its own code — `customer_not_in_bot` (no binding, or an erased
+account; the page re-reads the list, since the button it pressed was stale),
+`customer_blocked_bot` (Telegram said 403; the binding is dropped, the same
+as after a broadcast, and the button greys out), `telegram_send_failed` (502, no bot
+or Telegram refused). `AdminOrderResponse.canMessage` is what the button reads.
 
 ### Payment receipts
 
@@ -216,6 +297,10 @@ with admin rights — `ADMIN` and `SUPER_ADMIN` alike (`recipients.get_owners`).
 | Account erased, withdrawing its pending orders                        | Owner (one message naming them) |
 | Closed cycle still holding unanswered orders (once per cycle)         | Owner                           |
 | Wish for a product the catalog lacks, left under an empty search      | Owner (name, phone and text)    |
+| Owner's own text from the orders panel (sent in the request)          | That order's customer           |
+| Customer's reply to the owner's text or to the «Ответить» prompt      | Owner (name, phone and reply)   |
+| Owner's reply in the chat to a customer's passed-on message           | That customer                   |
+| Owner's reply in the chat to a wish for the next cycle                | Its writer, if linked by phone  |
 
 **Three rules that the code is shaped around:**
 

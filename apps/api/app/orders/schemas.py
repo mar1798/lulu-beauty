@@ -1,14 +1,19 @@
 import uuid
 from datetime import datetime
 
-from pydantic import Field
+from pydantic import Field, field_validator
 
 from app.common.limits import MAX_ITEM_QUANTITY
 from app.common.schemas import CamelModel, PageResponse
 from app.orders.models import OrderStatus, PendingStage
 
+# Mirrored by `OWNER_MESSAGE_MAX_LENGTH` on the website, which counts down to it.
+MAX_OWNER_MESSAGE_LENGTH = 3500
+
 __all__ = [
     "MAX_ITEM_QUANTITY",
+    "MAX_OWNER_MESSAGE_LENGTH",
+    "AdminOrderMessageRequest",
     "AdminOrderPageResponse",
     "AdminOrderResponse",
     "AdminOrdersSummary",
@@ -116,6 +121,34 @@ class AdminOrderResponse(OrderResponse):
     # A receipt is waiting for the owner's verdict. `paid_at` says whether one was
     # accepted, and the admin table shows that instead.
     has_receipt: bool = False
+    # The customer's chat is bound to the bot, so «Написать через бота» has somewhere to
+    # go. False for an erased account too — its binding went with the rest of it.
+    can_message: bool = False
+
+
+class AdminOrderMessageRequest(CamelModel):
+    """The owner's own words to a customer, sent through the bot.
+
+    Capped well under Telegram's 4096: the bot wraps the text in a header and a footer
+    (`messages.owner_message`), and a message that outgrew one send would have to be
+    split in a place the owner never chose.
+    """
+
+    text: str = Field(min_length=1, max_length=MAX_OWNER_MESSAGE_LENGTH)
+
+    @field_validator("text")
+    @classmethod
+    def _not_blank(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("text is blank")
+        # Telegram counts UTF-16 code units, and so does the textarea's `maxLength` on
+        # the website — `max_length` above counts characters, and an emoji is one of
+        # those but two of these. Inline rather than `telegram.service._telegram_length`:
+        # importing the bot from here would close a cycle through `orders.service`.
+        if len(value.encode("utf-16-le")) // 2 > MAX_OWNER_MESSAGE_LENGTH:
+            raise ValueError("text is too long")
+        return value
 
 
 class AdminOrdersSummary(CamelModel):

@@ -10,6 +10,7 @@ import {
   suggestSearch,
   type ISearchSuggestions,
 } from '@/services/endpoints/catalog'
+import { useAuth } from '@/contexts/AuthContext'
 import { searchSuggestKey } from '@/services/swrKeys'
 import { INSTAGRAM_URL } from '@/utils/contacts'
 import { WantedProductPrompt } from './WantedProductPrompt'
@@ -86,6 +87,7 @@ const buildGroups = (suggestions: ISearchSuggestions): ISearchSuggestGroup[] => 
 
 export const CatalogSearch: React.FC = () => {
   const router = useRouter()
+  const { user } = useAuth()
   const [query, setQuery] = useState('')
 
   const pending = query.trim()
@@ -175,8 +177,16 @@ export const CatalogSearch: React.FC = () => {
         Пустая выдача — тупик: дальше сайт человеку ничем не поможет, зато
         владелец в Instagram помочь может. Адрес тот же, что в подвале
         (`INSTAGRAM_URL`), — второго публичного контакта у магазина нет.
+
+        Гостю отдельной строкой не показывается: форма пожелания у него
+        предлагает тот же Instagram в одной фразе со входом, и две ссылки
+        подряд читались бы как повтор.
       */
-      contact={{ label: 'Instagram', link: { href: INSTAGRAM_URL, target: '_blank' } }}
+      contact={
+        user === null
+          ? undefined
+          : { label: 'Instagram', link: { href: INSTAGRAM_URL, target: '_blank' } }
+      }
       /*
         И форма пожелания - под тем же «ничего не нашлось». Instagram рядом с
         ней не лишний: это разговор сейчас, а форма - строка в закупке через

@@ -5,9 +5,9 @@ The whole stack on a single server: Caddy (TLS) → `website` (Next) → `api`
 only Caddy faces the internet.
 
 That shape is a deliberate choice for the MVP: the API runs a permanent
-scheduler (`app/scheduler.py` — reminders, closing cycles, session cleanup) and
-keeps product photos on local disk (`LocalDiskStorage`), so serverless and
-scale-to-zero don't fit, and horizontal scaling isn't needed yet.
+scheduler (`app/scheduler.py` — reminders, closing cycles, stale-order nudges,
+session cleanup) and keeps product photos on local disk (`LocalDiskStorage`), so
+serverless and scale-to-zero don't fit, and horizontal scaling isn't needed yet.
 
 ---
 
