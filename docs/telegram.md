@@ -184,7 +184,7 @@ the customer blocked the bot (the binding is dropped), or Telegram refused. Only
 A **wish for the next cycle** (`messages.wanted_product_for_owner`, opening with
 `WANTED_PRODUCT_TITLE`) is answered the same way: `handle_owner_reply` matches it too
 (`OWNER_REPLYABLE_TITLES`) and finds the writer by the phone on its `От кого:` line. The
-customer gets `owner_message(..., wish=True)` — «Сообщение от магазина по вашему
+customer gets `owner_message(..., wish=True)` — «Сообщение от Sululu по вашему
 пожеланию» — with the same buttons, so they can answer back. Wishes now need an account, so
 the number is one the bot has seen; when it no longer leads to a linked chat (the account
 was unlinked, or the wish predates the sign-in requirement, when guests typed in any

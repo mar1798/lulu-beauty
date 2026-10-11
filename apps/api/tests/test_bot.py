@@ -506,6 +506,31 @@ async def test_a_reply_to_the_reply_prompt_is_routed_to_the_same_handler() -> No
         assert matched[0].callback is handle_customer_reply
 
 
+async def test_a_reply_to_a_message_sent_before_the_rename_still_reaches_the_owner() -> None:
+    """Messages that said «магазин» before the bot started saying «Sululu» are still in
+    customers' chats; answering one of them must not fall through to the fallback."""
+    chat = Chat(id=555, type="private")
+    bot_user = TelegramUser(id=1, is_bot=True, first_name="bot")
+    message = Message.model_construct(message_id=2, date=None, chat=chat, text="Да")
+
+    for old in (
+        "Сообщение от магазина по заявке #a1b2c3d4:\n\nКрем закончился",
+        "Напишите ответ магазину по заявке #a1b2c3d4 - я передам его.",
+        "Напишите сообщение магазину - я передам его.",
+    ):
+        replied = Message.model_construct(
+            message_id=1, date=None, chat=chat, from_user=bot_user, text=old
+        )
+        message = message.model_copy(update={"reply_to_message": replied})
+        matched = [
+            handler
+            for handler in router.message.handlers
+            if (await handler.check(message, bot=MagicMock()))[0]
+        ]
+
+        assert matched[0].callback is handle_customer_reply
+
+
 async def test_plain_text_in_the_chat_is_not_passed_on_but_says_how(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

@@ -110,7 +110,7 @@ ORDER_STATUS_LABEL = {
     OrderStatus.READY: "Готова к выдаче",
     OrderStatus.COMPLETED: "Выдана",
     OrderStatus.CANCELLED_BY_CUSTOMER: "Отменена покупателем",
-    OrderStatus.CANCELLED_BY_OWNER: "Отменена магазином",
+    OrderStatus.CANCELLED_BY_OWNER: "Отменена Sululu",
 }
 
 
@@ -261,7 +261,7 @@ def account_deleted_for_owner(order_ids: Sequence[uuid.UUID]) -> str:
 
 
 _ORDER_STATUS_NEWS = {
-    # Владелец отменил заявку и передумал: покупатель уже получил «отменена магазином»,
+    # Владелец отменил заявку и передумал: покупатель уже получил «отменена Sululu»,
     # и без этой строки заявка воскресала бы у него молча.
     OrderStatus.PENDING: "снова ждёт подтверждения - мы вернули её в работу",
     # CONFIRMED is not here: it gets a message of its own, with the bill and the
@@ -269,7 +269,7 @@ _ORDER_STATUS_NEWS = {
     OrderStatus.READY: "готова к выдаче. О получении договоритесь лично.",
     OrderStatus.COMPLETED: "выдана. Спасибо за заказ!",
     OrderStatus.CANCELLED_BY_OWNER: (
-        "отменена магазином. Если это ошибка - напишите в Instagram магазина."
+        "отменена Sululu. Если это ошибка - напишите в Instagram Sululu."
     ),
     # Про свою же отмену покупателю сообщать нечего: он её и сделал, а уведомление
     # выглядело бы так, будто её сделал кто-то другой.
@@ -411,7 +411,7 @@ def payment_rejected(order: Order) -> str:
     return (
         f"Не получилось сверить оплату по заявке {order_reference(order.id)} с этим чеком. "
         f"Проверьте, пожалуйста, сумму ({format_price(order.total_cents)}) и пришлите чек "
-        "ещё раз - или напишите в Instagram магазина."
+        "ещё раз - или напишите в Instagram Sululu."
     )
 
 
@@ -431,20 +431,32 @@ def order_deleted(order_id: uuid.UUID, status: OrderStatus) -> str | None:
     if status in SILENT_DELETION_STATUSES:
         return None
     return (
-        f"Заявка {order_reference(order_id)} удалена магазином. "
-        "Если это ошибка - напишите в Instagram магазина."
+        f"Заявка {order_reference(order_id)} удалена Sululu. "
+        "Если это ошибка - напишите в Instagram Sululu."
     )
 
 
 # The opening of `owner_message`. A reply to a message that starts with it is the
 # customer answering the owner, and `handlers.handle_customer_reply` passes it on.
 # Shorter than the full «… по заявке»: the owner's reply in the chat may name no order.
-OWNER_MESSAGE_HEADER = "Сообщение от магазина"
+OWNER_MESSAGE_HEADER = "Сообщение от Sululu"
 
 # The openings of `reply_prompt` — under the owner's message and from the menu. A reply
 # to a message starting with either goes to the owner, the same as a reply to the owner's.
-REPLY_PROMPT_HEADER = "Напишите ответ магазину"
-SHOP_PROMPT_HEADER = "Напишите сообщение магазину"
+REPLY_PROMPT_HEADER = "Напишите ответ Sululu"
+SHOP_PROMPT_HEADER = "Напишите сообщение Sululu"
+
+# Every opening a reply to which goes to the owner. The pre-rename ones stay: messages
+# already sitting in customers' chats still carry them, and a reply to one of those
+# must not drop into the fallback.
+CUSTOMER_REPLY_HEADERS = (
+    OWNER_MESSAGE_HEADER,
+    REPLY_PROMPT_HEADER,
+    SHOP_PROMPT_HEADER,
+    "Сообщение от магазина",
+    "Напишите ответ магазину",
+    "Напишите сообщение магазину",
+)
 
 # Под каждым письмом владельца — и под каждой его частью, если оно длинное.
 _OWNER_MESSAGE_FOOTER = "\n\nОтветьте на это сообщение или напишите в Instagram."
@@ -501,7 +513,7 @@ def reply_prompt(order_id: uuid.UUID | None) -> str:
 
 
 # In the input field while the reply prompt waits for its answer.
-REPLY_PLACEHOLDER = "Сообщение для магазина"
+REPLY_PLACEHOLDER = "Сообщение для Sululu"
 
 
 # Openings of `customer_reply_for_owner`. A reply by the owner to a message starting with
@@ -535,7 +547,7 @@ def customer_reply_for_owner(reference: str | None, customer: User) -> str:
 
 # Покупателю, чей ответ ушёл владельцу. Без него ответ выглядит канувшим: на
 # остальное бот отвечает сам, и тишину человек прочтёт как «не дошло».
-CUSTOMER_REPLY_FORWARDED = "Передал ваш ответ магазину."
+CUSTOMER_REPLY_FORWARDED = "Передал ваш ответ Sululu."
 
 # Владельцу — исход его ответа покупателю прямо в чате (`handlers.handle_owner_reply`).
 OWNER_REPLY_SENT = "Отправил покупателю."
@@ -561,7 +573,7 @@ def shop_message_too_soon(interval_seconds: int, seconds_left: int) -> str:
     «сек.» вместо «секунд»: число любое, и сокращение избавляет от склонения.
     """
     return (
-        f"Писать магазину можно раз в {interval_seconds} сек. - это сообщение я не передал. "
+        f"Писать Sululu можно раз в {interval_seconds} сек. - это сообщение я не передал. "
         f"Отправьте его ещё раз через {seconds_left} сек."
     )
 
@@ -817,7 +829,7 @@ START = (
 #: станет обещанием, которого магазин не держит.
 CONSENT = (
     f"Нажимая «{SHARE_CONTACT_BUTTON}», вы соглашаетесь на обработку персональных "
-    "данных: магазин сохранит ваш номер, имя из профиля Telegram и этот чат - чтобы "
+    "данных: Sululu сохранит ваш номер, имя из профиля Telegram и этот чат - чтобы "
     "принимать заявки и писать вам о них. Аккаунт можно удалить в любой момент, "
     "и тогда эти данные стираются."
 )
@@ -861,9 +873,8 @@ WISHLIST_BUTTON = "Посмотреть избранное"
 CATALOG_BUTTON = "Открыть каталог"
 ORDERS_BUTTON = "Все заявки на сайте"
 SITE_BUTTON = "Открыть сайт"
-# Дословно как на сайте (подвал и FAQ): человек видит одну и ту же подпись
-# в браузере и в чате, и это одна и та же ссылка.
-INSTAGRAM_BUTTON = "Instagram магазина"
+# В боте магазин называется по имени — «Sululu», а не «магазин».
+INSTAGRAM_BUTTON = "Instagram Sululu"
 ADMIN_ORDERS_BUTTON = "Заявки в админке"
 # Дословно как заголовок страницы и как ссылка в подвале сайта — это один документ,
 # и называться он должен одинаково, где бы человек на него ни наткнулся.
@@ -890,7 +901,7 @@ UNLINK_KEPT = "Ничего не меняю - чат остался привяз
 
 # Toasts, not messages: Telegram shows these on the button itself and cuts them at 200
 # characters, so each says one thing and stops.
-CALLBACK_NOT_FOR_YOU = "Эта кнопка работает только у админов магазина"
+CALLBACK_NOT_FOR_YOU = "Эта кнопка работает только у админов Sululu"
 CALLBACK_ORDER_GONE = "Заявка не найдена - возможно, она уже удалена"
 CALLBACK_ORDER_MOVED_ON = (
     "С этой заявкой уже что-то произошло: её отменили или она ушла дальше по статусам. "
@@ -974,12 +985,12 @@ HELP = (
     f"{MENU_CART} - что лежит в корзине и до какого числа её нужно оформить\n"
     f"{MENU_ORDERS} - ваши заявки и их статусы\n"
     f"{MENU_DEADLINE} - когда закрывается текущий сбор\n"
-    f"{MENU_LINKS} - сайт магазина и наш Instagram\n"
-    f"{MENU_REPLY} - я передам ваше сообщение магазину\n"
+    f"{MENU_LINKS} - сайт Sululu и наш Instagram\n"
+    f"{MENU_REPLY} - я передам ваше сообщение Sululu\n"
     f"{MENU_HELP} - этот экран; отсюда же можно отвязать чат\n\n"
     "Сам напишу, когда откроется новый сбор, когда до дедлайна останутся сутки "
     "и когда изменится статус вашей заявки.\n\n"
-    "Чек об оплате присылайте сюда - фотографией или PDF-файлом, я передам его магазину.\n\n"
+    "Чек об оплате присылайте сюда - фотографией или PDF-файлом, я передам его Sululu.\n\n"
     "Кнопки пропали? /menu вернёт их, /help - эта справка."
 )
 
@@ -989,15 +1000,15 @@ HELP = (
 # того, кто писал магазину: просто текст в чат бот не пересылает, только ответ.
 FALLBACK = (
     "Не понял вас. Выберите кнопку ниже 👇\n\n"
-    f"Если хотите, чтобы я передал сообщение магазину, нажмите «{MENU_REPLY}» "
-    "или ответьте на сообщение магазина."
+    f"Если хотите, чтобы я передал сообщение Sululu, нажмите «{MENU_REPLY}» "
+    "или ответьте на сообщение Sululu."
 )
 
 # Ответ, который некому передать: ни у одного владельца нет привязанного чата или
 # Telegram их не принял. Не FALLBACK — тот предложил бы «Ответить» тому, кто только
 # что это сделал.
 CUSTOMER_REPLY_NOT_DELIVERED = (
-    f"Не получилось передать сообщение магазину. Попробуйте позже или напишите "
+    f"Не получилось передать сообщение Sululu. Попробуйте позже или напишите "
     f"в Instagram - он в «{MENU_LINKS}»."
 )
 

@@ -739,11 +739,9 @@ async def handle_owner_reply(message: Message) -> None:
 @router.message(
     F.reply_to_message.from_user.is_bot
     & (
-        F.reply_to_message.text.startswith(messages.OWNER_MESSAGE_HEADER)
+        F.reply_to_message.text.startswith(messages.CUSTOMER_REPLY_HEADERS)
         # The owner's photo or voice note, with the header in its caption.
-        | F.reply_to_message.caption.startswith(messages.OWNER_MESSAGE_HEADER)
-        | F.reply_to_message.text.startswith(messages.REPLY_PROMPT_HEADER)
-        | F.reply_to_message.text.startswith(messages.SHOP_PROMPT_HEADER)
+        | F.reply_to_message.caption.startswith(messages.CUSTOMER_REPLY_HEADERS)
     )
 )
 async def handle_customer_reply(message: Message) -> None:
