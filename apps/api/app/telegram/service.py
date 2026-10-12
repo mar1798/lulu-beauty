@@ -146,9 +146,7 @@ class NotificationsService:
     async def send_reminder(
         self, user: User, cycle: OrderCycle, *, last_chance: bool = False
     ) -> None:
-        message = (
-            messages.cart_last_chance(cycle) if last_chance else messages.cart_reminder(cycle)
-        )
+        message = messages.cart_last_chance(cycle) if last_chance else messages.cart_reminder(cycle)
         keyboard = keyboards.checkout_link()
         # The log names the cycle the way `cycle_title` does — by its deadline when it has
         # no label — because an unnamed cycle in a log line identifies nothing.
@@ -440,9 +438,11 @@ class NotificationsService:
             for chunk in split_message(reply.text, room):
                 outcome = await self._deliver(chat_id, f"{header}\n\n{chunk}", sent_ids=sent_ids)
                 delivered = outcome is Delivery.SENT and delivered
-        elif _takes_caption(reply) and _telegram_length(
-            caption := _with_header(header, reply.caption)
-        ) <= MAX_CAPTION_LENGTH:
+        elif (
+            _takes_caption(reply)
+            and _telegram_length(caption := _with_header(header, reply.caption))
+            <= MAX_CAPTION_LENGTH
+        ):
             # The header rides in the caption, so the owner can answer by replying to
             # the photo itself (`handlers.handle_owner_reply`).
 
@@ -721,9 +721,7 @@ class NotificationsService:
                 chat_id, message, reply_markup=reply_markup, parse_mode=parse_mode
             )
 
-        return await self._attempt(
-            chat_id, send, retry_on_flood=retry_on_flood, sent_ids=sent_ids
-        )
+        return await self._attempt(chat_id, send, retry_on_flood=retry_on_flood, sent_ids=sent_ids)
 
     async def _attempt(
         self,

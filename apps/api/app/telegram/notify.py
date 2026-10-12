@@ -260,10 +260,7 @@ async def notify_orders_repriced(changes: Sequence[OrderPriceChange]) -> None:
     holds, and this runs after the commit that overwrote it.
     """
     await _fan_out_order_notices(
-        [
-            (user_id, messages.orders_repriced(group))
-            for user_id, group in _group_by_user(changes)
-        ],
+        [(user_id, messages.orders_repriced(group)) for user_id, group in _group_by_user(changes)],
         "repricing",
     )
 
@@ -324,9 +321,7 @@ def _group_by_user[T: (OrderPriceChange, OrderItemDrop)](
     return list(grouped.items())
 
 
-async def _fan_out_order_notices(
-    notices: Sequence[tuple[uuid.UUID, str]], subject: str
-) -> None:
+async def _fan_out_order_notices(notices: Sequence[tuple[uuid.UUID, str]], subject: str) -> None:
     """Delivers already-worded news, one notice per recipient, clearing dead bindings.
 
     Shared by the catalog-driven notifications because they differ only in wording: both
@@ -610,15 +605,11 @@ async def notify_carts_rescued(
     try:
         users = await recipients.get_users(session, [rescue.user_id for rescue in rescues])
         notices = [
-            CartRescueNotice(
-                user=users[rescue.user_id], saved=rescue.saved, dropped=rescue.dropped
-            )
+            CartRescueNotice(user=users[rescue.user_id], saved=rescue.saved, dropped=rescue.dropped)
             for rescue in rescues
             if rescue.user_id in users  # deleted between the sweep and this call
         ]
-        result = await notifications_service.send_cart_rescued(
-            notices, messages.cycle_title(cycle)
-        )
+        result = await notifications_service.send_cart_rescued(notices, messages.cycle_title(cycle))
 
         # Same bookkeeping as the cycle-opened broadcast: a 403 means the binding is dead,
         # and keeping it would block the person from re-linking after they unblock.

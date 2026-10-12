@@ -257,9 +257,7 @@ class UsersService:
         # Wishes for products the shop does not stock carry their own copy of the name and
         # the number (app/wanted/models.py) — the one thing this erasure is about — and
         # nothing anywhere reads them back except the notification that already went out.
-        await self._session.execute(
-            delete(WantedProduct).where(WantedProduct.user_id == user_id)
-        )
+        await self._session.execute(delete(WantedProduct).where(WantedProduct.user_id == user_id))
         # Revoking would have been enough to end the sessions, but a revoked token row is
         # still a record that this account existed and when it last signed in.
         await self._session.execute(delete(RefreshToken).where(RefreshToken.user_id == user_id))

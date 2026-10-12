@@ -370,9 +370,7 @@ async def handle_links(message: Message) -> None:
         # Telegram refuses a button pointing at a non-addressable host (local dev) — and
         # refuses the whole message, not just the button. The Instagram button survives
         # that (its host is public either way), so only the shop moves into the text.
-        await message.answer(
-            messages.site_unavailable(keyboards.site_url()), reply_markup=keyboard
-        )
+        await message.answer(messages.site_unavailable(keyboards.site_url()), reply_markup=keyboard)
         return
 
     await message.answer(messages.LINKS_PROMPT, reply_markup=keyboard)
@@ -554,9 +552,7 @@ _acknowledged_albums: OrderedDict[str, None] = OrderedDict()
 _refused_albums: OrderedDict[str, None] = OrderedDict()
 
 
-def _first_of_album(
-    message: Message, seen: OrderedDict[str, None] = _acknowledged_albums
-) -> bool:
+def _first_of_album(message: Message, seen: OrderedDict[str, None] = _acknowledged_albums) -> bool:
     album = message.media_group_id
     if album is None:
         return True
