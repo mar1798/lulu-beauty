@@ -99,6 +99,15 @@ def test_order_status_changed_announces_the_owner_taking_a_cancellation_back() -
     assert messages.order_status_changed(_order(status=OrderStatus.PENDING)) is not None
 
 
+def test_order_status_changed_thanks_the_customer_once_the_order_is_handed_over() -> None:
+    """После выдачи — благодарность владельца целиком, а не строка статуса."""
+    text = messages.order_status_changed(_order(status=OrderStatus.COMPLETED))
+
+    assert text == messages.order_completed(_order(status=OrderStatus.COMPLETED))
+    assert text.startswith("Привет!😇\nЗаявка #a1b2c3d4 выдана.\n\n")
+    assert text.endswith("С любовью, Sululu💞")
+
+
 def test_owner_message_names_the_order_and_keeps_the_text_as_written() -> None:
     """Номер заявки — чтобы покупатель с двумя заявками не гадал, о какой речь; текст
     владельца — как есть, без экранирования: бот шлёт обычный текст, не HTML."""

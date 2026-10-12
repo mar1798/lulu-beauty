@@ -211,10 +211,11 @@ class NotificationsService:
         # With the link: a status change is precisely the reason to open the list, and
         # without a button that means going to find the site by hand. The owner's own
         # cancellation also asks the customer to write if it is a mistake, so that one
-        # carries the address the text promises.
+        # carries the address the text promises, and so does the thanks after pickup —
+        # it asks for the customer's impressions, and Instagram is where they go.
         keyboard = (
             keyboards.owner_contact_actions()
-            if order.status is OrderStatus.CANCELLED_BY_OWNER
+            if order.status in (OrderStatus.CANCELLED_BY_OWNER, OrderStatus.COMPLETED)
             else keyboards.orders_link()
         )
         if await self._try_send(user.telegram_chat_id, message, reply_markup=keyboard):

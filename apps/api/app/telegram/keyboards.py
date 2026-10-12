@@ -347,12 +347,12 @@ def owner_message_actions(order_id: uuid.UUID | None) -> InlineKeyboardMarkup:
 
 
 def owner_contact_actions() -> InlineKeyboardMarkup:
-    """Under the two messages that send the customer to the owner — a deleted order and
-    one the owner cancelled: the list, and the way to ask about it.
+    """Under the messages that send the customer to the owner — a deleted order, one the
+    owner cancelled, and the thanks after pickup: the list, and the way to write.
 
-    Instagram is the point of this keyboard — both texts tell the customer to write in
-    Instagram if it is a mistake, so without the button «напишите» means finding the
-    shop's account by hand. Never `None` for the same reason as
+    Instagram is the point of this keyboard — the cancellations tell the customer to
+    write in Instagram if it is a mistake, the thanks asks for impressions, and without
+    the button either means finding the shop's account by hand. Never `None` for the same reason as
     `site_links`: on a non-addressable host the orders row drops out and Instagram
     still stands.
     """

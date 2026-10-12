@@ -268,13 +268,29 @@ _ORDER_STATUS_NEWS = {
     # CONFIRMED is not here: it gets a message of its own, with the bill and the
     # requisites (`order_confirmed`), sent instead of a one-line status update.
     OrderStatus.READY: "готова к выдаче. О получении договоритесь лично.",
-    OrderStatus.COMPLETED: "выдана. Спасибо за заказ!",
+    # COMPLETED is not here either: the thanks after pickup is a letter of its own
+    # (`order_completed`), not a status line.
     OrderStatus.CANCELLED_BY_OWNER: (
         "отменена Sululu. Если это ошибка - напишите в Instagram Sululu."
     ),
     # Про свою же отмену покупателю сообщать нечего: он её и сделал, а уведомление
     # выглядело бы так, будто её сделал кто-то другой.
 }
+
+
+def order_completed(order: Order) -> str:
+    """Sent once the order is handed over, in the owner's own words. The order is named
+    right under the greeting, so a customer with two orders knows which one this is."""
+    return (
+        "Привет!😇\n"
+        f"Заявка {order_reference(order.id)} выдана.\n\n"
+        "Спасибо, что выбрали Sululu и доверили нам свой заказ! 🫶🏻\n\n"
+        "Надеюсь, всё пришло в целости и сохранности и вы остались довольны покупкой\n\n"
+        "Буду очень рада, если поделитесь своими впечатлениями! Для меня это особенно ценно, "
+        "ведь Sululu только начинает свой путь ✨\n\n"
+        "До новых заказов!\n"
+        "С любовью, Sululu💞"
+    )
 
 
 def order_status_changed(order: Order) -> str | None:
@@ -284,6 +300,8 @@ def order_status_changed(order: Order) -> str | None:
     `OrdersService.restore`, whose router queues no notification at all, so PENDING here
     always means the owner walked their cancellation back.
     """
+    if order.status is OrderStatus.COMPLETED:
+        return order_completed(order)
     news = _ORDER_STATUS_NEWS.get(order.status)
     if news is None:
         return None
