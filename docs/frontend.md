@@ -256,7 +256,9 @@ key)` answers "prefilled on this page and rendered less than 60 s ago" — `useA
   `AddToCartButton` takes the whole product plus an optional `variantId`: on the product
   page the page owns the choice of volume, and in the catalogue grid — where there is no
   room to choose — a product sold in several volumes turns the button into a link to its
-  page rather than silently adding the cheapest one. It always adds one: the quantity is set
+  page rather than silently adding the cheapest one. That link is still gated on the cycle:
+  with no open cycle it greys out with the same tooltip as every other "+", or it would be
+  the one bright button in a grid of dimmed ones. It always adds one: the quantity is set
   afterwards, not before.
   On the product page the row of actions has two states, switched by `ProductDetails`'s
   `isInCart` (the page derives it from the cart for the _selected volume_). Out of the
