@@ -274,7 +274,10 @@ failure **falls back to polling** rather than raising: a bad bot setting must no
 `/health` and the catalog down with it.
 
 `POST /telegram/webhook` is mounted always and 404s unless enabled; it is exempt from rate
-limiting. Note that long polling is what makes `uvicorn --reload` awkward while working on the
+limiting. Registration **keeps the updates that piled up** while the process was down
+(`drop_pending_updates=False`): among them are receipts and messages for the shop, and a
+dropped one was lost without a word to its sender. Telegram holds them for a day; a stale
+button press among them is harmless, since every callback re-checks the state it acts on. Note that long polling is what makes `uvicorn --reload` awkward while working on the
 bot.
 
 A token can be delivered to only one of the two at a time, so a local bot sharing the
