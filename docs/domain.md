@@ -146,6 +146,33 @@ deliberately so — half of it would leave carts nobody can rescue:
    the request; the two customer broadcasts run as a background task
    (`notify_cycle_closed_in_background`), or the button spun for half a minute on a phone.
 
+### Deleting a cycle
+
+`DELETE /admin/cycles/{id}?expectedOrders=N` removes a cycle only once nothing in it is
+anyone's open business (`CyclesService.delete`, which locks the cycle and its orders):
+
+- It is **`CLOSED`** — `409 cycle_not_closed` otherwise. An open cycle is still taking
+  orders; a mistaken one is edited, not deleted.
+- It closed at least **ten days** ago (`DELETABLE_AFTER`, from `closed_at`) —
+  `409 cycle_closed_recently`. The days after the deadline are when its orders are
+  confirmed, billed, paid for and handed over, and the bound is `UNFULFILLED_AFTER` on
+  purpose: until then a customer may still restore their own cancellation, and a shorter
+  rule (it used to be a week) deleted orders the site was still offering to bring back.
+- None of its orders is **open** (`OPEN_STATUSES`), **paid** (`paid_at`, whatever the
+  status) or carrying a **payment receipt** of any verdict — `409 cycle_has_orders`.
+  `paid_at` alone is not proof of no money: taking an order back to `PENDING` clears it,
+  so a paid order cancelled, restored and cancelled again looks unpaid, and only its
+  receipt remembers the transfer. A test cycle goes once its orders are cancelled.
+
+What is left — cancelled and completed orders nobody sent money for — goes with the
+cycle, items included (all `ON DELETE CASCADE`), and nobody is notified. Only
+if there are exactly `N` of them: the admin page reads `GET /admin/cycles/{id}/deletion`
+(`orders`, `blockingOrders`) to build its confirmation and sends the same count back, so a
+change in between is `409 cycle_orders_changed` instead of a delete nobody agreed to. Its
+carts were already emptied into wishlists when it closed, so no rescue runs here.
+`CyclesService.update` takes the same row lock, so reopening a cycle while it is being
+deleted ends in `404 cycle_not_found` rather than a failed write.
+
 ### Deadline reminders
 
 Two stages (`app/cycles/reminders.py`), most urgent first: **3h** (`final_reminder_sent_at`,

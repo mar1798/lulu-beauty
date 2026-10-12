@@ -2165,7 +2165,14 @@ export interface IAdminCycleCalendarProps {
   onMonthChange: (month: string) => void
   onCreate: (draft: ICycleDraft) => void
   onUpdate: (cycle: IOrderCycle, draft: ICycleDraft) => void
+  /** Удаление. Кнопка есть только у прошедшего сбора: открытый не удаляется. */
   onDelete: (cycle: IOrderCycle) => void
+  /**
+   * Почему прошедший сбор пока нельзя удалить, или `null`, если можно. Правило
+   * (закрыт, и не меньше десяти дней назад) живёт на странице и на бэкенде, а
+   * календарь только показывает причину на кнопке.
+   */
+  deleteUnavailableReason?: (cycle: IOrderCycle) => string | null
   /**
    * Досрочное закрытие. Кнопка появляется только у сбора, который сейчас идёт:
    * закрыть — значит прекратить приём заявок, а у запланированного и у

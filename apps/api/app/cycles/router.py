@@ -1,23 +1,30 @@
 import uuid
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import CurrentUser, require_admin
 from app.cycles.models import CycleStatus, OrderCycle
 from app.cycles.scheduler_service import CycleSchedulerService
-from app.cycles.schemas import CycleCreateRequest, CycleUpdateRequest, OrderCycleResponse
+from app.cycles.schemas import (
+    CycleCreateRequest,
+    CycleDeletionResponse,
+    CycleUpdateRequest,
+    OrderCycleResponse,
+)
 from app.cycles.service import (
     ActiveCycleExistsError,
     CycleAlreadyClosedError,
+    CycleClosedRecentlyError,
     CycleHasOrdersError,
+    CycleNotClosedError,
     CycleNotFoundError,
+    CycleOrdersChangedError,
     CyclesService,
     PastDeadlineError,
 )
 from app.db import get_session
 from app.telegram.notify import (
-    notify_carts_rescued,
     notify_cycle_closed,
     notify_cycle_closed_in_background,
     notify_cycle_deadline_changed,
@@ -167,30 +174,48 @@ async def close_cycle(
     return response
 
 
-@router.delete("/admin/cycles/{cycle_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_cycle(
+@router.get("/admin/cycles/{cycle_id}/deletion", response_model=CycleDeletionResponse)
+async def get_cycle_deletion(
     cycle_id: uuid.UUID,
     session: AsyncSession = Depends(get_session),
     _admin: CurrentUser = Depends(require_admin),
-) -> None:
-    """Removes a cycle that never came to anything — rescuing whatever was in its carts.
+) -> CycleDeletionResponse:
+    """What a delete would take: the owner's confirmation is built from this.
 
-    `carts.cycle_id` is ON DELETE CASCADE, so without the rescue a delete took every cart
-    in the cycle down with it, silently and with no wishlist to show for it — the one
-    thing the deadline path is careful never to do.
+    Read before asking, so the dialog can name the number — and refuse outright when
+    something in the cycle is still alive — instead of the delete surprising anyone.
     """
     service = CyclesService(session)
-    cycle = await service.get(cycle_id)
-    if cycle is None:
+    if await service.get(cycle_id) is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "cycle_not_found")
+    deletion = await service.deletion(cycle_id)
+    return CycleDeletionResponse(orders=deletion.orders, blocking_orders=deletion.blocking)
 
-    rescues = await CycleSchedulerService(session).rescue_carts(cycle)
+
+@router.delete("/admin/cycles/{cycle_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_cycle(
+    cycle_id: uuid.UUID,
+    expected_orders: int = Query(alias="expectedOrders", ge=0),
+    session: AsyncSession = Depends(get_session),
+    _admin: CurrentUser = Depends(require_admin),
+) -> None:
+    """Removes a closed cycle with its leftover history — see `CyclesService.delete`.
+
+    `expectedOrders` is the count the owner saw in the confirmation; a different count
+    on the server is a 409 rather than a delete of something nobody agreed to. Nobody is
+    notified: by the rules there, nothing left in the cycle is anyone's open business.
+    """
     try:
-        await service.delete(cycle_id)
+        await CyclesService(session).delete(cycle_id, expected_orders=expected_orders)
     except CycleNotFoundError as error:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "cycle_not_found") from error
+    except CycleNotClosedError as error:
+        raise HTTPException(status.HTTP_409_CONFLICT, "cycle_not_closed") from error
+    except CycleClosedRecentlyError as error:
+        raise HTTPException(status.HTTP_409_CONFLICT, "cycle_closed_recently") from error
     except CycleHasOrdersError as error:
         raise HTTPException(status.HTTP_409_CONFLICT, "cycle_has_orders") from error
+    except CycleOrdersChangedError as error:
+        raise HTTPException(status.HTTP_409_CONFLICT, "cycle_orders_changed") from error
 
     await session.commit()
-    await notify_carts_rescued(session, cycle, rescues)

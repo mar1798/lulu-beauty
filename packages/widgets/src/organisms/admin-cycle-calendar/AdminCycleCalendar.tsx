@@ -111,6 +111,7 @@ export const AdminCycleCalendar: FC<IAdminCycleCalendarProps & IBasicStyling> = 
   onCreate,
   onUpdate,
   onDelete,
+  deleteUnavailableReason,
   onClose,
   activeCycleId = null,
   today,
@@ -175,11 +176,10 @@ export const AdminCycleCalendar: FC<IAdminCycleCalendarProps & IBasicStyling> = 
   const isPastDay =
     selectedCycle === null && today !== undefined && selectedDate !== null && selectedDate < today
   /*
-    Прошедший сбор — только для чтения: ни времени, ни подписи, ни удаления.
-    Менять ему дедлайн задним числом бессмысленно (заявки в нём уже посчитаны
-    и разосланы), а удалять — значит терять историю сборов; кнопки, которые в
-    девяти случаях из десяти кончались бы отказом бэкенда, здесь только
-    приглашают ошибиться.
+    Прошедший сбор не редактируется: менять ему дедлайн задним числом
+    бессмысленно (заявки в нём уже посчитаны и разосланы). Удалить его можно,
+    но только когда его заявки отработаны - когда именно, говорит
+    `deleteUnavailableReason`, а последнее слово за бэкендом.
 
     Прошедшим считается и закрытый (`CLOSED` ставит планировщик или досрочное
     закрытие), и любой сбор на дне раньше сегодняшнего: между дедлайном и
@@ -190,6 +190,10 @@ export const AdminCycleCalendar: FC<IAdminCycleCalendarProps & IBasicStyling> = 
     selectedCycle !== null &&
     (selectedCycle.status === 'CLOSED' ||
       (today !== undefined && selectedDate !== null && selectedDate < today))
+  const deleteReason =
+    isPastCycle && deleteUnavailableReason !== undefined
+      ? deleteUnavailableReason(selectedCycle)
+      : null
 
   /** Черновик дня: время и подпись уже назначенного сбора или значения по умолчанию. */
   const draftForDate = (date: string): ICycleDraft => {
@@ -467,19 +471,22 @@ export const AdminCycleCalendar: FC<IAdminCycleCalendarProps & IBasicStyling> = 
                     Закрыть сейчас
                   </Button>
                 )}
+              </div>
+            )}
 
-                {selectedCycle !== null && (
-                  <Button
-                    isFullWidth="mobile"
-                    variant="danger"
-                    disabled={isBusy}
-                    onClick={() => {
-                      onDelete(selectedCycle)
-                    }}
-                  >
-                    Удалить
-                  </Button>
-                )}
+            {isPastCycle && (
+              <div className={styles.editorActions}>
+                <Button
+                  isFullWidth="mobile"
+                  variant="danger"
+                  disabled={isBusy}
+                  unavailableReason={deleteReason}
+                  onClick={() => {
+                    onDelete(selectedCycle)
+                  }}
+                >
+                  Удалить сбор
+                </Button>
               </div>
             )}
 
@@ -497,16 +504,18 @@ export const AdminCycleCalendar: FC<IAdminCycleCalendarProps & IBasicStyling> = 
               </Text>
             )}
 
-            {isPastCycle && (
-              <Text tone="muted" size="xs">
-                Сбор уже прошёл: заявки в нём посчитаны, а корзины разъехались по избранному. Менять
-                и удалять здесь нечего - запись остаётся в истории сборов.
+            {deleteReason !== null && (
+              <Text tone="secondary" size="sm">
+                {deleteReason}
               </Text>
             )}
 
-            {selectedCycle !== null && !isPastCycle && (
+            {isPastCycle && (
               <Text tone="muted" size="xs">
-                Сбор с оформленными заявками удалить нельзя - бэкенд ответит отказом
+                Сбор уже прошёл: заявки в нём посчитаны, а корзины разъехались по избранному. Менять
+                его нельзя. Удалить можно через десять дней после закрытия, если в нём не осталось
+                заявок в работе, с оплатой или с чеком - отменённые и выданные удалятся вместе с
+                ним.
               </Text>
             )}
           </>

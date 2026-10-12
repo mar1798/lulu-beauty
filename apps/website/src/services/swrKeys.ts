@@ -82,8 +82,14 @@ export const adminOverviewKey = (cycleId: string | null) => [ADMIN_OVERVIEW_TAG,
 export const isAdminOverviewKey = (key: unknown): boolean =>
   Array.isArray(key) && key[0] === ADMIN_OVERVIEW_TAG
 
+export const ADMIN_ORDERS_TAG = 'admin-orders'
+
 export const adminOrdersKey = (cycleId: string, status: string, page: number) =>
-  ['admin-orders', cycleId, status, page] as const
+  [ADMIN_ORDERS_TAG, cycleId, status, page] as const
+
+/** Все страницы заявок разом — например, после удаления сбора вместе с ними. */
+export const isAdminOrdersKey = (key: unknown): boolean =>
+  Array.isArray(key) && key[0] === ADMIN_ORDERS_TAG
 
 export const ADMIN_PRODUCTS_TAG = 'admin-products'
 

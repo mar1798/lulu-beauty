@@ -263,8 +263,24 @@ export const updateCycle = (cycleId: string, input: Partial<ICycleInput>): Promi
 export const closeCycle = (cycleId: string): Promise<IOrderCycle> =>
   api.post(`/admin/cycles/${encodeURIComponent(cycleId)}/close`)
 
-export const deleteCycle = (cycleId: string): Promise<void> =>
-  api.remove(`/admin/cycles/${encodeURIComponent(cycleId)}`)
+/** Что заберёт с собой удаление сбора — из этого строится подтверждение. */
+export interface ICycleDeletion {
+  /** Все заявки сбора: столько удалится вместе с ним. */
+  orders: number
+  /** Заявки в работе, с оплатой или с чеком: пока они есть, бэкенд сбор не удалит. */
+  blockingOrders: number
+}
+
+export const getCycleDeletion = (cycleId: string): Promise<ICycleDeletion> =>
+  api.get(`/admin/cycles/${encodeURIComponent(cycleId)}/deletion`)
+
+/**
+ * Удаляет закрытый сбор вместе с оставшимися в нём заявками. `expectedOrders` —
+ * число из подтверждения: если на бэкенде их окажется другое число, он ответит
+ * `cycle_orders_changed` и ничего не удалит.
+ */
+export const deleteCycle = (cycleId: string, expectedOrders: number): Promise<void> =>
+  api.remove(`/admin/cycles/${encodeURIComponent(cycleId)}`, { query: { expectedOrders } })
 
 // --- Заказы ---
 
