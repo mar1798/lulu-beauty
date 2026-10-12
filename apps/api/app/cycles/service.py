@@ -100,6 +100,16 @@ class CyclesService:
         )
         return result.scalar_one_or_none()
 
+    async def get_latest_closed_cycle(self) -> OrderCycle | None:
+        """The most recent finished cycle, by deadline — the order the admin cycle list uses."""
+        result = await self._session.execute(
+            select(OrderCycle)
+            .where(OrderCycle.status == CycleStatus.CLOSED)
+            .order_by(OrderCycle.deadline_at.desc())
+            .limit(1)
+        )
+        return result.scalar_one_or_none()
+
     async def get(self, cycle_id: uuid.UUID) -> OrderCycle | None:
         return await self._session.get(OrderCycle, cycle_id)
 

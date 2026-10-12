@@ -137,3 +137,22 @@ async def test_deleting_a_customer_takes_their_orders_out_of_the_export(
     await db_session.execute(delete(User).where(User.id == user.id))
 
     assert await ExportService(db_session)._export_rows(None) == []
+
+
+async def test_checklist_rows_leave_cancelled_orders_out(db_session: AsyncSession) -> None:
+    """The checklist has no status filter, so a withdrawn request must not reach it."""
+    first_user = await make_user(db_session)
+    second_user = await make_user(db_session)
+    cycle = await make_cycle(db_session)
+    product = await make_product(db_session, price_cents=1000)
+
+    await _place_order(db_session, first_user.id, product, 2)
+    withdrawn = await _place_order(db_session, second_user.id, product, 5)
+    withdrawn.status = OrderStatus.CANCELLED_BY_OWNER
+    await db_session.flush()
+
+    rows = await ExportService(db_session).checklist_rows(cycle.id)
+
+    assert [(row.quantity, row.unit_price_cents) for row in rows] == [(2, 1000)]
+    # The checklist links each row to the product page by its live slug.
+    assert rows[0].product_slug == product.slug

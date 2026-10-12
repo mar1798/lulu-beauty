@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.catalog.models import Product
 from app.config import settings
 from app.cycles.models import OrderCycle
-from app.orders.models import Order, OrderItem, OrderStatus
+from app.orders.models import CANCELLED_STATUSES, Order, OrderItem, OrderStatus
 
 HEADER = [
     "Наименование товара",
@@ -60,6 +60,9 @@ class OrderExportRow:
     brand: str
     quantity: int
     unit_price_cents: int
+    # The live catalogue slug — what the admin checklist links to. None when the product
+    # row is gone (a hard delete); the sheet does not use it.
+    product_slug: str | None = None
 
     @property
     def total_cents(self) -> int:
@@ -250,6 +253,7 @@ class ExportService:
         status: OrderStatus | None = None,
         *,
         include_prices: bool = True,
+        exclude_cancelled: bool = False,
     ) -> list[OrderExportRow]:
         """The purchase list: every ordered product summed across the orders in scope.
 
@@ -278,13 +282,16 @@ class ExportService:
                 OrderItem.product_name,
                 OrderItem.product_volume_ml,
                 Product.brand,
+                Product.slug,
                 price.label("unit_price_cents"),
                 quantity,
             )
             .select_from(OrderItem)
             .join(Order, Order.id == OrderItem.order_id)
             .outerjoin(Product, Product.id == OrderItem.product_id)
-            .group_by(OrderItem.product_name, OrderItem.product_volume_ml, Product.brand)
+            .group_by(
+                OrderItem.product_name, OrderItem.product_volume_ml, Product.brand, Product.slug
+            )
             .order_by(
                 Product.brand.nulls_last(),
                 OrderItem.product_name,
@@ -297,6 +304,8 @@ class ExportService:
             query = query.where(Order.cycle_id == cycle_id)
         if status is not None:
             query = query.where(Order.status == status)
+        if exclude_cancelled:
+            query = query.where(Order.status.not_in(CANCELLED_STATUSES))
 
         result = await self._session.execute(query)
         return [
@@ -306,15 +315,25 @@ class ExportService:
                 brand=brand if brand else "-",
                 quantity=int(total_quantity),
                 unit_price_cents=unit_price_cents,
+                product_slug=product_slug,
             )
             for (
                 product_name,
                 volume_ml,
                 brand,
+                product_slug,
                 unit_price_cents,
                 total_quantity,
             ) in result.all()
         ]
+
+    async def checklist_rows(self, cycle_id: uuid.UUID) -> list[OrderExportRow]:
+        """The purchase list of one cycle as the admin checklist shows it.
+
+        The same rows as the xlsx with prices, minus cancelled orders: the checklist has no
+        status filter of its own, and a withdrawn request is nothing to buy.
+        """
+        return await self._export_rows(cycle_id, exclude_cancelled=True)
 
     async def _filename(self, cycle_id: uuid.UUID | None) -> str:
         if cycle_id is None:

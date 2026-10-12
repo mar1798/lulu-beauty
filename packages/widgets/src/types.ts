@@ -2223,6 +2223,47 @@ export interface IAdminUsersTableProps {
   emptyState?: ReactNode
 }
 
+/**
+ * Строка чек-листа закупки: один объём одного товара, сложенный по всем
+ * заявкам сбора (тот же лист, что и xlsx-выгрузка). Две цены у одного объёма —
+ * две строки: позиции заявок хранят цену на момент оформления.
+ */
+export interface IChecklistItem {
+  /** Устойчивый ключ строки — по нему хранится отметка «куплено». */
+  key: string
+  productName: string
+  /** Для ссылки на страницу товара. `null` — товара в каталоге больше нет. */
+  productSlug: string | null
+  volumeMl: number | null
+  brand: string
+  quantity: number
+  unitPriceCents: number
+}
+
+/** Ответ `GET /admin/checklist`: сбор, по которому собран список, и сами строки. */
+export interface IAdminChecklist {
+  /** `null`, только если в магазине ещё не было ни одного сбора. */
+  cycle: {
+    id: string
+    label: string | null
+    deadlineAt: string
+    /** `false` — открытого сбора нет, и список взят у последнего закрытого. */
+    isActive: boolean
+  } | null
+  items: Omit<IChecklistItem, 'key'>[]
+}
+
+export interface IAdminChecklistProps {
+  items: IChecklistItem[]
+  /** Ключи отмеченных строк. */
+  checkedKeys: string[]
+  onToggle: (key: string, checked: boolean) => void
+  buildProductHref: (productSlug: string) => string
+  isLoading?: boolean
+  skeletonRows?: number
+  emptyState?: ReactNode
+}
+
 export interface IAdminOrdersTableProps {
   orders: IAdminOrder[]
   onStatusChange: (order: IAdminOrder, status: OrderStatus) => void

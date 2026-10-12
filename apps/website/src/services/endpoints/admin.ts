@@ -1,4 +1,5 @@
 import type {
+  IAdminChecklist,
   IAdminOrder,
   IAdminOrderPage,
   IAdminProductSort,
@@ -325,3 +326,12 @@ export const messageCustomer = (orderId: string, text: string): Promise<void> =>
  */
 export const deleteOrder = (orderId: string): Promise<void> =>
   api.remove(`/admin/orders/${encodeURIComponent(orderId)}`)
+
+// --- Чек-лист закупки ---
+
+/**
+ * Что купить по открытому сбору, а если открытого нет — по последнему
+ * закрытому: сбор выбирает бэкенд. Строки те же, что в xlsx-выгрузке с
+ * ценами, без отменённых заявок.
+ */
+export const getAdminChecklist = (): Promise<IAdminChecklist> => api.get('/admin/checklist')

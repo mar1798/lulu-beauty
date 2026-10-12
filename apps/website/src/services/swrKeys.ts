@@ -126,6 +126,9 @@ export const adminUsersKey = (q: string, page: number) => [ADMIN_USERS_TAG, q, p
 export const isAdminUsersKey = (key: unknown): boolean =>
   Array.isArray(key) && key[0] === ADMIN_USERS_TAG
 
+/** Чек-лист закупки. Без параметров: сбор для него выбирает бэкенд. */
+export const adminChecklistKey = ['admin-checklist'] as const
+
 export const productSearchKey = (q: string, limit: number) => ['product-search', q, limit] as const
 
 /** Подсказки поиска в шапке. Ключ — сам запрос: повтор берётся из кеша без мигания. */

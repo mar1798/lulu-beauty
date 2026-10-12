@@ -504,6 +504,16 @@ and one summed line would be a number nobody can act on. The volume rides in the
 is one the eye has to travel to on every row. It is read by a person (or handed to a
 supplier) and never uploaded back.
 
+`GET /admin/checklist` is the same purchase list on screen, for the owner walking round a
+shop with a phone: the rows of the sheet with prices, from the open cycle or — when none is
+open — the last closed one (`CyclesService.get_latest_closed_cycle`), picked by the API
+rather than the page. Cancelled orders are left out, since the checklist has no status
+filter of its own. Each name links to the product page by the live catalogue slug
+(none once the product row is gone). The "bought" ticks are not stored on the server: they live in the
+browser's `localStorage` (`useChecklistMarks`), keyed by cycle, and a row is identified by
+name + volume + price — not quantity, so a cancellation after the purchase does not untick
+what was already bought.
+
 `GET /admin/export/products` dumps the live catalogue, and exists for the round trip:
 export → edit prices and stock in Excel → upload the same file back through
 `POST /admin/catalog/import`. So its headers are the **import's own column names**

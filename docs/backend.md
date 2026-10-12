@@ -112,7 +112,7 @@ Owner-only (`ADMIN` or `SUPER_ADMIN`, checked on the API — the frontend gate i
 
 | Method   | Path                                                                                                                                                                                                                             |
 | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GET`    | `/admin/users`, `/admin/brands`, `/admin/products`, `/admin/products/{id}`, `/admin/orders`, `/admin/cycles`, `/admin/cycles/{id}/deletion`, `/admin/export/orders`, `/admin/export/products`                                    |
+| `GET`    | `/admin/users`, `/admin/brands`, `/admin/products`, `/admin/products/{id}`, `/admin/orders`, `/admin/cycles`, `/admin/cycles/{id}/deletion`, `/admin/checklist`, `/admin/export/orders`, `/admin/export/products`                |
 | `PATCH`  | `/admin/users/{id}/role`, `/admin/categories/{id}`, `/admin/products/{id}`, `/admin/cycles/{id}`, `/admin/orders/{id}/status`                                                                                                    |
 | `POST`   | `/admin/categories`, `/admin/products`, `/admin/products/{id}/restore`, `/admin/products/{id}/images`, `/admin/catalog/import`, `/admin/cycles`, `/admin/cycles/{id}/close`, `/admin/export/links`, `/admin/orders/{id}/message` |
 | `DELETE` | `/admin/categories/{id}`, `/admin/products/{id}` (soft), `/admin/products/{id}/images/{image_id}`, `/admin/cycles/{id}`, `/admin/orders/{id}`                                                                                    |

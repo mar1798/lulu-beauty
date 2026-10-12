@@ -358,3 +358,20 @@ async def test_a_finished_cycle_is_deleted_with_its_history(
     assert await db_session.get(OrderCycle, cycle.id) is None
     assert await db_session.scalar(select(func.count()).select_from(Order)) == 0
     assert await db_session.scalar(select(func.count()).select_from(OrderItem)) == 0
+
+
+async def test_latest_closed_cycle_is_the_one_with_the_latest_deadline(
+    db_session: AsyncSession,
+) -> None:
+    now = datetime.now(UTC)
+    await make_cycle(db_session, deadline_at=now - timedelta(days=20), status=CycleStatus.CLOSED)
+    latest = await make_cycle(
+        db_session, deadline_at=now - timedelta(days=2), status=CycleStatus.CLOSED
+    )
+    # An open cycle is not "closed" however late its deadline is.
+    await make_cycle(db_session, deadline_at=now + timedelta(days=5))
+
+    found = await CyclesService(db_session).get_latest_closed_cycle()
+
+    assert found is not None
+    assert found.id == latest.id

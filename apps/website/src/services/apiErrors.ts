@@ -58,6 +58,7 @@ export type ErrorScope =
   | 'admin.import'
   | 'admin.orders'
   | 'admin.users'
+  | 'admin.checklist'
   // Две разные выгрузки: заявки и каталог. Скоуп у каждой свой — запасной текст
   // называет то, что не выгрузилось, а на странице каталога «заявки» звучали бы
   // как чужая ошибка.
@@ -430,6 +431,7 @@ const SCOPE_FALLBACKS: Record<ErrorScope, string> = {
   'admin.import': 'Не удалось импортировать файл',
   'admin.orders': 'Не удалось загрузить заявки',
   'admin.users': 'Не удалось загрузить аккаунты',
+  'admin.checklist': 'Не удалось загрузить чек-лист',
   'admin.export': 'Не удалось выгрузить заявки',
   'admin.export.catalog': 'Не удалось выгрузить каталог',
 }
