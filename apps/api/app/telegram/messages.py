@@ -352,6 +352,15 @@ def receipt_prompt(order_id: uuid.UUID) -> str:
     )
 
 
+def receipt_too_many(order_id: uuid.UUID) -> str:
+    """Чеков по заявке ждёт проверки столько, сколько бот принимает за раз
+    (`payments.service.MAX_PENDING_RECEIPTS`): место освобождает ответ владельца."""
+    return (
+        f"По заявке {order_reference(order_id)} уже есть чеки, которые ждут проверки. "
+        "Как только мы их сверим, я напишу сюда - тогда при необходимости пришлите новый."
+    )
+
+
 def receipt_received(order_id: uuid.UUID) -> str:
     return (
         f"Спасибо! Чек по заявке {order_reference(order_id)} получен🤍\n"

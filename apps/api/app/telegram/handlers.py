@@ -52,6 +52,7 @@ from app.payments.service import (
     PaymentsService,
     ReceiptFile,
     ReceiptNotFoundError,
+    TooManyPendingReceiptsError,
 )
 from app.telegram import keyboards, messages, recipients
 from app.telegram.client import notifications_service
@@ -544,17 +545,23 @@ async def handle_order_action(query: CallbackQuery, callback_data: OrderAction) 
 # restart costs at most a repeated «спасибо».
 _MAX_REMEMBERED_ALBUMS = 256
 _acknowledged_albums: OrderedDict[str, None] = OrderedDict()
+# The same, for the refusal once a bill has `MAX_PENDING_RECEIPTS` waiting. Kept apart:
+# an album whose first pages were filed and thanked for still has to hear that the rest
+# were not.
+_refused_albums: OrderedDict[str, None] = OrderedDict()
 
 
-def _first_of_album(message: Message) -> bool:
+def _first_of_album(
+    message: Message, seen: OrderedDict[str, None] = _acknowledged_albums
+) -> bool:
     album = message.media_group_id
     if album is None:
         return True
-    if album in _acknowledged_albums:
+    if album in seen:
         return False
-    _acknowledged_albums[album] = None
-    if len(_acknowledged_albums) > _MAX_REMEMBERED_ALBUMS:
-        _acknowledged_albums.popitem(last=False)
+    seen[album] = None
+    if len(seen) > _MAX_REMEMBERED_ALBUMS:
+        seen.popitem(last=False)
     return True
 
 
@@ -580,7 +587,10 @@ def _receipt_file(message: Message) -> ReceiptFile | None:
 async def _file_receipt(
     session: AsyncSession, user: User, order_id: uuid.UUID, file: ReceiptFile
 ) -> AddedReceipt | None:
-    """Files the receipt and commits; None when the order stopped taking payment."""
+    """Files the receipt and commits; None when the order stopped taking payment.
+
+    `TooManyPendingReceiptsError` is left to the caller, which says so in words.
+    """
     try:
         added = await PaymentsService(session).add_receipt(user.id, order_id, file)
     except OrderNotAwaitingPaymentError:
@@ -901,7 +911,15 @@ async def handle_receipt(message: Message) -> None:
                 reply_markup=keyboards.receipt_order_choice(orders),
             )
             return
-        added = await _file_receipt(session, user, orders[0].id, file) if orders else None
+        try:
+            added = await _file_receipt(session, user, orders[0].id, file) if orders else None
+        except TooManyPendingReceiptsError:
+            # Once per album: its pages arrive together, and each would say the same.
+            if _first_of_album(message, _refused_albums):
+                await message.answer(
+                    messages.receipt_too_many(orders[0].id), reply_markup=keyboards.main_menu()
+                )
+            return
 
     if added is None:
         await message.answer(messages.RECEIPT_NOTHING_AWAITING)
@@ -921,11 +939,15 @@ async def handle_receipt_choice(query: CallbackQuery, callback_data: ReceiptOrde
 
     async with async_session() as session:
         user = await recipients.find_user_by_chat_id(session, query.from_user.id)
-        added = (
-            await _file_receipt(session, user, callback_data.order_id, file)
-            if user is not None
-            else None
-        )
+        try:
+            added = (
+                await _file_receipt(session, user, callback_data.order_id, file)
+                if user is not None
+                else None
+            )
+        except TooManyPendingReceiptsError:
+            await query.answer(messages.receipt_too_many(callback_data.order_id), show_alert=True)
+            return
     if added is None:
         await query.answer(messages.CALLBACK_RECEIPT_NOT_AWAITED, show_alert=True)
         return

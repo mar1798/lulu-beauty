@@ -254,6 +254,14 @@ forwarded, since a forward cannot carry buttons — with `PaymentAction` buttons
 like the order ones: role checked on the presser, caption rewritten to drop them, customer
 told after the commit.
 
+**At most `MAX_PENDING_RECEIPTS` (10) wait for the owner per bill**
+(`payments/service.py`): every new file is a row and a message to each owner, and the
+throttle alone still let one a second through. Past the ceiling `add_receipt` raises
+`TooManyPendingReceiptsError` and the customer hears `messages.receipt_too_many` — once
+per album (`_refused_albums`). It counts undecided receipts for the current bill, under
+the order's row lock, so it is the owner's verdict that makes room, and an album's pages
+are counted one after another. A file already waiting is still answered «уже у нас».
+
 A bill longer than Telegram's 4096 (every line is listed) goes out in several messages cut
 between lines (`service.split_message`), the receipt button under the last.
 

@@ -3,7 +3,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import String, and_, cast, select
+from sqlalchemy import String, and_, cast, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -14,6 +14,14 @@ from app.payments.models import PaymentReceipt, ReceiptKind, ReceiptVerdict
 # receipt comes within days of the bill; an order confirmed in a cycle long gone and
 # never paid is the owner's to chase, not a button under every new receipt.
 RECEIPT_GUESS_WINDOW = timedelta(weeks=1)
+
+# How many receipts one bill may have waiting for the owner at once. Every new file is a
+# row and a message to each owner, and the bot's own throttle still lets through one a
+# second — so without a ceiling a customer with a confirmed order could fill the owners'
+# chats with photos for as long as they liked. Counted against what is still undecided,
+# so the owner's verdict is what frees room: a real payment is a screenshot or two, a
+# long PDF statement maybe a few pages more.
+MAX_PENDING_RECEIPTS = 10
 
 
 class ReceiptNotFoundError(Exception):
@@ -30,6 +38,10 @@ class OrderNotAwaitingPaymentError(Exception):
 
 class PaymentAlreadyAcceptedError(Exception):
     """A receipt rejected after the order was already marked paid."""
+
+
+class TooManyPendingReceiptsError(Exception):
+    """`MAX_PENDING_RECEIPTS` already wait for the owner on this bill."""
 
 
 @dataclass(frozen=True)
@@ -135,9 +147,17 @@ class PaymentsService:
                 PaymentReceipt.file_unique_id == file.file_unique_id,
             )
         )
+        if existing is not None and existing.verdict is None and self.for_current_bill(
+            existing, order
+        ):
+            return AddedReceipt(receipt=existing, created=False)
+
+        # Counted under the order's lock taken above, so the pages of an album, which
+        # arrive together, are counted one after another rather than all against zero.
+        if await self._pending_receipts(order) >= MAX_PENDING_RECEIPTS:
+            raise TooManyPendingReceiptsError
+
         if existing is not None:
-            if existing.verdict is None and self.for_current_bill(existing, order):
-                return AddedReceipt(receipt=existing, created=False)
             # Already decided, yet the order is unpaid: the owner rejected the file, or
             # accepted it before the order went back to PENDING and lost its payment. Or
             # still undecided, but sent against the bill before that, so `review` refuses
@@ -162,6 +182,15 @@ class PaymentsService:
         self._session.add(receipt)
         await self._session.flush()
         return AddedReceipt(receipt=receipt, created=True)
+
+    async def _pending_receipts(self, order: Order) -> int:
+        """Receipts for the order's current bill that the owner has not decided on."""
+        query = select(func.count()).select_from(PaymentReceipt).where(
+            PaymentReceipt.order_id == order.id, PaymentReceipt.verdict.is_(None)
+        )
+        if order.confirmed_at is not None:
+            query = query.where(PaymentReceipt.submitted_at >= order.confirmed_at)
+        return int(await self._session.scalar(query) or 0)
 
     async def review(self, receipt_id: uuid.UUID, *, accept: bool) -> ReviewedReceipt:
         """The owner's «Оплата получена» or «Чек не подходит».
