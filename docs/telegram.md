@@ -188,7 +188,8 @@ message it answers (`relay.resolve`). It used to be the phone on the `Покуп
 and that line is partly the customer's: a name with a line break in it, or a photo whose
 caption was too long for the header and so arrived under the customer's own words alone,
 could name somebody else's number, and the owner's answer went to them. Names are now
-flattened to one line as well (`common/text.single_line`), but the record is the fix.
+flattened to one line as well (`common/text.single_line`; the ones saved before were
+rewritten by migration `7c3e5a91d4b2`, wishes included), but the record is the fix.
 A message with no record — passed on before the table existed — gets
 `OWNER_REPLY_UNTRACKED`, which points to the panel's button. The table is never pruned:
 the 30-second limit below keeps it to a trickle, and an owner may answer months later.
