@@ -40,6 +40,7 @@ from app.auth.telegram_login import TelegramLoginService
 from app.cart.schemas import CartResponse
 from app.cart.service import CartService
 from app.common.phone import normalize_phone
+from app.common.text import single_line
 from app.cycles.service import CyclesService
 from app.db import async_session
 from app.orders.models import OPEN_STATUSES
@@ -52,9 +53,11 @@ from app.payments.service import (
     PaymentsService,
     ReceiptFile,
     ReceiptNotFoundError,
+    TooManyPendingReceiptsError,
 )
-from app.telegram import keyboards, messages, recipients
+from app.telegram import keyboards, messages, recipients, relay
 from app.telegram.client import notifications_service
+from app.telegram.concurrency import ConcurrencyLimitMiddleware
 from app.telegram.keyboards import (
     LoginAction,
     MenuAction,
@@ -87,6 +90,11 @@ router = Router()
 throttling = ThrottlingMiddleware()
 router.message.outer_middleware(throttling)
 router.callback_query.outer_middleware(throttling)
+# After the throttle, so a dropped update never waits for a slot; one instance for both
+# update types for the same reason as the throttle — two would mean twice the slots.
+concurrency = ConcurrencyLimitMiddleware()
+router.message.outer_middleware(concurrency)
+router.callback_query.outer_middleware(concurrency)
 
 # Telegram guarantees a first name and nothing else; the last name is optional and the
 # username is not a name at all. Falls back to the phone-less placeholder rather than an
@@ -98,7 +106,9 @@ def _profile_name(from_user: TelegramUser | None) -> str:
     if from_user is None:
         return DEFAULT_NAME
     parts = [from_user.first_name, from_user.last_name or ""]
-    name = " ".join(part for part in parts if part).strip()
+    # Flattened like a name typed on the site (`UserUpdateRequest`): it is printed on a
+    # line of its own in what the owner reads.
+    name = single_line(" ".join(part for part in parts if part))
     return name or DEFAULT_NAME
 
 
@@ -538,17 +548,23 @@ async def handle_order_action(query: CallbackQuery, callback_data: OrderAction) 
 # restart costs at most a repeated «спасибо».
 _MAX_REMEMBERED_ALBUMS = 256
 _acknowledged_albums: OrderedDict[str, None] = OrderedDict()
+# The same, for the refusal once a bill has `MAX_PENDING_RECEIPTS` waiting. Kept apart:
+# an album whose first pages were filed and thanked for still has to hear that the rest
+# were not.
+_refused_albums: OrderedDict[str, None] = OrderedDict()
 
 
-def _first_of_album(message: Message) -> bool:
+def _first_of_album(
+    message: Message, seen: OrderedDict[str, None] = _acknowledged_albums
+) -> bool:
     album = message.media_group_id
     if album is None:
         return True
-    if album in _acknowledged_albums:
+    if album in seen:
         return False
-    _acknowledged_albums[album] = None
-    if len(_acknowledged_albums) > _MAX_REMEMBERED_ALBUMS:
-        _acknowledged_albums.popitem(last=False)
+    seen[album] = None
+    if len(seen) > _MAX_REMEMBERED_ALBUMS:
+        seen.popitem(last=False)
     return True
 
 
@@ -574,7 +590,10 @@ def _receipt_file(message: Message) -> ReceiptFile | None:
 async def _file_receipt(
     session: AsyncSession, user: User, order_id: uuid.UUID, file: ReceiptFile
 ) -> AddedReceipt | None:
-    """Files the receipt and commits; None when the order stopped taking payment."""
+    """Files the receipt and commits; None when the order stopped taking payment.
+
+    `TooManyPendingReceiptsError` is left to the caller, which says so in words.
+    """
     try:
         added = await PaymentsService(session).add_receipt(user.id, order_id, file)
     except OrderNotAwaitingPaymentError:
@@ -657,11 +676,6 @@ async def handle_reply_button(query: CallbackQuery, callback_data: ReplyAction) 
         await _ask_for_reply(query.message, callback_data.order_id)
 
 
-# The customer's phone on the second line of `messages.customer_reply_for_owner`, or of
-# `messages.wanted_product_for_owner`.
-_CUSTOMER_PHONE = re.compile(r"^(?:Покупатель|От кого): .*, (\+\d+)$", re.MULTILINE)
-
-
 @router.message(
     F.reply_to_message.from_user.is_bot
     & (
@@ -673,18 +687,15 @@ async def handle_owner_reply(message: Message) -> None:
     """The owner answering, by a reply in the chat, a customer's message passed on to them
     — or a wish for the next cycle (`messages.wanted_product_for_owner`).
 
-    The obvious thing to do with «💬 Ответ покупателя», and before this it got «не понял».
-    Nothing remembers whose message that was: the header names the customer by phone and
-    the order by number, the way the receipt prompt names its order — no state for a
-    restart to lose. Registered before `handle_customer_reply` and `handle_receipt`, so
-    an owner's photo in reply is passed on rather than filed as a receipt.
+    The title only routes the reply here. Who it goes to is looked up by the id of the
+    message replied to (`relay.resolve`), recorded when the bot passed that message on —
+    never read off its text, part of which is the customer's own and can be made to name
+    anybody. A message with no record (one passed on before the bot kept them) cannot be
+    answered this way, and the owner is told to use the panel. Registered before
+    `handle_customer_reply` and `handle_receipt`, so an owner's photo in reply is passed
+    on rather than filed as a receipt.
     """
     replied = message.reply_to_message
-    header = (replied.text or replied.caption or "") if replied is not None else ""
-    phone = _CUSTOMER_PHONE.search(header)
-    # The title line only: the customer's own words below it may hold a «#…» too.
-    reference = _ORDER_REFERENCE.search(header.split("\n", 1)[0])
-    wish = header.startswith(messages.WANTED_PRODUCT_TITLE)
 
     async with async_session() as session:
         owner = await _linked_user(message, session)
@@ -694,22 +705,22 @@ async def handle_owner_reply(message: Message) -> None:
             # Only owners receive these headers; anyone else quoting one is just typing.
             await message.answer(messages.FALLBACK, reply_markup=keyboards.main_menu())
             return
-        customer = (
-            await recipients.find_user_by_phone(session, phone.group(1))
-            if phone is not None
-            else None
-        )
-        order = (
-            await PaymentsService(session).order_by_reference(customer.id, reference.group(1))
-            if customer is not None and reference is not None
+        target = (
+            await relay.resolve(session, message.chat.id, replied.message_id)
+            if replied is not None
             else None
         )
 
+    if target is None:
+        await message.answer(messages.OWNER_REPLY_UNTRACKED)
+        return
+
+    customer = target.customer
     if customer is None or customer.telegram_chat_id is None:
-        if wish and phone is not None:
+        if target.wish and target.wish_phone is not None:
             # The writer unlinked the bot, or the wish predates the sign-in requirement
             # and its number was typed by a guest: either way, a call still reaches them.
-            await message.answer(messages.owner_reply_wish_unreachable(phone.group(1)))
+            await message.answer(messages.owner_reply_wish_unreachable(target.wish_phone))
         else:
             await message.answer(messages.OWNER_REPLY_CUSTOMER_GONE)
         return
@@ -718,11 +729,11 @@ async def handle_owner_reply(message: Message) -> None:
     first = _first_of_album(message)
     outcome = await notifications_service.send_owner_reply(
         customer,
-        reference.group(0) if reference is not None else None,
-        order.id if order is not None else None,
+        target.order_reference,
+        target.order_id,
         message,
         with_header=first,
-        wish=wish,
+        wish=target.wish,
     )
     if outcome is Delivery.BLOCKED:
         # The same answer every broadcast acts on: the binding is dead, so drop it.
@@ -797,9 +808,14 @@ async def handle_customer_reply(message: Message) -> None:
 
     reference = match.group(0) if match is not None else None
     delivered = False
+    relayed: list[tuple[int, list[int]]] = []
     for owner in owners:
-        if await notifications_service.send_customer_reply(owner, user, reference, message):
-            delivered = True
+        result = await notifications_service.send_customer_reply(owner, user, reference, message)
+        delivered = result.delivered or delivered
+        if result.message_ids and owner.telegram_chat_id is not None:
+            relayed.append((owner.telegram_chat_id, result.message_ids))
+    if relayed:
+        await _record_relayed(relayed, user, order.id if order is not None else None, reference)
     if not delivered:
         if not continues_album:
             # Nothing reached the shop, so nothing to wait out before trying again.
@@ -812,6 +828,34 @@ async def handle_customer_reply(message: Message) -> None:
         # The album's first photo was acknowledged already; one «передал» per message.
         return
     await message.answer(messages.CUSTOMER_REPLY_FORWARDED, reply_markup=keyboards.main_menu())
+
+
+async def _record_relayed(
+    relayed: list[tuple[int, list[int]]],
+    user: User,
+    order_id: uuid.UUID | None,
+    reference: str | None,
+) -> None:
+    """Remembers whose message went where, for the owner's reply (`handle_owner_reply`).
+
+    A failure here is logged and swallowed: the message has reached the shop already,
+    and the customer must still hear so. The owner loses only the reply in the chat —
+    `handle_owner_reply` says to use the panel instead.
+    """
+    try:
+        async with async_session() as session:
+            for owner_chat_id, message_ids in relayed:
+                await relay.record(
+                    session,
+                    owner_chat_id,
+                    message_ids,
+                    user_id=user.id,
+                    order_id=order_id,
+                    order_reference=reference,
+                )
+            await session.commit()
+    except Exception:  # noqa: BLE001 - see the docstring
+        logger.exception("Failed to record the messages passed on from user %s", user.id)
 
 
 # One message for the shop per customer per this long. The owner reads them by hand, and
@@ -895,7 +939,15 @@ async def handle_receipt(message: Message) -> None:
                 reply_markup=keyboards.receipt_order_choice(orders),
             )
             return
-        added = await _file_receipt(session, user, orders[0].id, file) if orders else None
+        try:
+            added = await _file_receipt(session, user, orders[0].id, file) if orders else None
+        except TooManyPendingReceiptsError:
+            # Once per album: its pages arrive together, and each would say the same.
+            if _first_of_album(message, _refused_albums):
+                await message.answer(
+                    messages.receipt_too_many(orders[0].id), reply_markup=keyboards.main_menu()
+                )
+            return
 
     if added is None:
         await message.answer(messages.RECEIPT_NOTHING_AWAITING)
@@ -915,11 +967,15 @@ async def handle_receipt_choice(query: CallbackQuery, callback_data: ReceiptOrde
 
     async with async_session() as session:
         user = await recipients.find_user_by_chat_id(session, query.from_user.id)
-        added = (
-            await _file_receipt(session, user, callback_data.order_id, file)
-            if user is not None
-            else None
-        )
+        try:
+            added = (
+                await _file_receipt(session, user, callback_data.order_id, file)
+                if user is not None
+                else None
+            )
+        except TooManyPendingReceiptsError:
+            await query.answer(messages.receipt_too_many(callback_data.order_id), show_alert=True)
+            return
     if added is None:
         await query.answer(messages.CALLBACK_RECEIPT_NOT_AWAITED, show_alert=True)
         return

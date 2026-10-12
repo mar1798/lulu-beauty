@@ -135,6 +135,14 @@ path into the bot opens a database session on behalf of an unauthenticated sende
 throttled update should not even be matched against handlers. It is a token bucket, so
 tapping three buttons in a row is fine and only a sustained burst is refused.
 
+**At most six updates are handled at once** (`concurrency.py`, an outer middleware right
+after the throttle): the bot shares the process's database pool (`DB_POOL_SIZE` +
+`DB_MAX_OVERFLOW`, 20) with the site and the scheduler, and the throttle bounds one sender,
+not many together. A handler holds at most one session at a time, so the slots are also
+the most connections the bot can hold; anything past them waits in memory, never dropped.
+A second pool for the bot was the alternative and draws the line worse — `notify.py` is
+shared by all three, and Postgres would carry both pools.
+
 ### The owner writing to a customer
 
 A customer the owner cannot find by phone in Telegram is the usual case, not a rare
@@ -168,12 +176,24 @@ The owner answers the same way, by replying in the chat to what was passed on �
 `handle_owner_reply`, matched by `messages.CUSTOMER_MESSAGE_TITLES` on the replied-to
 text **or caption**: a customer's photo, video, file or voice reaches the owner as a copy
 with the header put into its caption (`_takes_caption`; a sticker or a too-long caption
-keeps the header as a message of its own, the copy sent as a reply to it, and only the
-header can be answered). A text too long for one message is cut
-(`service.split_message`) and **every part repeats the header**, so a reply to any part
-is recognised; the same holds for the owner's long answer. The
-customer is found by the phone on the header's `Покупатель:` line, the order by the
-`#xxxxxxxx` on its title line — nothing is stored. The answer goes out as
+keeps the header as a message of its own, the copy sent as a reply to it). A text too
+long for one message is cut (`service.split_message`) and **every part repeats the
+header**; the same holds for the owner's long answer.
+
+The title only routes the reply to `handle_owner_reply`. **Who it goes to is never read
+off the text**: every message passed on to an owner — each part, the header and its copy
+alike — is recorded in `relayed_messages` (`relay.record`, owner's chat + message id →
+writer, order, the `#xxxxxxxx` shown), and the reply is looked up by the id of the
+message it answers (`relay.resolve`). It used to be the phone on the `Покупатель:` line,
+and that line is partly the customer's: a name with a line break in it, or a photo whose
+caption was too long for the header and so arrived under the customer's own words alone,
+could name somebody else's number, and the owner's answer went to them. Names are now
+flattened to one line as well (`common/text.single_line`; the ones saved before were
+rewritten by migration `7c3e5a91d4b2`, wishes included), but the record is the fix.
+A message with no record — passed on before the table existed — gets
+`OWNER_REPLY_UNTRACKED`, which points to the panel's button. The table is never pruned:
+the 30-second limit below keeps it to a trickle, and an owner may answer months later.
+The answer goes out as
 `messages.owner_message` with `owner_message_actions` (a text inside it; a photo, video,
 file or voice as a copy with `messages.owner_media_caption` as its caption, the buttons on
 an album's first photo only; a sticker as a copy replying to a «ниже» header), so the
@@ -183,7 +203,9 @@ the customer blocked the bot (the binding is dropped), or Telegram refused. Only
 
 A **wish for the next cycle** (`messages.wanted_product_for_owner`, opening with
 `WANTED_PRODUCT_TITLE`) is answered the same way: `handle_owner_reply` matches it too
-(`OWNER_REPLYABLE_TITLES`) and finds the writer by the phone on its `От кого:` line. The
+(`OWNER_REPLYABLE_TITLES`), and `notify_wanted_product` records it the same way, with the
+wish's id (`relayed_messages.wanted_product_id`; erasing the account deletes the wish and
+the record with it). The
 customer gets `owner_message(..., wish=True)` — «Сообщение от Sululu по вашему
 пожеланию» — with the same buttons, so they can answer back. Wishes now need an account, so
 the number is one the bot has seen; when it no longer leads to a linked chat (the account
@@ -193,7 +215,8 @@ instead.
 
 Only a reply travels. Plain text typed into the chat is still `handle_fallback`'s, and
 `messages.FALLBACK` says how to reach the shop: press ✍️ Написать Sululu or reply to
-the shop's message. Nothing is stored about who pressed what — the prompt carries it all.
+the shop's message. Nothing is stored about who pressed what — the prompt carries it all;
+what is stored is only where each passed-on message landed, for the way back.
 
 **One message per customer per 30 seconds** (`SHOP_MESSAGE_INTERVAL_SECONDS`): anything
 sooner is not passed on, and the customer gets `messages.shop_message_too_soon` with the
@@ -246,6 +269,14 @@ forwarded, since a forward cannot carry buttons — with `PaymentAction` buttons
 like the order ones: role checked on the presser, caption rewritten to drop them, customer
 told after the commit.
 
+**At most `MAX_PENDING_RECEIPTS` (10) wait for the owner per bill**
+(`payments/service.py`): every new file is a row and a message to each owner, and the
+throttle alone still let one a second through. Past the ceiling `add_receipt` raises
+`TooManyPendingReceiptsError` and the customer hears `messages.receipt_too_many` — once
+per album (`_refused_albums`). It counts undecided receipts for the current bill, under
+the order's row lock, so it is the owner's verdict that makes room, and an album's pages
+are counted one after another. A file already waiting is still answered «уже у нас».
+
 A bill longer than Telegram's 4096 (every line is listed) goes out in several messages cut
 between lines (`service.split_message`), the receipt button under the last.
 
@@ -266,7 +297,10 @@ failure **falls back to polling** rather than raising: a bad bot setting must no
 `/health` and the catalog down with it.
 
 `POST /telegram/webhook` is mounted always and 404s unless enabled; it is exempt from rate
-limiting. Note that long polling is what makes `uvicorn --reload` awkward while working on the
+limiting. Registration **keeps the updates that piled up** while the process was down
+(`drop_pending_updates=False`): among them are receipts and messages for the shop, and a
+dropped one was lost without a word to its sender. Telegram holds them for a day; a stale
+button press among them is harmless, since every callback re-checks the state it acts on. Note that long polling is what makes `uvicorn --reload` awkward while working on the
 bot.
 
 A token can be delivered to only one of the two at a time, so a local bot sharing the

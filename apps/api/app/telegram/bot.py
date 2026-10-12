@@ -137,9 +137,12 @@ async def _start_webhook(instance: Bot) -> bool:
             # The same list polling would have asked for. Left to Telegram's default, a
             # newly handled update type would silently never arrive.
             allowed_updates=dispatcher.resolve_used_update_types(),
-            # Whatever piled up while the process was down is stale by definition: these
-            # are presses on messages the person has long since scrolled past.
-            drop_pending_updates=True,
+            # Kept, not dropped: what piled up while the process was down — a deploy, a
+            # restart — includes receipts and messages for the shop, and a dropped one
+            # is lost without a word to the person who sent it. Telegram holds them for
+            # a day. A stale button press among them is harmless: every callback checks
+            # the state it acts on and answers «уже не актуально» when it moved on.
+            drop_pending_updates=False,
         )
     except Exception:  # noqa: BLE001 - a bot setting must not take the API down with it
         logger.exception("Telegram refused the webhook at %s; falling back to polling", url)

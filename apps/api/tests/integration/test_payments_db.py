@@ -15,6 +15,7 @@ from app.orders.models import Order, OrderItem, OrderStatus
 from app.orders.service import OrdersService
 from app.payments.models import PaymentReceipt, ReceiptKind, ReceiptVerdict
 from app.payments.service import (
+    MAX_PENDING_RECEIPTS,
     OrderNotAwaitingPaymentError,
     PaymentAlreadyAcceptedError,
     PaymentsService,
@@ -209,6 +210,66 @@ async def test_an_album_is_filed_page_by_page_and_thanked_for_once(
     assert forwarded.await_count == 2
     first.answer.assert_awaited_once()
     second.answer.assert_not_awaited()
+
+
+async def test_receipts_past_the_ceiling_wait_for_the_owners_verdict(
+    bot_session: AsyncSession, forwarded: AsyncMock
+) -> None:
+    """Every new file is a row and a message to each owner: the owner's verdict, not the
+    customer's patience, is what makes room for more."""
+    customer = await _customer(bot_session)
+    order = await _order(bot_session, customer)
+    await bot_session.commit()
+    for index in range(MAX_PENDING_RECEIPTS):
+        await handle_receipt(_photo_message(f"P{index}"))
+
+    refused = _photo_message("one-too-many")
+    await handle_receipt(refused)
+
+    assert len(await _receipts(bot_session)) == MAX_PENDING_RECEIPTS
+    assert forwarded.await_count == MAX_PENDING_RECEIPTS
+    assert refused.answer.await_args.args[0] == messages.receipt_too_many(order.id)
+
+    first = (await _receipts(bot_session))[0]
+    await PaymentsService(bot_session).review(first.id, accept=False)
+    await bot_session.commit()
+    await handle_receipt(_photo_message("after-the-verdict"))
+
+    assert len(await _receipts(bot_session)) == MAX_PENDING_RECEIPTS + 1
+
+
+async def test_a_file_already_waiting_is_still_acknowledged_at_the_ceiling(
+    bot_session: AsyncSession, forwarded: AsyncMock
+) -> None:
+    customer = await _customer(bot_session)
+    order = await _order(bot_session, customer)
+    await bot_session.commit()
+    for index in range(MAX_PENDING_RECEIPTS):
+        await handle_receipt(_photo_message(f"P{index}"))
+
+    again = _photo_message("P0")
+    await handle_receipt(again)
+
+    assert again.answer.await_args.args[0] == messages.receipt_duplicate(order.id)
+
+
+async def test_an_album_past_the_ceiling_is_refused_once(
+    bot_session: AsyncSession, forwarded: AsyncMock
+) -> None:
+    customer = await _customer(bot_session)
+    await _order(bot_session, customer)
+    await bot_session.commit()
+    album = str(uuid.uuid4())
+    pages = [_photo_message(f"P{i}", album=album) for i in range(MAX_PENDING_RECEIPTS + 3)]
+
+    for page in pages:
+        await handle_receipt(page)
+
+    assert len(await _receipts(bot_session)) == MAX_PENDING_RECEIPTS
+    refusals = [page for page in pages if page.answer.await_count]
+    # The first page is thanked for, the first page past the ceiling says why the rest
+    # were not filed, and the others are silent.
+    assert refusals == [pages[0], pages[MAX_PENDING_RECEIPTS]]
 
 
 @pytest.mark.parametrize(

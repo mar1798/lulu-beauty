@@ -8,7 +8,7 @@ from datetime import datetime
 
 from aiogram import Bot
 from aiogram.exceptions import TelegramForbiddenError, TelegramRetryAfter
-from aiogram.types import InlineKeyboardMarkup, Message, ReplyParameters
+from aiogram.types import InlineKeyboardMarkup, Message, MessageId, ReplyParameters
 
 from app.auth.models import User
 from app.cycles.models import OrderCycle
@@ -54,6 +54,16 @@ class BroadcastResult:
 
     sent: int
     blocked_chat_ids: list[int]
+
+
+@dataclass(frozen=True)
+class Relayed:
+    """A customer's message passed on to one owner: whether all of it arrived, and the
+    ids of what did — the caller records them (`relay.record`), so that the owner's
+    reply to any of them finds its way back to this customer."""
+
+    delivered: bool
+    message_ids: list[int]
 
 
 # Telegram's limit on one text message, counted in UTF-16 code units, not characters.
@@ -201,10 +211,11 @@ class NotificationsService:
         # With the link: a status change is precisely the reason to open the list, and
         # without a button that means going to find the site by hand. The owner's own
         # cancellation also asks the customer to write if it is a mistake, so that one
-        # carries the address the text promises.
+        # carries the address the text promises, and so does the thanks after pickup —
+        # it asks for the customer's impressions, and Instagram is where they go.
         keyboard = (
             keyboards.owner_contact_actions()
-            if order.status is OrderStatus.CANCELLED_BY_OWNER
+            if order.status in (OrderStatus.CANCELLED_BY_OWNER, OrderStatus.COMPLETED)
             else keyboards.orders_link()
         )
         if await self._try_send(user.telegram_chat_id, message, reply_markup=keyboard):
@@ -404,7 +415,7 @@ class NotificationsService:
 
     async def send_customer_reply(
         self, owner: User, customer: User, reference: str | None, reply: Message
-    ) -> bool:
+    ) -> Relayed:
         """A customer's message for the shop, passed on to one owner: an answer to
         `send_owner_message`, or to the «Ответить» prompt (no `reference` from the menu).
 
@@ -414,28 +425,37 @@ class NotificationsService:
         forwarding privacy would strip the sender anyway and the header already says who
         it is: in its caption where it takes one, or else in a message of its own, which
         the copy answers.
+
+        The header is for the owner's eyes only. Which customer a reply goes back to is
+        decided by the ids returned here, never by the text: a copy whose caption was too
+        long for the header arrives under the customer's own words, and those may well
+        read like a header naming somebody else.
         """
         header = messages.customer_reply_for_owner(reference, customer)
         chat_id = owner.telegram_chat_id
+        sent_ids: list[int] = []
         if reply.text is not None:
             room = MAX_MESSAGE_LENGTH - _telegram_length(header) - len("\n\n")
             delivered = True
             for chunk in split_message(reply.text, room):
-                delivered = await self._try_send(chat_id, f"{header}\n\n{chunk}") and delivered
+                outcome = await self._deliver(chat_id, f"{header}\n\n{chunk}", sent_ids=sent_ids)
+                delivered = outcome is Delivery.SENT and delivered
         elif _takes_caption(reply) and _telegram_length(
             caption := _with_header(header, reply.caption)
         ) <= MAX_CAPTION_LENGTH:
             # The header rides in the caption, so the owner can answer by replying to
-            # the photo itself (`handlers.handle_owner_reply` reads it from there).
+            # the photo itself (`handlers.handle_owner_reply`).
 
             async def copy_captioned(bot: Bot, chat_id: int) -> object:
                 return await bot.copy_message(
                     chat_id, reply.chat.id, reply.message_id, caption=caption
                 )
 
-            delivered = await self._attempt(chat_id, copy_captioned) is Delivery.SENT
+            outcome = await self._attempt(chat_id, copy_captioned, sent_ids=sent_ids)
+            delivered = outcome is Delivery.SENT
         else:
-            delivered = await self._send_copy_under(chat_id, header, reply) is Delivery.SENT
+            outcome = await self._send_copy_under(chat_id, header, reply, sent_ids=sent_ids)
+            delivered = outcome is Delivery.SENT
         if delivered:
             logger.info(
                 "Passed a reply about order %s on to owner %s", reference or "-", owner.phone
@@ -446,7 +466,7 @@ class NotificationsService:
                 self._fallback_reason(owner),
                 reference or "-",
             )
-        return delivered
+        return Relayed(delivered=delivered, message_ids=sent_ids)
 
     async def send_account_deleted(self, owner: User, order_ids: Sequence[uuid.UUID]) -> None:
         """A customer erased their account; these orders left the purchase list with them.
@@ -471,18 +491,21 @@ class NotificationsService:
             len(order_ids),
         )
 
-    async def send_wanted_product(self, owner: User, wanted: WantedProduct) -> None:
+    async def send_wanted_product(self, owner: User, wanted: WantedProduct) -> list[int]:
         """A wish for something the catalog does not have, on its way to the owner.
 
         Without a keyboard, and it is the only owner-facing notice here that has none:
         there is no row in the panel to open and nothing to confirm. What it asks for is
-        done in the next import, or in a reply to the number in the message.
+        done in the next import, or in a reply to the message in the chat — which is why
+        the id of what was sent comes back, for the caller to record (`relay.record`).
         """
         message = messages.wanted_product_for_owner(wanted)
-        if await self._try_send(owner.telegram_chat_id, message):
+        sent_ids: list[int] = []
+        if await self._deliver(owner.telegram_chat_id, message, sent_ids=sent_ids) is Delivery.SENT:
             logger.info("Notified owner %s about wish %s", owner.phone, wanted.id)
-            return
+            return sent_ids
         logger.warning("%s; wish %s not passed on", self._fallback_reason(owner), wanted.id)
+        return sent_ids
 
     async def send_cycle_closed(
         self, owner: User, cycle: OrderCycle, orders_count: int, total_cents: int
@@ -633,6 +656,7 @@ class NotificationsService:
         original: Message,
         *,
         reply_markup: InlineKeyboardMarkup | None = None,
+        sent_ids: list[int] | None = None,
     ) -> Delivery:
         """`header` as a message of its own, then a copy of `original` as a reply to it.
 
@@ -651,7 +675,7 @@ class NotificationsService:
                     header_id = sent.message_id
                 return sent
 
-            outcome = await self._attempt(chat_id, send_header)
+            outcome = await self._attempt(chat_id, send_header, sent_ids=sent_ids)
             if outcome is not Delivery.SENT:
                 return outcome
 
@@ -665,7 +689,7 @@ class NotificationsService:
                 reply_parameters=ReplyParameters(message_id=header_id),
             )
 
-        return await self._attempt(chat_id, copy)
+        return await self._attempt(chat_id, copy, sent_ids=sent_ids)
 
     # ─── Delivery ────────────────────────────────────────────────────────────────
 
@@ -690,13 +714,16 @@ class NotificationsService:
         reply_markup: InlineKeyboardMarkup | None = None,
         parse_mode: str | None = None,
         retry_on_flood: bool = True,
+        sent_ids: list[int] | None = None,
     ) -> Delivery:
         async def send(bot: Bot, chat_id: int) -> object:
             return await bot.send_message(
                 chat_id, message, reply_markup=reply_markup, parse_mode=parse_mode
             )
 
-        return await self._attempt(chat_id, send, retry_on_flood=retry_on_flood)
+        return await self._attempt(
+            chat_id, send, retry_on_flood=retry_on_flood, sent_ids=sent_ids
+        )
 
     async def _attempt(
         self,
@@ -704,14 +731,19 @@ class NotificationsService:
         send: Callable[[Bot, int], Awaitable[object]],
         *,
         retry_on_flood: bool = True,
+        sent_ids: list[int] | None = None,
     ) -> Delivery:
         """One delivery of anything — a text, a photo, a document — with the same
-        failure handling for all of them."""
+        failure handling for all of them.
+
+        `sent_ids`, when given, collects the id of what arrived: a sent message answers
+        with a `Message`, a copy with a bare `MessageId`.
+        """
         if self._bot is None or chat_id is None:
             return Delivery.NO_BINDING
 
         try:
-            await send(self._bot, chat_id)
+            sent = await send(self._bot, chat_id)
         except TelegramForbiddenError:
             # The user blocked the bot or deleted the chat. Nothing to retry — the
             # binding itself is dead, and the caller is expected to drop it.
@@ -724,10 +756,12 @@ class NotificationsService:
             # Telegram states exactly how long to wait, and one retry clears the bursts
             # that cause this. Anything past that is the broadcast's problem, not ours.
             await asyncio.sleep(error.retry_after)
-            return await self._attempt(chat_id, send, retry_on_flood=False)
+            return await self._attempt(chat_id, send, retry_on_flood=False, sent_ids=sent_ids)
         except Exception:  # noqa: BLE001 - delivery is best-effort; any failure falls back to the log
             logger.exception("Failed to send Telegram message to chat_id=%s", chat_id)
             return Delivery.FAILED
+        if sent_ids is not None and isinstance(sent, Message | MessageId):
+            sent_ids.append(sent.message_id)
         return Delivery.SENT
 
     def _fallback_reason(self, user: User) -> str:
