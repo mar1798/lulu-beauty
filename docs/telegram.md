@@ -135,6 +135,14 @@ path into the bot opens a database session on behalf of an unauthenticated sende
 throttled update should not even be matched against handlers. It is a token bucket, so
 tapping three buttons in a row is fine and only a sustained burst is refused.
 
+**At most six updates are handled at once** (`concurrency.py`, an outer middleware right
+after the throttle): the bot shares the process's database pool (`DB_POOL_SIZE` +
+`DB_MAX_OVERFLOW`, 20) with the site and the scheduler, and the throttle bounds one sender,
+not many together. A handler holds at most one session at a time, so the slots are also
+the most connections the bot can hold; anything past them waits in memory, never dropped.
+A second pool for the bot was the alternative and draws the line worse — `notify.py` is
+shared by all three, and Postgres would carry both pools.
+
 ### The owner writing to a customer
 
 A customer the owner cannot find by phone in Telegram is the usual case, not a rare

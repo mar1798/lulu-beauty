@@ -55,6 +55,7 @@ from app.payments.service import (
 )
 from app.telegram import keyboards, messages, recipients
 from app.telegram.client import notifications_service
+from app.telegram.concurrency import ConcurrencyLimitMiddleware
 from app.telegram.keyboards import (
     LoginAction,
     MenuAction,
@@ -87,6 +88,11 @@ router = Router()
 throttling = ThrottlingMiddleware()
 router.message.outer_middleware(throttling)
 router.callback_query.outer_middleware(throttling)
+# After the throttle, so a dropped update never waits for a slot; one instance for both
+# update types for the same reason as the throttle — two would mean twice the slots.
+concurrency = ConcurrencyLimitMiddleware()
+router.message.outer_middleware(concurrency)
+router.callback_query.outer_middleware(concurrency)
 
 # Telegram guarantees a first name and nothing else; the last name is optional and the
 # username is not a name at all. Falls back to the phone-less placeholder rather than an
