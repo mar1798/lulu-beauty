@@ -40,6 +40,7 @@ from app.auth.telegram_login import TelegramLoginService
 from app.cart.schemas import CartResponse
 from app.cart.service import CartService
 from app.common.phone import normalize_phone
+from app.common.text import single_line
 from app.cycles.service import CyclesService
 from app.db import async_session
 from app.orders.models import OPEN_STATUSES
@@ -105,7 +106,9 @@ def _profile_name(from_user: TelegramUser | None) -> str:
     if from_user is None:
         return DEFAULT_NAME
     parts = [from_user.first_name, from_user.last_name or ""]
-    name = " ".join(part for part in parts if part).strip()
+    # Flattened like a name typed on the site (`UserUpdateRequest`): it is printed on a
+    # line of its own in what the owner reads.
+    name = single_line(" ".join(part for part in parts if part))
     return name or DEFAULT_NAME
 
 

@@ -5,6 +5,7 @@ from pydantic import Field, field_validator
 
 from app.auth.models import Role
 from app.common.schemas import CamelModel, require_not_null
+from app.common.text import single_line
 
 
 class UserResponse(CamelModel):
@@ -28,6 +29,18 @@ class UserUpdateRequest(CamelModel):
     @classmethod
     def _reject_null(cls, value: object) -> object:
         return require_not_null(value)
+
+    @field_validator("name")
+    @classmethod
+    def _one_line(cls, value: str | None) -> str | None:
+        # Flattened rather than refused: a pasted name with a stray line break is a typo,
+        # not an attack, and the person should not have to find an invisible character.
+        if value is None:
+            return None
+        name = single_line(value)
+        if not name:
+            raise ValueError("name must not be blank")
+        return name
 
 
 class AdminUserResponse(UserResponse):
