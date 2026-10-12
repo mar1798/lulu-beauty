@@ -26,7 +26,8 @@ from app.telegram.handlers import (
     router,
 )
 from app.telegram.keyboards import ReplyAction
-from app.telegram.service import Delivery
+from app.telegram.relay import RelayTarget
+from app.telegram.service import Delivery, Relayed
 
 
 def _stub_session(monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
@@ -334,7 +335,7 @@ def _stub_reply_delivery(monkeypatch: pytest.MonkeyPatch, *, delivered: bool = T
     monkeypatch.setattr(
         "app.telegram.handlers.PaymentsService.order_by_reference", AsyncMock(return_value=None)
     )
-    send = AsyncMock(return_value=delivered)
+    send = AsyncMock(return_value=Relayed(delivered=delivered, message_ids=[]))
     monkeypatch.setattr("app.telegram.handlers.notifications_service.send_customer_reply", send)
     return send
 
@@ -430,7 +431,7 @@ async def test_a_reply_to_the_owners_message_reaches_every_owner(
     monkeypatch.setattr(
         "app.telegram.handlers.PaymentsService.order_by_reference", AsyncMock(return_value=None)
     )
-    send = AsyncMock(return_value=True)
+    send = AsyncMock(return_value=Relayed(delivered=True, message_ids=[]))
     monkeypatch.setattr("app.telegram.handlers.notifications_service.send_customer_reply", send)
 
     await handle_customer_reply(message)
@@ -561,7 +562,7 @@ async def test_a_reply_from_the_menu_prompt_reaches_the_owner_without_an_order(
     monkeypatch.setattr(
         "app.telegram.handlers.recipients.get_owners", AsyncMock(return_value=[MagicMock()])
     )
-    send = AsyncMock(return_value=True)
+    send = AsyncMock(return_value=Relayed(delivered=True, message_ids=[]))
     monkeypatch.setattr("app.telegram.handlers.notifications_service.send_customer_reply", send)
 
     await handle_customer_reply(message)
@@ -716,20 +717,38 @@ def _owner_reply(header: str, *, text: str | None = "Будет в пятниц�
     replied.from_user.is_bot = True
     replied.text = header
     replied.caption = None
+    replied.message_id = 77
     message = MagicMock()
     message.reply_to_message = replied
     message.text = text
     message.media_group_id = None
+    message.chat.id = 1
     message.answer = AsyncMock()
     return message
+
+
+def _target(
+    customer: MagicMock | None = None,
+    *,
+    reference: str | None = None,
+    order_id: uuid.UUID | None = None,
+    wish: bool = False,
+    wish_phone: str | None = None,
+) -> RelayTarget:
+    return RelayTarget(
+        customer=customer,  # type: ignore[arg-type]
+        order_reference=reference,
+        order_id=order_id,
+        wish=wish,
+        wish_phone=wish_phone,
+    )
 
 
 def _stub_owner_reply(
     monkeypatch: pytest.MonkeyPatch,
     *,
     role: str = "ADMIN",
-    customer: MagicMock | None = None,
-    order: MagicMock | None = None,
+    target: RelayTarget | None = None,
     outcome: Delivery = Delivery.SENT,
 ) -> AsyncMock:
     _stub_session(monkeypatch)
@@ -738,12 +757,7 @@ def _stub_owner_reply(
     monkeypatch.setattr(
         "app.telegram.handlers.recipients.find_user_by_chat_id", AsyncMock(return_value=owner)
     )
-    monkeypatch.setattr(
-        "app.telegram.handlers.recipients.find_user_by_phone", AsyncMock(return_value=customer)
-    )
-    monkeypatch.setattr(
-        "app.telegram.handlers.PaymentsService.order_by_reference", AsyncMock(return_value=order)
-    )
+    monkeypatch.setattr("app.telegram.handlers.relay.resolve", AsyncMock(return_value=target))
     send = AsyncMock(return_value=outcome)
     monkeypatch.setattr("app.telegram.handlers.notifications_service.send_owner_reply", send)
     return send
@@ -818,31 +832,48 @@ async def test_an_owners_reply_to_a_customers_photo_is_routed_by_its_caption() -
     assert matched[0].callback is handle_owner_reply
 
 
-async def test_an_owners_reply_reaches_the_customer_named_in_the_header(
+async def test_an_owners_reply_goes_to_whoever_the_message_was_passed_on_from(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """Looked up by the replied-to message, not read off its text: the header below names
+    somebody else, the way a forged caption would, and the record wins."""
     customer = MagicMock()
     customer.telegram_chat_id = 555
-    order = MagicMock()
-    send = _stub_owner_reply(monkeypatch, customer=customer, order=order)
+    order_id = uuid.uuid4()
+    send = _stub_owner_reply(
+        monkeypatch, target=_target(customer, reference="#a1b2c3d4", order_id=order_id)
+    )
     message = _owner_reply(
-        "💬 Ответ покупателя по заявке #a1b2c3d4\nПокупатель: Айсулуу, Бишкек, +996555000111"
-        "\n\nА где #deadbeef?"
+        "💬 Ответ покупателя по заявке #deadbeef\nПокупатель: Чужой, +996700999999"
     )
 
     await handle_owner_reply(message)
 
-    find = handlers_module.recipients.find_user_by_phone
-    assert find.await_args.args[1] == "+996555000111"  # type: ignore[attr-defined]
-    assert send.await_args.args[:4] == (customer, "#a1b2c3d4", order.id, message)
+    resolve = handlers_module.relay.resolve
+    assert resolve.await_args.args[1:] == (1, 77)  # type: ignore[attr-defined]
+    assert send.await_args.args[:4] == (customer, "#a1b2c3d4", order_id, message)
+    assert send.await_args.kwargs["wish"] is False
     assert message.answer.await_args.args[0] == messages.OWNER_REPLY_SENT
+
+
+async def test_an_owners_reply_to_a_message_nobody_recorded_points_to_the_panel(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A message passed on before the bot kept count: no guessing from its text."""
+    send = _stub_owner_reply(monkeypatch, target=None)
+    message = _owner_reply(f"💬 Сообщение покупателя\nПокупатель: {_CUSTOMER}\n\nПривет")
+
+    await handle_owner_reply(message)
+
+    send.assert_not_awaited()
+    assert message.answer.await_args.args[0] == messages.OWNER_REPLY_UNTRACKED
 
 
 async def test_an_owners_reply_to_a_message_from_the_menu_names_no_order(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     customer = MagicMock()
-    send = _stub_owner_reply(monkeypatch, customer=customer)
+    send = _stub_owner_reply(monkeypatch, target=_target(customer))
     message = _owner_reply(f"💬 Сообщение покупателя\nПокупатель: {_CUSTOMER}\n\nПривет")
 
     await handle_owner_reply(message)
@@ -853,7 +884,7 @@ async def test_an_owners_reply_to_a_message_from_the_menu_names_no_order(
 async def test_a_customer_quoting_the_header_is_not_an_owner(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    send = _stub_owner_reply(monkeypatch, role="CUSTOMER", customer=MagicMock())
+    send = _stub_owner_reply(monkeypatch, role="CUSTOMER", target=_target(MagicMock()))
     message = _owner_reply(f"💬 Сообщение покупателя\nПокупатель: {_CUSTOMER}")
 
     await handle_owner_reply(message)
@@ -865,7 +896,9 @@ async def test_a_customer_quoting_the_header_is_not_an_owner(
 async def test_an_owners_reply_to_an_erased_customer_says_so(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    send = _stub_owner_reply(monkeypatch, customer=None)
+    customer = MagicMock()
+    customer.telegram_chat_id = None
+    send = _stub_owner_reply(monkeypatch, target=_target(customer))
     message = _owner_reply(f"💬 Сообщение покупателя\nПокупатель: {_CUSTOMER}")
 
     await handle_owner_reply(message)
@@ -879,7 +912,7 @@ async def test_an_owners_reply_to_a_customer_who_blocked_the_bot_drops_the_bindi
 ) -> None:
     customer = MagicMock()
     customer.telegram_chat_id = 555
-    _stub_owner_reply(monkeypatch, customer=customer, outcome=Delivery.BLOCKED)
+    _stub_owner_reply(monkeypatch, target=_target(customer), outcome=Delivery.BLOCKED)
     clear = AsyncMock()
     monkeypatch.setattr("app.telegram.handlers.recipients.clear_stale_bindings", clear)
     message = _owner_reply(f"💬 Сообщение покупателя\nПокупатель: {_CUSTOMER}")
@@ -895,15 +928,15 @@ async def test_an_owners_reply_to_a_wish_reaches_its_writer_worded_as_about_the_
 ) -> None:
     customer = MagicMock()
     customer.telegram_chat_id = 555
-    send = _stub_owner_reply(monkeypatch, customer=customer)
+    send = _stub_owner_reply(
+        monkeypatch, target=_target(customer, wish=True, wish_phone="+996555000111")
+    )
     message = _owner_reply(
         "💡 Пожелание к следующему сбору\nОт кого: Айсулуу, +996555000111\n\nКрем #deadbeef"
     )
 
     await handle_owner_reply(message)
 
-    find = handlers_module.recipients.find_user_by_phone
-    assert find.await_args.args[1] == "+996555000111"  # type: ignore[attr-defined]
     assert send.await_args.args[:4] == (customer, None, None, message)
     assert send.await_args.kwargs["wish"] is True
     assert message.answer.await_args.args[0] == messages.OWNER_REPLY_SENT
@@ -912,7 +945,9 @@ async def test_an_owners_reply_to_a_wish_reaches_its_writer_worded_as_about_the_
 async def test_an_owners_reply_to_a_guests_wish_says_to_call_instead(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    send = _stub_owner_reply(monkeypatch, customer=None)
+    send = _stub_owner_reply(
+        monkeypatch, target=_target(None, wish=True, wish_phone="+996555000111")
+    )
     message = _owner_reply(f"💡 Пожелание к следующему сбору\nОт кого: {_CUSTOMER}\n\nКрем")
 
     await handle_owner_reply(message)
@@ -921,3 +956,45 @@ async def test_an_owners_reply_to_a_guests_wish_says_to_call_instead(
     assert message.answer.await_args.args[0] == messages.owner_reply_wish_unreachable(
         "+996555000111"
     )
+
+
+async def test_a_message_passed_on_to_the_owners_is_recorded_as_this_customers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """What the owner's reply will be looked up by: each owner's chat and the ids there."""
+    message = _reply_to_owner_message()
+    _stub_session(monkeypatch)
+    customer = MagicMock()
+    order = MagicMock()
+    owners = [MagicMock(telegram_chat_id=10), MagicMock(telegram_chat_id=20)]
+    monkeypatch.setattr(
+        "app.telegram.handlers.recipients.find_user_by_chat_id", AsyncMock(return_value=customer)
+    )
+    monkeypatch.setattr(
+        "app.telegram.handlers.recipients.get_owners", AsyncMock(return_value=owners)
+    )
+    monkeypatch.setattr(
+        "app.telegram.handlers.PaymentsService.order_by_reference", AsyncMock(return_value=order)
+    )
+    monkeypatch.setattr(
+        "app.telegram.handlers.notifications_service.send_customer_reply",
+        AsyncMock(
+            side_effect=[
+                Relayed(delivered=True, message_ids=[101, 102]),
+                Relayed(delivered=False, message_ids=[]),
+            ]
+        ),
+    )
+    record = AsyncMock()
+    monkeypatch.setattr("app.telegram.handlers.relay.record", record)
+
+    await handle_customer_reply(message)
+
+    assert record.await_count == 1
+    assert record.await_args.args[1:] == (10, [101, 102])
+    assert record.await_args.kwargs == {
+        "user_id": customer.id,
+        "order_id": order.id,
+        "order_reference": "#a1b2c3d4",
+    }
+    assert message.answer.await_args.args[0] == messages.CUSTOMER_REPLY_FORWARDED

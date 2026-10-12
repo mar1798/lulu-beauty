@@ -176,12 +176,23 @@ The owner answers the same way, by replying in the chat to what was passed on �
 `handle_owner_reply`, matched by `messages.CUSTOMER_MESSAGE_TITLES` on the replied-to
 text **or caption**: a customer's photo, video, file or voice reaches the owner as a copy
 with the header put into its caption (`_takes_caption`; a sticker or a too-long caption
-keeps the header as a message of its own, the copy sent as a reply to it, and only the
-header can be answered). A text too long for one message is cut
-(`service.split_message`) and **every part repeats the header**, so a reply to any part
-is recognised; the same holds for the owner's long answer. The
-customer is found by the phone on the header's `Покупатель:` line, the order by the
-`#xxxxxxxx` on its title line — nothing is stored. The answer goes out as
+keeps the header as a message of its own, the copy sent as a reply to it). A text too
+long for one message is cut (`service.split_message`) and **every part repeats the
+header**; the same holds for the owner's long answer.
+
+The title only routes the reply to `handle_owner_reply`. **Who it goes to is never read
+off the text**: every message passed on to an owner — each part, the header and its copy
+alike — is recorded in `relayed_messages` (`relay.record`, owner's chat + message id →
+writer, order, the `#xxxxxxxx` shown), and the reply is looked up by the id of the
+message it answers (`relay.resolve`). It used to be the phone on the `Покупатель:` line,
+and that line is partly the customer's: a name with a line break in it, or a photo whose
+caption was too long for the header and so arrived under the customer's own words alone,
+could name somebody else's number, and the owner's answer went to them. Names are now
+flattened to one line as well (`common/text.single_line`), but the record is the fix.
+A message with no record — passed on before the table existed — gets
+`OWNER_REPLY_UNTRACKED`, which points to the panel's button. The table is never pruned:
+the 30-second limit below keeps it to a trickle, and an owner may answer months later.
+The answer goes out as
 `messages.owner_message` with `owner_message_actions` (a text inside it; a photo, video,
 file or voice as a copy with `messages.owner_media_caption` as its caption, the buttons on
 an album's first photo only; a sticker as a copy replying to a «ниже» header), so the
@@ -191,7 +202,9 @@ the customer blocked the bot (the binding is dropped), or Telegram refused. Only
 
 A **wish for the next cycle** (`messages.wanted_product_for_owner`, opening with
 `WANTED_PRODUCT_TITLE`) is answered the same way: `handle_owner_reply` matches it too
-(`OWNER_REPLYABLE_TITLES`) and finds the writer by the phone on its `От кого:` line. The
+(`OWNER_REPLYABLE_TITLES`), and `notify_wanted_product` records it the same way, with the
+wish's id (`relayed_messages.wanted_product_id`; erasing the account deletes the wish and
+the record with it). The
 customer gets `owner_message(..., wish=True)` — «Сообщение от Sululu по вашему
 пожеланию» — with the same buttons, so they can answer back. Wishes now need an account, so
 the number is one the bot has seen; when it no longer leads to a linked chat (the account
@@ -201,7 +214,8 @@ instead.
 
 Only a reply travels. Plain text typed into the chat is still `handle_fallback`'s, and
 `messages.FALLBACK` says how to reach the shop: press ✍️ Написать Sululu or reply to
-the shop's message. Nothing is stored about who pressed what — the prompt carries it all.
+the shop's message. Nothing is stored about who pressed what — the prompt carries it all;
+what is stored is only where each passed-on message landed, for the way back.
 
 **One message per customer per 30 seconds** (`SHOP_MESSAGE_INTERVAL_SECONDS`): anything
 sooner is not passed on, and the customer gets `messages.shop_message_too_soon` with the

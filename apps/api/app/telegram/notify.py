@@ -29,7 +29,7 @@ from app.db import async_session
 from app.orders.models import Order, OrderStatus
 from app.orders.service import OrderItemDrop, OrderPriceChange
 from app.payments.models import PaymentReceipt
-from app.telegram import messages, recipients
+from app.telegram import messages, recipients, relay
 from app.telegram.client import notifications_service
 from app.telegram.service import CartRescueNotice
 from app.wanted.models import WantedProduct
@@ -195,7 +195,17 @@ async def notify_wanted_product(wanted_id: uuid.UUID) -> None:
                 return
 
             for owner in owners:
-                await notifications_service.send_wanted_product(owner, wanted)
+                sent_ids = await notifications_service.send_wanted_product(owner, wanted)
+                if sent_ids and owner.telegram_chat_id is not None:
+                    # So that the owner's reply in the chat reaches the writer.
+                    await relay.record(
+                        session,
+                        owner.telegram_chat_id,
+                        sent_ids,
+                        user_id=wanted.user_id,
+                        wanted_product_id=wanted.id,
+                    )
+            await session.commit()
     except Exception:  # noqa: BLE001 - the wish is already stored; see module docstring
         logger.exception("Failed to pass on wish %s", wanted_id)
 

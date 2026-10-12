@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from aiogram.exceptions import TelegramForbiddenError, TelegramRetryAfter
-from aiogram.types import Chat, Message
+from aiogram.types import Chat, Message, MessageId
 
 from app.auth.models import User
 from app.cycles.models import OrderCycle
@@ -219,7 +219,7 @@ async def test_send_customer_reply_carries_a_text_under_the_header() -> None:
         _user(telegram_chat_id=1), customer, "#a1b2c3d4", _reply("Да, заменить")
     )
 
-    assert delivered is True
+    assert delivered.delivered is True
     chat_id, message = bot.send_message.await_args.args
     assert chat_id == 1
     assert "#a1b2c3d4" in message
@@ -236,7 +236,7 @@ async def test_send_customer_reply_copies_anything_but_text_after_the_header() -
         _user(telegram_chat_id=1), _user(telegram_chat_id=555), "#a1b2c3d4", _reply(None)
     )
 
-    assert delivered is True
+    assert delivered.delivered is True
     bot.send_message.assert_awaited_once()
     bot.copy_message.assert_awaited_once_with(1, 555, 7)
 
@@ -548,7 +548,7 @@ async def test_send_customer_reply_puts_the_header_into_a_photos_caption() -> No
         _user(telegram_chat_id=1), customer, None, _reply(None, photo=True, caption="Вот")
     )
 
-    assert delivered is True
+    assert delivered.delivered is True
     bot.send_message.assert_not_awaited()
     caption = bot.copy_message.await_args.kwargs["caption"]
     assert caption.startswith(messages.CUSTOMER_MESSAGE_TITLE)
@@ -695,7 +695,7 @@ async def test_send_customer_reply_repeats_the_header_on_every_part_of_a_long_te
         _user(telegram_chat_id=1), customer, "#a1b2c3d4", _reply(text)
     )
 
-    assert delivered is True
+    assert delivered.delivered is True
     parts = [call.args[1] for call in bot.send_message.await_args_list]
     assert len(parts) > 1
     header = messages.customer_reply_for_owner("#a1b2c3d4", customer)
@@ -713,5 +713,34 @@ async def test_send_customer_reply_sends_a_sticker_as_a_reply_to_the_header() ->
         _user(telegram_chat_id=1), _user(telegram_chat_id=555), None, _reply(None)
     )
 
-    assert delivered is True
+    assert delivered.delivered is True
     assert bot.copy_message.await_args.kwargs["reply_parameters"].message_id == 42
+
+
+async def test_send_customer_reply_returns_the_ids_of_everything_that_arrived() -> None:
+    """The header and the copy alike: the owner may reply to either, and both have to
+    lead back to this customer (`relay.record`)."""
+    bot = AsyncMock()
+    bot.send_message.return_value = _sent(42)
+    bot.copy_message.return_value = MessageId(message_id=43)
+    service = NotificationsService(bot)
+
+    relayed = await service.send_customer_reply(
+        _user(telegram_chat_id=1), _user(telegram_chat_id=555), None, _reply(None)
+    )
+
+    assert relayed.delivered is True
+    assert relayed.message_ids == [42, 43]
+
+
+async def test_send_customer_reply_returns_no_ids_when_nothing_arrived() -> None:
+    bot = AsyncMock()
+    bot.send_message.side_effect = RuntimeError("Telegram is down")
+    service = NotificationsService(bot)
+
+    relayed = await service.send_customer_reply(
+        _user(telegram_chat_id=1), _user(telegram_chat_id=555), None, _reply("Привет")
+    )
+
+    assert relayed.delivered is False
+    assert relayed.message_ids == []

@@ -212,7 +212,8 @@ def customer_cancellation_for_owner(order: Order, customer: User | None, *, rest
 
 
 # The opening of `wanted_product_for_owner`. The owner's reply to it goes back to the
-# writer (`handlers.handle_owner_reply`), found by the phone on its «От кого:» line.
+# writer (`handlers.handle_owner_reply`), found by the record of this message
+# (`relay.resolve`), not by anything written in it.
 WANTED_PRODUCT_TITLE = "💡 Пожелание к следующему сбору"
 
 
@@ -221,13 +222,13 @@ def wanted_product_for_owner(wanted: WantedProduct) -> str:
 
     Единственное уведомление владельцу, у которого нет ни заявки, ни сбора, ни товара, —
     поэтому в нём есть всё, что о нём вообще известно: имя, номер и текст. Имя и номер
-    скопированы с аккаунта: по номеру владелец звонит, а бот находит, кому передать ответ.
+    скопированы с аккаунта: по номеру владелец звонит, если бот до автора не достаёт.
 
     Текст отделён пустой строкой и идёт последним: он свободной длины (до 1000 символов),
     и контакт, оказавшийся под ним, пришлось бы искать прокруткой.
 
-    Владелец может ответить на это сообщение в чате — ответ уйдёт автору, если номер
-    принадлежит аккаунту, привязанному к боту (`handlers.handle_owner_reply`).
+    Владелец может ответить на это сообщение в чате — ответ уйдёт автору, если его аккаунт
+    привязан к боту (`handlers.handle_owner_reply`; кому — по записи `relay.record`).
     """
     return "\n".join(
         [
@@ -526,8 +527,9 @@ REPLY_PLACEHOLDER = "Сообщение для Sululu"
 
 
 # Openings of `customer_reply_for_owner`. A reply by the owner to a message starting with
-# either goes back to that customer (`handlers.handle_owner_reply`), who is found by the
-# phone on the header's second line — so that line's shape is load-bearing too.
+# either goes back to that customer (`handlers.handle_owner_reply`). The titles only route
+# it there; the customer is found by the record of the message (`relay.resolve`) — the
+# header below the title is for the owner's eyes, and part of it is the customer's own.
 CUSTOMER_REPLY_TITLE = "💬 Ответ покупателя по заявке"
 CUSTOMER_MESSAGE_TITLE = "💬 Сообщение покупателя"
 CUSTOMER_MESSAGE_TITLES = (CUSTOMER_REPLY_TITLE, CUSTOMER_MESSAGE_TITLE)
@@ -567,6 +569,12 @@ OWNER_REPLY_BLOCKED = (
     "Покупатель заблокировал бота - через бота сообщение не дойдёт, напишите ему в Instagram."
 )
 OWNER_REPLY_FAILED = "Telegram не принял сообщение. Попробуйте ещё раз через минуту."
+# Ответ на сообщение, о котором бот не помнит, от кого оно: пришло до того, как он
+# начал это записывать (`handlers.handle_owner_reply`).
+OWNER_REPLY_UNTRACKED = (
+    "Не знаю, от кого это сообщение, - ответить на него здесь не получится. "
+    "Напишите покупателю кнопкой у заявки в админке."
+)
 
 
 def owner_reply_wish_unreachable(phone: str) -> str:
