@@ -43,6 +43,6 @@ export const Price: FC<IPriceProps & IBasicStyling> = ({
       цена одна, — в корзине и в заявке.
     */}
     {isFrom && <span className={styles.from}>от </span>}
-    {formatPrice(priceCents, currency)}
+    <span className={styles.amount}>{formatPrice(priceCents, currency)}</span>
   </span>
 )
