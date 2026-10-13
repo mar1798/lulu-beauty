@@ -88,7 +88,7 @@ The package is consumed through subpath exports: `widgets/atoms`, `widgets/molec
 `widgets/organisms`, `widgets/templates`, `widgets/contexts`, `widgets/hooks`,
 `widgets/utils`, `widgets/types`, `widgets/svg`, `widgets/feed`, `widgets/styling/lib`,
 `widgets/styling/mixin`, `widgets/styling/theme`, `widgets/styling/properties`,
-`widgets/styling/global.css`, `widgets/styling/preflight.css`.
+`widgets/styling/levitate`, `widgets/styling/global.css`, `widgets/styling/preflight.css`.
 
 **A new public subpath must be added to both `exports` and `typesVersions`** in
 `packages/widgets/package.json` — one without the other type-errors or fails to resolve.
@@ -187,7 +187,9 @@ so measuring directly saw the page at the top and replayed the entrance on «н�
 decorative jars (`DecorField`) and the hero's showcase cards (`Float`) breathe through an
 infinite CSS animation whose period and negative delay come inline from a `phase`, so
 neighbours never sway in step — the shared `floatTiming` in `src/utils/motion.ts` derives
-both. motion contributes only `useInView`, which pauses the animation off screen: an infinite
+both. The jars' keyframes (±8px with a ±1.2° tilt) live in `src/styling/levitate.css.ts` and
+are exported as `widgets/styling/levitate`, so seasonal decor on the site floats with the very
+same curve instead of a lookalike copy. motion contributes only `useInView`, which pauses the animation off screen: an infinite
 compositor animation otherwise ticks for as long as the tab is open. `ShowcaseMore` pauses its
 sweeping border the same way, and has the most to gain from it — that layer is 250 % of the
 tile and filled with a conic gradient. The pause is always a class, never an inline
