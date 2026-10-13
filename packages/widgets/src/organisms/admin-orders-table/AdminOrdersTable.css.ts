@@ -118,6 +118,12 @@ export const date = style({
   whiteSpace: 'nowrap',
 })
 
+/** «Из админки»: та же мелкая строка, что дата, но цветом марки — её ищут глазами. */
+export const origin = style({
+  font: font('12/18'),
+  color: color.text('brand'),
+})
+
 export const customer = style(flexColumn(2))
 
 export const total = style([flexColumn(4), { alignItems: 'flex-start' }])

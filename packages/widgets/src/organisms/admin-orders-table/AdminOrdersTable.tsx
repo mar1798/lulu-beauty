@@ -37,6 +37,9 @@ import * as styles from './AdminOrdersTable.css'
  * «Написать через бота» — для покупателя, которого по номеру в Telegram не
  * найти: поиск по номеру закрывается настройками приватности, а чат с ботом от
  * номера не зависит. Без привязки к боту кнопка недоступна и говорит почему.
+ *
+ * Заявка, которую оформил админ за покупателя, помечена под датой — с именем
+ * того админа: их бывает несколько, и иначе не понять, откуда она взялась.
  */
 
 const DEFAULT_SKELETON_ROWS = 5
@@ -134,6 +137,13 @@ export const AdminOrdersTable: FC<IAdminOrdersTableProps & IBasicStyling> = ({
                         <div className={styles.order}>
                           <span className={styles.number}>№ {adminOrderNumber(order.id)}</span>
                           <span className={styles.date}>{formatDateTime(order.createdAt)}</span>
+                          {order.createdById !== null && (
+                            <span className={styles.origin}>
+                              {order.createdByName === null
+                                ? 'Из админки'
+                                : `Из админки - ${order.createdByName}`}
+                            </span>
+                          )}
                         </div>
                       </td>
 

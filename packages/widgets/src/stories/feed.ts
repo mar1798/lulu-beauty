@@ -7,6 +7,10 @@ import {
   IAdminLayoutProps,
   IAdminMessageDialogProps,
   IAdminOrder,
+  IAdminOrderCycle,
+  IAdminOrderDialogProps,
+  ICustomerOption,
+  ICustomerSelectProps,
   IAdminChecklistProps,
   IAdminOrdersTableProps,
   IAdminProductFormProps,
@@ -1033,6 +1037,81 @@ export const feedAdminMessageDialog = (): IAdminMessageDialogProps => ({
   onClose: noop,
 })
 
+export const feedCustomerOption = (overrides: Partial<ICustomerOption> = {}): ICustomerOption => ({
+  id: faker.string.uuid(),
+  name: faker.person.firstName(),
+  phone: `+996${faker.string.numeric(9)}`,
+  telegramLinked: true,
+  ...overrides,
+})
+
+export const feedCustomerSelect = (): ICustomerSelectProps => ({
+  value: null,
+  onChange: noop,
+  query: 'айг',
+  onQueryChange: noop,
+  results: [
+    feedCustomerOption({ name: 'Айгуль', phone: '+996700123456' }),
+    feedCustomerOption({ name: 'Айгерим', phone: '+996555987654', telegramLinked: false }),
+  ],
+})
+
+export const feedAdminOrderCycle = (
+  overrides: Partial<IAdminOrderCycle> = {}
+): IAdminOrderCycle => ({
+  id: faker.string.uuid(),
+  label: 'Октябрь',
+  deadlineAt: new Date(Date.now() + 3 * DAY_MS).toISOString(),
+  closedAt: null,
+  isOpen: true,
+  customerOrderIds: [],
+  ...overrides,
+})
+
+export const feedAdminOrderDialog = (): IAdminOrderDialogProps => {
+  const cycles = [
+    feedAdminOrderCycle(),
+    feedAdminOrderCycle({
+      label: 'Сентябрь',
+      deadlineAt: new Date(Date.now() - DAY_MS).toISOString(),
+      closedAt: new Date(Date.now() - DAY_MS).toISOString(),
+      isOpen: false,
+    }),
+  ]
+
+  return {
+    isOpen: true,
+    onClose: noop,
+    customerSelect: {
+      ...feedCustomerSelect(),
+      value: feedCustomerOption({ name: 'Айгуль', phone: '+996700123456' }),
+    },
+    productSearch: { query: '', onQueryChange: noop, products: null },
+    cycles,
+    cycleId: cycles[0]?.id ?? null,
+    onCycleChange: noop,
+    lines: [
+      {
+        variantId: faker.string.uuid(),
+        productName: 'Сыворотка Centella',
+        productSlug: 'centella',
+        productImageUrl: null,
+        productBrand: 'Skin1004',
+        productVolumeMl: 50,
+        priceCents: 145_000,
+        quantity: 2,
+      },
+    ],
+    onAdd: noop,
+    onQuantityChange: noop,
+    onRemove: noop,
+    note: '',
+    onNoteChange: noop,
+    buildProductHref: slug => `/catalog/${slug}`,
+    onSubmit: noop,
+  }
+}
+
 export const feedConfirmDialog = (): IConfirmDialogProps => ({
   isOpen: true,
   title: 'Удалить категорию?',
@@ -1248,6 +1327,8 @@ export const feedAdminOrder = (overrides: Partial<IAdminOrder> = {}): IAdminOrde
   customerPhone: '+996555123456',
   hasReceipt: false,
   canMessage: true,
+  createdById: null,
+  createdByName: null,
   ...overrides,
 })
 
@@ -1321,6 +1402,7 @@ export const feedAdminOrdersTable = (): IAdminOrdersTableProps => ({
   orders: [
     feedAdminOrder({ note: 'Позвоните после 18:00.' }),
     feedAdminOrder({ status: 'CONFIRMED', hasReceipt: true }),
+    feedAdminOrder({ createdById: faker.string.uuid(), createdByName: 'Мария' }),
     feedAdminOrder({
       status: 'COMPLETED',
       hasReceipt: true,

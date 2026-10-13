@@ -3,12 +3,18 @@ import useSWR, { mutate as globalMutate } from 'swr'
 import type { IAdminOrder, IOrderCycle, ISelectOption, OrderStatus } from 'widgets/types'
 import { Alert, Button, Select, Switch } from 'widgets/atoms'
 import { EmptyState, ORDER_STATUSES, Pagination, orderStatusLabel } from 'widgets/molecules'
-import { AdminMessageDialog, AdminOrdersTable, adminOrderNumber } from 'widgets/organisms'
+import {
+  AdminMessageDialog,
+  AdminOrderDialog,
+  AdminOrdersTable,
+  adminOrderNumber,
+} from 'widgets/organisms'
 import { useConfirm, useToast } from 'widgets/contexts'
 import { formatDate } from 'widgets/utils'
-import { IconDownload } from 'widgets/svg'
+import { IconDownload, IconPlus } from 'widgets/svg'
 import { AdminShell } from '@/layouts/AdminShell'
 import { useActiveCycle } from '@/hooks/useActiveCycle'
+import { useAdminOrderDraft } from '@/hooks/useAdminOrderDraft'
 import { saveBlob } from '@/services/api'
 import { isApiError, messageForError } from '@/services/apiErrors'
 import {
@@ -43,6 +49,9 @@ import { useClampedPage } from '@/hooks/useClampedPage'
  * Telegram не найти. Ошибка отправки остаётся в окне вместе с набранным
  * текстом; «не привязан» и «заблокировал бота» вдобавок перечитывают список —
  * привязки нет (или бэк её только что снял), и кнопка у заявки должна погаснуть.
+ *
+ * «Создать заявку» — окно, где админ оформляет заявку за покупателя: опоздал к
+ * дедлайну или попросил в личке. Всё состояние окна — в `useAdminOrderDraft`.
  *
  * Качается через `fetch`, а не обычной ссылкой: ручка админская,
  * и отказ (403, 500) на ссылке превратился бы в скачанный файл с текстом
@@ -83,6 +92,7 @@ const defaultCycleId = (cycles: IOrderCycle[], active: IOrderCycle | null): stri
 const AdminOrdersPage: React.FC = () => {
   const { notify } = useToast()
   const { confirm } = useConfirm()
+  const draft = useAdminOrderDraft()
 
   /*
     Выбор владельца, а не действующий фильтр: пока он ничего не выбрал (`null`),
@@ -332,6 +342,10 @@ const AdminOrdersPage: React.FC = () => {
             onChange={setIncludePrices}
           />
 
+          <Button isFullWidth="mobile" iconStart={<IconPlus />} onClick={draft.open}>
+            Создать заявку
+          </Button>
+
           <Button
             isFullWidth="mobile"
             variant="secondary"
@@ -409,6 +423,8 @@ const AdminOrdersPage: React.FC = () => {
         }}
         onClose={closeMessage}
       />
+
+      <AdminOrderDialog {...draft.dialog} />
 
       {data !== undefined && data.total > PAGE_SIZE && (
         <Pagination

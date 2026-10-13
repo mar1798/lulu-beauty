@@ -359,6 +359,41 @@ the same reason a price change is pulled through by **variant** (`reprice_varian
 order for 30 ml must not get more expensive because the 50 ml did. The owner's purchase list
 splits by volume too — 30 ml and 50 ml are two things to buy.
 
+### Orders placed by an admin
+
+An admin can place an order for any live account from the orders panel (`POST /admin/orders`,
+`OrdersService.create_for_customer`) — someone who missed the deadline, or asked in a
+message rather than on the site. It is an ordinary `PENDING` order from then on: repriced
+and trimmed like any other, cancellable by its customer. What differs is how it is made:
+
+- **Which cycle.** The open one, or any that closed within `ADMIN_ORDER_WINDOW` (3 days,
+  from `closed_at`, falling back to the deadline like `PendingStage` does). The form offers
+  the choice (`GET /admin/orders/cycles`), open cycle first and default: someone who missed
+  yesterday's deadline usually belongs in yesterday's purchase, which is still under way
+  even when the next cycle has already opened. Nothing fits — `409 no_cycle_for_order`;
+  the picked cycle left the window while the form was open — `409 order_cycle_unavailable`.
+  The window is kept inside `PURCHASE_WINDOW` on purpose (a test holds it there): an order
+  added later would read «Закупка идёт дольше обычного» on the day it was made.
+- **The lines** come from the catalogue, not from the customer's cart, which is left alone.
+  Same rule as adding to a placed order: a discontinued or sold-out volume refuses the
+  whole order (`404 product_not_found`) rather than being silently dropped from it.
+- **`orders.created_by_id`** names the admin (`createdById`/`createdByName` on the admin
+  response); NULL for a checkout. With several admins, it is the answer to "where did this
+  заявка come from".
+- **Placing is idempotent.** The panel makes a `requestId` once per draft, and
+  `orders.request_id` is unique: the same key again (a double click, a resend after a lost
+  response) returns the order it already made, and nobody is notified twice. The customer's
+  row is locked first, so a repeat that arrives mid-request waits and then finds that order.
+  Checkout needs no key — the locked cart row plays that part.
+- **A second order in the same cycle is warned about, not refused.** With `userId`,
+  `GET /admin/orders/cycles` lists that customer's open orders in each cycle, and the form
+  shows them; the customer may well have asked for a separate one.
+- **Both sides are told** after the commit: every admin gets the usual new-order message
+  with «Оформлена в админке: <имя>», and the customer gets the order's lines and sum —
+  they pressed nothing, and the bill would otherwise be the first they heard of it. The
+  message says what they can do with it: change it while the cycle is open, cancel it
+  once it has closed.
+
 ### Statuses
 
 ```

@@ -14,7 +14,9 @@ from app.catalog.models import Category, Product, ProductVariant
 from app.cycles.models import CycleStatus, OrderCycle
 from app.cycles.service import CyclesService
 from app.orders.models import (
+    ADMIN_ORDER_WINDOW,
     ALLOWED_TRANSITIONS,
+    OPEN_STATUSES,
     PURCHASE_WINDOW,
     UNFULFILLED_AFTER,
     Order,
@@ -59,6 +61,22 @@ class LastOrderItemError(Exception):
 
 class ProductNotFoundError(Exception):
     """No live product behind the id — it was soft-deleted between the search and the click."""
+
+
+class CustomerNotFoundError(Exception):
+    """No live account behind the id — never existed, or erased since the owner picked it."""
+
+
+class NoCycleForOrderError(Exception):
+    """Nothing collecting and nothing closed within `ADMIN_ORDER_WINDOW` to put an order in."""
+
+
+class OrderCycleUnavailableError(Exception):
+    """The cycle the owner picked no longer takes orders on a customer's behalf.
+
+    Gone, or closed longer than `ADMIN_ORDER_WINDOW` ago — the form was open across the
+    boundary. Not the same as having no cycle at all: here another one may still fit.
+    """
 
 
 class OrderNotRestorableError(Exception):
@@ -138,6 +156,39 @@ class _CycleClock:
 # An order whose cycle is gone from under it — nothing to compute a stage from. Treated
 # as long closed rather than open: the alternative offers an edit the API would refuse.
 _LOST_CYCLE = _CycleClock(is_open=False, closed_since=datetime.min.replace(tzinfo=UTC))
+
+
+@dataclass(frozen=True)
+class AdminOrderCycle:
+    """A cycle the owner may put an order into on a customer's behalf.
+
+    `customer_order_ids` are that customer's open orders already in it — the form warns
+    about them, since a second заявка in the same cycle is usually a mistake, but not one
+    the API refuses: the customer may well have asked for a separate one.
+    """
+
+    cycle: OrderCycle
+    is_open: bool
+    customer_order_ids: list[uuid.UUID]
+
+
+def _snapshot_line(product: Product, variant: ProductVariant, quantity: int) -> OrderItem:
+    """An order line as the catalogue stands now — the one place the snapshot is taken.
+
+    Checkout, adding to a placed order and the owner's order for a customer all agree on
+    what a line remembers; a field added to one of three copies is a line that renders
+    differently depending on how it got into the order.
+    """
+    return OrderItem(
+        product_id=product.id,
+        variant_id=variant.id,
+        product_name=product.name,
+        product_slug=product.slug,
+        product_image_url=primary_image_url(product.images),
+        product_price_cents=variant.price_cents,
+        product_volume_ml=variant.volume_ml,
+        quantity=quantity,
+    )
 
 
 @dataclass(frozen=True)
@@ -261,18 +312,7 @@ class OrdersService:
         for cart_item, product, variant in rows:
             line_total_cents = variant.price_cents * cart_item.quantity
             total_cents += line_total_cents
-            order.items.append(
-                OrderItem(
-                    product_id=product.id,
-                    variant_id=variant.id,
-                    product_name=product.name,
-                    product_slug=product.slug,
-                    product_image_url=primary_image_url(product.images),
-                    product_price_cents=variant.price_cents,
-                    product_volume_ml=variant.volume_ml,
-                    quantity=cart_item.quantity,
-                )
-            )
+            order.items.append(_snapshot_line(product, variant, cart_item.quantity))
         order.total_cents = total_cents
 
         self._session.add(order)
@@ -285,6 +325,148 @@ class OrdersService:
         await self._session.execute(delete(CartItem).where(CartItem.id.in_(ordered_ids)))
         await self._session.flush()
         return order
+
+    async def admin_order_cycles(self, user_id: uuid.UUID | None = None) -> list[AdminOrderCycle]:
+        """The cycles an order placed by the owner may go into, the default one first.
+
+        The open cycle, and every cycle that closed within `ADMIN_ORDER_WINDOW`: someone
+        who missed yesterday's deadline is usually meant for yesterday's purchase, which
+        is still under way, even when the next cycle has already opened. The open one is
+        still the default — it is the one nothing about the order would surprise.
+
+        One condition covers both, on purpose: an open cycle has no `closed_at` and a
+        deadline ahead, so `coalesce(closed_at, deadline_at)` is in the future for it.
+        The fallback to the deadline is the same one `_CycleClock` makes, for a cycle the
+        sweep has not stamped yet.
+        """
+        now = datetime.now(UTC)
+        closed_since = func.coalesce(OrderCycle.closed_at, OrderCycle.deadline_at)
+        result = await self._session.execute(
+            select(OrderCycle).where(closed_since > now - ADMIN_ORDER_WINDOW)
+        )
+        cycles = list(result.scalars().all())
+
+        def is_open(cycle: OrderCycle) -> bool:
+            return cycle.deadline_at > now and cycle.status != CycleStatus.CLOSED
+
+        def since(cycle: OrderCycle) -> datetime:
+            return cycle.closed_at if cycle.closed_at is not None else cycle.deadline_at
+
+        cycles.sort(key=lambda cycle: (not is_open(cycle), -since(cycle).timestamp()))
+
+        existing: dict[uuid.UUID, list[uuid.UUID]] = {}
+        if user_id is not None and cycles:
+            rows = await self._session.execute(
+                select(Order.cycle_id, Order.id)
+                .where(
+                    Order.user_id == user_id,
+                    Order.cycle_id.in_([cycle.id for cycle in cycles]),
+                    Order.status.in_(OPEN_STATUSES),
+                )
+                .order_by(Order.created_at)
+            )
+            for cycle_id, order_id in rows.all():
+                existing.setdefault(cycle_id, []).append(order_id)
+
+        return [
+            AdminOrderCycle(
+                cycle=cycle,
+                is_open=is_open(cycle),
+                customer_order_ids=existing.get(cycle.id, []),
+            )
+            for cycle in cycles
+        ]
+
+    async def create_for_customer(
+        self,
+        admin_id: uuid.UUID,
+        request_id: uuid.UUID,
+        user_id: uuid.UUID,
+        cycle_id: uuid.UUID | None,
+        lines: Sequence[tuple[uuid.UUID, int]],
+        note: str | None,
+    ) -> tuple[Order, bool]:
+        """An order the owner places on a customer's behalf, straight from the catalogue.
+
+        A PENDING order like any other from here on — repriced, trimmed by `drop_product`,
+        cancellable by the customer — and the customer's cart is left alone: it is what
+        they are putting together themselves, not the material for this order.
+
+        `cycle_id` None means the default from `admin_order_cycles`. The lines go in at
+        today's prices, under the same rule `add_item` has: a discontinued or sold-out
+        volume is refused, not silently left out — the owner is looking at the list they
+        built, and an order that quietly came out shorter is the worse surprise.
+
+        Idempotent by `request_id`: a repeat returns the order the first request made, and
+        False for "created" so the caller does not announce it twice. The customer's row
+        is locked first, so a repeat sent while the first is still running waits for it
+        and then finds its order, rather than both passing the check and the second
+        failing on the unique constraint.
+        """
+        customer = await self._session.scalar(
+            select(User).where(User.id == user_id, User.deleted_at.is_(None)).with_for_update()
+        )
+        if customer is None:
+            raise CustomerNotFoundError
+
+        placed = await self._session.scalar(
+            select(Order)
+            .options(selectinload(Order.items))
+            .where(Order.request_id == request_id, Order.user_id == customer.id)
+        )
+        if placed is not None:
+            return placed, False
+
+        targets = await self.admin_order_cycles()
+        if cycle_id is None:
+            if not targets:
+                raise NoCycleForOrderError
+            cycle = targets[0].cycle
+        else:
+            match = next((target for target in targets if target.cycle.id == cycle_id), None)
+            if match is None:
+                raise OrderCycleUnavailableError
+            cycle = match.cycle
+
+        # The same volume twice in the request is one line, as it is in a cart.
+        quantities: dict[uuid.UUID, int] = {}
+        for variant_id, quantity in lines:
+            quantities[variant_id] = min(
+                quantities.get(variant_id, 0) + quantity, MAX_ITEM_QUANTITY
+            )
+
+        result = await self._session.execute(
+            select(ProductVariant, Product)
+            .join(Product, Product.id == ProductVariant.product_id)
+            .where(
+                ProductVariant.id.in_(quantities),
+                ProductVariant.deleted_at.is_(None),
+                ProductVariant.in_stock.is_(True),
+                Product.deleted_at.is_(None),
+            )
+            .options(selectinload(Product.images))
+        )
+        found = {variant.id: (variant, product) for variant, product in result.all()}
+        if not quantities or found.keys() != quantities.keys():
+            raise ProductNotFoundError
+
+        order = Order(
+            user_id=customer.id,
+            cycle_id=cycle.id,
+            status=OrderStatus.PENDING,
+            note=note,
+            created_by_id=admin_id,
+            request_id=request_id,
+        )
+        # In the order the owner added them, which is the order they will read them back in.
+        for variant_id, quantity in quantities.items():
+            variant, product = found[variant_id]
+            order.items.append(_snapshot_line(product, variant, quantity))
+        self._recalculate_total(order)
+
+        self._session.add(order)
+        await self._session.flush()
+        return order, True
 
     async def list_for_user(
         self,
@@ -510,18 +692,7 @@ class OrdersService:
             # anything here.
             existing.quantity = min(existing.quantity + quantity, MAX_ITEM_QUANTITY)
         else:
-            order.items.append(
-                OrderItem(
-                    product_id=product.id,
-                    variant_id=variant.id,
-                    product_name=product.name,
-                    product_slug=product.slug,
-                    product_image_url=primary_image_url(product.images),
-                    product_price_cents=variant.price_cents,
-                    product_volume_ml=variant.volume_ml,
-                    quantity=quantity,
-                )
-            )
+            order.items.append(_snapshot_line(product, variant, quantity))
 
         self._recalculate_total(order)
         await self._session.flush()
@@ -919,6 +1090,22 @@ class OrdersService:
 
         result = await self._session.execute(
             select(User).where(User.id.in_(user_ids), User.deleted_at.is_(None))
+        )
+        return {user.id: user for user in result.scalars().all()}
+
+    async def load_creators(self, orders: list[Order]) -> dict[uuid.UUID, User]:
+        """The admins who placed any of these orders for their customers, by id.
+
+        Most pages have none — checkout leaves `created_by_id` empty — and then there is
+        no query at all. An erased account is left out as in `load_customers`; the order
+        still says it came from the panel, it just cannot say from whom.
+        """
+        creator_ids = {order.created_by_id for order in orders if order.created_by_id is not None}
+        if not creator_ids:
+            return {}
+
+        result = await self._session.execute(
+            select(User).where(User.id.in_(creator_ids), User.deleted_at.is_(None))
         )
         return {user.id: user for user in result.scalars().all()}
 

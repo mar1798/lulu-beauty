@@ -157,9 +157,14 @@ class NotificationsService:
         logger.warning("%s; reminder for %s not sent", self._fallback_reason(user), title)
 
     async def send_new_order(
-        self, owner: User, order: Order, customer: User | None, cycle: OrderCycle | None
+        self,
+        owner: User,
+        order: Order,
+        customer: User | None,
+        cycle: OrderCycle | None,
+        creator: User | None = None,
     ) -> None:
-        message = messages.new_order_for_owner(order, customer, cycle)
+        message = messages.new_order_for_owner(order, customer, cycle, creator)
         # Confirm/cancel travel with the notification: the owner reads it on a phone, and
         # the alternative is opening the admin panel to press the same two buttons.
         keyboard = keyboards.order_actions(order.id)
@@ -167,6 +172,27 @@ class NotificationsService:
             logger.info("Notified owner %s about order %s", owner.phone, order.id)
             return
         logger.warning("%s; new order %s not announced", self._fallback_reason(owner), order.id)
+
+    async def send_order_created_for_customer(
+        self, user: User, order: Order, cycle: OrderCycle | None, *, is_open: bool
+    ) -> None:
+        """An order the owner placed for this customer. Every line is listed, so a long
+        one goes out in parts, the link to the orders under the last — like the bill."""
+        parts = split_message(messages.order_created_for_customer(order, cycle, is_open=is_open))
+        for index, part in enumerate(parts):
+            keyboard = keyboards.orders_link() if index == len(parts) - 1 else None
+            if not await self._try_send(
+                user.telegram_chat_id, part, reply_markup=keyboard, parse_mode="HTML"
+            ):
+                logger.warning(
+                    "%s; order %s placed by the owner not announced (part %d of %d)",
+                    self._fallback_reason(user),
+                    order.id,
+                    index + 1,
+                    len(parts),
+                )
+                return
+        logger.info("Told %s about order %s placed by the owner", user.phone, order.id)
 
     async def send_customer_cancellation(
         self, owner: User, order: Order, customer: User | None, *, restored: bool

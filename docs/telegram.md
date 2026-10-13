@@ -314,7 +314,8 @@ with admin rights — `ADMIN` and `SUPER_ADMIN` alike (`recipients.get_owners`).
 
 | Trigger                                                               | Who hears                       |
 | --------------------------------------------------------------------- | ------------------------------- |
-| New order at checkout                                                 | Owner                           |
+| New order — at checkout, or placed by an admin (then it names them)   | Owner                           |
+| Order an admin placed for the customer, listing its lines             | That customer                   |
 | Order status change (incl. the owner undoing their own cancel)        | Customer                        |
 | Order confirmed: the bill, requisites and «📎 Отправить чек»          | Customer                        |
 | Payment receipt sent to the bot                                       | Owner (the file, with verdict)  |

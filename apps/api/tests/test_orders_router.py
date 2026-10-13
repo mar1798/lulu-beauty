@@ -8,10 +8,18 @@ from httpx import ASGITransport, AsyncClient
 
 from app.auth.dependencies import CurrentUser, get_current_user, require_admin
 from app.auth.models import Role, User
+from app.cycles.models import OrderCycle
 from app.db import get_session
 from app.main import app
 from app.orders.models import Order, OrderStatus
-from app.orders.service import DeletedOrder
+from app.orders.service import (
+    AdminOrderCycle,
+    CustomerNotFoundError,
+    DeletedOrder,
+    NoCycleForOrderError,
+    OrderCycleUnavailableError,
+    ProductNotFoundError,
+)
 from app.telegram.service import Delivery
 
 
@@ -30,6 +38,7 @@ def _mock_service(mock_service_cls: MagicMock) -> MagicMock:
     service.list_admin_page = AsyncMock(return_value=([], 0))
     service.admin_summary = AsyncMock(return_value=(0, 0))
     service.load_customers = AsyncMock(return_value={})
+    service.load_creators = AsyncMock(return_value={})
     service.load_item_tags = AsyncMock(return_value={})
     return service
 
@@ -132,6 +141,7 @@ async def _patch_status(client: AsyncClient, order: Order, *, changed: bool) -> 
         service = mock_service_cls.return_value
         service.update_status = AsyncMock(return_value=(order, changed))
         service.load_customers = AsyncMock(return_value={})
+        service.load_creators = AsyncMock(return_value={})
         service.load_item_tags = AsyncMock(return_value={})
         async with client as c:
             response = await c.patch(
@@ -170,9 +180,7 @@ async def test_delete_hands_the_notification_what_the_row_no_longer_holds(
     ):
         service = mock_service_cls.return_value
         service.delete = AsyncMock(
-            return_value=DeletedOrder(
-                order_id=order.id, user_id=order.user_id, status=order.status
-            )
+            return_value=DeletedOrder(order_id=order.id, user_id=order.user_id, status=order.status)
         )
         async with committing_client as c:
             response = await c.delete(f"/admin/orders/{order.id}")
@@ -354,3 +362,124 @@ async def test_message_counts_length_the_way_telegram_does() -> None:
 
     assert code == 422
     send.assert_not_awaited()
+
+
+async def _create(
+    client: AsyncClient,
+    body: dict[str, object],
+    *,
+    error: Exception | None = None,
+    created: bool = True,
+) -> tuple[int, object, MagicMock, AsyncMock, AsyncMock]:
+    order = _order(OrderStatus.PENDING)
+    body = {"requestId": str(uuid.uuid4()), **body}
+    with (
+        patch("app.orders.router.OrdersService") as mock_service_cls,
+        patch("app.orders.router.notify_new_order", new_callable=AsyncMock) as notify_owner,
+        patch(
+            "app.orders.router.notify_order_created_for_customer", new_callable=AsyncMock
+        ) as notify_customer,
+    ):
+        service = _mock_service(mock_service_cls)
+        service.create_for_customer = AsyncMock(return_value=(order, created), side_effect=error)
+        async with client as c:
+            response = await c.post("/admin/orders", json=body)
+    return response.status_code, response.json(), service, notify_owner, notify_customer
+
+
+async def test_create_order_admin_passes_the_lines_and_notifies_both_sides(
+    committing_client: AsyncClient,
+) -> None:
+    request_id, user_id, cycle_id, variant = uuid.uuid4(), uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+    code, _, service, notify_owner, notify_customer = await _create(
+        committing_client,
+        {
+            "requestId": str(request_id),
+            "userId": str(user_id),
+            "cycleId": str(cycle_id),
+            "items": [{"variantId": str(variant), "quantity": 2}],
+            "note": "Без пакета",
+        },
+    )
+
+    assert code == 201
+    args = service.create_for_customer.await_args.args
+    assert args[1:] == (request_id, user_id, cycle_id, [(variant, 2)], "Без пакета")
+    notify_owner.assert_awaited_once()
+    notify_customer.assert_awaited_once()
+
+
+async def test_create_order_admin_announces_a_repeated_request_once(
+    committing_client: AsyncClient,
+) -> None:
+    """The same `requestId` again: the order it already made, and nobody told twice."""
+    with patch("app.orders.router.PaymentsService") as payments_cls:
+        payments_cls.return_value.orders_with_receipts = AsyncMock(return_value=set())
+        code, _, _, notify_owner, notify_customer = await _create(
+            committing_client,
+            {"userId": str(uuid.uuid4()), "items": [{"variantId": str(uuid.uuid4())}]},
+            created=False,
+        )
+
+    assert code == 201
+    notify_owner.assert_not_awaited()
+    notify_customer.assert_not_awaited()
+
+
+async def test_create_order_admin_refuses_an_empty_order(committing_client: AsyncClient) -> None:
+    code, _, service, _, _ = await _create(
+        committing_client, {"userId": str(uuid.uuid4()), "items": []}
+    )
+
+    assert code == 422
+    service.create_for_customer.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
+    ("error", "expected"),
+    [
+        (CustomerNotFoundError(), (404, "user_not_found")),
+        (NoCycleForOrderError(), (409, "no_cycle_for_order")),
+        (OrderCycleUnavailableError(), (409, "order_cycle_unavailable")),
+        (ProductNotFoundError(), (404, "product_not_found")),
+    ],
+)
+async def test_create_order_admin_maps_errors_to_codes(
+    committing_client: AsyncClient, error: Exception, expected: tuple[int, str]
+) -> None:
+    code, body, _, notify_owner, notify_customer = await _create(
+        committing_client,
+        {"userId": str(uuid.uuid4()), "items": [{"variantId": str(uuid.uuid4())}]},
+        error=error,
+    )
+
+    assert (code, body["detail"]) == expected  # type: ignore[index]
+    notify_owner.assert_not_awaited()
+    notify_customer.assert_not_awaited()
+
+
+async def test_admin_order_cycles_maps_user_id_and_shape(client: AsyncClient) -> None:
+    user_id, order_id = uuid.uuid4(), uuid.uuid4()
+    cycle = OrderCycle(
+        id=uuid.uuid4(), label="Октябрь", deadline_at=datetime(2026, 10, 10, tzinfo=UTC)
+    )
+    cycle.closed_at = None
+    with patch("app.orders.router.OrdersService") as mock_service_cls:
+        service = mock_service_cls.return_value
+        service.admin_order_cycles = AsyncMock(
+            return_value=[AdminOrderCycle(cycle=cycle, is_open=True, customer_order_ids=[order_id])]
+        )
+        async with client as c:
+            response = await c.get(f"/admin/orders/cycles?userId={user_id}")
+
+    service.admin_order_cycles.assert_awaited_once_with(user_id)
+    assert response.json() == [
+        {
+            "id": str(cycle.id),
+            "label": "Октябрь",
+            "deadlineAt": "2026-10-10T00:00:00Z",
+            "closedAt": None,
+            "isOpen": True,
+            "customerOrderIds": [str(order_id)],
+        }
+    ]

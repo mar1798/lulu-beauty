@@ -357,6 +357,52 @@ export interface IAdminOrder extends IOrder {
    * стёртого аккаунта: привязка ушла вместе с ним.
    */
   canMessage: boolean
+  /** Заявку оформил админ за покупателя; `null` — покупатель сам. */
+  createdById: string | null
+  /** Имя того админа. `null` и при заявке из админки, если его аккаунта больше нет. */
+  createdByName: string | null
+}
+
+/**
+ * Сбор, в который админ может положить заявку за покупателя: открытый или
+ * закрытый не больше трёх дней назад. Отбирает и сортирует их бэкенд
+ * (`GET /admin/orders/cycles`) — первый в списке и есть сбор по умолчанию.
+ */
+export interface IAdminOrderCycle {
+  id: string
+  label: string | null
+  deadlineAt: string
+  closedAt: string | null
+  isOpen: boolean
+  /** Открытые заявки выбранного покупателя в этом сборе, старые первыми. */
+  customerOrderIds: string[]
+}
+
+/**
+ * Покупатель в выборе «для кого заявка». Узкий срез `IAdminUser`: ровно то,
+ * что показывается в строке, — сам `IAdminUser` подходит сюда как есть.
+ */
+export interface ICustomerOption {
+  id: string
+  name: string
+  phone: string
+  /** Чат с ботом привязан — уведомление о заявке дойдёт. */
+  telegramLinked: boolean
+}
+
+/**
+ * Позиция черновика заявки, пока та собирается в окне и на сервер ещё не
+ * ушла. Цена — текущая каталожная: снимок заявка получит при создании.
+ */
+export interface IAdminOrderDraftLine {
+  variantId: string
+  productName: string
+  productSlug: string
+  productImageUrl: string | null
+  productBrand: string | null
+  productVolumeMl: number | null
+  priceCents: number
+  quantity: number
 }
 
 /**
@@ -1850,6 +1896,58 @@ export interface IModalProps {
   size?: 'sm' | 'md' | 'lg'
   /** Закрытие по клику мимо окна. Отключается там, где форма не должна теряться. */
   isDismissable?: boolean
+}
+
+/**
+ * Выбор покупателя для заявки из админки. Поиск ведёт страница: набранное,
+ * дебаунс и выдача приходят снаружи, виджет только рисует.
+ */
+export interface ICustomerSelectProps {
+  /** Выбранный покупатель; `null` — ещё не выбран, показывается поиск. */
+  value: ICustomerOption | null
+  /** `null` — «Изменить»: выбор снят, поиск снова на месте. */
+  onChange: (customer: ICustomerOption | null) => void
+  query: string
+  onQueryChange: (query: string) => void
+  /** Найденные. `null` — ответа на текущий запрос ещё нет. */
+  results: ICustomerOption[] | null
+  /** Считается от набранного, как у `ProductPicker`: скелетон стоит весь дебаунс. */
+  isSearching?: boolean
+  error?: string | null
+  label?: string
+  disabled?: boolean
+}
+
+/**
+ * Окно «Создать заявку» за покупателя. Целиком управляемое: поиски, черновик
+ * и отправку держит страница, виджет только рисует и сообщает о нажатиях.
+ */
+export interface IAdminOrderDialogProps {
+  isOpen: boolean
+  /** Отмена, крестик, Escape. Спросить ли подтверждение — решает страница. */
+  onClose: () => void
+  customerSelect: ICustomerSelectProps
+  /** Поиск товара — те же пропсы, что у `ProductPicker`, без добавленных. */
+  productSearch: Pick<
+    IProductPickerProps,
+    'query' | 'onQueryChange' | 'products' | 'isSearching' | 'error'
+  >
+  /** `null` — список сборов ещё грузится. Пустой — класть заявку некуда. */
+  cycles: IAdminOrderCycle[] | null
+  cycleId: string | null
+  onCycleChange: (cycleId: string) => void
+  lines: IAdminOrderDraftLine[]
+  onAdd: (variantId: string) => void
+  onQuantityChange: (variantId: string, quantity: number) => void
+  onRemove: (variantId: string) => void
+  note: string
+  onNoteChange: (note: string) => void
+  /** Для ссылки с позиции черновика на страницу товара. */
+  buildProductHref: (productSlug: string) => string
+  isBusy?: boolean
+  /** Почему не создалась — остаётся в окне вместе с черновиком. */
+  error?: string | null
+  onSubmit: () => void
 }
 
 /**

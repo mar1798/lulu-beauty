@@ -189,9 +189,7 @@ def test_orders_repriced_names_every_affected_order_in_one_text() -> None:
     first = uuid.UUID("a1b2c3d4-0000-0000-0000-000000000000")
     second = uuid.UUID("b2c3d4e5-0000-0000-0000-000000000000")
 
-    text = messages.orders_repriced(
-        [_price_change(first, 280_000), _price_change(second, 420_000)]
-    )
+    text = messages.orders_repriced([_price_change(first, 280_000), _price_change(second, 420_000)])
 
     assert "#a1b2c3d4" in text
     assert "#b2c3d4e5" in text
@@ -333,6 +331,35 @@ def test_new_order_for_owner_survives_a_missing_customer_and_cycle() -> None:
     text = messages.new_order_for_owner(_order(), None, None)
 
     assert "-" in text
+
+
+def test_new_order_for_owner_says_it_came_from_the_admin_panel() -> None:
+    order = _order()
+    assert "админке" not in messages.new_order_for_owner(order, None, None)
+
+    order.created_by_id = uuid.uuid4()
+    admin = User(phone="+996700000001", name="Мария")
+    assert "Оформлена в админке: Мария" in messages.new_order_for_owner(order, None, None, admin)
+    # The creator's account gone: still says where the order came from, just not who.
+    assert messages.new_order_for_owner(order, None, None).endswith("Оформлена в админке")
+
+
+def test_order_created_for_customer_lists_the_order_and_what_can_be_done() -> None:
+    order = _order(items=2, total_cents=2000)
+    order.items[0].product_name = "Крем <SPF>"
+    cycle = OrderCycle(deadline_at=datetime(2030, 6, 12, tzinfo=UTC), label="Июнь")
+
+    open_text = messages.order_created_for_customer(order, cycle, is_open=True)
+    closed_text = messages.order_created_for_customer(order, cycle, is_open=False)
+
+    assert "Для вас оформлена заявка #a1b2c3d4 в сборе «Июнь»" in open_text
+    assert "Крем &lt;SPF&gt;" in open_text
+    assert "<b>20 сом</b>" in open_text
+    assert "поменять на сайте" in open_text
+    assert "отменить на сайте" in closed_text
+    assert "поменять" not in closed_text
+    # Short dash in copy, never the long one.
+    assert "—" not in open_text + closed_text
 
 
 def test_my_orders_truncates_and_says_so() -> None:

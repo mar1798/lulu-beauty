@@ -23,7 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.auth.models import User
-from app.cycles.models import OrderCycle
+from app.cycles.models import CycleStatus, OrderCycle
 from app.cycles.scheduler_service import CartRescue, CycleReminder
 from app.db import async_session
 from app.orders.models import Order, OrderStatus
@@ -68,10 +68,44 @@ async def notify_new_order(order_id: uuid.UUID) -> None:
 
             customer = await _load_customer(session, order.user_id)
             cycle = await session.get(OrderCycle, order.cycle_id)
+            creator = (
+                await _load_customer(session, order.created_by_id)
+                if order.created_by_id is not None
+                else None
+            )
             for owner in owners:
-                await notifications_service.send_new_order(owner, order, customer, cycle)
+                await notifications_service.send_new_order(owner, order, customer, cycle, creator)
     except Exception:  # noqa: BLE001 - the order is already committed; see module docstring
         logger.exception("Failed to announce new order %s", order_id)
+
+
+async def notify_order_created_for_customer(order_id: uuid.UUID) -> None:
+    """Tells the customer the owner placed an order for them from the admin panel.
+
+    Whether the cycle is still open is read here, not passed in: it decides what the
+    message offers ("поменять состав" or only "отменить"), and only the row says what
+    is true by the time the task runs.
+    """
+    try:
+        async with async_session() as session:
+            order = await _load_order(session, order_id)
+            if order is None:
+                return
+
+            customer = await _load_customer(session, order.user_id)
+            if customer is None:
+                return
+            cycle = await session.get(OrderCycle, order.cycle_id)
+            is_open = (
+                cycle is not None
+                and cycle.status != CycleStatus.CLOSED
+                and cycle.deadline_at > datetime.now(UTC)
+            )
+            await notifications_service.send_order_created_for_customer(
+                customer, order, cycle, is_open=is_open
+            )
+    except Exception:  # noqa: BLE001 - the order is already committed; see module docstring
+        logger.exception("Failed to tell the customer about order %s", order_id)
 
 
 async def notify_order_status(order_id: uuid.UUID) -> None:

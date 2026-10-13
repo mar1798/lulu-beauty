@@ -10,6 +10,8 @@ from app.common.schemas import PageResponse
 from app.db import get_session
 from app.orders.models import Order, OrderItem, OrderStatus
 from app.orders.schemas import (
+    AdminOrderCreateRequest,
+    AdminOrderCycleResponse,
     AdminOrderMessageRequest,
     AdminOrderPageResponse,
     AdminOrderResponse,
@@ -23,9 +25,12 @@ from app.orders.schemas import (
     OrderStatusUpdateRequest,
 )
 from app.orders.service import (
+    CustomerNotFoundError,
     EmptyCartError,
     LastOrderItemError,
     NoActiveCycleError,
+    NoCycleForOrderError,
+    OrderCycleUnavailableError,
     OrderFlags,
     OrderItemNotFoundError,
     OrderNotEditableError,
@@ -43,6 +48,7 @@ from app.telegram.client import notifications_service
 from app.telegram.notify import (
     notify_new_order,
     notify_order_cancelled_by_customer,
+    notify_order_created_for_customer,
     notify_order_deleted,
     notify_order_status,
 )
@@ -122,11 +128,13 @@ def _admin_order_response(
     customer: User | None,
     tags: Mapping[uuid.UUID, ProductTags],
     with_receipts: set[uuid.UUID],
+    creators: Mapping[uuid.UUID, User] | None = None,
 ) -> AdminOrderResponse:
     # `None` is the erased account, not a rarity: `load_customers` leaves it out of the map
     # so its placeholder name and filled-in phone are never read back, and the dash this
     # response already had for a missing row is exactly the right answer. The order itself
     # is unchanged — what the owner bought is still on it.
+    creator = (creators or {}).get(order.created_by_id) if order.created_by_id is not None else None
     return AdminOrderResponse(
         id=order.id,
         cycle_id=order.cycle_id,
@@ -140,6 +148,8 @@ def _admin_order_response(
         paid_at=order.paid_at,
         has_receipt=order.id in with_receipts,
         can_message=customer is not None and customer.telegram_chat_id is not None,
+        created_by_id=order.created_by_id,
+        created_by_name=creator.name if creator is not None else None,
     )
 
 
@@ -366,11 +376,14 @@ async def list_orders_admin(
     orders, total = await service.list_admin_page(cycle_id, order_status, page, page_size)
     item_count, total_cents = await service.admin_summary(cycle_id, order_status)
     customers = await service.load_customers(orders)
+    creators = await service.load_creators(orders)
     tags = await service.load_item_tags(orders)
     with_receipts = await PaymentsService(session).orders_with_receipts(o.id for o in orders)
     return AdminOrderPageResponse(
         items=[
-            _admin_order_response(order, customers.get(order.user_id), tags, with_receipts)
+            _admin_order_response(
+                order, customers.get(order.user_id), tags, with_receipts, creators
+            )
             for order in orders
         ],
         total=total,
@@ -400,12 +413,88 @@ async def update_order_status(
         raise HTTPException(status.HTTP_409_CONFLICT, "order_status_transition_invalid") from error
 
     customers = await service.load_customers([order])
+    creators = await service.load_creators([order])
     tags = await service.load_item_tags([order])
     with_receipts = await PaymentsService(session).orders_with_receipts([order.id])
     await session.commit()
     if changed:
         background_tasks.add_task(notify_order_status, order.id)
-    return _admin_order_response(order, customers.get(order.user_id), tags, with_receipts)
+    return _admin_order_response(order, customers.get(order.user_id), tags, with_receipts, creators)
+
+
+@router.get("/admin/orders/cycles", response_model=list[AdminOrderCycleResponse])
+async def list_admin_order_cycles(
+    user_id: uuid.UUID | None = Query(default=None, alias="userId"),
+    session: AsyncSession = Depends(get_session),
+    _admin: CurrentUser = Depends(require_admin),
+) -> list[AdminOrderCycleResponse]:
+    """Where an order placed from the panel may go, the default first; empty when nowhere.
+
+    With `userId`, each cycle also names that customer's open orders already in it.
+    """
+    targets = await OrdersService(session).admin_order_cycles(user_id)
+    return [
+        AdminOrderCycleResponse(
+            id=target.cycle.id,
+            label=target.cycle.label,
+            deadline_at=target.cycle.deadline_at,
+            closed_at=target.cycle.closed_at,
+            is_open=target.is_open,
+            customer_order_ids=target.customer_order_ids,
+        )
+        for target in targets
+    ]
+
+
+@router.post(
+    "/admin/orders", response_model=AdminOrderResponse, status_code=status.HTTP_201_CREATED
+)
+async def create_order_admin(
+    body: AdminOrderCreateRequest,
+    background_tasks: BackgroundTasks,
+    session: AsyncSession = Depends(get_session),
+    admin: CurrentUser = Depends(require_admin),
+) -> AdminOrderResponse:
+    """The owner places an order for a customer — open cycle or one that just closed.
+
+    Announced to both sides after the commit: to every admin the way a checkout is, so
+    the others learn where it came from, and to the customer, who did not press anything
+    and would otherwise first hear of it with the bill. A repeat of the same `requestId`
+    returns that order again and announces nothing.
+    """
+    service = OrdersService(session)
+    try:
+        order, created = await service.create_for_customer(
+            admin.id,
+            body.request_id,
+            body.user_id,
+            body.cycle_id,
+            [(line.variant_id, line.quantity) for line in body.items],
+            body.note,
+        )
+    except CustomerNotFoundError as error:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "user_not_found") from error
+    except NoCycleForOrderError as error:
+        raise HTTPException(status.HTTP_409_CONFLICT, "no_cycle_for_order") from error
+    except OrderCycleUnavailableError as error:
+        raise HTTPException(status.HTTP_409_CONFLICT, "order_cycle_unavailable") from error
+    except ProductNotFoundError as error:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "product_not_found") from error
+
+    customers = await service.load_customers([order])
+    creators = await service.load_creators([order])
+    tags = await service.load_item_tags([order])
+    with_receipts = (
+        set() if created else await PaymentsService(session).orders_with_receipts([order.id])
+    )
+    response = _admin_order_response(
+        order, customers.get(order.user_id), tags, with_receipts, creators
+    )
+    await session.commit()
+    if created:
+        background_tasks.add_task(notify_new_order, order.id)
+        background_tasks.add_task(notify_order_created_for_customer, order.id)
+    return response
 
 
 @router.post("/admin/orders/{order_id}/message", status_code=status.HTTP_204_NO_CONTENT)

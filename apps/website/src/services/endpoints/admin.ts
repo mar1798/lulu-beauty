@@ -1,6 +1,7 @@
 import type {
   IAdminChecklist,
   IAdminOrder,
+  IAdminOrderCycle,
   IAdminOrderPage,
   IAdminProductSort,
   IAdminProductSortField,
@@ -301,6 +302,35 @@ export const listAdminOrders = (params: IAdminOrderListParams = {}): Promise<IAd
       pageSize: params.pageSize,
     },
   })
+
+/**
+ * Сборы, в которые админ может положить заявку за покупателя: открытый и
+ * закрытые не больше трёх дней назад, сбор по умолчанию — первым. С `userId`
+ * у каждого сбора приходят открытые заявки этого покупателя в нём.
+ */
+export const listAdminOrderCycles = (userId?: string): Promise<IAdminOrderCycle[]> =>
+  api.get('/admin/orders/cycles', { query: { userId } })
+
+export interface IAdminOrderInput {
+  /**
+   * Один на черновик: повтор с тем же ключом (двойной клик, ответ потерялся)
+   * возвращает уже созданную заявку, а не вторую.
+   */
+  requestId: string
+  userId: string
+  /** Без него бэкенд берёт сбор по умолчанию — первый из `listAdminOrderCycles`. */
+  cycleId?: string
+  items: { variantId: string; quantity: number }[]
+  note?: string
+}
+
+/**
+ * Заявка за покупателя из админки. Уходит «Ожидает подтверждения», по текущим
+ * ценам каталога; бот сообщает о ней и покупателю, и всем админам. Снятый с
+ * продажи или кончившийся товар отклоняет заявку целиком (`product_not_found`).
+ */
+export const createAdminOrder = (input: IAdminOrderInput): Promise<IAdminOrder> =>
+  api.post('/admin/orders', { body: input })
 
 export const updateOrderStatus = (orderId: string, status: OrderStatus): Promise<IAdminOrder> =>
   api.patch(`/admin/orders/${encodeURIComponent(orderId)}/status`, { body: { status } })
