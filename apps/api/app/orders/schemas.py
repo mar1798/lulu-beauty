@@ -10,9 +10,17 @@ from app.orders.models import OrderStatus, PendingStage
 # Mirrored by `OWNER_MESSAGE_MAX_LENGTH` on the website, which counts down to it.
 MAX_OWNER_MESSAGE_LENGTH = 3500
 
+# Lines in one order the owner builds by hand. A ceiling on the request, not a rule
+# about orders: a checkout is bounded by the cart, and this one by nothing else.
+MAX_ADMIN_ORDER_LINES = 100
+
 __all__ = [
+    "MAX_ADMIN_ORDER_LINES",
     "MAX_ITEM_QUANTITY",
     "MAX_OWNER_MESSAGE_LENGTH",
+    "AdminOrderCreateRequest",
+    "AdminOrderCycleResponse",
+    "AdminOrderLine",
     "AdminOrderMessageRequest",
     "AdminOrderPageResponse",
     "AdminOrderResponse",
@@ -56,6 +64,41 @@ class OrderItemAddRequest(CamelModel):
 
     variant_id: uuid.UUID
     quantity: int = Field(default=1, ge=1, le=MAX_ITEM_QUANTITY)
+
+
+class AdminOrderLine(CamelModel):
+    variant_id: uuid.UUID
+    quantity: int = Field(default=1, ge=1, le=MAX_ITEM_QUANTITY)
+
+
+class AdminOrderCreateRequest(CamelModel):
+    """An order the owner places for a customer from the admin panel.
+
+    `cycle_id` omitted means the default — the open cycle, or the latest one that closed
+    within `ADMIN_ORDER_WINDOW` (`GET /admin/orders/cycles` lists the choice).
+
+    `request_id` is made by the panel once per draft: sending the same one again returns
+    the order it already created instead of placing a second.
+    """
+
+    request_id: uuid.UUID
+    user_id: uuid.UUID
+    cycle_id: uuid.UUID | None = None
+    items: list[AdminOrderLine] = Field(min_length=1, max_length=MAX_ADMIN_ORDER_LINES)
+    note: str | None = Field(default=None, max_length=2000)
+
+
+class AdminOrderCycleResponse(CamelModel):
+    """A cycle an order may go into from the admin panel, as the form offers it."""
+
+    id: uuid.UUID
+    label: str | None
+    deadline_at: datetime
+    closed_at: datetime | None
+    is_open: bool
+    # The chosen customer's open orders already in this cycle, oldest first — empty
+    # without `userId`. The form warns about them; the API does not refuse a second one.
+    customer_order_ids: list[uuid.UUID]
 
 
 class OrderItemResponse(CamelModel):
@@ -124,6 +167,10 @@ class AdminOrderResponse(OrderResponse):
     # The customer's chat is bound to the bot, so «Написать через бота» has somewhere to
     # go. False for an erased account too — its binding went with the rest of it.
     can_message: bool = False
+    # Set when an admin placed the order for the customer from the panel; null for the
+    # customer's own checkout. The name is null too when that admin's account is gone.
+    created_by_id: uuid.UUID | None = None
+    created_by_name: str | None = None
 
 
 class AdminOrderMessageRequest(CamelModel):

@@ -9,6 +9,12 @@ from httpx import ASGITransport, AsyncClient
 from app.auth.dependencies import CurrentUser, require_admin
 from app.auth.models import Role
 from app.cycles.models import CycleStatus, OrderCycle
+from app.cycles.service import (
+    CycleClosedRecentlyError,
+    CycleHasOrdersError,
+    CycleNotClosedError,
+    CycleOrdersChangedError,
+)
 from app.db import get_session
 from app.main import app
 
@@ -92,3 +98,35 @@ async def test_moving_an_open_cycles_deadline_still_only_reports_the_move(
     assert response.status_code == 200
     deadline_moved.assert_awaited_once_with(cycle_id, previous_deadline_at)
     announce.assert_not_awaited()
+
+
+async def test_a_delete_names_the_count_the_owner_confirmed(client: AsyncClient) -> None:
+    """Without the count the server would be deciding what the owner agreed to lose."""
+    async with client as c:
+        response = await c.delete(f"/admin/cycles/{uuid.uuid4()}")
+
+    assert response.status_code == 422
+
+
+@pytest.mark.parametrize(
+    ("error", "code"),
+    [
+        (CycleNotClosedError, "cycle_not_closed"),
+        (CycleClosedRecentlyError, "cycle_closed_recently"),
+        (CycleHasOrdersError, "cycle_has_orders"),
+        (CycleOrdersChangedError, "cycle_orders_changed"),
+    ],
+)
+async def test_a_refused_delete_says_why(
+    client: AsyncClient, error: type[Exception], code: str
+) -> None:
+    cycle_id = uuid.uuid4()
+    with patch("app.cycles.router.CyclesService") as mock_service_cls:
+        service = mock_service_cls.return_value
+        service.delete = AsyncMock(side_effect=error)
+        async with client as c:
+            response = await c.delete(f"/admin/cycles/{cycle_id}?expectedOrders=3")
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == code
+    service.delete.assert_awaited_once_with(cycle_id, expected_orders=3)

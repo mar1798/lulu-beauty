@@ -17,17 +17,22 @@ const FRACTION_DIGITS = 2
 
 export const DEFAULT_CURRENCY = 'сом'
 
-export const formatPrice = (priceCents: number, currency: string = DEFAULT_CURRENCY): string => {
+/**
+ * Только число — «1 250» — для таблиц, где валюта одна на колонку и стоит в
+ * её заголовке или итоге, а не в каждой ячейке.
+ */
+export const formatAmount = (priceCents: number): string => {
   const units = priceCents / CENTS_IN_UNIT
   const hasFraction = priceCents % CENTS_IN_UNIT !== 0
 
-  const amount = new Intl.NumberFormat('ru-RU', {
+  return new Intl.NumberFormat('ru-RU', {
     minimumFractionDigits: hasFraction ? FRACTION_DIGITS : 0,
     maximumFractionDigits: FRACTION_DIGITS,
   }).format(units)
-
-  return `${amount} ${currency}`
 }
+
+export const formatPrice = (priceCents: number, currency: string = DEFAULT_CURRENCY): string =>
+  `${formatAmount(priceCents)} ${currency}`
 
 export const Price: FC<IPriceProps & IBasicStyling> = ({
   priceCents,
@@ -43,6 +48,6 @@ export const Price: FC<IPriceProps & IBasicStyling> = ({
       цена одна, — в корзине и в заявке.
     */}
     {isFrom && <span className={styles.from}>от </span>}
-    {formatPrice(priceCents, currency)}
+    <span className={styles.amount}>{formatPrice(priceCents, currency)}</span>
   </span>
 )

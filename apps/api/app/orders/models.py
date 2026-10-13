@@ -2,7 +2,17 @@ import enum
 import uuid
 from datetime import datetime, timedelta
 
-from sqlalchemy import BigInteger, DateTime, ForeignKey, Index, Integer, String, Text, text
+from sqlalchemy import (
+    BigInteger,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    text,
+)
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -98,6 +108,12 @@ PURCHASE_WINDOW = timedelta(days=5)
 # the first number is what the shop aims for, this one is what it admits to.
 UNFULFILLED_AFTER = timedelta(days=10)
 
+# How long after a cycle closes the owner may still put an order into it on a customer's
+# behalf — someone who missed the deadline while the shopping is still going on. Kept
+# inside `PURCHASE_WINDOW` on purpose: an order added later would greet its customer with
+# "Закупка идёт дольше обычного" on the day it was made.
+ADMIN_ORDER_WINDOW = timedelta(days=3)
+
 
 class Order(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "orders"
@@ -107,6 +123,7 @@ class Order(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __table_args__ = (
         Index("ix_orders_created_at", text("created_at DESC")),
         Index("ix_orders_cycle_created", "cycle_id", text("created_at DESC")),
+        UniqueConstraint("request_id", name="uq_orders_request_id"),
     )
 
     user_id: Mapped[uuid.UUID] = mapped_column(
@@ -133,6 +150,18 @@ class Order(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     # pays for; `created_at` would not do, since a cycle collects for weeks before any
     # of its orders is confirmed.
     confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # The admin who placed this order for its customer (`OrdersService.create_for_customer`);
+    # NULL for the customer's own checkout. With several admins, "where did this заявка
+    # come from" otherwise has no answer. SET NULL rather than CASCADE: the order is the
+    # customer's, and it outlives whoever typed it in.
+    created_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL")
+    )
+    # The key the admin panel sends with an order it places (one per draft), unique so a
+    # retry — a double click, a resend after a dropped response — finds the order it
+    # already made instead of making a second one. Checkout needs none: the cart row is
+    # its key. NULL for every checkout, and Postgres lets NULLs repeat under UNIQUE.
+    request_id: Mapped[uuid.UUID | None] = mapped_column()
 
     items: Mapped[list["OrderItem"]] = relationship(
         back_populates="order", cascade="all, delete-orphan"

@@ -23,6 +23,13 @@ class OrderCycleResponse(CamelModel):
     closed_at: datetime | None
 
 
+class CycleDeletionResponse(CamelModel):
+    """What deleting the cycle would take with it — see `CyclesService.deletion`."""
+
+    orders: int
+    blocking_orders: int
+
+
 class CycleCreateRequest(CamelModel):
     deadline_at: Deadline
     label: str | None = Field(default=None, max_length=255)

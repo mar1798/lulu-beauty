@@ -172,7 +172,16 @@ def cart_moved_to_wishlist(title: str, saved: int, dropped: int) -> str:
     return "\n".join(lines)
 
 
-def new_order_for_owner(order: Order, customer: User | None, cycle: OrderCycle | None) -> str:
+def new_order_for_owner(
+    order: Order,
+    customer: User | None,
+    cycle: OrderCycle | None,
+    creator: User | None = None,
+) -> str:
+    """`creator` is the admin who placed the order from the panel. The line goes by the
+    order's own `created_by_id`, so an order whose creator's account is gone still says
+    where it came from — every admin gets this message, and the one who typed it in is
+    the only one who knows without being told."""
     lines = [
         f"🆕 Новая заявка {order_reference(order.id)}",
         # `None` is the erased account, not a rarity: `notify._load_customer` hands it
@@ -183,6 +192,8 @@ def new_order_for_owner(order: Order, customer: User | None, cycle: OrderCycle |
         f"Позиций: {len(order.items)}",
         f"Сумма: {format_price(order.total_cents)}",
     ]
+    if order.created_by_id is not None:
+        lines.append(f"Оформлена в админке: {creator.name}" if creator else "Оформлена в админке")
     if order.note:
         lines.append(f"Комментарий: {order.note}")
     return "\n".join(lines)
@@ -306,6 +317,36 @@ def order_status_changed(order: Order) -> str | None:
     if news is None:
         return None
     return f"Заявка {order_reference(order.id)} {news}"
+
+
+def order_created_for_customer(order: Order, cycle: OrderCycle | None, *, is_open: bool) -> str:
+    """Заявка, которую за покупателя оформили в админке, — первое, что он о ней слышит.
+
+    Сам он ничего не нажимал, поэтому сообщение перечисляет всё, что в неё вошло, — как
+    счёт, но без реквизитов: сумма ещё не окончательная (цена меняется вместе с
+    каталогом до подтверждения), и платить пока не за что. Что покупатель может с ней
+    сделать, зависит от сбора: в открытом — менять состав, в закрытом — только отменить.
+
+    HTML, как и счёт: названия товаров экранируются в `_bill_line`.
+    """
+    where = f" в сборе {html.escape(cycle_title(cycle))}" if cycle else ""
+    action = (
+        "Пока сбор открыт, состав можно поменять на сайте."
+        if is_open
+        else "Если заявка не нужна - её можно отменить на сайте."
+    )
+    return "\n".join(
+        [
+            f"Для вас оформлена заявка {order_reference(order.id)}{where}:",
+            f"🛍{_items_count(order)}",
+            *(_bill_line(item) for item in order.items),
+            "",
+            f"Сумма: <b>{format_price(order.total_cents, grouped=False)}</b>",
+            "",
+            "Заявка ожидает подтверждения. Когда подтвердим - пришлём сумму к оплате и реквизиты.",
+            action,
+        ]
+    )
 
 
 # Where the money goes. Written into the text rather than kept in settings: it is part
@@ -760,8 +801,7 @@ def stale_orders_for_owner(cycle: OrderCycle, count: int) -> str:
     orders = plural(count, "заявка", "заявки", "заявок")
     waiting = plural(count, "ждёт", "ждут", "ждут")
     decision = (
-        "Подтвердите её, если всё-таки закупили, иначе отмените - "
-        "и человек перестанет ждать."
+        "Подтвердите её, если всё-таки закупили, иначе отмените - и человек перестанет ждать."
         if count == 1
         else "Подтвердите те, что вы всё-таки закупили, остальные отмените - "
         "и люди перестанут ждать."

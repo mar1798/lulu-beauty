@@ -1,4 +1,5 @@
 import uuid
+from datetime import datetime
 from enum import StrEnum
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
@@ -7,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth import token_service
 from app.auth.dependencies import CurrentUser, load_admin, require_admin
 from app.common.schemas import CamelModel
+from app.cycles.service import CyclesService
 from app.db import get_session
 from app.export.products import CatalogExportService
 from app.export.service import ExportService, content_disposition
@@ -36,6 +38,30 @@ class ExportLinkRequest(CamelModel):
 
 class ExportLinkResponse(CamelModel):
     token: str
+
+
+class ChecklistCycle(CamelModel):
+    id: uuid.UUID
+    label: str | None
+    deadline_at: datetime
+    # False when no cycle is collecting and the list is the last finished one's.
+    is_active: bool
+
+
+class ChecklistItem(CamelModel):
+    product_name: str
+    # None when the product row is gone: the name stays, the link does not.
+    product_slug: str | None
+    volume_ml: int | None
+    brand: str
+    quantity: int
+    unit_price_cents: int
+
+
+class ChecklistResponse(CamelModel):
+    # None only when the shop has never had a cycle to show.
+    cycle: ChecklistCycle | None
+    items: list[ChecklistItem]
 
 
 def _xlsx(content: bytes, filename: str) -> Response:
@@ -81,6 +107,43 @@ async def export_orders(
     _admin: CurrentUser = Depends(require_admin),
 ) -> Response:
     return await _orders_file(session, cycle_id, order_status, include_prices)
+
+
+@router.get("/admin/checklist", response_model=ChecklistResponse)
+async def get_checklist(
+    session: AsyncSession = Depends(get_session),
+    _admin: CurrentUser = Depends(require_admin),
+) -> ChecklistResponse:
+    """The purchase list of the open cycle, or of the last closed one when none is open.
+
+    The cycle is picked here rather than by the page: the owner opens this from a phone in
+    a shop, and the question is never "which cycle" — it is "what do I still have to buy".
+    """
+    cycles = CyclesService(session)
+    cycle = await cycles.get_active_cycle()
+    is_active = cycle is not None
+    if cycle is None:
+        cycle = await cycles.get_latest_closed_cycle()
+    if cycle is None:
+        return ChecklistResponse(cycle=None, items=[])
+
+    rows = await ExportService(session).checklist_rows(cycle.id)
+    return ChecklistResponse(
+        cycle=ChecklistCycle(
+            id=cycle.id, label=cycle.label, deadline_at=cycle.deadline_at, is_active=is_active
+        ),
+        items=[
+            ChecklistItem(
+                product_name=row.product_name,
+                product_slug=row.product_slug,
+                volume_ml=row.volume_ml,
+                brand=row.brand,
+                quantity=row.quantity,
+                unit_price_cents=row.unit_price_cents,
+            )
+            for row in rows
+        ],
+    )
 
 
 @router.get("/admin/export/products")

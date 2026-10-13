@@ -1,5 +1,7 @@
 import type {
+  IAdminChecklist,
   IAdminOrder,
+  IAdminOrderCycle,
   IAdminOrderPage,
   IAdminProductSort,
   IAdminProductSortField,
@@ -263,8 +265,24 @@ export const updateCycle = (cycleId: string, input: Partial<ICycleInput>): Promi
 export const closeCycle = (cycleId: string): Promise<IOrderCycle> =>
   api.post(`/admin/cycles/${encodeURIComponent(cycleId)}/close`)
 
-export const deleteCycle = (cycleId: string): Promise<void> =>
-  api.remove(`/admin/cycles/${encodeURIComponent(cycleId)}`)
+/** Что заберёт с собой удаление сбора — из этого строится подтверждение. */
+export interface ICycleDeletion {
+  /** Все заявки сбора: столько удалится вместе с ним. */
+  orders: number
+  /** Заявки в работе, с оплатой или с чеком: пока они есть, бэкенд сбор не удалит. */
+  blockingOrders: number
+}
+
+export const getCycleDeletion = (cycleId: string): Promise<ICycleDeletion> =>
+  api.get(`/admin/cycles/${encodeURIComponent(cycleId)}/deletion`)
+
+/**
+ * Удаляет закрытый сбор вместе с оставшимися в нём заявками. `expectedOrders` —
+ * число из подтверждения: если на бэкенде их окажется другое число, он ответит
+ * `cycle_orders_changed` и ничего не удалит.
+ */
+export const deleteCycle = (cycleId: string, expectedOrders: number): Promise<void> =>
+  api.remove(`/admin/cycles/${encodeURIComponent(cycleId)}`, { query: { expectedOrders } })
 
 // --- Заказы ---
 
@@ -284,6 +302,35 @@ export const listAdminOrders = (params: IAdminOrderListParams = {}): Promise<IAd
       pageSize: params.pageSize,
     },
   })
+
+/**
+ * Сборы, в которые админ может положить заявку за покупателя: открытый и
+ * закрытые не больше трёх дней назад, сбор по умолчанию — первым. С `userId`
+ * у каждого сбора приходят открытые заявки этого покупателя в нём.
+ */
+export const listAdminOrderCycles = (userId?: string): Promise<IAdminOrderCycle[]> =>
+  api.get('/admin/orders/cycles', { query: { userId } })
+
+export interface IAdminOrderInput {
+  /**
+   * Один на черновик: повтор с тем же ключом (двойной клик, ответ потерялся)
+   * возвращает уже созданную заявку, а не вторую.
+   */
+  requestId: string
+  userId: string
+  /** Без него бэкенд берёт сбор по умолчанию — первый из `listAdminOrderCycles`. */
+  cycleId?: string
+  items: { variantId: string; quantity: number }[]
+  note?: string
+}
+
+/**
+ * Заявка за покупателя из админки. Уходит «Ожидает подтверждения», по текущим
+ * ценам каталога; бот сообщает о ней и покупателю, и всем админам. Снятый с
+ * продажи или кончившийся товар отклоняет заявку целиком (`product_not_found`).
+ */
+export const createAdminOrder = (input: IAdminOrderInput): Promise<IAdminOrder> =>
+  api.post('/admin/orders', { body: input })
 
 export const updateOrderStatus = (orderId: string, status: OrderStatus): Promise<IAdminOrder> =>
   api.patch(`/admin/orders/${encodeURIComponent(orderId)}/status`, { body: { status } })
@@ -309,3 +356,12 @@ export const messageCustomer = (orderId: string, text: string): Promise<void> =>
  */
 export const deleteOrder = (orderId: string): Promise<void> =>
   api.remove(`/admin/orders/${encodeURIComponent(orderId)}`)
+
+// --- Чек-лист закупки ---
+
+/**
+ * Что купить по открытому сбору, а если открытого нет — по последнему
+ * закрытому: сбор выбирает бэкенд. Строки те же, что в xlsx-выгрузке с
+ * ценами, без отменённых заявок.
+ */
+export const getAdminChecklist = (): Promise<IAdminChecklist> => api.get('/admin/checklist')

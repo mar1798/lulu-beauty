@@ -142,9 +142,7 @@ class _Rule:
             stale = [key for key, bucket in self.buckets.items() if bucket.is_idle(now)]
             for key in stale:
                 del self.buckets[key]
-            logger.info(
-                "Pruned %d idle rate-limit buckets, %d left", len(stale), len(self.buckets)
-            )
+            logger.info("Pruned %d idle rate-limit buckets, %d left", len(stale), len(self.buckets))
 
         while len(self.buckets) > MAX_BUCKETS:
             # `popitem(last=False)` is the oldest insertion — buckets are never re-inserted,

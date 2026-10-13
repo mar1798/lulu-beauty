@@ -65,16 +65,30 @@ describe('AdminCycleCalendar', () => {
   })
 
   /*
-    Прошедший сбор менять нечему: заявки в нём посчитаны и разосланы, а удаление
-    стёрло бы историю. Кнопки, которые почти всегда кончались бы отказом бэкенда,
-    только приглашают ошибиться — поэтому их нет вовсе.
+    Открытый сбор не удаляется вовсе: он ещё принимает заявки, и удаление
+    стёрло бы их у покупателей из-под рук.
   */
-  it('оставляет прошедший сбор только для чтения', async () => {
+  it('не предлагает удалить открытый сбор', async () => {
     const props = feedAdminCycleCalendar()
+
+    renderWidget(<AdminCycleCalendar {...props} />)
+    await clickDay(activeDay(props))
+
+    expect(screen.queryByRole('button', { name: /Удалить/ })).not.toBeInTheDocument()
+  })
+
+  /*
+    Прошедший сбор менять нечему: заявки в нём посчитаны и разосланы. Остаётся
+    одно действие - удалить его целиком (например, тестовый).
+  */
+  it('у прошедшего сбора оставляет только удаление', async () => {
+    const props = feedAdminCycleCalendar()
+    const onDelete = vi.fn()
 
     renderWidget(
       <AdminCycleCalendar
         {...props}
+        onDelete={onDelete}
         month="2026-03"
         today="2026-04-01"
         activeCycleId={null}
@@ -94,7 +108,7 @@ describe('AdminCycleCalendar', () => {
     )
     await clickDay(10)
 
-    for (const name of ['Сохранить', 'Назначить сбор', 'Удалить', 'Закрыть сейчас']) {
+    for (const name of ['Сохранить', 'Назначить сбор', 'Закрыть сейчас']) {
       expect(screen.queryByRole('button', { name })).not.toBeInTheDocument()
     }
 
@@ -105,6 +119,48 @@ describe('AdminCycleCalendar', () => {
 
     expect(time).toHaveTextContent('20:00')
     expect(label).toHaveTextContent('Сбор на март')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Удалить сбор' }))
+
+    expect(onDelete).toHaveBeenCalledWith(expect.objectContaining({ id: 'closed' }))
+  })
+
+  /*
+    Когда сбор удалять рано, решает страница; календарь показывает её причину
+    и кнопку не пускает.
+  */
+  it('объясняет, почему прошедший сбор пока не удалить', async () => {
+    const props = feedAdminCycleCalendar()
+    const onDelete = vi.fn()
+    const reason = 'Сбор закрыт меньше десяти дней назад'
+
+    renderWidget(
+      <AdminCycleCalendar
+        {...props}
+        onDelete={onDelete}
+        deleteUnavailableReason={() => reason}
+        month="2026-03"
+        today="2026-03-12"
+        activeCycleId={null}
+        cycles={[
+          {
+            id: 'closed',
+            deadlineAt: '2026-03-10T14:00:00.000Z',
+            label: null,
+            status: 'CLOSED',
+            reminderSentAt: null,
+            finalReminderSentAt: null,
+            closedAt: '2026-03-10T14:00:00.000Z',
+          },
+        ]}
+      />
+    )
+    await clickDay(10)
+    await userEvent.click(screen.getByRole('button', { name: /Удалить сбор/ }))
+
+    expect(onDelete).not.toHaveBeenCalled()
+    /* Дважды: скрытой подписью кнопки и строкой под ней. */
+    expect(screen.getAllByText(reason)).toHaveLength(2)
   })
 
   /*

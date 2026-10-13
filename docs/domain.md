@@ -146,6 +146,33 @@ deliberately so — half of it would leave carts nobody can rescue:
    the request; the two customer broadcasts run as a background task
    (`notify_cycle_closed_in_background`), or the button spun for half a minute on a phone.
 
+### Deleting a cycle
+
+`DELETE /admin/cycles/{id}?expectedOrders=N` removes a cycle only once nothing in it is
+anyone's open business (`CyclesService.delete`, which locks the cycle and its orders):
+
+- It is **`CLOSED`** — `409 cycle_not_closed` otherwise. An open cycle is still taking
+  orders; a mistaken one is edited, not deleted.
+- It closed at least **ten days** ago (`DELETABLE_AFTER`, from `closed_at`) —
+  `409 cycle_closed_recently`. The days after the deadline are when its orders are
+  confirmed, billed, paid for and handed over, and the bound is `UNFULFILLED_AFTER` on
+  purpose: until then a customer may still restore their own cancellation, and a shorter
+  rule (it used to be a week) deleted orders the site was still offering to bring back.
+- None of its orders is **open** (`OPEN_STATUSES`), **paid** (`paid_at`, whatever the
+  status) or carrying a **payment receipt** of any verdict — `409 cycle_has_orders`.
+  `paid_at` alone is not proof of no money: taking an order back to `PENDING` clears it,
+  so a paid order cancelled, restored and cancelled again looks unpaid, and only its
+  receipt remembers the transfer. A test cycle goes once its orders are cancelled.
+
+What is left — cancelled and completed orders nobody sent money for — goes with the
+cycle, items included (all `ON DELETE CASCADE`), and nobody is notified. Only
+if there are exactly `N` of them: the admin page reads `GET /admin/cycles/{id}/deletion`
+(`orders`, `blockingOrders`) to build its confirmation and sends the same count back, so a
+change in between is `409 cycle_orders_changed` instead of a delete nobody agreed to. Its
+carts were already emptied into wishlists when it closed, so no rescue runs here.
+`CyclesService.update` takes the same row lock, so reopening a cycle while it is being
+deleted ends in `404 cycle_not_found` rather than a failed write.
+
 ### Deadline reminders
 
 Two stages (`app/cycles/reminders.py`), most urgent first: **3h** (`final_reminder_sent_at`,
@@ -332,6 +359,41 @@ the same reason a price change is pulled through by **variant** (`reprice_varian
 order for 30 ml must not get more expensive because the 50 ml did. The owner's purchase list
 splits by volume too — 30 ml and 50 ml are two things to buy.
 
+### Orders placed by an admin
+
+An admin can place an order for any live account from the orders panel (`POST /admin/orders`,
+`OrdersService.create_for_customer`) — someone who missed the deadline, or asked in a
+message rather than on the site. It is an ordinary `PENDING` order from then on: repriced
+and trimmed like any other, cancellable by its customer. What differs is how it is made:
+
+- **Which cycle.** The open one, or any that closed within `ADMIN_ORDER_WINDOW` (3 days,
+  from `closed_at`, falling back to the deadline like `PendingStage` does). The form offers
+  the choice (`GET /admin/orders/cycles`), open cycle first and default: someone who missed
+  yesterday's deadline usually belongs in yesterday's purchase, which is still under way
+  even when the next cycle has already opened. Nothing fits — `409 no_cycle_for_order`;
+  the picked cycle left the window while the form was open — `409 order_cycle_unavailable`.
+  The window is kept inside `PURCHASE_WINDOW` on purpose (a test holds it there): an order
+  added later would read «Закупка идёт дольше обычного» on the day it was made.
+- **The lines** come from the catalogue, not from the customer's cart, which is left alone.
+  Same rule as adding to a placed order: a discontinued or sold-out volume refuses the
+  whole order (`404 product_not_found`) rather than being silently dropped from it.
+- **`orders.created_by_id`** names the admin (`createdById`/`createdByName` on the admin
+  response); NULL for a checkout. With several admins, it is the answer to "where did this
+  заявка come from".
+- **Placing is idempotent.** The panel makes a `requestId` once per draft, and
+  `orders.request_id` is unique: the same key again (a double click, a resend after a lost
+  response) returns the order it already made, and nobody is notified twice. The customer's
+  row is locked first, so a repeat that arrives mid-request waits and then finds that order.
+  Checkout needs no key — the locked cart row plays that part.
+- **A second order in the same cycle is warned about, not refused.** With `userId`,
+  `GET /admin/orders/cycles` lists that customer's open orders in each cycle, and the form
+  shows them; the customer may well have asked for a separate one.
+- **Both sides are told** after the commit: every admin gets the usual new-order message
+  with «Оформлена в админке: <имя>», and the customer gets the order's lines and sum —
+  they pressed nothing, and the bill would otherwise be the first they heard of it. The
+  message says what they can do with it: change it while the cycle is open, cancel it
+  once it has closed.
+
 ### Statuses
 
 ```
@@ -476,6 +538,16 @@ and one summed line would be a number nobody can act on. The volume rides in the
 ("Сыворотка Centella, 50 мл"): the sheet is read one line at a time, and a far-right column
 is one the eye has to travel to on every row. It is read by a person (or handed to a
 supplier) and never uploaded back.
+
+`GET /admin/checklist` is the same purchase list on screen, for the owner walking round a
+shop with a phone: the rows of the sheet with prices, from the open cycle or — when none is
+open — the last closed one (`CyclesService.get_latest_closed_cycle`), picked by the API
+rather than the page. Cancelled orders are left out, since the checklist has no status
+filter of its own. Each name links to the product page by the live catalogue slug
+(none once the product row is gone). The "bought" ticks are not stored on the server: they live in the
+browser's `localStorage` (`useChecklistMarks`), keyed by cycle, and a row is identified by
+name + volume + price — not quantity, so a cancellation after the purchase does not untick
+what was already bought.
 
 `GET /admin/export/products` dumps the live catalogue, and exists for the round trip:
 export → edit prices and stock in Excel → upload the same file back through

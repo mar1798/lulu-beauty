@@ -1,5 +1,7 @@
 import uuid
 from collections.abc import Iterator
+from datetime import UTC, datetime
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -10,6 +12,7 @@ from app.auth import token_service
 from app.auth.dependencies import CurrentUser, require_admin
 from app.auth.models import Role
 from app.db import get_session
+from app.export.service import OrderExportRow
 from app.main import app
 from app.orders.models import OrderStatus
 
@@ -111,3 +114,77 @@ async def test_anything_but_a_valid_download_link_is_refused(
 
     assert response.status_code == 401
     assert response.json()["detail"] == "export_link_invalid"
+
+
+def _cycle(label: str) -> SimpleNamespace:
+    return SimpleNamespace(
+        id=uuid.uuid4(), label=label, deadline_at=datetime(2030, 6, 1, tzinfo=UTC)
+    )
+
+
+async def test_the_checklist_shows_the_open_cycle(client: AsyncClient) -> None:
+    active = _cycle("Июнь")
+    row = OrderExportRow(
+        product_name="Крем",
+        volume_ml=50,
+        brand="Lulu",
+        quantity=3,
+        unit_price_cents=15000,
+        product_slug="krem",
+    )
+
+    with (
+        patch("app.export.router.CyclesService") as cycles_cls,
+        patch("app.export.router.ExportService") as service_cls,
+    ):
+        cycles_cls.return_value.get_active_cycle = AsyncMock(return_value=active)
+        cycles_cls.return_value.get_latest_closed_cycle = AsyncMock()
+        service_cls.return_value.checklist_rows = AsyncMock(return_value=[row])
+        async with client as c:
+            response = await c.get("/admin/checklist")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["cycle"]["id"] == str(active.id)
+    assert body["cycle"]["isActive"] is True
+    assert body["items"] == [
+        {
+            "productName": "Крем",
+            "productSlug": "krem",
+            "volumeMl": 50,
+            "brand": "Lulu",
+            "quantity": 3,
+            "unitPriceCents": 15000,
+        }
+    ]
+    cycles_cls.return_value.get_latest_closed_cycle.assert_not_awaited()
+    service_cls.return_value.checklist_rows.assert_awaited_once_with(active.id)
+
+
+async def test_without_an_open_cycle_the_checklist_falls_back_to_the_last_closed_one(
+    client: AsyncClient,
+) -> None:
+    closed = _cycle("Май")
+
+    with (
+        patch("app.export.router.CyclesService") as cycles_cls,
+        patch("app.export.router.ExportService") as service_cls,
+    ):
+        cycles_cls.return_value.get_active_cycle = AsyncMock(return_value=None)
+        cycles_cls.return_value.get_latest_closed_cycle = AsyncMock(return_value=closed)
+        service_cls.return_value.checklist_rows = AsyncMock(return_value=[])
+        async with client as c:
+            response = await c.get("/admin/checklist")
+
+    assert response.json()["cycle"]["isActive"] is False
+    service_cls.return_value.checklist_rows.assert_awaited_once_with(closed.id)
+
+
+async def test_a_shop_without_cycles_gets_an_empty_checklist(client: AsyncClient) -> None:
+    with patch("app.export.router.CyclesService") as cycles_cls:
+        cycles_cls.return_value.get_active_cycle = AsyncMock(return_value=None)
+        cycles_cls.return_value.get_latest_closed_cycle = AsyncMock(return_value=None)
+        async with client as c:
+            response = await c.get("/admin/checklist")
+
+    assert response.json() == {"cycle": None, "items": []}

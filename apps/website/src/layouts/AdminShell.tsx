@@ -7,6 +7,7 @@ import {
   IconBox,
   IconCalendar,
   IconChart,
+  IconChecklist,
   IconTags,
   IconUpload,
   IconCart,
@@ -40,6 +41,7 @@ const NAVIGATION: IAdminNavItem[] = [
   { label: 'Импорт', link: { href: '/admin/import' }, icon: <IconUpload /> },
   { label: 'Сборы', link: { href: '/admin/cycles' }, icon: <IconCalendar /> },
   { label: 'Заявки', link: { href: '/admin/orders' }, icon: <IconCart /> },
+  { label: 'Чек-лист', link: { href: '/admin/checklist' }, icon: <IconChecklist /> },
   { label: 'Доступ', link: { href: '/admin/users' }, icon: <IconUser /> },
 ]
 

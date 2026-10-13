@@ -95,6 +95,13 @@ export const IconChevronRight: FC<IBasicStyling> = ({ className }) => (
   </svg>
 )
 
+/** Список с галочкой — чек-лист закупки в админке. */
+export const IconChecklist: FC<IBasicStyling> = ({ className }) => (
+  <svg {...base} className={className}>
+    <path d="m4 6.5 1.5 1.5L8.5 5M4 13.5 5.5 15l3-3M12 6.5h8M12 13.5h8M12 19.5h8M4.5 19.5h3" />
+  </svg>
+)
+
 export const IconBox: FC<IBasicStyling> = ({ className }) => (
   <svg {...base} className={className}>
     <path d="M12 3 20.5 7.5v9L12 21l-8.5-4.5v-9L12 3Z" />

@@ -110,12 +110,12 @@ Public and customer-facing:
 Owner-only (`ADMIN` or `SUPER_ADMIN`, checked on the API — the frontend gate is UX only).
 `PATCH /admin/users/{id}/role` is the one exception: **SUPER_ADMIN only**.
 
-| Method   | Path                                                                                                                                                                                                                             |
-| -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GET`    | `/admin/users`, `/admin/brands`, `/admin/products`, `/admin/products/{id}`, `/admin/orders`, `/admin/cycles`, `/admin/export/orders`, `/admin/export/products`                                                                   |
-| `PATCH`  | `/admin/users/{id}/role`, `/admin/categories/{id}`, `/admin/products/{id}`, `/admin/cycles/{id}`, `/admin/orders/{id}/status`                                                                                                    |
-| `POST`   | `/admin/categories`, `/admin/products`, `/admin/products/{id}/restore`, `/admin/products/{id}/images`, `/admin/catalog/import`, `/admin/cycles`, `/admin/cycles/{id}/close`, `/admin/export/links`, `/admin/orders/{id}/message` |
-| `DELETE` | `/admin/categories/{id}`, `/admin/products/{id}` (soft), `/admin/products/{id}/images/{image_id}`, `/admin/cycles/{id}`, `/admin/orders/{id}`                                                                                    |
+| Method   | Path                                                                                                                                                                                                                                              |
+| -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET`    | `/admin/users`, `/admin/brands`, `/admin/products`, `/admin/products/{id}`, `/admin/orders`, `/admin/orders/cycles`, `/admin/cycles`, `/admin/cycles/{id}/deletion`, `/admin/checklist`, `/admin/export/orders`, `/admin/export/products`         |
+| `PATCH`  | `/admin/users/{id}/role`, `/admin/categories/{id}`, `/admin/products/{id}`, `/admin/cycles/{id}`, `/admin/orders/{id}/status`                                                                                                                     |
+| `POST`   | `/admin/categories`, `/admin/products`, `/admin/products/{id}/restore`, `/admin/products/{id}/images`, `/admin/catalog/import`, `/admin/cycles`, `/admin/cycles/{id}/close`, `/admin/export/links`, `/admin/orders`, `/admin/orders/{id}/message` |
+| `DELETE` | `/admin/categories/{id}`, `/admin/products/{id}` (soft), `/admin/products/{id}/images/{image_id}`, `/admin/cycles/{id}`, `/admin/orders/{id}`                                                                                                     |
 
 `GET /export/download/{token}` takes no session: the token from `POST /admin/export/links`
 is the authorisation — see "Export" in [domain.md](domain.md#export).
@@ -216,7 +216,8 @@ Codes currently raised:
 active_cycle_exists       admin_only                auth_session_expired
 auth_session_not_found    cart_is_empty             cart_item_not_found
 category_nesting_too_deep category_not_found        category_parent_not_found
-cycle_already_closed      cycle_has_orders          cycle_not_found
+cycle_already_closed      cycle_closed_recently     cycle_has_orders
+cycle_not_closed          cycle_not_found           cycle_orders_changed
 export_link_invalid       invalid_refresh_token     invalid_token
 last_order_item           no_active_cycle           not_authenticated
 order_item_not_found      order_not_editable        order_not_found

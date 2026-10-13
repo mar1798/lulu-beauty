@@ -211,11 +211,24 @@ export const AddToCartButton: React.FC<{
   ])
 
   /*
+    `disabled` (нет в наличии) и «сбор закрыт» — разные вещи, и ведут себя они
+    по-разному: первое выключает кнопку насовсем, второе оставляет её в
+    табуляции ради подсказки. Приоритет у `disabled`: объяснять закрытый сбор
+    на товаре, которого всё равно нет, незачем.
+  */
+  const unavailableReason = !disabled && isClosed ? CLOSED_REASON : null
+
+  /*
     Объём не выбран, а выбирать есть из чего: кнопка ведёт на страницу товара.
     Ссылкой, а не обработчиком, — по тем же четырём признакам перехода, что и
     «в корзине» ниже: курсор, адрес в статусной строке, Cmd+клик, средняя кнопка.
+
+    Но только пока сбор открыт. При закрытом ссылка оставалась яркой среди
+    погашенных «+» соседних карточек, и покупатель читал её как «этот товар
+    положить можно»: гаснет она так же, как обычная кнопка ниже, — выбирать
+    объём незачем, если класть его всё равно некуда.
   */
-  if (target === null) {
+  if (target === null && unavailableReason === null && !disabled) {
     const href = `/catalog/${encodeURIComponent(product.slug)}`
 
     return isCompact ? (
@@ -233,7 +246,8 @@ export const AddToCartButton: React.FC<{
     )
   }
 
-  const isInCart = cart?.items.some(item => item.variantId === target.id) === true
+  const isInCart =
+    target !== null && cart?.items.some(item => item.variantId === target.id) === true
 
   if (isInCart) {
     /*
@@ -275,18 +289,13 @@ export const AddToCartButton: React.FC<{
     void add()
   }
 
-  /*
-    `disabled` (нет в наличии) и «сбор закрыт» — разные вещи, и ведут себя они
-    по-разному: первое выключает кнопку насовсем, второе оставляет её в
-    табуляции ради подсказки. Приоритет у `disabled`: объяснять закрытый сбор
-    на товаре, которого всё равно нет, незачем.
-  */
-  const unavailableReason = !disabled && isClosed ? CLOSED_REASON : null
+  // Погашенная кнопка без выбранного объёма подписана тем, что делала бы при открытом сборе.
+  const label = target === null ? 'Выбрать объём' : 'В корзину'
 
   const button = isCompact ? (
     <IconButton
       icon={<IconPlus />}
-      label={`В корзину: ${product.name}`}
+      label={`${label}: ${product.name}`}
       variant="primary"
       size="md"
       disabled={disabled}
@@ -307,7 +316,7 @@ export const AddToCartButton: React.FC<{
         теперь есть (соседнее «в избранное» стало круглым сердцем и ширину
         больше не делит), но разнобой в двух словах об одном и том же — хуже.
       */}
-      В корзину
+      {label}
     </Button>
   )
 

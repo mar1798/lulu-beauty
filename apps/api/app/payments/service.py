@@ -147,8 +147,10 @@ class PaymentsService:
                 PaymentReceipt.file_unique_id == file.file_unique_id,
             )
         )
-        if existing is not None and existing.verdict is None and self.for_current_bill(
-            existing, order
+        if (
+            existing is not None
+            and existing.verdict is None
+            and self.for_current_bill(existing, order)
         ):
             return AddedReceipt(receipt=existing, created=False)
 
@@ -185,8 +187,10 @@ class PaymentsService:
 
     async def _pending_receipts(self, order: Order) -> int:
         """Receipts for the order's current bill that the owner has not decided on."""
-        query = select(func.count()).select_from(PaymentReceipt).where(
-            PaymentReceipt.order_id == order.id, PaymentReceipt.verdict.is_(None)
+        query = (
+            select(func.count())
+            .select_from(PaymentReceipt)
+            .where(PaymentReceipt.order_id == order.id, PaymentReceipt.verdict.is_(None))
         )
         if order.confirmed_at is not None:
             query = query.where(PaymentReceipt.submitted_at >= order.confirmed_at)

@@ -82,8 +82,14 @@ export const adminOverviewKey = (cycleId: string | null) => [ADMIN_OVERVIEW_TAG,
 export const isAdminOverviewKey = (key: unknown): boolean =>
   Array.isArray(key) && key[0] === ADMIN_OVERVIEW_TAG
 
+export const ADMIN_ORDERS_TAG = 'admin-orders'
+
 export const adminOrdersKey = (cycleId: string, status: string, page: number) =>
-  ['admin-orders', cycleId, status, page] as const
+  [ADMIN_ORDERS_TAG, cycleId, status, page] as const
+
+/** Все страницы заявок разом — например, после удаления сбора вместе с ними. */
+export const isAdminOrdersKey = (key: unknown): boolean =>
+  Array.isArray(key) && key[0] === ADMIN_ORDERS_TAG
 
 export const ADMIN_PRODUCTS_TAG = 'admin-products'
 
@@ -119,6 +125,25 @@ export const adminUsersKey = (q: string, page: number) => [ADMIN_USERS_TAG, q, p
 /** Смена роли меняет порядок строк (владельцы идут первыми) — сбрасываются все страницы. */
 export const isAdminUsersKey = (key: unknown): boolean =>
   Array.isArray(key) && key[0] === ADMIN_USERS_TAG
+
+/**
+ * Поиск покупателя в окне «Новая заявка». Свой ключ, а не `adminUsersKey`:
+ * размер выдачи другой, и общий ключ отдал бы одной странице чужую.
+ */
+export const adminCustomerSearchKey = (q: string) => ['admin-customer-search', q] as const
+
+const ADMIN_ORDER_CYCLES_TAG = 'admin-order-cycles'
+
+/** Сборы для заявки из админки — с открытыми заявками выбранного покупателя. */
+export const adminOrderCyclesKey = (userId: string | null) =>
+  [ADMIN_ORDER_CYCLES_TAG, userId] as const
+
+/** Все списки сборов разом: новая заявка меняет «уже есть заявка» у своего покупателя. */
+export const isAdminOrderCyclesKey = (key: unknown): boolean =>
+  Array.isArray(key) && key[0] === ADMIN_ORDER_CYCLES_TAG
+
+/** Чек-лист закупки. Без параметров: сбор для него выбирает бэкенд. */
+export const adminChecklistKey = ['admin-checklist'] as const
 
 export const productSearchKey = (q: string, limit: number) => ['product-search', q, limit] as const
 

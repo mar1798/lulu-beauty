@@ -1,13 +1,21 @@
 import uuid
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import exists, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.cycles.models import CycleStatus, OrderCycle
 from app.cycles.reminders import REMINDER_STAGES
-from app.orders.models import Order
+from app.orders.models import OPEN_STATUSES, UNFULFILLED_AFTER, Order
+from app.payments.models import PaymentReceipt
+
+# How long a closed cycle stays undeletable. The days after the deadline are when its
+# orders are confirmed, paid for and handed over — and, up to `UNFULFILLED_AFTER`, when a
+# customer may still take back their own cancellation (`OrdersService.restore`). Shorter
+# than that, a delete would erase an order the site still offers to bring back.
+DELETABLE_AFTER = UNFULFILLED_AFTER
 
 
 class CycleNotFoundError(Exception):
@@ -18,8 +26,36 @@ class PastDeadlineError(Exception):
     pass
 
 
+class CycleNotClosedError(Exception):
+    """Only a closed cycle is deleted: an open one is still taking orders."""
+
+
+class CycleClosedRecentlyError(Exception):
+    """The cycle closed less than `DELETABLE_AFTER` ago."""
+
+
 class CycleHasOrdersError(Exception):
-    pass
+    """The cycle holds an order someone still waits on, or one money was sent for."""
+
+
+class CycleOrdersChangedError(Exception):
+    """The number of orders is not the one the owner agreed to delete."""
+
+
+@dataclass(frozen=True)
+class CycleDeletion:
+    """What deleting a cycle would take with it.
+
+    `orders` is every order in it; `blocking` is how many of them stop the delete —
+    still open (`OPEN_STATUSES`), paid for (`paid_at`), or holding a payment receipt of
+    any verdict, whatever their status. `paid_at` alone is not enough: taking an order
+    back to PENDING clears it (`OrdersService.update_status`), so a paid order cancelled,
+    restored and cancelled again carries no mark of the money — only its receipt does,
+    and an unreviewed one may be money sent all the same.
+    """
+
+    orders: int
+    blocking: int
 
 
 class CycleAlreadyClosedError(Exception):
@@ -64,6 +100,16 @@ class CyclesService:
         )
         return result.scalar_one_or_none()
 
+    async def get_latest_closed_cycle(self) -> OrderCycle | None:
+        """The most recent finished cycle, by deadline — the order the admin cycle list uses."""
+        result = await self._session.execute(
+            select(OrderCycle)
+            .where(OrderCycle.status == CycleStatus.CLOSED)
+            .order_by(OrderCycle.deadline_at.desc())
+            .limit(1)
+        )
+        return result.scalar_one_or_none()
+
     async def get(self, cycle_id: uuid.UUID) -> OrderCycle | None:
         return await self._session.get(OrderCycle, cycle_id)
 
@@ -98,7 +144,11 @@ class CyclesService:
         return cycle
 
     async def update(self, cycle_id: uuid.UUID, updates: dict[str, Any]) -> OrderCycle:
-        cycle = await self._session.get(OrderCycle, cycle_id)
+        # Locked, like `delete`: a reopening that raced a delete would otherwise write to
+        # a row already gone and fail at flush, instead of finding no cycle.
+        cycle = await self._session.get(
+            OrderCycle, cycle_id, with_for_update=True, populate_existing=True
+        )
         if cycle is None:
             raise CycleNotFoundError
 
@@ -188,15 +238,60 @@ class CyclesService:
             if cycle.deadline_at > now + stage.window:
                 setattr(cycle, stage.sent_at_field, None)
 
-    async def delete(self, cycle_id: uuid.UUID) -> None:
-        cycle = await self._session.get(OrderCycle, cycle_id)
+    async def deletion(self, cycle_id: uuid.UUID, *, lock: bool = False) -> CycleDeletion:
+        """Counts what `delete` would take — the owner's confirmation shows this.
+
+        With `lock`, the orders are locked as they are counted, so a status change
+        (`OrdersService.update_status` locks the order too) waits for the delete
+        rather than slipping in between the count and the cascade. A new receipt cannot
+        slip in either: `add_receipt` takes only an order in `PAYABLE_STATUSES`, which
+        blocks the delete already, and its insert would wait on the same row lock.
+        """
+        has_receipt = exists().where(PaymentReceipt.order_id == Order.id)
+        query = select(Order.status, Order.paid_at, has_receipt).where(Order.cycle_id == cycle_id)
+        if lock:
+            query = query.with_for_update(of=Order)
+        rows = (await self._session.execute(query)).all()
+        blocking = sum(
+            1
+            for order_status, paid_at, receipted in rows
+            if order_status in OPEN_STATUSES or paid_at is not None or receipted
+        )
+        return CycleDeletion(orders=len(rows), blocking=blocking)
+
+    async def delete(self, cycle_id: uuid.UUID, *, expected_orders: int) -> None:
+        """Deletes a closed cycle with the orders left in it.
+
+        Only once nothing in it is alive: the cycle is CLOSED, closed at least
+        `DELETABLE_AFTER` ago, and none of its orders is open, paid for or carrying a
+        receipt — after the deadline is exactly when orders are confirmed and paid, and
+        a delete would erase them with the customers never told. What may remain is
+        cancelled or handed-over history nobody sent money for; it goes with the cycle
+        (`orders.cycle_id` and everything under an order are ON DELETE CASCADE), and
+        only if there are exactly `expected_orders` of them — the number the owner
+        confirmed, so the confirmation can never understate what is lost.
+
+        The cycle row is locked: a second delete, or an `update` reopening the cycle,
+        waits for this one and then finds nothing to act on. Its carts were emptied into
+        wishlists when it closed, so what cascades there is empty rows.
+        """
+        cycle = await self._session.get(
+            OrderCycle, cycle_id, with_for_update=True, populate_existing=True
+        )
         if cycle is None:
             raise CycleNotFoundError
+        if cycle.status is not CycleStatus.CLOSED:
+            raise CycleNotClosedError
+        # `closed_at` is set by both the sweep and `close_now`; the deadline covers a
+        # row closed before the column was filled in.
+        closed_at = cycle.closed_at or cycle.deadline_at
+        if closed_at > datetime.now(UTC) - DELETABLE_AFTER:
+            raise CycleClosedRecentlyError
 
-        has_orders = await self._session.scalar(
-            select(Order.id).where(Order.cycle_id == cycle_id).limit(1)
-        )
-        if has_orders is not None:
+        deletion = await self.deletion(cycle_id, lock=True)
+        if deletion.blocking:
             raise CycleHasOrdersError
+        if deletion.orders != expected_orders:
+            raise CycleOrdersChangedError
 
         await self._session.delete(cycle)

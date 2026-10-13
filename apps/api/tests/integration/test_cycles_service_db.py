@@ -1,11 +1,26 @@
 from datetime import UTC, datetime, timedelta
 
 import pytest
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.cycles.models import CycleStatus
-from app.cycles.service import ActiveCycleExistsError, CyclesService, PastDeadlineError
-from tests.integration.factories import make_cycle
+from app.cart.service import CartService
+from app.cycles.models import CycleStatus, OrderCycle
+from app.cycles.service import (
+    DELETABLE_AFTER,
+    ActiveCycleExistsError,
+    CycleClosedRecentlyError,
+    CycleDeletion,
+    CycleHasOrdersError,
+    CycleNotClosedError,
+    CycleOrdersChangedError,
+    CyclesService,
+    PastDeadlineError,
+)
+from app.orders.models import Order, OrderItem, OrderStatus
+from app.orders.service import OrdersService
+from app.payments.models import PaymentReceipt, ReceiptKind, ReceiptVerdict
+from tests.integration.factories import make_cycle, make_product, make_user, variant_id
 
 """update()'s deadline rule.
 
@@ -204,3 +219,159 @@ async def test_renaming_a_finished_cycle_is_never_blocked(db_session: AsyncSessi
 
     assert updated.label == "Май"
     assert updated.status is CycleStatus.CLOSED
+
+
+async def _cycle_with_order(db_session: AsyncSession) -> tuple[OrderCycle, Order]:
+    """A cycle with one checked-out order, closed `DELETABLE_AFTER` and a minute ago.
+
+    Tests that need it open or freshly closed move it back themselves.
+    """
+    user = await make_user(db_session)
+    cycle = await make_cycle(db_session)
+    product = await make_product(db_session)
+    await CartService(db_session).add_item(user.id, variant_id(product), 1)
+    order = await OrdersService(db_session).checkout(user.id, note=None)
+    closed_at = datetime.now(UTC) - DELETABLE_AFTER - timedelta(minutes=1)
+    cycle.status = CycleStatus.CLOSED
+    cycle.deadline_at = closed_at
+    cycle.closed_at = closed_at
+    await db_session.flush()
+    return cycle, order
+
+
+async def test_an_open_cycle_is_not_deleted(db_session: AsyncSession) -> None:
+    """Even an empty one: deleting is for history, an open cycle is still taking orders."""
+    cycle = await make_cycle(db_session)
+
+    with pytest.raises(CycleNotClosedError):
+        await CyclesService(db_session).delete(cycle.id, expected_orders=0)
+
+
+async def test_a_recently_closed_cycle_is_not_deleted(db_session: AsyncSession) -> None:
+    """The days after closing are when its orders are confirmed and paid for."""
+    cycle, order = await _cycle_with_order(db_session)
+    order.status = OrderStatus.CANCELLED_BY_CUSTOMER
+    cycle.closed_at = datetime.now(UTC) - DELETABLE_AFTER + timedelta(hours=1)
+    await db_session.flush()
+
+    with pytest.raises(CycleClosedRecentlyError):
+        await CyclesService(db_session).delete(cycle.id, expected_orders=1)
+
+
+async def test_a_cancellation_the_customer_can_still_undo_is_not_deleted(
+    db_session: AsyncSession,
+) -> None:
+    """While the site still offers «Вернуть», the order is not history yet.
+
+    Eight days after closing used to be deletable — a week was the rule — while the
+    customer's restore window ran to ten.
+    """
+    cycle, order = await _cycle_with_order(db_session)
+    order.status = OrderStatus.CANCELLED_BY_CUSTOMER
+    cycle.closed_at = datetime.now(UTC) - timedelta(days=8)
+    await db_session.flush()
+
+    flags = await OrdersService(db_session).customer_flags([order])
+    assert flags[order.id].is_restorable
+    with pytest.raises(CycleClosedRecentlyError):
+        await CyclesService(db_session).delete(cycle.id, expected_orders=1)
+
+
+@pytest.mark.parametrize("verdict", [None, ReceiptVerdict.ACCEPTED, ReceiptVerdict.REJECTED])
+async def test_a_cancelled_order_with_a_receipt_is_not_deleted(
+    db_session: AsyncSession, verdict: ReceiptVerdict | None
+) -> None:
+    """A receipt is money that may have been sent, whatever `paid_at` says now.
+
+    Taking an order back to PENDING clears `paid_at`, so a paid order cancelled, restored
+    and cancelled again looks unpaid — only its receipt remembers the transfer.
+    """
+    cycle, order = await _cycle_with_order(db_session)
+    order.status = OrderStatus.CANCELLED_BY_OWNER
+    db_session.add(
+        PaymentReceipt(
+            order_id=order.id,
+            kind=ReceiptKind.PHOTO,
+            file_id="file",
+            file_unique_id="unique",
+            verdict=verdict,
+        )
+    )
+    await db_session.flush()
+
+    assert await CyclesService(db_session).deletion(cycle.id) == CycleDeletion(orders=1, blocking=1)
+    with pytest.raises(CycleHasOrdersError):
+        await CyclesService(db_session).delete(cycle.id, expected_orders=1)
+
+
+@pytest.mark.parametrize(
+    ("order_status", "paid"),
+    [
+        (OrderStatus.PENDING, False),
+        (OrderStatus.CONFIRMED, False),
+        (OrderStatus.READY, False),
+        # Paid for and then done with: the money is still a fact about this order.
+        (OrderStatus.COMPLETED, True),
+        (OrderStatus.CANCELLED_BY_OWNER, True),
+    ],
+)
+async def test_a_cycle_with_a_live_or_paid_order_is_not_deleted(
+    db_session: AsyncSession, order_status: OrderStatus, paid: bool
+) -> None:
+    cycle, order = await _cycle_with_order(db_session)
+    order.status = order_status
+    order.paid_at = datetime.now(UTC) if paid else None
+    await db_session.flush()
+
+    assert (await CyclesService(db_session).deletion(cycle.id)).blocking == 1
+    with pytest.raises(CycleHasOrdersError):
+        await CyclesService(db_session).delete(cycle.id, expected_orders=1)
+
+
+async def test_a_count_other_than_the_confirmed_one_is_refused(db_session: AsyncSession) -> None:
+    """The owner agreed to lose N orders; the server finding another number deletes none."""
+    cycle, order = await _cycle_with_order(db_session)
+    order.status = OrderStatus.CANCELLED_BY_CUSTOMER
+    await db_session.flush()
+
+    with pytest.raises(CycleOrdersChangedError):
+        await CyclesService(db_session).delete(cycle.id, expected_orders=0)
+
+
+@pytest.mark.parametrize(
+    "order_status",
+    [OrderStatus.COMPLETED, OrderStatus.CANCELLED_BY_CUSTOMER, OrderStatus.CANCELLED_BY_OWNER],
+)
+async def test_a_finished_cycle_is_deleted_with_its_history(
+    db_session: AsyncSession, order_status: OrderStatus
+) -> None:
+    """Nothing left alive in it: the cycle goes, its orders and their items with it."""
+    cycle, order = await _cycle_with_order(db_session)
+    order.status = order_status
+    await db_session.flush()
+
+    assert await CyclesService(db_session).deletion(cycle.id) == CycleDeletion(orders=1, blocking=0)
+    await CyclesService(db_session).delete(cycle.id, expected_orders=1)
+    await db_session.flush()
+    db_session.expunge_all()
+
+    assert await db_session.get(OrderCycle, cycle.id) is None
+    assert await db_session.scalar(select(func.count()).select_from(Order)) == 0
+    assert await db_session.scalar(select(func.count()).select_from(OrderItem)) == 0
+
+
+async def test_latest_closed_cycle_is_the_one_with_the_latest_deadline(
+    db_session: AsyncSession,
+) -> None:
+    now = datetime.now(UTC)
+    await make_cycle(db_session, deadline_at=now - timedelta(days=20), status=CycleStatus.CLOSED)
+    latest = await make_cycle(
+        db_session, deadline_at=now - timedelta(days=2), status=CycleStatus.CLOSED
+    )
+    # An open cycle is not "closed" however late its deadline is.
+    await make_cycle(db_session, deadline_at=now + timedelta(days=5))
+
+    found = await CyclesService(db_session).get_latest_closed_cycle()
+
+    assert found is not None
+    assert found.id == latest.id

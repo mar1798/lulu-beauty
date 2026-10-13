@@ -24,14 +24,14 @@ vanilla-extract plugin wired in here is the webpack one. **Don't drop that flag.
 
 ## Pages
 
-| Group        | Pages                                                                                                                               | Rendering                          |
-| ------------ | ----------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------- |
-| Public       | `index`, `catalog/index`, `catalog/[slug]`, `privacy`                                                                               | SSG + ISR (`privacy` is plain SSG) |
-| Behind login | `cart`, `checkout`, `orders/index`, `orders/[id]`, `account`, `wishlist`                                                            | Static shell, client-rendered data |
-| Auth         | `login` — **this is the registration too**                                                                                          | Static                             |
-| Owner-only   | `admin/index`, `admin/products/{index,add,[id]}`, `admin/categories`, `admin/import`, `admin/cycles`, `admin/orders`, `admin/users` | Static, gated on the client        |
-| Errors       | `404`, `500`                                                                                                                        | Static                             |
-| Crawlers     | `sitemap.xml`                                                                                                                       | `getServerSideProps`, per request  |
+| Group        | Pages                                                                                                                                                  | Rendering                          |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------- |
+| Public       | `index`, `catalog/index`, `catalog/[slug]`, `privacy`                                                                                                  | SSG + ISR (`privacy` is plain SSG) |
+| Behind login | `cart`, `checkout`, `orders/index`, `orders/[id]`, `account`, `wishlist`                                                                               | Static shell, client-rendered data |
+| Auth         | `login` — **this is the registration too**                                                                                                             | Static                             |
+| Owner-only   | `admin/index`, `admin/products/{index,add,[id]}`, `admin/categories`, `admin/import`, `admin/cycles`, `admin/orders`, `admin/checklist`, `admin/users` | Static, gated on the client        |
+| Errors       | `404`, `500`                                                                                                                                           | Static                             |
+| Crawlers     | `sitemap.xml`                                                                                                                                          | `getServerSideProps`, per request  |
 
 Every page a person can open is static, which is why `next build` reports `/admin/*` as
 `○ (Static)`. The one `getServerSideProps` in the app is `sitemap.xml`, which nobody visits:
@@ -256,7 +256,9 @@ key)` answers "prefilled on this page and rendered less than 60 s ago" — `useA
   `AddToCartButton` takes the whole product plus an optional `variantId`: on the product
   page the page owns the choice of volume, and in the catalogue grid — where there is no
   room to choose — a product sold in several volumes turns the button into a link to its
-  page rather than silently adding the cheapest one. It always adds one: the quantity is set
+  page rather than silently adding the cheapest one. That link is still gated on the cycle:
+  with no open cycle it greys out with the same tooltip as every other "+", or it would be
+  the one bright button in a grid of dimmed ones. It always adds one: the quantity is set
   afterwards, not before.
   On the product page the row of actions has two states, switched by `ProductDetails`'s
   `isInCart` (the page derives it from the cart for the _selected volume_). Out of the

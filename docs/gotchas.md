@@ -20,6 +20,14 @@ Copy the path from an existing import.
 **`dev` and `build` must keep `--webpack`.** Next 16 defaults to Turbopack, but the
 vanilla-extract plugin wired in here is the webpack one.
 
+**A new widget comes out `undefined` in dev, even after a restart.** React says "Element type
+is invalid … got: undefined", and nothing in the code is wrong: `optimizePackageImports`
+rewrites `import { X } from 'widgets/organisms'` into a direct import by reading the barrel's
+export map, and the dev server keeps that map in its persistent webpack cache
+(`apps/website/.next/dev/cache/webpack`). A folder added to the barrel after the cache was
+written is missing from the old map, so `X` resolves to nothing. `next build` and the tests are
+unaffected. Stop `dev`, `rm -rf apps/website/.next/dev/cache/webpack`, start it again.
+
 **The dev server reloads itself every ~90 seconds when opened from a phone or Telegram.** Not
 a crash: Next 16 blocks `/_next/*` (including the HMR websocket) for any origin but
 `localhost`, the HMR client retries 25 times and then calls `location.reload()`. Private
