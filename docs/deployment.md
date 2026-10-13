@@ -821,14 +821,16 @@ of preparing a release.
   from (the old code inserts rows without that column and the database refuses
   them — the expanding way to add a required field is two releases, nullable now
   and `NOT NULL` once the old code is gone), `op.create_unique_constraint` and
-  `op.create_index` with `unique=True` (the old code writes rows that collide),
+  `op.create_index` with `unique=True`, or a column added with `unique=True`
+  (the old code writes rows that collide),
   and `op.create_check_constraint`, `op.create_exclude_constraint` and
   `op.create_primary_key` (rules the old code's rows never knew to keep).
   A `server_default` lets the first through, and so does a `Computed`: a
   `GENERATED ALWAYS … STORED` column is filled by the database for every row,
   including the ones the previous release inserts, which may not name it at all. All of them are
   allowed on a table the same migration creates: a rule on data that did not
-  exist a minute ago constrains nobody. The two unique ones are also allowed
+  exist a minute ago constrains nobody (not one created under another `schema=`).
+  The unique ones are also allowed
   when every column they cover is added by the same migration as nullable
   (a literal `nullable=True` or none) with no `server_default` or `Computed`
   and nothing positional past its type but a `ForeignKey` (a `DefaultClause`
@@ -849,9 +851,10 @@ of preparing a release.
   `ADD [CONSTRAINT …] UNIQUE / PRIMARY KEY / CHECK / EXCLUDE` inside the string
   fails it — the last two even on a table the same migration creates, since
   telling which table the SQL names is parsing SQL; such an index belongs in
-  `op.create_index`. The SQL is found positionally or as `sqltext=` /
-  `statement=`. An
-  argument the script can't read as text (a name built elsewhere) is reported as
+  `op.create_index`. The SQL is found in `execute` and `exec_driver_sql`,
+  positionally or as `sqltext=` / `statement=`. An
+  argument the script can't read as text (a name built elsewhere, a
+  `"…".format(…)` or `%` template) is reported as
   exactly that and fails too; "I could not tell" must not come out as "expanding
   only". `op.drop_index` is deliberately allowed: the previous release still
   runs without an index, only slower, and a unique one is a constraint.

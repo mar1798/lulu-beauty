@@ -315,6 +315,33 @@ def test_uniqueness_the_old_code_can_still_collide_with_is_flagged(
     assert len(operations(tmp_path, upgrade)) == 1
 
 
+def test_a_unique_column_is_judged_like_a_unique_constraint(tmp_path: Path) -> None:
+    # Alembic creates the rule with the column: harmless while the old code
+    # leaves it NULL, not once the database hands its rows a value.
+    assert (
+        operations(
+            tmp_path,
+            'op.add_column("orders", sa.Column("code", sa.String(), unique=True))',
+        )
+        == []
+    )
+    assert operations(
+        tmp_path,
+        'op.add_column("orders", sa.Column("code", sa.String(), nullable=False,'
+        ' server_default="x", unique=True))',
+    ) == ["add_column (unique)"]
+
+
+def test_a_table_created_in_another_schema_is_not_this_one(tmp_path: Path) -> None:
+    assert operations(
+        tmp_path,
+        """
+        op.create_table("orders", sa.Column("id", sa.Integer()), schema="archive")
+        op.add_column("orders", sa.Column("code", sa.String(), nullable=False))
+        """,
+    ) == ["add_column (NOT NULL the database cannot fill)"]
+
+
 def test_a_foreign_key_does_not_make_a_fresh_column_less_fresh(tmp_path: Path) -> None:
     # A ForeignKey is the one positional extra that hands the column no value.
     assert (
@@ -522,10 +549,18 @@ def test_an_f_string_cannot_splice_two_words_into_one(tmp_path: Path) -> None:
     [
         'op.execute(sqltext="DROP TABLE banners")',
         'op.get_bind().execute(statement=sa.text("DROP TABLE banners"))',
+        'op.get_bind().exec_driver_sql("DROP TABLE banners")',
     ],
 )
-def test_sql_passed_by_keyword_is_read(tmp_path: Path, call: str) -> None:
+def test_sql_passed_by_keyword_or_to_the_driver_is_read(tmp_path: Path, call: str) -> None:
     assert operations(tmp_path, call) == ["execute (DROP TABLE)"]
+
+
+def test_a_formatted_template_is_not_read_through_its_argument(tmp_path: Path) -> None:
+    # The verb is in the template; the argument is only the table's name.
+    assert operations(tmp_path, 'op.execute("DROP TABLE {}".format("banners"))') == [
+        "execute (SQL this script cannot read — check by hand)"
+    ]
 
 
 def test_a_default_set_by_keyword_sql_is_seen(tmp_path: Path) -> None:

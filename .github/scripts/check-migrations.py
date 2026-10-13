@@ -81,6 +81,11 @@ FILLS_COLUMN_SQL = re.compile(
     r"\bSET\s+DEFAULT\b|\bCREATE\s+(OR\s+REPLACE\s+)?(TRIGGER|FUNCTION|RULE)\b", re.I
 )
 
+# Every way a migration hands the database a statement: `op.execute`,
+# `Connection.execute` and the driver-level `Connection.exec_driver_sql`, which
+# takes a plain string and is the easiest of the three to miss.
+EXECUTES = {"execute", "exec_driver_sql"}
+
 
 def const_str(node: ast.expr | None) -> str | None:
     """The value of a plain string literal, or None for anything computed."""
@@ -114,12 +119,15 @@ def new_tables(upgrade: ast.FunctionDef) -> set[str]:
     cries wolf on the ordinary case is a check that gets ignored.
     """
 
+    # A table created in another schema (or under a ``**kwargs`` that may name
+    # one) is not the same-named table every other call here reaches.
     return {
         name
         for node in ast.walk(upgrade)
         if isinstance(node, ast.Call)
         and isinstance(node.func, ast.Attribute)
         and node.func.attr == "create_table"
+        and not {"schema", None} & {keyword.arg for keyword in node.keywords}
         for name in (const_str(positional(node, 0)),)
         if name is not None
     }
@@ -241,7 +249,7 @@ def refilled_columns(upgrade: ast.FunctionDef) -> set[tuple[str, str]] | None:
             if table is None or column is None:
                 return None
             refilled.add((table, column))
-        elif node.func.attr == "execute" and (statement := execute_sql(node)) is not None:
+        elif node.func.attr in EXECUTES and (statement := execute_sql(node)) is not None:
             sql = sql_text(statement)
             if sql is not None and FILLS_COLUMN_SQL.search(sql):
                 return None
@@ -321,6 +329,26 @@ def added_column_not_null(node: ast.Call) -> bool:
     return False
 
 
+def unique_columns(node: ast.Call) -> list[str | None]:
+    """Columns an ``op.add_column`` declares with ``unique=`` set to anything but False.
+
+    Alembic creates that rule along with the column, so it is the same promise
+    as a `create_unique_constraint` over it — and harmless on the same terms.
+    A name that isn't a plain literal comes back as None, which matches no
+    fresh column.
+    """
+
+    return [
+        const_str(positional(argument, 0))
+        for argument in node.args
+        if isinstance(argument, ast.Call)
+        and isinstance(argument.func, ast.Attribute)
+        and argument.func.attr == "Column"
+        for keywords in ({keyword.arg: keyword.value for keyword in argument.keywords},)
+        if "unique" in keywords and not is_false(keywords["unique"])
+    ]
+
+
 def sql_text(node: ast.expr) -> str | None:
     """The readable SQL in an ``op.execute`` argument, or None if opaque.
 
@@ -342,7 +370,17 @@ def sql_text(node: ast.expr) -> str | None:
         )
 
     # sa.text("…") and the like: one string argument, same question one level in.
-    if isinstance(node, ast.Call) and len(node.args) == 1 and not node.keywords:
+    # Not a method of the string itself, though: in "DROP TABLE {}".format("x")
+    # the verb is in the template, and reading the argument would find nothing.
+    if (
+        isinstance(node, ast.Call)
+        and len(node.args) == 1
+        and not node.keywords
+        and not (
+            isinstance(node.func, ast.Attribute)
+            and isinstance(node.func.value, (ast.Constant, ast.JoinedStr))
+        )
+    ):
         return sql_text(node.args[0])
 
     return None
@@ -415,6 +453,11 @@ def findings(
             if const_str(positional(node, 0)) in created:
                 continue
             operation = "add_column (NOT NULL the database cannot fill)"
+        elif name == "add_column" and (columns := unique_columns(node)):
+            table = const_str(positional(node, 0))
+            if table in created or all((table, column) in fresh for column in columns):
+                continue
+            operation = "add_column (unique)"
         elif name == "create_unique_constraint":
             if const_str(positional(node, 1)) in created or only_fresh_columns(node, fresh):
                 continue
@@ -434,7 +477,7 @@ def findings(
             operation = "alter_column (rename)"
         elif name == "alter_column" and is_false(keywords.get("nullable")):
             operation = "alter_column (NOT NULL)"
-        elif name == "execute" and (statement := execute_sql(node)) is not None:
+        elif name in EXECUTES and (statement := execute_sql(node)) is not None:
             sql = sql_text(statement)
             if sql is None:
                 # Not a judgement that it contracts — a statement that this
