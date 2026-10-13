@@ -1,3 +1,4 @@
+import clsx from 'clsx'
 import React from 'react'
 import Head from 'next/head'
 import { useRouter } from 'next/router'
@@ -13,6 +14,8 @@ import { useMediaQuery } from '@/hooks/useMediaQuery'
 import { safeRedirectPath } from '@/utils/redirect'
 import * as layout from '@/styles/layout.css'
 import * as styles from '@/styles/login.css'
+import { HalloweenScene } from '@/halloween/HalloweenScene'
+import * as halloween from '@/halloween/halloween.css'
 
 /**
  * Вход — он же регистрация.
@@ -60,7 +63,8 @@ const LoginPage: React.FC = () => {
         центрирует карточку по высоте экрана.
       */}
       <AuthTemplate
-        className={layout.sessionArea}
+        // `authHost` делает карточку точкой отсчёта для хэллоуинской стайки над заголовком.
+        className={clsx(layout.sessionArea, halloween.authHost)}
         title="Вход"
         subtitle="Через Telegram - регистрация не нужна, аккаунт заведётся сам"
         /*
@@ -88,6 +92,7 @@ const LoginPage: React.FC = () => {
           </Text>
         }
       >
+        <HalloweenScene variant="auth" />
         {isRedirecting ? (
           <Spinner label="Проверяем сессию" />
         ) : (

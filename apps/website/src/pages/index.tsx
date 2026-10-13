@@ -34,6 +34,8 @@ import { INSTAGRAM_URL } from '@/utils/contacts'
 import { faqLd } from '@/utils/jsonLd'
 import { SITE_DESCRIPTION, SITE_TITLE } from '@/utils/seo'
 import { publicConfig } from '@/сonfig'
+import { HalloweenScene } from '@/halloween/HalloweenScene'
+import * as halloween from '@/halloween/halloween.css'
 
 /**
  * Главная.
@@ -548,7 +550,12 @@ const HomePage: React.FC<IHomePageProps> = ({
             <HeroCycle
               cycle={currentCycle}
               note={heroNote}
-              background={<DecorField spots={HERO_SPOTS} containerRef={heroRef} />}
+              background={
+                <>
+                  <DecorField spots={HERO_SPOTS} containerRef={heroRef} />
+                  <HalloweenScene variant="home-hero" />
+                </>
+              }
               /*
                 Витрина прячется целиком, когда товаров нет: три пустые
                 карточки на первом экране читаются как поломка, а герой без
@@ -610,13 +617,17 @@ const HomePage: React.FC<IHomePageProps> = ({
           sectionRef={stepsRef}
           background={<DecorField spots={STEPS_SPOTS} containerRef={stepsRef} />}
         >
-          <Reveal>
-            <SectionHeading
-              eyebrow="Как это работает"
-              title="Заявка вместо оплаты"
-              description="Онлайн-оплаты нет: всё, что нужно, - успеть до закрытия сбора"
-            />
-          </Reveal>
+          {/* Обёртка — точка отсчёта для хэллоуинской стайки справа от заголовка. */}
+          <div className={halloween.host}>
+            <Reveal>
+              <SectionHeading
+                eyebrow="Как это работает"
+                title="Заявка вместо оплаты"
+                description="Онлайн-оплаты нет: всё, что нужно, - успеть до закрытия сбора"
+              />
+            </Reveal>
+            <HalloweenScene variant="home-steps" />
+          </div>
 
           <StepList steps={STEPS} />
         </HomeSection>

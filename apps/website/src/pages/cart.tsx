@@ -7,6 +7,8 @@ import { CartPanel } from 'widgets/organisms'
 import { CartTemplate } from 'widgets/templates'
 import { useToast } from 'widgets/contexts'
 import { SiteLayout } from '@/layouts/SiteLayout'
+import { HalloweenEmpty, HalloweenScene } from '@/halloween/HalloweenScene'
+import * as halloween from '@/halloween/halloween.css'
 import { EditableOrderNotice } from '@/components/EditableOrderNotice'
 import { useAuth } from '@/contexts/AuthContext'
 import { useCart } from '@/contexts/CartContext'
@@ -116,15 +118,17 @@ const CartPage: React.FC = () => {
     // это была бы вспышка чужого экрана вместо его корзины.
     if (user === null && !isAuthLoading) {
       return (
-        <EmptyState
-          title="Корзина у каждого своя"
-          description="Войдите, чтобы собрать заявку - она сохранится до закрытия сбора"
-          action={
-            <Button link={{ href: loginHref }} isFullWidth="mobile">
-              Войти
-            </Button>
-          }
-        />
+        <HalloweenEmpty kind="cart">
+          <EmptyState
+            title="Корзина у каждого своя"
+            description="Войдите, чтобы собрать заявку - она сохранится до закрытия сбора"
+            action={
+              <Button link={{ href: loginHref }} isFullWidth="mobile">
+                Войти
+              </Button>
+            }
+          />
+        </HalloweenEmpty>
       )
     }
 
@@ -157,19 +161,21 @@ const CartPage: React.FC = () => {
             void router.push('/checkout')
           }}
           emptyState={
-            <EmptyState
-              title="Пока пусто"
-              // Вторая фраза — не реклама избранного, а ответ на «где мой прошлый
-              // выбор»: корзину закрывшегося сбора туда переносит планировщик
-              // (apps/api/app/cycles/scheduler_service.py), и человек, пропустивший
-              // уведомление бота, узнаёт об этом только здесь.
-              description="Загляните в каталог - товары появляются перед каждым сбором. То, что вы не успели оформить в прошлом сборе, ждёт в избранном."
-              action={
-                <Button link={{ href: '/catalog' }} isFullWidth="mobile">
-                  В каталог
-                </Button>
-              }
-            />
+            <HalloweenEmpty kind="cart">
+              <EmptyState
+                title="Пока пусто"
+                // Вторая фраза — не реклама избранного, а ответ на «где мой прошлый
+                // выбор»: корзину закрывшегося сбора туда переносит планировщик
+                // (apps/api/app/cycles/scheduler_service.py), и человек, пропустивший
+                // уведомление бота, узнаёт об этом только здесь.
+                description="Загляните в каталог - товары появляются перед каждым сбором. То, что вы не успели оформить в прошлом сборе, ждёт в избранном."
+                action={
+                  <Button link={{ href: '/catalog' }} isFullWidth="mobile">
+                    В каталог
+                  </Button>
+                }
+              />
+            </HalloweenEmpty>
           }
         />
       </>
@@ -184,6 +190,8 @@ const CartPage: React.FC = () => {
       </Head>
 
       <CartTemplate
+        // Точка отсчёта для хэллоуинской сцены справа от заголовка.
+        className={halloween.host}
         title="Корзина"
         summary="Оплата не проводится: это заявка, которую мы подтвердим после закрытия сбора"
       >
@@ -192,6 +200,7 @@ const CartPage: React.FC = () => {
           высотой вдвое, и на ответе `/api/auth/me` подвал переезжал (см.
           `styles/layout.css`).
         */}
+        {cart !== null && cart.items.length > 0 && <HalloweenScene variant="list-title" />}
         <div className={styles.sessionArea}>{content()}</div>
       </CartTemplate>
     </SiteLayout>

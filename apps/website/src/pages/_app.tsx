@@ -16,6 +16,7 @@ import { SiteMeta } from '@/components/PageMeta'
 import { LiveStateRefresh } from '@/components/LiveStateRefresh'
 import { TelegramMiniAppSession } from '@/components/TelegramMiniAppSession'
 import { storeLd } from '@/utils/jsonLd'
+import { HalloweenLayer } from '@/halloween/HalloweenLayer'
 import { shell } from '@/styles/shell.css'
 
 /**
@@ -104,6 +105,8 @@ const App: React.FC<AppProps> = ({ Component, pageProps }) => {
                 <CartProvider>
                   <WishlistProvider>
                     <div className={clsx(shell, inter.variable, inter.className)}>
+                      {/* Сезонное оформление поверх всех страниц; вне сезона — ничего. */}
+                      <HalloweenLayer />
                       <Component {...pageProps} />
                     </div>
                   </WishlistProvider>

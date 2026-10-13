@@ -1,6 +1,8 @@
 import { Head, Html, Main, NextScript } from 'next/document'
 import React from 'react'
 import { EARLY_READY_SCRIPT } from '@/utils/telegramMiniApp'
+import { HALLOWEEN_ENABLED } from '@/halloween/config'
+import { HALLOWEEN_EARLY_SCRIPT } from '@/halloween/earlyScript'
 
 /**
  * `lang="ru"` — сайт русскоязычный целиком: от этого зависит и синтез речи
@@ -42,6 +44,12 @@ const Document = (): React.ReactElement => (
       <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
       {/* Цвет холста: им браузер красит адресную строку и подложку под страницей. */}
       <meta name="theme-color" content="#f2f4f5" />
+      {/*
+        Хэллоуин: атрибут на `<html>` и «сумеречный» `theme-color` — до первого
+        кадра, иначе холст вспыхивал бы другим цветом после гидрации. После
+        мета-тега, который он перекрашивает. Вне флага скрипта в разметке нет.
+      */}
+      {HALLOWEEN_ENABLED && <script dangerouslySetInnerHTML={{ __html: HALLOWEEN_EARLY_SCRIPT }} />}
     </Head>
     <body>
       <Main />

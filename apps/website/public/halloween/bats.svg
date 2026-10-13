@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 440 300" width="440" height="300">
+<defs>
+    <radialGradient id="batWing" cx=".5" cy=".2" r=".9">
+      <stop offset="0" stop-color="#6A5872"/><stop offset=".6" stop-color="#3F3347"/><stop offset="1" stop-color="#2A2230"/>
+    </radialGradient>
+    <radialGradient id="batBody" cx=".38" cy=".3" r=".8">
+      <stop offset="0" stop-color="#6E5D78"/><stop offset=".55" stop-color="#3D3145"/><stop offset="1" stop-color="#231C29"/>
+    </radialGradient>
+    <filter id="batSh" x="-20%" y="-20%" width="140%" height="160%">
+      <feDropShadow dx="0" dy="8" stdDeviation="8" flood-color="#2A1E33" flood-opacity=".22"/>
+    </filter>
+    <filter id="batB3"><feGaussianBlur stdDeviation="3"/></filter><g id="b">
+  <g filter="url(#batSh)">
+    <g><path d="M176 136 C150 96 98 70 34 84 C56 98 64 118 60 142 C80 132 100 138 108 158 C122 144 142 146 152 164 C160 154 168 152 178 158 Z" fill="url(#batWing)"/><path d="M174 132 L60 142 M174 132 L108 158 M174 134 L152 164 M174 130 C140 100 90 84 40 86" stroke="#7D6A88" stroke-width="2" stroke-linecap="round" fill="none" opacity=".45"/></g>
+    <g><path d="M224 136 C250 96 302 70 366 84 C344 98 336 118 340 142 C320 132 300 138 292 158 C278 144 258 146 248 164 C240 154 232 152 222 158 Z" fill="url(#batWing)"/><path d="M226 132 L340 142 M226 132 L292 158 M226 134 L248 164 M226 130 C260 100 310 84 360 86" stroke="#7D6A88" stroke-width="2" stroke-linecap="round" fill="none" opacity=".45"/></g>
+    <path d="M172 102 L164 58 Q166 52 172 56 L196 90 Z" fill="url(#batBody)"/>
+    <path d="M228 102 L236 58 Q234 52 228 56 L204 90 Z" fill="url(#batBody)"/>
+    <ellipse cx="200" cy="164" rx="30" ry="32" fill="url(#batBody)"/>
+    <circle cx="200" cy="124" r="40" fill="url(#batBody)"/>
+  </g>
+  <path d="M172 96 L168 70 L188 92 Z" fill="#C77DA0" opacity=".75"/>
+  <path d="M228 96 L232 70 L212 92 Z" fill="#C77DA0" opacity=".75"/>
+  <ellipse cx="184" cy="104" rx="12" ry="7" transform="rotate(-30 184 104)" fill="#fff" opacity=".18" filter="url(#batB3)"/>
+  <ellipse cx="186" cy="124" rx="11" ry="12" fill="#fff"/><ellipse cx="214" cy="124" rx="11" ry="12" fill="#fff"/>
+  <circle cx="188" cy="126" r="6.5" fill="#231A22"/><circle cx="212" cy="126" r="6.5" fill="#231A22"/>
+  <circle cx="190.5" cy="123" r="2.3" fill="#fff"/><circle cx="214.5" cy="123" r="2.3" fill="#fff"/>
+  <path d="M193 142 Q200 147 207 142" stroke="#1A141E" stroke-width="2.4" stroke-linecap="round" fill="none"/>
+  <path d="M195 143.5 L197 150 L199 144.5 Z M201 144.5 L203 150 L205 143.5 Z" fill="#fff"/>
+  <ellipse cx="172" cy="138" rx="9" ry="5" fill="#F29CBD" opacity=".55" filter="url(#batB3)"/>
+  <ellipse cx="228" cy="138" rx="9" ry="5" fill="#F29CBD" opacity=".55" filter="url(#batB3)"/>
+  <path d="M190 194 l-4 8 M210 194 l4 8" stroke="#2A2230" stroke-width="4" stroke-linecap="round"/></g></defs>
+  <use xlink:href="#b" transform="translate(150 20) scale(.62) rotate(-8 200 130)"/>
+  <use xlink:href="#b" transform="translate(10 150) scale(.42) rotate(10 200 130)"/>
+  <use xlink:href="#b" transform="translate(300 175) scale(.3) rotate(-14 200 130)"/>
+</svg>

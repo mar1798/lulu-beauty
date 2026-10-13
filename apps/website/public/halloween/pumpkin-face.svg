@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 400 400" width="400" height="400">
+
+  <defs>
+    <radialGradient id="pflobe" cx=".36" cy=".28" r=".8">
+      <stop offset="0" stop-color="#FFD0A3"/>
+      <stop offset=".35" stop-color="#F7A061"/>
+      <stop offset=".75" stop-color="#E2773A"/>
+      <stop offset="1" stop-color="#C45E28"/>
+    </radialGradient>
+    <radialGradient id="pflobeBack" cx=".4" cy=".3" r=".85">
+      <stop offset="0" stop-color="#F6B07A"/>
+      <stop offset=".5" stop-color="#E07D43"/>
+      <stop offset="1" stop-color="#B5541F"/>
+    </radialGradient>
+    <linearGradient id="pfstem" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#A3B06E"/>
+      <stop offset="1" stop-color="#5D6A3A"/>
+    </linearGradient>
+    <filter id="pfblur6"><feGaussianBlur stdDeviation="6"/></filter>
+    <filter id="pfblur3"><feGaussianBlur stdDeviation="3"/></filter>
+  </defs>
+  <ellipse cx="200" cy="344" rx="128" ry="13" fill="#3a2a20" opacity=".16" filter="url(#pfblur6)"/>
+  <g stroke="#A84A18" stroke-opacity=".22" stroke-width="1.5">
+    <ellipse cx="108" cy="244" rx="78" ry="94" fill="url(#pflobeBack)"/>
+    <ellipse cx="292" cy="244" rx="78" ry="94" fill="url(#pflobeBack)"/>
+    <ellipse cx="148" cy="240" rx="74" ry="102" fill="url(#pflobe)"/>
+    <ellipse cx="252" cy="240" rx="74" ry="102" fill="url(#pflobe)"/>
+    <ellipse cx="200" cy="238" rx="70" ry="106" fill="url(#pflobe)"/>
+  </g>
+  <ellipse cx="174" cy="186" rx="13" ry="34" transform="rotate(14 174 186)" fill="#fff" opacity=".38" filter="url(#pfblur3)"/>
+  <ellipse cx="96" cy="216" rx="8" ry="22" transform="rotate(18 96 216)" fill="#fff" opacity=".22" filter="url(#pfblur3)"/>
+  <ellipse cx="200" cy="136" rx="20" ry="6" fill="#9E4416" opacity=".45" filter="url(#pfblur3)"/>
+  <path d="M188 142 C186 118 193 102 207 90 C213 85 224 89 221 97 C211 108 209 122 213 144 Z" fill="url(#pfstem)"/>
+  <path d="M195 112 C197 104 201 98 206 94" stroke="#fff" stroke-opacity=".35" stroke-width="3" stroke-linecap="round" fill="none"/>
+  <path d="M213 130 C240 116 258 130 249 146 C242 158 226 152 232 142" stroke="#7E8E4E" stroke-width="5" stroke-linecap="round" fill="none"/>
+  <defs>
+    <radialGradient id="glow" cx=".5" cy=".55" r=".6">
+      <stop offset="0" stop-color="#FFF4C2"/>
+      <stop offset=".55" stop-color="#FFD36B"/>
+      <stop offset="1" stop-color="#F29A2E"/>
+    </radialGradient>
+    <filter id="glowBlur" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="7"/></filter>
+  </defs>
+  <g filter="url(#glowBlur)" opacity=".55" fill="#FFE07A">
+    <path d="M140 236 L162 198 L184 236 Z"/>
+    <path d="M216 236 L238 198 L260 236 Z"/>
+    <path d="M146 262 Q200 304 254 262 Q244 298 200 300 Q156 298 146 262 Z"/>
+  </g>
+  <g fill="url(#glow)" stroke="#8F3A10" stroke-opacity=".55" stroke-width="3" stroke-linejoin="round">
+    <path d="M142 234 Q146 222 158 202 Q162 196 166 202 Q178 222 182 234 Q162 240 142 234 Z"/>
+    <path d="M218 234 Q222 222 234 202 Q238 196 242 202 Q254 222 258 234 Q238 240 218 234 Z"/>
+    <path d="M148 262 Q172 278 192 278 L196 268 L204 268 L208 278 Q228 278 252 262 Q246 296 200 300 Q154 296 148 262 Z"/>
+  </g>
+  <ellipse cx="128" cy="258" rx="16" ry="8" fill="#F28CA8" opacity=".45" filter="url(#pfblur3)"/>
+  <ellipse cx="272" cy="258" rx="16" ry="8" fill="#F28CA8" opacity=".45" filter="url(#pfblur3)"/>
+</svg>

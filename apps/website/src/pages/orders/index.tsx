@@ -6,6 +6,8 @@ import { EmptyState, Pagination } from 'widgets/molecules'
 import { OrderList } from 'widgets/organisms'
 import { AccountTemplate } from 'widgets/templates'
 import { SiteLayout } from '@/layouts/SiteLayout'
+import { HalloweenEmpty, HalloweenScene } from '@/halloween/HalloweenScene'
+import * as halloween from '@/halloween/halloween.css'
 import { ACCOUNT_NAVIGATION } from '@/layouts/accountNavigation'
 import { useAuth } from '@/contexts/AuthContext'
 import { messageForError } from '@/services/apiErrors'
@@ -56,15 +58,17 @@ const OrdersPage: React.FC = () => {
     // это была бы вспышка чужого экрана вместо его собственных заявок.
     if (user === null && !isAuthLoading) {
       return (
-        <EmptyState
-          title="Заявки видны после входа"
-          description="Войдите - и здесь появится история ваших заявок по сборам"
-          action={
-            <Button link={{ href: loginHref }} isFullWidth="mobile">
-              Войти
-            </Button>
-          }
-        />
+        <HalloweenEmpty kind="orders">
+          <EmptyState
+            title="Заявки видны после входа"
+            description="Войдите - и здесь появится история ваших заявок по сборам"
+            action={
+              <Button link={{ href: loginHref }} isFullWidth="mobile">
+                Войти
+              </Button>
+            }
+          />
+        </HalloweenEmpty>
       )
     }
 
@@ -99,15 +103,17 @@ const OrdersPage: React.FC = () => {
           isLoading={(isAuthLoading || isLoading) && data === undefined}
           buildHref={order => `/orders/${order.id}`}
           emptyState={
-            <EmptyState
-              title="Заявок пока нет"
-              description="Соберите корзину и оформите заявку - она появится здесь"
-              action={
-                <Button link={{ href: '/catalog' }} isFullWidth="mobile">
-                  В каталог
-                </Button>
-              }
-            />
+            <HalloweenEmpty kind="orders">
+              <EmptyState
+                title="Заявок пока нет"
+                description="Соберите корзину и оформите заявку - она появится здесь"
+                action={
+                  <Button link={{ href: '/catalog' }} isFullWidth="mobile">
+                    В каталог
+                  </Button>
+                }
+              />
+            </HalloweenEmpty>
           }
         />
 
@@ -131,11 +137,14 @@ const OrdersPage: React.FC = () => {
       </Head>
 
       <AccountTemplate
+        // Точка отсчёта для хэллоуинской сцены справа от заголовка.
+        className={halloween.host}
         title="Мои заявки"
         summary="Состав и цены закрепляются в момент подтверждения - дальше они не меняются вслед за каталогом"
         navigation={ACCOUNT_NAVIGATION}
         currentHref="/orders"
       >
+        {user !== null && (data?.items.length ?? 0) > 0 && <HalloweenScene variant="list-title" />}
         {content()}
       </AccountTemplate>
     </SiteLayout>

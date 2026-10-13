@@ -12,6 +12,9 @@ import { usePrefetchRoutes } from '@/hooks/usePrefetchRoutes'
 import { useTelegramWebview } from '@/hooks/useTelegramWebview'
 import { INSTAGRAM_URL } from '@/utils/contacts'
 import { useLoginHref } from '@/hooks/useLoginHref'
+import { HalloweenHeaderNote } from '@/halloween/HalloweenHeaderNote'
+import { HalloweenScene } from '@/halloween/HalloweenScene'
+import * as halloween from '@/halloween/halloween.css'
 
 /**
  * Каркас публичных страниц: шапка и подвал, настроенные данными сайта.
@@ -161,6 +164,7 @@ export const SiteLayout: React.FC<ISiteLayoutProps> = ({ children, isCartCountSh
         <>
           <Header
             logo={{ label: 'Sululu', link: { href: '/' } }}
+            logoNote={<HalloweenHeaderNote />}
             navigation={navigation}
             cartLink={{ href: '/cart' }}
             cartCount={isCartCountShown ? itemCount : 0}
@@ -201,11 +205,18 @@ export const SiteLayout: React.FC<ISiteLayoutProps> = ({ children, isCartCountSh
         </>
       }
       footer={
-        <Footer
-          columns={footerColumns}
-          copyright={`© ${START_YEAR} Sululu`}
-          note="Оплата - переводом, чек отправляете боту. Доставка обсуждается лично"
-        />
+        /*
+          Обёртка — точка отсчёта для хэллоуинской сцены: тыквы и свечи стоят
+          на верхней кромке подвала. Сама по себе она ничего не меняет.
+        */
+        <div className={halloween.host}>
+          <HalloweenScene variant="footer" />
+          <Footer
+            columns={footerColumns}
+            copyright={`© ${START_YEAR} Sululu`}
+            note="Оплата - переводом, чек отправляете боту. Доставка обсуждается лично"
+          />
+        </div>
       }
     >
       {children}
