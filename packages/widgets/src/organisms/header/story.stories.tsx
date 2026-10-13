@@ -19,3 +19,27 @@ Default.parameters = {
   layout: 'fullscreen',
 }
 Default.args = feedHeader()
+
+/** Подпись у логотипа — над названием, наискосок, как на сайте в сезон. */
+export const WithLogoNote = Template.bind({})
+WithLogoNote.parameters = {
+  layout: 'fullscreen',
+}
+WithLogoNote.args = {
+  ...feedHeader(),
+  logoNote: (
+    <span
+      style={{
+        position: 'absolute',
+        top: -9,
+        left: 14,
+        fontSize: 10,
+        color: '#b4531b',
+        whiteSpace: 'nowrap',
+        transform: 'rotate(-7deg)',
+      }}
+    >
+      Happy Halloween
+    </span>
+  ),
+}

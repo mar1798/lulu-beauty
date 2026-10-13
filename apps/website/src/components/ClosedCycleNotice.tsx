@@ -3,6 +3,7 @@ import { Alert, Button } from 'widgets/atoms'
 import { useAuth } from '@/contexts/AuthContext'
 import { useActiveCycle } from '@/hooks/useActiveCycle'
 import { useLoginHref } from '@/hooks/useLoginHref'
+import * as halloween from '@/halloween/halloween.css'
 
 /**
  * Врезка «приём заказов закрыт» — одна на страницу.
@@ -15,7 +16,16 @@ import { useLoginHref } from '@/hooks/useLoginHref'
  * Пока состояние сбора неизвестно, не рисуется ничего: врезка, мигнувшая на
  * долю секунды при открытом сборе, хуже её отсутствия.
  */
-export const ClosedCycleNotice: React.FC = () => {
+export interface IClosedCycleNoticeProps {
+  /**
+   * Сезонный декор внутри врезки (свеча на Хэллоуин). Позиционируется
+   * абсолютно от самой врезки и рисуется только вместе с ней — поэтому слот, а
+   * не соседний блок: соседу пришлось бы отдельно знать, показана ли врезка.
+   */
+  decor?: React.ReactNode
+}
+
+export const ClosedCycleNotice: React.FC<IClosedCycleNoticeProps> = ({ decor }) => {
   const { isClosed } = useActiveCycle()
   const { user } = useAuth()
   const loginHref = useLoginHref()
@@ -26,6 +36,7 @@ export const ClosedCycleNotice: React.FC = () => {
 
   return (
     <Alert
+      className={decor === undefined ? undefined : halloween.host}
       tone="info"
       title="Приём заказов закрыт"
       action={
@@ -41,6 +52,7 @@ export const ClosedCycleNotice: React.FC = () => {
     >
       Сейчас нет открытого сбора, поэтому товары нельзя добавить в корзину. Сохраните понравившееся
       в избранное - о следующем сборе бот сообщит в Telegram.
+      {decor}
     </Alert>
   )
 }

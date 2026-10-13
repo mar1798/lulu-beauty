@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 400 400" width="400" height="400">
+
+  <defs>
+    <radialGradient id="gh" cx=".38" cy=".25" r=".85">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset=".55" stop-color="#FAFBFC"/>
+      <stop offset=".85" stop-color="#E7EAEF"/>
+      <stop offset="1" stop-color="#D3D8DF"/>
+    </radialGradient>
+    <filter id="soft" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="10" stdDeviation="12" flood-color="#5A5F6E" flood-opacity=".16"/>
+    </filter>
+    <filter id="b6"><feGaussianBlur stdDeviation="6"/></filter>
+    <filter id="b3"><feGaussianBlur stdDeviation="3"/></filter>
+  </defs>
+  <ellipse cx="200" cy="370" rx="78" ry="10" fill="#3b3f4a" opacity=".12" filter="url(#b6)"/>
+  <g filter="url(#soft)" fill="url(#gh)">
+    <ellipse cx="92" cy="214" rx="22" ry="34" transform="rotate(38 92 214)"/>
+    <ellipse cx="310" cy="176" rx="22" ry="36" transform="rotate(-36 310 176)"/>
+    <path d="M200 62 C270 62 302 118 302 190 L302 292 C302 304 292 310 283 301 C271 289 261 291 253 307 C245 323 229 323 221 307 C211 289 189 289 179 307 C169 323 153 323 145 307 C137 291 127 289 115 301 C106 310 98 304 98 292 L98 190 C98 118 130 62 200 62 Z"/>
+  </g>
+  <ellipse cx="166" cy="110" rx="26" ry="14" transform="rotate(-24 166 110)" fill="#fff" opacity=".9" filter="url(#b3)"/>
+  <g fill="#2B2730">
+    <ellipse cx="168" cy="172" rx="12" ry="16"/>
+    <ellipse cx="232" cy="172" rx="12" ry="16"/>
+    <ellipse cx="200" cy="212" rx="10" ry="12"/>
+  </g>
+  <circle cx="172" cy="166" r="4.5" fill="#fff"/>
+  <circle cx="236" cy="166" r="4.5" fill="#fff"/>
+  <circle cx="164" cy="178" r="2" fill="#fff" opacity=".8"/>
+  <circle cx="228" cy="178" r="2" fill="#fff" opacity=".8"/>
+  <ellipse cx="200" cy="217" rx="5" ry="4" fill="#E58AA9"/>
+  <ellipse cx="142" cy="200" rx="18" ry="9" fill="#F4A3BF" opacity=".55" filter="url(#b3)"/>
+  <ellipse cx="258" cy="200" rx="18" ry="9" fill="#F4A3BF" opacity=".55" filter="url(#b3)"/>
+</svg>

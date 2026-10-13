@@ -7,6 +7,8 @@ import { ProductDetails } from 'widgets/organisms'
 import { ProductTemplate } from 'widgets/templates'
 import { useCart } from '@/contexts/CartContext'
 import { SiteLayout } from '@/layouts/SiteLayout'
+import { HalloweenScene } from '@/halloween/HalloweenScene'
+import * as halloween from '@/halloween/halloween.css'
 import { AddToCartButton } from '@/components/AddToCartButton'
 import { CartQuantityStepper } from '@/components/CartQuantityStepper'
 import { ClosedCycleNotice } from '@/components/ClosedCycleNotice'
@@ -266,6 +268,8 @@ const ProductPage: React.FC<IProductPageProps> = ({ product, categoryName, categ
       <JsonLd data={breadcrumbsLd(breadcrumbs)} />
 
       <ProductTemplate
+        // Точка отсчёта для хэллоуинской мыши у хлебных крошек.
+        className={halloween.host}
         breadcrumbs={
           <Breadcrumbs
             items={breadcrumbs.slice(0, -1).map(item => ({
@@ -276,9 +280,13 @@ const ProductPage: React.FC<IProductPageProps> = ({ product, categoryName, categ
           />
         }
       >
+        <HalloweenScene variant="product" />
+
         <ClosedCycleNotice />
 
         <ProductDetails
+          // Крючок для хэллоуинской паутинки и тыквы у фото (по атрибуту `<html>`).
+          className={halloween.productDetails}
           product={product}
           categoryName={categoryName}
           selectedVariantId={selectedVariantId}

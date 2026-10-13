@@ -20,6 +20,7 @@
     "./styling/mixin": "./src/styling/mixin/index.ts",
     "./styling/theme": "./src/styling/themes/contract.css.ts",
     "./styling/properties": "./src/styling/properties.css.ts",
+    "./styling/levitate": "./src/styling/levitate.css.ts",
     "./styling/global.css": "./src/styling/global.css.ts",
     "./styling/preflight.css": "./src/styling/preflight.css.ts"
   },
@@ -40,6 +41,9 @@
       ],
       "styling/properties": [
         "./src/styling/properties.css.ts"
+      ],
+      "styling/levitate": [
+        "./src/styling/levitate.css.ts"
       ],
       "atoms": [
         "./src/atoms/index.ts"

@@ -1,3 +1,4 @@
+import clsx from 'clsx'
 import React, { useCallback, useMemo } from 'react'
 import useSWR from 'swr'
 import type { GetStaticProps } from 'next'
@@ -37,6 +38,8 @@ import { productListLd } from '@/utils/jsonLd'
 import { scrollToTop } from '@/utils/scroll'
 import { CATALOG_DESCRIPTION, CATALOG_TITLE } from '@/utils/seo'
 import * as styles from '@/styles/catalog.css'
+import { HalloweenScene } from '@/halloween/HalloweenScene'
+import * as halloween from '@/halloween/halloween.css'
 
 /**
  * Витрина.
@@ -300,6 +303,8 @@ const CatalogPage: React.FC<ICatalogPageProps> = ({ categories, brands, initial,
       {products.length > 0 && <JsonLd data={productListLd(products)} />}
 
       <CatalogTemplate
+        // Точка отсчёта для хэллоуинских сцен: у заголовка, над фильтрами и по бокам сетки.
+        className={clsx(halloween.host, halloween.catalogPage)}
         title="Каталог"
         summary={isFirstLoad ? undefined : `Найдено товаров: ${total}`}
         focusKey={pageNumber}
@@ -350,10 +355,21 @@ const CatalogPage: React.FC<ICatalogPageProps> = ({ categories, brands, initial,
           />
         }
         pagination={
-          <Pagination page={pageNumber} pageSize={PAGE_SIZE} total={total} onChange={goToPage} />
+          <div className={halloween.host}>
+            <Pagination page={pageNumber} pageSize={PAGE_SIZE} total={total} onChange={goToPage} />
+            {/* Только при видимой пагинации: на одной странице её нет, и декору не у чего стоять. */}
+            {total > PAGE_SIZE && <HalloweenScene variant="catalog-pagination" />}
+          </div>
         }
       >
-        <ClosedCycleNotice />
+        {/*
+          Сцены стоят вне сетки и фильтров и от их состояния не зависят: смена
+          категории, поиска или страницы их не перемонтирует и не мигает ими.
+        */}
+        <HalloweenScene variant="catalog-title" />
+        <HalloweenScene variant="catalog-sides" />
+
+        <ClosedCycleNotice decor={<HalloweenScene variant="catalog-banner" />} />
 
         {error === null ? (
           <ProductGrid
@@ -363,6 +379,8 @@ const CatalogPage: React.FC<ICatalogPageProps> = ({ categories, brands, initial,
             buildHref={product => `/catalog/${product.slug}`}
             categoryNames={categoryNames}
             priorityCount={PRIORITY_CARDS}
+            // Крючок для хэллоуинских паутинок и свечения карточек (по атрибуту `<html>`).
+            className={halloween.catalogGrid}
             renderAction={product =>
               product.inStock ? <AddToCartButton product={product} isCompact={true} /> : null
             }
@@ -380,10 +398,13 @@ const CatalogPage: React.FC<ICatalogPageProps> = ({ categories, brands, initial,
               блока подряд с одной мыслью читались бы как повтор.
             */
             emptyState={
-              <WantedProductPrompt
-                className={styles.wanted}
-                description="Попробуйте изменить запрос, категорию или бренд - или расскажите, что вы ищете, и мы постараемся добавить это в следующий сбор"
-              />
+              <div className={halloween.host}>
+                <HalloweenScene variant="empty-state" kind="catalog" />
+                <WantedProductPrompt
+                  className={styles.wanted}
+                  description="Попробуйте изменить запрос, категорию или бренд - или расскажите, что вы ищете, и мы постараемся добавить это в следующий сбор"
+                />
+              </div>
             }
           />
         ) : (

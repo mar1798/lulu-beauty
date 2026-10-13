@@ -1,6 +1,7 @@
 import { keyframes, style, styleVariants } from '@vanilla-extract/css'
 import { color } from '../../styling/lib'
 import { media } from '../../styling/lib/media'
+import { levitate } from '../../styling/levitate.css'
 import { vars } from '../../styling/themes/contract.css'
 import { DECOR_FLOAT_OFFSET } from '../../utils/motion'
 
@@ -35,27 +36,20 @@ export const size = styleVariants({
 export const drift = style({})
 
 /**
- * Левитация баночки: дыхание по вертикали с микро-наклоном. Период и
+ * Левитация баночки — общая анимация `styling/levitate.css.ts`. Период и
  * отрицательная задержка приходят инлайном из `floatPhase` — соседние пятна
  * не должны качаться в такт, а в CSS этим числам взяться неоткуда.
  */
-const floatKeyframes = keyframes({
-  from: { transform: `translateY(${-DECOR_FLOAT_OFFSET}px) rotate(-1.2deg)` },
-  to: { transform: `translateY(${DECOR_FLOAT_OFFSET}px) rotate(1.2deg)` },
-})
-
-export const float = style({
-  /*
-    `relative` не ради координат, а ради порядка отрисовки: без него
-    непозиционированная баночка ушла бы под абсолютный ореол.
-  */
-  position: 'relative',
-  animationName: floatKeyframes,
-  animationTimingFunction: 'ease-in-out',
-  animationDirection: 'alternate',
-  animationIterationCount: 'infinite',
-  ...media({ preferReducedMotion: { animation: 'none' } }),
-})
+export const float = style([
+  levitate,
+  {
+    /*
+      `relative` не ради координат, а ради порядка отрисовки: без него
+      непозиционированная баночка ушла бы под абсолютный ореол.
+    */
+    position: 'relative',
+  },
+])
 
 /**
  * Слой скролл-параллакса едет от каждого кадра прокрутки, а не по собственной

@@ -220,6 +220,224 @@ def test_new_uniqueness_on_an_existing_table_is_flagged(tmp_path: Path) -> None:
     ) == ["create_index (unique)"]
 
 
+def test_uniqueness_on_a_nullable_column_this_migration_adds_is_allowed(
+    tmp_path: Path,
+) -> None:
+    # The old code never writes the column, so its rows all carry NULL there,
+    # and NULLs don't collide. The shape of b8d2e6f41a37 (orders.request_id).
+    assert (
+        operations(
+            tmp_path,
+            """
+            op.add_column("orders", sa.Column("request_id", sa.UUID(), nullable=True))
+            op.add_column("orders", sa.Column("key", sa.UUID()))
+            op.create_unique_constraint("uq_orders_request_id", "orders", ["request_id"])
+            op.create_index("ix_orders_rk", "orders", ["request_id", "key"], unique=True)
+            """,
+        )
+        == []
+    )
+
+
+@pytest.mark.parametrize(
+    ("added", "unique"),
+    [
+        # A value the database fills in for the old code's rows can collide.
+        (
+            'sa.Column("code", sa.String(), server_default="x")',
+            'op.create_unique_constraint("uq", "orders", ["code"])',
+        ),
+        # NULLs that are not distinct collide too.
+        (
+            'sa.Column("code", sa.String(), nullable=True)',
+            'op.create_index("ix", "orders", ["code"], unique=True,'
+            " postgresql_nulls_not_distinct=True)",
+        ),
+        # One of the columns is an existing one.
+        (
+            'sa.Column("code", sa.String(), nullable=True)',
+            'op.create_unique_constraint("uq", "orders", ["code", "user_id"])',
+        ),
+        # The column was added to a different table.
+        (
+            'sa.Column("code", sa.String(), nullable=True)',
+            'op.create_unique_constraint("uq", "products", ["code"])',
+        ),
+        # A default set after the column is added fills the old code's rows too.
+        (
+            'sa.Column("code", sa.String(), nullable=True)',
+            'op.alter_column("orders", "code", server_default="x")\n'
+            'op.create_unique_constraint("uq", "orders", ["code"])',
+        ),
+        (
+            'sa.Column("code", sa.String(), nullable=True)',
+            "op.execute(\"ALTER TABLE orders ALTER COLUMN code SET DEFAULT 'x'\")\n"
+            'op.create_unique_constraint("uq", "orders", ["code"])',
+        ),
+        (
+            'sa.Column("code", sa.String(), nullable=True)',
+            'op.alter_column(table_name="orders", column_name="code", server_default="x")\n'
+            'op.create_unique_constraint("uq", "orders", ["code"])',
+        ),
+        # So does a trigger.
+        (
+            'sa.Column("code", sa.String(), nullable=True)',
+            'op.execute("CREATE TRIGGER t BEFORE INSERT ON orders'
+            ' FOR EACH ROW EXECUTE FUNCTION f()")\n'
+            'op.create_unique_constraint("uq", "orders", ["code"])',
+        ),
+        # Nullability this script can't read isn't taken on trust.
+        (
+            'sa.Column("code", sa.String(), nullable=NULLABLE)',
+            'op.create_unique_constraint("uq", "orders", ["code"])',
+        ),
+        # Same table name, but maybe not the same table.
+        (
+            'sa.Column("code", sa.String(), nullable=True)',
+            'op.create_unique_constraint("uq", "orders", ["code"], schema="other")',
+        ),
+        # A default handed to Column positionally fills the old code's rows just
+        # the same as server_default= does.
+        (
+            'sa.Column("code", sa.String(), sa.DefaultClause("x"))',
+            'op.create_unique_constraint("uq", "orders", ["code"])',
+        ),
+        (
+            'sa.Column("code", sa.String(), sa.FetchedValue())',
+            'op.create_unique_constraint("uq", "orders", ["code"])',
+        ),
+    ],
+)
+def test_uniqueness_the_old_code_can_still_collide_with_is_flagged(
+    tmp_path: Path, added: str, unique: str
+) -> None:
+    upgrade = f'op.add_column("orders", {added})\n{unique}'
+    assert len(operations(tmp_path, upgrade)) == 1
+
+
+def test_a_unique_column_is_judged_like_a_unique_constraint(tmp_path: Path) -> None:
+    # Alembic creates the rule with the column: harmless while the old code
+    # leaves it NULL, not once the database hands its rows a value.
+    assert (
+        operations(
+            tmp_path,
+            'op.add_column("orders", sa.Column("code", sa.String(), unique=True))',
+        )
+        == []
+    )
+    assert operations(
+        tmp_path,
+        'op.add_column("orders", sa.Column("code", sa.String(), nullable=False,'
+        ' server_default="x", unique=True))',
+    ) == ["add_column (unique)"]
+
+
+def test_a_table_created_in_another_schema_is_not_this_one(tmp_path: Path) -> None:
+    assert operations(
+        tmp_path,
+        """
+        op.create_table("orders", sa.Column("id", sa.Integer()), schema="archive")
+        op.add_column("orders", sa.Column("code", sa.String(), nullable=False))
+        """,
+    ) == ["add_column (NOT NULL the database cannot fill)"]
+
+
+def test_a_foreign_key_does_not_make_a_fresh_column_less_fresh(tmp_path: Path) -> None:
+    # A ForeignKey is the one positional extra that hands the column no value.
+    assert (
+        operations(
+            tmp_path,
+            """
+            op.add_column("orders", sa.Column("ref", sa.UUID(), sa.ForeignKey("users.id")))
+            op.create_unique_constraint("uq", "orders", ["ref"])
+            """,
+        )
+        == []
+    )
+
+
+@pytest.mark.parametrize(
+    "upgrade",
+    [
+        # A **kwargs could carry a server_default, or nulls_not_distinct.
+        'op.add_column("orders", sa.Column("code", sa.String(), **KW))\n'
+        'op.create_unique_constraint("uq", "orders", ["code"])',
+        'op.add_column("orders", sa.Column("code", sa.String()))\n'
+        'op.create_index("ix", "orders", ["code"], unique=True, **KW)',
+        # An existing trigger's function, rewritten to fill the new column.
+        'op.add_column("orders", sa.Column("code", sa.String()))\n'
+        'op.execute("CREATE OR REPLACE FUNCTION touch() RETURNS trigger AS $$ $$")\n'
+        'op.create_unique_constraint("uq", "orders", ["code"])',
+    ],
+)
+def test_uniqueness_on_a_column_this_script_cannot_vouch_for_is_flagged(
+    tmp_path: Path, upgrade: str
+) -> None:
+    assert len(operations(tmp_path, upgrade)) == 1
+
+
+@pytest.mark.parametrize(
+    "later",
+    [
+        'op.alter_column("orders", "code", server_default="x")',
+        "op.execute(\"ALTER TABLE orders ALTER COLUMN code SET DEFAULT 'x'\")",
+    ],
+)
+def test_a_default_from_another_migration_of_the_release_is_seen(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], later: str
+) -> None:
+    # Each file is fine on its own; the old code meets both at once.
+    (tmp_path / "a").mkdir()
+    (tmp_path / "b").mkdir()
+    first = migration(
+        tmp_path / "a",
+        'op.add_column("orders", sa.Column("code", sa.String()))\n'
+        'op.create_unique_constraint("uq", "orders", ["code"])',
+    )
+    second = migration(tmp_path / "b", later)
+    assert check.main([first]) == 0
+    assert check.main([second]) == 0
+    capsys.readouterr()
+
+    assert check.main([first, second]) == 1
+    assert "create_unique_constraint" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize(
+    ("call", "operation"),
+    [
+        (
+            'op.create_check_constraint("ck_p", "products", "price_cents > 0")',
+            "create_check_constraint",
+        ),
+        (
+            'op.create_exclude_constraint("ex_c", "order_cycles", ("period", "&&"))',
+            "create_exclude_constraint",
+        ),
+        ('op.create_primary_key("pk_p", "products", ["id"])', "create_primary_key"),
+    ],
+)
+def test_a_new_rule_on_an_existing_table_is_flagged(
+    tmp_path: Path, call: str, operation: str
+) -> None:
+    # The previous release inserts rows without knowing the rule exists.
+    assert operations(tmp_path, call) == [operation]
+
+
+def test_a_new_rule_on_a_table_this_migration_creates_is_allowed(tmp_path: Path) -> None:
+    assert (
+        operations(
+            tmp_path,
+            """
+            op.create_table("banners", sa.Column("id", sa.Integer(), nullable=False))
+            op.create_check_constraint("ck_b", "banners", "id > 0")
+            op.create_primary_key("pk_b", "banners", ["id"])
+            """,
+        )
+        == []
+    )
+
+
 def test_everything_is_allowed_on_a_table_this_migration_creates(tmp_path: Path) -> None:
     # The autogenerated shape for any new table. Flagging it would make the
     # guard cry wolf on every release that adds one.
@@ -271,6 +489,11 @@ def test_a_migration_without_upgrade_reports_nothing(tmp_path: Path) -> None:
     "sql",
     [
         'CREATE EXTENSION IF NOT EXISTS "pg_trgm"',
+        # Neither a foreign key, nor a plain index, nor a column is a rule on the
+        # old code's inserts the way UNIQUE and CHECK are.
+        "ALTER TABLE orders ADD CONSTRAINT fk_o_u FOREIGN KEY (user_id) REFERENCES users (id)",
+        "CREATE INDEX ix_p_sku ON products (sku)",
+        "ALTER TABLE products ADD COLUMN note text",
         "ALTER TYPE orderstatus ADD VALUE 'CANCELLED_BY_OWNER'",
         "UPDATE products SET price_cents = 0 WHERE price_cents IS NULL",
     ],
@@ -288,6 +511,18 @@ def test_expanding_sql_is_allowed(tmp_path: Path, sql: str) -> None:
         ("DROP TYPE orderstatus", "execute (DROP TYPE)"),
         ("ALTER TABLE products RENAME COLUMN note TO comment", "execute (RENAME)"),
         ("ALTER TABLE products ALTER COLUMN sku SET NOT NULL", "execute (SET NOT NULL)"),
+        # Rules the previous release's inserts may break, spelled as SQL.
+        ("CREATE UNIQUE INDEX ix_p_sku ON products (lower(sku))", "execute (CREATE UNIQUE INDEX)"),
+        (
+            "ALTER TABLE products ADD CONSTRAINT uq_p_sku UNIQUE (sku)",
+            "execute (ADD CONSTRAINT)",
+        ),
+        (
+            'ALTER TABLE products ADD CONSTRAINT "ck p" CHECK (price_cents > 0)',
+            "execute (ADD CONSTRAINT)",
+        ),
+        ("ALTER TABLE products ADD CHECK (price_cents > 0) NOT VALID", "execute (ADD CONSTRAINT)"),
+        ("ALTER TABLE products ADD PRIMARY KEY (id)", "execute (ADD CONSTRAINT)"),
     ],
 )
 def test_contracting_sql_is_flagged(tmp_path: Path, sql: str, operation: str) -> None:
@@ -309,11 +544,44 @@ def test_an_f_string_cannot_splice_two_words_into_one(tmp_path: Path) -> None:
     ]
 
 
+@pytest.mark.parametrize(
+    "call",
+    [
+        'op.execute(sqltext="DROP TABLE banners")',
+        'op.get_bind().execute(statement=sa.text("DROP TABLE banners"))',
+        'op.get_bind().exec_driver_sql("DROP TABLE banners")',
+    ],
+)
+def test_sql_passed_by_keyword_or_to_the_driver_is_read(tmp_path: Path, call: str) -> None:
+    assert operations(tmp_path, call) == ["execute (DROP TABLE)"]
+
+
+def test_a_formatted_template_is_not_read_through_its_argument(tmp_path: Path) -> None:
+    # The verb is in the template; the argument is only the table's name.
+    assert operations(tmp_path, 'op.execute("DROP TABLE {}".format("banners"))') == [
+        "execute (SQL this script cannot read — check by hand)"
+    ]
+
+
+def test_a_default_set_by_keyword_sql_is_seen(tmp_path: Path) -> None:
+    assert operations(
+        tmp_path,
+        """
+        op.add_column("orders", sa.Column("code", sa.String()))
+        op.execute(sqltext="ALTER TABLE orders ALTER COLUMN code SET DEFAULT 'x'")
+        op.create_unique_constraint("uq", "orders", ["code"])
+        """,
+    ) == ["create_unique_constraint"]
+
+
 def test_sql_this_script_cannot_read_is_reported_rather_than_waved_through(
     tmp_path: Path,
 ) -> None:
     # "I could not tell" must never come out as "expanding only".
     assert operations(tmp_path, "op.execute(statement)") == [
+        "execute (SQL this script cannot read — check by hand)"
+    ]
+    assert operations(tmp_path, "op.execute(**kwargs)") == [
         "execute (SQL this script cannot read — check by hand)"
     ]
 

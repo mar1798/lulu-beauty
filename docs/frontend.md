@@ -371,6 +371,47 @@ rasterised preview can reference a webfont. The preview repeats the home page's 
 is static, so there is no environment variable to interpolate. The map itself is generated —
 `pages/sitemap.xml.ts`, described in [seo.md](seo.md).
 
+## Seasonal decor (Halloween)
+
+`src/halloween/` holds a temporary Halloween theme, removable as one folder plus its hook-up
+points. `config.ts` has the switch: `HALLOWEEN_ENABLED = false` turns everything off, and with
+it on the theme still ends by itself at `HALLOWEEN_UNTIL` (2 November inclusive, Bishkek time).
+
+- The date is checked **in the browser**, never at build time: the pages are static, and a
+  cart built in October would otherwise keep its pumpkins until the next release.
+- `earlyScript.ts`, inlined by `_document` after the `theme-color` meta, sets
+  `data-halloween` on `<html>` and recolours `theme-color` before first paint. Every global
+  rule in `halloween.css.ts` (canvas colour, card cobwebs and hover glow, the catalog's side decor,
+  the product gallery's cobweb and pumpkin) hangs off that attribute, so without it the hook
+  classes pages hand out (`catalogGrid`, `catalogPage`, `productDetails`, `authHost`, `host`)
+  match nothing.
+- `HalloweenLayer` (in `_app`) draws the vignette, the corner cobwebs, the bat flight and, on
+  phones on `/` and `/catalog`, a spider hanging from the right cobweb (fixed under the header);
+  `HalloweenScene variant="…"` draws spot scenes inside a page block, absolutely positioned
+  against a `host` ancestor. Both go through `useHalloween`, which is `false` on the server and
+  during hydration, so scenes appear right after it: no hydration mismatch, no CLS (nothing
+  takes space in flow), and decor never competes for LCP.
+- «Happy Halloween» next to the logo is `HalloweenHeaderNote`, passed through the `Header`'s
+  `logoNote` slot, set at a slight angle above the logo, or beside it in two lines on phones
+  (`absolute` either way, so the header doesn't grow). It is in the markup whenever
+  the flag is on and shown by the `data-halloween` attribute, not `useHalloween`: the header is
+  in the first frame, and a note appearing after hydration would shift the navigation.
+- The vignette and corner cobwebs sit at `z-index: -1`, under the content. That is why `body`
+  is made transparent while the attribute is on: a body background would paint over them.
+- Levitation is the jars' own animation, `widgets/styling/levitate`, timed by `floatTiming`.
+- The flapping bat is inline SVG (`BatFlap.tsx`), not a file in `public/halloween`: Chrome plays
+  neither CSS nor SMIL animation inside an SVG loaded through `<img>`, so the wings froze.
+- Every animated piece of decor pauses off screen (`data-halloween-paused`, one shared
+  `IntersectionObserver` in `Deco`); the flying bat keeps its wings paused between flights.
+- The catalog spreads its decor out: a light row above the filters, ten figures alternating
+  down both sides of the grid (`catalog-sides`, from 1280px, centred in the side gutter or
+  peeking from behind the cards where the gutter is narrower), then the pagination and the
+  footer. Which side figures show is decided by CSS `:has()` on the grid's card count, so
+  changing filters never remounts them.
+- Removing the theme: delete `src/halloween/` and `public/halloween/`, then fix what
+  `grep -rn "@/halloween" src` finds — each hit is a hook-up line, a `host`/hook class or a
+  wrapper `<div>` around a slot. `widgets/styling/levitate` stays: the jars use it.
+
 ## Configuration
 
 `src/сonfig.ts` (Cyrillic `с`!) exposes `publicConfig(key)` and `serverConfig(key)`. Server

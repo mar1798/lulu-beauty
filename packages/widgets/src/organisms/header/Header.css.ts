@@ -92,13 +92,23 @@ globalStyle(`html:has(${container}:not(${unpinned}))`, {
   vars: { [headerOffset]: rem(73) },
 })
 
+/**
+ * Логотип и подпись к нему (`logoNote`). Обёртка — точка отсчёта: подпись
+ * может лечь над названием (`absolute`), и шапка от неё не раздвигается.
+ */
+export const brand = style({
+  position: 'relative',
+  display: 'flex',
+  alignItems: 'center',
+  marginRight: 'auto',
+})
+
 export const logo = style([
   {
     font: font('24/32', 600, 'display'),
     letterSpacing: vars.tracking.tight,
     color: color.text('primary'),
     textDecoration: 'none',
-    marginRight: 'auto',
     whiteSpace: 'nowrap',
   },
   focusVisibleRing(),

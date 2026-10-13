@@ -938,6 +938,13 @@ export interface IWantedProductFormProps {
 
 export interface IHeaderProps {
   logo: ILinkedLabel
+  /**
+   * Мелкая подпись у логотипа (сезонное поздравление и т. п.). Вне ссылки
+   * логотипа: на главную ведёт только само название. Обёртка логотипа —
+   * точка отсчёта, так что подпись может встать и над ним (`absolute`), не
+   * раздвигая шапку.
+   */
+  logoNote?: ReactNode
   navigation: ILinkedLabel[]
   cartLink: ILink
   cartCount?: number
