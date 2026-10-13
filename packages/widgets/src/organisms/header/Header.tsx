@@ -70,6 +70,7 @@ const ScrollThreshold: FC<{ onChange: (isPast: boolean) => void }> = ({ onChange
 
 export const Header: FC<IHeaderProps & IBasicStyling> = ({
   logo,
+  logoNote,
   navigation,
   cartLink,
   cartCount = 0,
@@ -102,9 +103,13 @@ export const Header: FC<IHeaderProps & IBasicStyling> = ({
 
       <Container as="div">
         <div className={styles.inner}>
-          <AppLink {...logo.link} className={styles.logo}>
-            {logo.label}
-          </AppLink>
+          <div className={styles.brand}>
+            <AppLink {...logo.link} className={styles.logo}>
+              {logo.label}
+            </AppLink>
+
+            {logoNote}
+          </div>
 
           <nav className={styles.nav} aria-label="Основная навигация">
             {navigation.map(item => (
