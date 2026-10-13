@@ -379,9 +379,11 @@ an index — stays compatible with the previous release, which makes that rollba
 renames and `NOT NULL` on an existing column don't: they belong in the _next_ release, once
 the one that stopped writing the old shape has lived in production. A release that breaks
 this rule can only be undone through `deploy/restore.sh`. So does a `NOT NULL` column the
-database cannot fill by itself, and a uniqueness rule added to an existing table: the
-previous release inserts rows the new schema refuses. A `server_default` or a `Computed`
-settles the first — the database supplies the value for the rows the old code inserts, and
+database cannot fill by itself, and a uniqueness, check or primary key rule added to an
+existing table: the previous release inserts rows the new schema refuses. (Uniqueness on a
+nullable column the same migration adds, with nothing in the database filling it, is fine —
+the old code leaves it NULL, and NULLs don't collide.) A `server_default` or a `Computed`
+settles the `NOT NULL` column — the database supplies the value for the rows the old code inserts, and
 a generated column it could not name even if it knew about it. The rule is enforced on every release by the
 `Migration guard` job, which parses `upgrade()` in each migration the release touches
 (`.github/scripts/check-migrations.py` — runnable by hand before the release PR, and run as a

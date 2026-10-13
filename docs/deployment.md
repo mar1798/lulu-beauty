@@ -816,23 +816,41 @@ of preparing a release.
   nobody can deploy.
 
   Contracting is read as "the previous release stops working against this
-  schema", which is wider than dropping things, so three more are flagged:
+  schema", which is wider than dropping things, so more is flagged:
   `op.add_column` with `nullable=False` and nothing the database can fill it
   from (the old code inserts rows without that column and the database refuses
   them — the expanding way to add a required field is two releases, nullable now
-  and `NOT NULL` once the old code is gone), `op.create_unique_constraint`, and
-  `op.create_index` with `unique=True` (the old code writes rows that collide).
+  and `NOT NULL` once the old code is gone), `op.create_unique_constraint` and
+  `op.create_index` with `unique=True` (the old code writes rows that collide),
+  and `op.create_check_constraint`, `op.create_exclude_constraint` and
+  `op.create_primary_key` (rules the old code's rows never knew to keep).
   A `server_default` lets the first through, and so does a `Computed`: a
   `GENERATED ALWAYS … STORED` column is filled by the database for every row,
-  including the ones the previous release inserts, which may not name it at all. All three are
+  including the ones the previous release inserts, which may not name it at all. All of them are
   allowed on a table the same migration creates: a rule on data that did not
-  exist a minute ago constrains nobody.
+  exist a minute ago constrains nobody. The two unique ones are also allowed
+  when every column they cover is added by the same migration as nullable
+  (a literal `nullable=True` or none) with no `server_default` or `Computed`
+  and nothing positional past its type but a `ForeignKey` (a `DefaultClause`
+  or `FetchedValue` there is a default too):
+  the previous release leaves that column NULL, and NULLs don't collide. Not
+  when the index says `postgresql_nulls_not_distinct`, when a `schema=` is in
+  play, when any migration of the release touches the column with
+  `alter_column`, or when any of them runs SQL that sets a default or creates a
+  trigger, function or rule — each of those can make the old code's rows
+  collide after all, and is flagged. That is why the script is given the whole
+  release at once: run on one file, it can't see a default the next one sets.
 
   `op.execute` is read as SQL rather than trusted or blanket-refused: the
   migrations here use it for `CREATE EXTENSION`, `ALTER TYPE … ADD VALUE` and
   plain `UPDATE`s, so failing on every one of them would only teach everyone to
   ignore the job — but a `DROP TABLE`, `DROP COLUMN`, `DROP CONSTRAINT`,
-  `DROP TYPE`, `RENAME` or `SET NOT NULL` inside the string fails it. An
+  `DROP TYPE`, `RENAME`, `SET NOT NULL`, `CREATE UNIQUE INDEX` or an
+  `ADD [CONSTRAINT …] UNIQUE / PRIMARY KEY / CHECK / EXCLUDE` inside the string
+  fails it — the last two even on a table the same migration creates, since
+  telling which table the SQL names is parsing SQL; such an index belongs in
+  `op.create_index`. The SQL is found positionally or as `sqltext=` /
+  `statement=`. An
   argument the script can't read as text (a name built elsewhere) is reported as
   exactly that and fails too; "I could not tell" must not come out as "expanding
   only". `op.drop_index` is deliberately allowed: the previous release still
