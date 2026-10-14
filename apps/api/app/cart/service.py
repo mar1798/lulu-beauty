@@ -7,7 +7,7 @@ from sqlalchemy.orm import selectinload
 
 from app.cart.models import Cart, CartItem
 from app.cart.schemas import CartItemResponse, CartResponse
-from app.catalog.images import primary_image_url
+from app.catalog.images import variant_image_url
 from app.catalog.models import Category, Product, ProductVariant
 from app.common.limits import MAX_ITEM_QUANTITY
 from app.cycles.models import OrderCycle
@@ -241,13 +241,18 @@ class CartService:
                     variant_id=variant.id,
                     product_name=product.name,
                     product_slug=product.slug,
-                    product_image_url=primary_image_url(product.images),
+                    # The photo of the shade in the cart, not the product's first one:
+                    # three lipsticks in one cart are three different colours.
+                    product_image_url=variant_image_url(
+                        product.images, variant.volume_ml, variant.shade
+                    ),
                     product_price_cents=variant.price_cents,
                     quantity=cart_item.quantity,
                     line_total_cents=line_total_cents,
                     product_brand=product.brand,
                     product_category_name=category_name,
                     product_volume_ml=variant.volume_ml,
+                    product_shade=variant.shade,
                 )
             )
 

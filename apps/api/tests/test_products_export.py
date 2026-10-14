@@ -11,6 +11,7 @@ from app.catalog.import_service import (
     parse_volume_ml,
     validate_headers,
 )
+from app.catalog.shades import normalize_shade
 from app.config import settings
 from app.export.products import (
     HEADER,
@@ -28,6 +29,7 @@ def _row(**overrides: object) -> ProductExportRow:
         "category_slug": "care",
         "price_cents": 15000,
         "volume_ml": 50,
+        "shade": None,
         "in_stock": True,
     }
     defaults.update(overrides)
@@ -61,14 +63,20 @@ def test_description_and_photos_are_not_columns() -> None:
 def test_writes_a_line_per_product() -> None:
     sheet = _sheet([_row(name="Крем", price_cents=15000, volume_ml=50)])
 
-    assert _values(sheet, 2) == ["Крем", "rose-serum", "Lulu", "care", 150, 50, "да"]
+    assert _values(sheet, 2) == ["Крем", "rose-serum", "Lulu", "care", 150, 50, None, "да"]
+
+
+def test_writes_the_shade_of_a_shaded_variant() -> None:
+    sheet = _sheet([_row(name="Помада", volume_ml=None, shade="05 Rose")])
+
+    assert _values(sheet, 2)[HEADER.index("shade")] == "05 Rose"
 
 
 def test_missing_brand_volume_and_category_come_out_empty() -> None:
     sheet = _sheet([_row(brand=None, category_slug=None, volume_ml=None, in_stock=False)])
-    _, _, brand, category, _, volume, in_stock = _values(sheet, 2)
+    _, _, brand, category, _, volume, shade, in_stock = _values(sheet, 2)
 
-    assert (brand, category, volume) == (None, None, None)
+    assert (brand, category, volume, shade) == (None, None, None, None)
     assert in_stock == "нет"
 
 
@@ -77,6 +85,7 @@ def test_export_round_trips_through_the_import() -> None:
         _row(name="Крем", slug="krem", price_cents=15000, volume_ml=50, in_stock=True),
         _row(name="Тоник", slug="tonik", brand=None, category_slug=None, volume_ml=None,
              price_cents=999, in_stock=False),
+        _row(name="Помада", slug="pomada", volume_ml=None, shade="05 Rose", price_cents=700),
     ]  # fmt: skip
 
     parsed = parse_rows("catalog.xlsx", build_products_workbook(rows))
@@ -88,10 +97,15 @@ def test_export_round_trips_through_the_import() -> None:
             cells["slug"],
             parse_price_cents(cells["price"]),
             parse_volume_ml(cells["volume"]),
+            normalize_shade(cells["shade"]),
             parse_in_stock(cells["in_stock"]),
         )
         for _, cells in parsed
-    ] == [("Крем", "krem", 15000, 50, True), ("Тоник", "tonik", 999, None, False)]
+    ] == [
+        ("Крем", "krem", 15000, 50, None, True),
+        ("Тоник", "tonik", 999, None, None, False),
+        ("Помада", "pomada", 700, None, "05 Rose", True),
+    ]
 
 
 def test_a_product_name_that_looks_like_a_formula_stays_text() -> None:

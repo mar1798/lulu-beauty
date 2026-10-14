@@ -1,6 +1,6 @@
 import type { IProduct } from 'widgets/types'
 import { formatPrice } from 'widgets/atoms'
-import { formatVolume, formatVolumes } from 'widgets/utils'
+import { formatVolume, formatVolumes, hasPriceRange, variantVolumes } from 'widgets/utils'
 import { publicConfig } from '@/сonfig'
 
 /**
@@ -121,20 +121,20 @@ export function productTitle(product: IProduct): string {
  * описать, — и без этого из заголовка пропало бы то, по чему товар ищут.
  */
 function productVolumeLabel(product: IProduct): string | null {
-  return product.variants.length > 1
+  return variantVolumes(product.variants).length > 1
     ? formatVolumes(product.variants)
     : formatVolume(product.volumeMl)
 }
 
 /**
- * Цена для заголовка и описания. «от» у товара в нескольких объёмах:
- * `priceCents` там — цена самого дешёвого, и без оговорки выдача обещала бы
- * её за любой из них.
+ * Цена для заголовка и описания. «от» у товара, варианты которого стоят
+ * по-разному: `priceCents` там — цена самого дешёвого, и без оговорки выдача
+ * обещала бы её за любой из них. Тона одного объёма цену не делят.
  */
 function productPriceLabel(product: IProduct): string {
   const price = formatPrice(product.priceCents)
 
-  return product.variants.length > 1 ? `от ${price}` : price
+  return hasPriceRange(product.variants) ? `от ${price}` : price
 }
 
 /** Первое предложение описания — ровно та «краткая польза», которой в БД отдельного поля нет. */

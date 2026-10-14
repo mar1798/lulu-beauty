@@ -22,8 +22,8 @@ import {
  * Никакого редиректа на карточку: страница — конвейер добавления, и после
  * успеха форма просто сбрасывается в чистое состояние (через `key`), чтобы
  * тут же можно было добавить следующий товар. Фото — необязательное поле
- * формы; если оно выбрано, грузится вторым запросом сразу после создания
- * товара (id появляется только в ответе на первый).
+ * формы; выбранные (уже с привязками к тонам) грузятся следующими запросами
+ * сразу после создания товара (id появляется только в ответе на первый).
  */
 const AdminProductCreatePage: React.FC = () => {
   const { notify } = useToast()
@@ -58,11 +58,19 @@ const AdminProductCreatePage: React.FC = () => {
         isFeatured: values.isFeatured,
       })
 
-      if (values.image !== null) {
+      /*
+        По одной и по порядку: первое загруженное становится главным, и
+        параллельные запросы перемешали бы галерею. На первой неудаче
+        остальные не грузятся — причина у них, скорее всего, та же.
+      */
+      for (const [index, image] of values.images.entries()) {
         try {
           await uploadProductImage(product.id, {
-            file: values.image.file,
-            alt: values.image.alt === '' ? undefined : values.image.alt,
+            file: image.file,
+            alt: image.alt === '' ? undefined : image.alt,
+            volumesMl: image.volumesMl,
+            shades: image.shades,
+            hidden: image.hidden,
           })
         } catch (cause: unknown) {
           /*
@@ -72,21 +80,25 @@ const AdminProductCreatePage: React.FC = () => {
           */
           notify({
             tone: 'info',
-            title: 'Товар создан, но фото не загрузилось',
+            title:
+              index === 0
+                ? 'Товар создан, но фото не загрузились'
+                : `Товар создан, загружено фото: ${index} из ${values.images.length}`,
             /*
               Точка на стыке ставится здесь, а не в `apiErrors`: одни тексты
               оттуда — одна фраза и кончаются без точки, другие — абзац из
               двух предложений и точку несут свою. Склейка как есть дала бы
               то «фотографии Фото», то «товара.. Фото».
             */
-            description: `${messageForError(cause, 'admin.product.images').replace(/\.$/, '')}. Фото можно добавить на карточке товара.`,
+            description: `${messageForError(cause, 'admin.product.images').replace(/\.$/, '')}. Остальные фото можно добавить на карточке товара.`,
           })
+          break
         }
       }
 
       notify({ tone: 'success', title: 'Товар создан', description: values.name })
       /*
-        После загрузки фотографии, а не сразу после создания: пересобирать
+        После загрузки фотографий, а не сразу после создания: пересобирать
         каталог дважды незачем, а между двумя запросами товар стоял бы в витрине
         без снимка — и таким бы и застыл до следующей правки.
       */

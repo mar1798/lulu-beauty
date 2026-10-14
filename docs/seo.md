@@ -128,12 +128,13 @@ Details that are decisions, not accidents:
   next one.
 - **The price is in som, not cents.** The database and API keep integer `*_cents`; `Offer`
   wants the unit amount, and `priceUnits` converts, dropping `.00`.
-- **A product sold in several volumes gets `AggregateOffer`**, with `lowPrice`/`highPrice`
-  and `offerCount`, instead of one `Offer`. There are as many prices as volumes, and quoting
-  the cheapest as _the_ price would state something the page itself does not: the visible
-  price is "от N ₽" and changes with the volume selector. The `<title>` and the meta
-  description say "от" for the same reason, and carry the volumes ("30 / 50 мл") in place of
-  the single one such a product no longer has.
+- **A product whose variants cost different amounts gets `AggregateOffer`**, with
+  `lowPrice`/`highPrice` and `offerCount`, instead of one `Offer`. There are as many prices as
+  volumes, and quoting the cheapest as _the_ price would state something the page itself does
+  not: the visible price is "от N ₽" and changes with the volume selector. The `<title>` and
+  the meta description say "от" for the same reason, and carry the volumes ("30 / 50 мл") in
+  place of the single one such a product no longer has. Shades alone do not count: they share
+  their volume's price (`hasPriceRange`), so a lipstick in ten shades is one `Offer`.
 - **The store node has an `@id`** (`<siteUrl>/#store`), and each `Offer` refers to it instead
   of repeating the organisation — one seller entity across the whole site.
 - **The `Product` description** is the owner's text when it exists, otherwise the same string

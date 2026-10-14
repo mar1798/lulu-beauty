@@ -168,6 +168,7 @@ def _price_change(
         user_id=uuid.uuid4(),
         product_name="Rose Serum",
         product_volume_ml=volume_ml,
+        product_shade=None,
         old_price_cents=120_000,
         new_price_cents=140_000,
         total_cents=total_cents,
@@ -210,6 +211,7 @@ def _drop(
         user_id=uuid.uuid4(),
         product_name=name,
         product_volume_ml=volume_ml,
+        product_shade=None,
         total_cents=50_000,
         is_cancelled=is_cancelled,
     )

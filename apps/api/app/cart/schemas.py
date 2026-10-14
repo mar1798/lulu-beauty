@@ -38,6 +38,7 @@ class CartItemResponse(CamelModel):
     product_brand: str | None = None
     product_category_name: str | None = None
     product_volume_ml: int | None = None
+    product_shade: str | None = None
 
 
 class CartResponse(CamelModel):

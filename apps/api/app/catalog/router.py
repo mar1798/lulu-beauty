@@ -1,4 +1,5 @@
 import uuid
+from typing import Annotated
 
 from fastapi import (
     APIRouter,
@@ -11,6 +12,7 @@ from fastapi import (
     UploadFile,
     status,
 )
+from pydantic import Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import CurrentUser, require_admin
@@ -20,7 +22,7 @@ from app.catalog.image_compression import (
     compress_image,
 )
 from app.catalog.import_service import CatalogImportService
-from app.catalog.results import VariantSpec
+from app.catalog.results import ImageArrangement, VariantSpec
 from app.catalog.schemas import (
     CategoryCreateRequest,
     CategoryResponse,
@@ -28,12 +30,19 @@ from app.catalog.schemas import (
     ImportSummaryResponse,
     ProductCreateRequest,
     ProductImageResponse,
+    ProductImagesArrangeRequest,
     ProductResponse,
     ProductUpdateRequest,
     ProductVariantRequest,
     SearchSuggestResponse,
+    require_shade,
 )
-from app.catalog.serializers import category_response, product_response, suggest_response
+from app.catalog.serializers import (
+    category_response,
+    image_response,
+    product_response,
+    suggest_response,
+)
 from app.catalog.service import (
     CategoryNestingError,
     CategoryNotFoundError,
@@ -42,12 +51,18 @@ from app.catalog.service import (
     DuplicateVariantVolumeError,
     EmptyVariantsError,
     FeaturedLimitError,
+    ImageArrangementError,
+    ImageTagUnknownError,
     ProductHasVariantsError,
     ProductImageNotFoundError,
     ProductNotFoundError,
     ProductService,
+    ShadeMissingError,
+    ShadePricesDifferError,
     SlugAlreadyExistsError,
+    TooManyImagesError,
     TooManyVariantsError,
+    clean_tags,
 )
 from app.catalog.sorting import (
     CATALOG_ORDERS,
@@ -56,6 +71,12 @@ from app.catalog.sorting import (
     ProductOrder,
     SortDirection,
     SortField,
+)
+from app.common.limits import (
+    MAX_IMAGE_ALT_LENGTH,
+    MAX_PRODUCT_IMAGES,
+    MAX_PRODUCT_VARIANTS,
+    MAX_VOLUME_ML,
 )
 from app.common.schemas import PageResponse
 from app.db import get_session
@@ -77,25 +98,29 @@ MAX_IMAGE_BYTES = 15 * 1024 * 1024
 ALLOWED_IMAGE_CONTENT_TYPES = {"image/jpeg", "image/png", "image/webp"}
 MAX_IMPORT_BYTES = 10 * 1024 * 1024
 
-# Everything `ProductService` refuses about a list of volumes, and the code each one
-# reaches the owner's form as. All four are the form's to fix, so all four are 409s the
+# Everything `ProductService` refuses about a list of variants, and the code each one
+# reaches the owner's form as. All of them are the form's to fix, so all are 409s the
 # UI can point at a row with — never a 500 out of the unique index at flush.
 _VARIANT_ERRORS = (
     EmptyVariantsError,
     DuplicateVariantVolumeError,
     TooManyVariantsError,
     ProductHasVariantsError,
+    ShadeMissingError,
+    ShadePricesDifferError,
 )
 _VARIANT_ERROR_CODES = {
     EmptyVariantsError: "product_variants_empty",
     DuplicateVariantVolumeError: "variant_volume_duplicate",
     TooManyVariantsError: "too_many_variants",
     ProductHasVariantsError: "product_has_variants",
+    ShadeMissingError: "variant_shade_missing",
+    ShadePricesDifferError: "variant_shade_prices_differ",
 }
 
 
 def _variant_specs(variants: list[ProductVariantRequest] | None) -> list[VariantSpec] | None:
-    """The request's volume rows as the service's own shape — None when it sent none."""
+    """The request's variant rows as the service's own shape — None when it sent none."""
     if variants is None:
         return None
     return [
@@ -103,6 +128,8 @@ def _variant_specs(variants: list[ProductVariantRequest] | None) -> list[Variant
             volume_ml=variant.volume_ml,
             price_cents=variant.price_cents,
             in_stock=variant.in_stock,
+            shade=variant.shade,
+            id=variant.id,
         )
         for variant in variants
     ]
@@ -314,7 +341,7 @@ async def list_products_admin(
         featured=featured,
     )
     return PageResponse(
-        items=[product_response(product) for product in products],
+        items=[product_response(product, include_hidden=True) for product in products],
         total=total,
         page=page,
         page_size=page_size,
@@ -331,7 +358,7 @@ async def get_product_by_id(
         product = await ProductService(session).get_by_id(product_id)
     except ProductNotFoundError as error:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "product_not_found") from error
-    return product_response(product)
+    return product_response(product, include_hidden=True)
 
 
 @router.post("/admin/products", response_model=ProductResponse, status_code=status.HTTP_201_CREATED)
@@ -364,7 +391,7 @@ async def create_product(
         raise _variant_http_error(error) from error
 
     await session.commit()
-    return product_response(product)
+    return product_response(product, include_hidden=True)
 
 
 @router.patch("/admin/products/{product_id}", response_model=ProductResponse)
@@ -385,6 +412,7 @@ async def update_product(
     # ones. Two cheap queries on a path the owner walks by hand.
     before = await service.variant_prices(product_id)
     before_live = await service.live_variant_ids(product_id)
+    before_shades = await service.variant_shades(product_id)
     try:
         product = await service.update(product_id, updates, _variant_specs(body.variants))
     except ProductNotFoundError as error:
@@ -407,6 +435,17 @@ async def update_product(
         if variant.id in before and before[variant.id] != variant.price_cents
     }
     orders = OrdersService(session)
+    # A shade renamed in place is the same variant under its corrected name, and the
+    # orders waiting for confirmation follow it — see `rename_variants`. Before the
+    # repricing, because a price notice quotes the line's shade: renamed and repriced in
+    # one save, it would otherwise name the misspelling the owner just corrected.
+    await orders.rename_variants(
+        {
+            variant.id: variant.shade
+            for variant in product.live_variants
+            if variant.id in before_shades and before_shades[variant.id] != variant.shade
+        }
+    )
     changes = await orders.reprice_variants(moved)
 
     # A volume dropped from the list is the same news as a product taken out of the
@@ -416,7 +455,7 @@ async def update_product(
     withdrawn = before_live - {variant.id for variant in product.live_variants}
     drops = await orders.drop_variants(list(withdrawn))
 
-    response = product_response(product)
+    response = product_response(product, include_hidden=True)
     await session.commit()
     background_tasks.add_task(notify_orders_repriced, changes)
     background_tasks.add_task(notify_orders_item_dropped, drops)
@@ -456,7 +495,7 @@ async def restore_product(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "product_not_found") from error
 
     await session.commit()
-    return product_response(product)
+    return product_response(product, include_hidden=True)
 
 
 @router.post(
@@ -466,9 +505,18 @@ async def restore_product(
 )
 async def upload_product_image(
     product_id: uuid.UUID,
-    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
-    alt: str | None = Form(default=None),
+    alt: str | None = Form(default=None, max_length=MAX_IMAGE_ALT_LENGTH),
+    # Which variants the photo shows, a field per tag; none is "any" (see
+    # `ProductImage.volumes_ml`). Bounded by the variants they have to name.
+    volumes_ml: list[Annotated[int, Field(gt=0, le=MAX_VOLUME_ML)]] = Form(
+        default=[], alias="volumesMl", max_length=MAX_PRODUCT_VARIANTS
+    ),
+    # The length is checked once normalised, as `require_shade` checks it for the form.
+    shades: list[str] = Form(default=[], max_length=MAX_PRODUCT_VARIANTS),
+    # Shown for no variant (`ProductImage.hidden`) — the tags are ignored then. A field
+    # of its own because a form cannot send an empty list, and no tags is already "any".
+    hidden: bool = Form(default=False),
     session: AsyncSession = Depends(get_session),
     _admin: CurrentUser = Depends(require_admin),
 ) -> ProductImageResponse:
@@ -489,28 +537,85 @@ async def upload_product_image(
     except UnreadableImageError as error:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "image_unreadable") from error
 
+    service = ProductService(session)
     try:
-        service = ProductService(session)
-        await service.get_by_id(product_id)  # 404 up front, before touching storage
-        key = await storage_service.save(f"image{compressed.extension}", compressed.content)
-        image, replaced_urls = await service.add_image(
-            product_id, storage_service.url_for(key), alt
+        product = await service.get_by_id(product_id)  # 404 up front, before touching storage
+    except ProductNotFoundError as error:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "product_not_found") from error
+    # The cheap refusals before the file is written: a gallery that is full, or a tag the
+    # product has no variant for, would otherwise leave a stored file nothing points at.
+    if len(product.images) >= MAX_PRODUCT_IMAGES:
+        raise HTTPException(status.HTTP_409_CONFLICT, "too_many_images")
+    try:
+        volumes, tag_shades = (
+            ([], [])
+            if hidden
+            else clean_tags(volumes_ml, [require_shade(shade) for shade in shades])
+        )
+    except ValueError as error:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "shade_too_long") from error
+    try:
+        ProductService.require_known_tags(product, volumes, tag_shades)
+    except ImageTagUnknownError as error:
+        raise HTTPException(status.HTTP_409_CONFLICT, "image_variant_unknown") from error
+
+    # `add_image` checks both again, against the gallery read afresh: another request may
+    # have filled it or withdrawn the variant since, and then the file is discarded below.
+    key = await storage_service.save(f"image{compressed.extension}", compressed.content)
+    try:
+        image = await service.add_image(
+            product_id, storage_service.url_for(key), alt, volumes, tag_shades, hidden
+        )
+    except ProductNotFoundError as error:
+        await discard_files([storage_service.url_for(key)])
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "product_not_found") from error
+    except TooManyImagesError as error:
+        await discard_files([storage_service.url_for(key)])
+        raise HTTPException(status.HTTP_409_CONFLICT, "too_many_images") from error
+    except ImageTagUnknownError as error:
+        await discard_files([storage_service.url_for(key)])
+        raise HTTPException(status.HTTP_409_CONFLICT, "image_variant_unknown") from error
+
+    await session.commit()
+    return image_response(image)
+
+
+@router.put(
+    "/admin/products/{product_id}/images",
+    response_model=list[ProductImageResponse],
+)
+async def arrange_product_images(
+    product_id: uuid.UUID,
+    body: ProductImagesArrangeRequest,
+    session: AsyncSession = Depends(get_session),
+    _admin: CurrentUser = Depends(require_admin),
+) -> list[ProductImageResponse]:
+    """The gallery's order and every photo's tags, saved together — see `arrange_images`."""
+    try:
+        images = await ProductService(session).arrange_images(
+            product_id,
+            [
+                ImageArrangement(
+                    id=entry.id,
+                    volumes_ml=tuple(entry.volumes_ml),
+                    shades=tuple(entry.shades),
+                    hidden=entry.hidden,
+                    alt=entry.alt,
+                    alt_given="alt" in entry.model_fields_set,
+                )
+                for entry in body.images
+            ],
         )
     except ProductNotFoundError as error:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "product_not_found") from error
+    except ImageArrangementError as error:
+        raise HTTPException(status.HTTP_409_CONFLICT, "product_images_mismatch") from error
+    except ImageTagUnknownError as error:
+        raise HTTPException(status.HTTP_409_CONFLICT, "image_variant_unknown") from error
 
+    response = [image_response(image) for image in images]
     await session.commit()
-    # After the commit: a photo is a replacement, and until now the bytes it replaced
-    # stayed on disk forever — the `uploads` volume grew with every re-upload, with
-    # nothing able to tell an orphan from a live file afterwards.
-    background_tasks.add_task(discard_files, replaced_urls)
-    return ProductImageResponse(
-        id=image.id,
-        url=image.url,
-        alt=image.alt,
-        sort_order=image.sort_order,
-        is_primary=image.is_primary,
-    )
+    return response
 
 
 @router.delete(

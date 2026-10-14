@@ -152,6 +152,7 @@ async def test_the_checklist_shows_the_open_cycle(client: AsyncClient) -> None:
             "productName": "Крем",
             "productSlug": "krem",
             "volumeMl": 50,
+            "shade": None,
             "brand": "Lulu",
             "quantity": 3,
             "unitPriceCents": 15000,

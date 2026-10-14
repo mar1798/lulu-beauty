@@ -53,6 +53,7 @@ class ChecklistItem(CamelModel):
     # None when the product row is gone: the name stays, the link does not.
     product_slug: str | None
     volume_ml: int | None
+    shade: str | None = None
     brand: str
     quantity: int
     unit_price_cents: int
@@ -137,6 +138,7 @@ async def get_checklist(
                 product_name=row.product_name,
                 product_slug=row.product_slug,
                 volume_ml=row.volume_ml,
+                shade=row.shade,
                 brand=row.brand,
                 quantity=row.quantity,
                 unit_price_cents=row.unit_price_cents,

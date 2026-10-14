@@ -1,15 +1,8 @@
 import { style } from '@vanilla-extract/css'
-import { border, color, font, rem } from '../../styling/lib'
+import { border, color, font } from '../../styling/lib'
 import { media } from '../../styling/lib/media'
-import { FIELD_HEIGHT, flexColumn, flexRow, panel } from '../../styling/mixin'
+import { flexColumn, flexRow, panel } from '../../styling/mixin'
 import { vars } from '../../styling/themes/contract.css'
-
-/**
- * Высота подписи поля (`fieldLabel`, строка 20px) вместе с зазором до самого
- * поля (`Input` держит колонку с `rowGap: 6`). На эту полку опускается всё,
- * что в строке стоит без подписи, но обязано выровняться с полями.
- */
-const LABEL_BAND = 26
 
 export const container = style({
   ...flexColumn(20),
@@ -53,7 +46,8 @@ export const formActions = style({
 })
 
 /**
- * Панель фотографий; имя не `media` — оно занято хелпером медиазапросов.
+ * Место панели фотографий (`AdminProductGallery`); имя не `media` — оно занято
+ * хелпером медиазапросов.
  *
  * В одну колонку (до `lg`) стоит **над** формой: заводя товар, владелец
  * начинает со снимка, а под формой на полтора экрана вниз панель просто не
@@ -62,42 +56,10 @@ export const formActions = style({
  * второй по документу.
  */
 export const mediaPanel = style({
-  ...flexColumn(16),
-  ...panel(),
   order: -1,
   ...media({
     lg: { order: 0 },
   }),
-})
-
-export const gallery = style({
-  display: 'grid',
-  gridTemplateColumns: `repeat(auto-fill, minmax(${rem(96)}, 1fr))`,
-  gap: vars.space.sm,
-  listStyle: 'none',
-  ...media({
-    sm: { gridTemplateColumns: `repeat(auto-fill, minmax(${rem(120)}, 1fr))` },
-  }),
-})
-
-export const thumb = style({
-  position: 'relative',
-  aspectRatio: '1 / 1',
-  overflow: 'hidden',
-  border: border(1, color.border('subtle')),
-  borderRadius: vars.radius.lg,
-})
-
-export const thumbImage = style({
-  // Фотография товара нигде не обрезается — см. `AppImage`/`components/Image.tsx`.
-  objectFit: 'contain',
-})
-
-export const thumbDelete = style({
-  position: 'absolute',
-  insetInlineEnd: vars.space.xxs,
-  insetBlockEnd: vars.space.xxs,
-  backgroundColor: color.surface('base'),
 })
 
 /**
@@ -122,31 +84,38 @@ export const variantsLegend = style({
 })
 
 /**
- * Строка объёма: на телефоне поля идут друг под другом, с `sm` встают в ряд.
- * Ширины заданы долями, а не `1fr` поровну: цена длиннее объёма, а тумблеру с
- * кнопкой нужно ровно столько, сколько они занимают, — они делят третью
- * ячейку (`variantControls`).
+ * Строка варианта: на телефоне поля идут друг под другом, с `sm` встают в ряд.
+ * Ширины заданы долями, а не `1fr` поровну: тон и цена длиннее объёма.
+ *
+ * Три колонки, а не четыре: тумблер с кнопкой «убрать» уезжает на полку под
+ * полями (`variantControls`). Карточка формы — около 500px на любом экране, и
+ * четвёртая колонка сжимала объём так, что подпись «Объём, мл» переносилась
+ * на две строки и опускала поле ниже соседних, а подсказка наезжала на тон.
+ *
+ * Строки разделены чертой: в две полки каждая, без неё тумблер читался бы как
+ * часть следующей строки, а не своей.
  */
 export const variantRow = style({
   ...flexColumn(12),
+  selectors: {
+    '& + &': {
+      paddingTop: vars.space.md,
+      borderTop: border(1, color.border('subtle')),
+    },
+  },
   ...media({
     sm: {
       display: 'grid',
-      gridTemplateColumns: 'minmax(0, 3fr) minmax(0, 4fr) auto',
-      gap: vars.space.md,
+      gridTemplateColumns: 'minmax(0, 2fr) minmax(0, 3fr) minmax(0, 3fr)',
+      gap: `${vars.space.xs} ${vars.space.md}`,
       alignItems: 'start',
     },
   }),
 })
 
 /**
- * Тумблер «в наличии» и «убрать объём» — одна строка на любой ширине.
- *
- * На десктопе они обязаны встать по центру полей, а не по центру ячейки:
- * ячейка тянется на подпись и подсказку, и `alignItems: center` посадил бы их
- * то выше, то ниже — в зависимости от того, есть ли под полем подсказка или
- * ошибка. Поэтому ячейка сама получает высоту поля и полку сверху ровно под
- * подпись (`14/20` плюс зазор `Input`), а содержимое центрируется уже в ней.
+ * Тумблер «в наличии» и «убрать вариант» — одна строка на любой ширине, на
+ * `sm` — полка во всю ширину под полями строки.
  */
 export const variantControls = style({
   ...flexRow(12),
@@ -154,9 +123,7 @@ export const variantControls = style({
   justifyContent: 'space-between',
   ...media({
     sm: {
-      justifyContent: 'flex-start',
-      minHeight: rem(FIELD_HEIGHT),
-      marginTop: rem(LABEL_BAND),
+      gridColumn: '1 / -1',
     },
   }),
 })

@@ -23,10 +23,24 @@ MAX_PRICE_CENTS = 2_000_000_000
 # mistake rather than the customer's; the column behind it is the same 32-bit INTEGER.
 MAX_VOLUME_ML = 10_000
 
-# How many volumes one product may be sold in. A generous ceiling on something that is
-# in practice two or three ("30 мл" and "50 мл"): it exists so that a bad import or a
-# stuck form cannot grow a product page into a wall of buttons, not to police the shop.
-MAX_PRODUCT_VARIANTS = 20
+# How many variants one product may be sold in — every volume times every shade. Volumes
+# alone are two or three ("30 мл" and "50 мл"), but a foundation comes in forty shades and
+# sometimes in two sizes of each, so the ceiling is set by that: it exists so that a bad
+# import or a stuck form cannot grow a product page without bound, not to police the shop.
+MAX_PRODUCT_VARIANTS = 100
+
+# A shade's name — "05 Rose", "21 Light Beige". The column behind it is String(64), well
+# past any name a brand prints on a tube; past that a typed value would fail at flush.
+MAX_SHADE_LENGTH = 64
+
+# Photos in one product's gallery. The page shows them one at a time with thumbnails, and
+# photos can be tied to a volume or a shade, so a product in a handful of shades needs
+# room for one picture of each — but not a camera roll.
+MAX_PRODUCT_IMAGES = 20
+
+# A photo's alt text — what a screen reader and a search engine read for it. The column
+# is String(255); a caption, not a description, so the ceiling is the column's.
+MAX_IMAGE_ALT_LENGTH = 255
 
 # Products the owner may pin to the home page's hero. Not a policy but the layout: the
 # hero shows a row of three cards, and a fourth pick would simply never be seen.

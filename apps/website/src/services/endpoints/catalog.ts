@@ -75,10 +75,15 @@ export interface ISuggestProduct {
   name: string
   slug: string
   brand: string | null
-  /** Цена самого дешёвого объёма, когда их несколько (см. `variantCount`). */
+  /** Цена самого дешёвого варианта, когда цены разные (см. `priceVaries`). */
   priceCents: number
-  /** Сколько объёмов у товара: больше одного — цена в строке подписывается «от». */
+  /** Сколько вариантов у товара — объёмов и тонов. */
   variantCount: number
+  /**
+   * Варианты стоят по-разному — цена в строке подписывается «от». Не
+   * `variantCount > 1`: помада в десяти тонах стоит одинаково.
+   */
+  priceVaries: boolean
   inStock: boolean
   imageUrl: string | null
   imageAlt: string | null

@@ -6,6 +6,7 @@ import { Checkbox } from '../../atoms/checkbox'
 import { formatAmount, formatPrice } from '../../atoms/price'
 import { Skeleton } from '../../atoms/skeleton'
 import { VisuallyHidden } from '../../atoms/visually-hidden'
+import { formatVariant } from '../../utils/variants'
 import { formatVolume } from '../../utils/volume'
 import * as styles from './AdminChecklist.css'
 
@@ -109,9 +110,11 @@ export const AdminChecklist: FC<IAdminChecklistProps & IBasicStyling> = ({
             : items.map(item => {
                 const isChecked = checked.has(item.key)
                 const volume = formatVolume(item.volumeMl)
+                const variant = formatVariant(item.volumeMl, item.shade)
                 // «100 мл» не разрывается по строкам, как бы ни сжалась колонка.
                 const volumeLabel = volume?.replace(' ', '\u00a0') ?? null
-                const meta = [item.brand === '-' ? null : item.brand, volumeLabel]
+                // Тон — то, что снимают с полки: «05 Rose», а не просто «помада».
+                const meta = [item.brand === '-' ? null : item.brand, volumeLabel, item.shade]
                   .filter(Boolean)
                   .join(' · ')
 
@@ -138,7 +141,11 @@ export const AdminChecklist: FC<IAdminChecklistProps & IBasicStyling> = ({
                         }}
                         label={
                           <VisuallyHidden>
-                            {volume === null ? item.productName : `${item.productName}, ${volume}`}
+                            {/*
+                              С тоном: две строки одной помады в одном объёме
+                              иначе объявлялись бы скринридером одинаково.
+                            */}
+                            {variant === null ? item.productName : `${item.productName}, ${variant}`}
                           </VisuallyHidden>
                         }
                       />

@@ -187,8 +187,8 @@ send: for a deadline nudge a duplicate is a nuisance and a miss is a lost order.
 ## Catalog
 
 `Category` → `Product` → `ProductImage`, and `Product` → `ProductVariant`. A product carries
-`name`, `slug` (unique), `brand`, `description`, a category and images; a **variant** carries
-`volume_ml`, `price_cents` and `in_stock`.
+`name`, `slug` (unique), `brand`, `description`, a category and a gallery of images; a
+**variant** carries `volume_ml`, `shade`, `price_cents` and `in_stock`.
 
 ### Categories nest one level deep
 
@@ -247,43 +247,146 @@ on the way out.
   form's check and the API. The raw HTML has its own ceiling
   (`MAX_DESCRIPTION_HTML_LENGTH`), which bounds the request rather than the owner.
 
-### A product is sold in volumes
+### A product has a gallery, and a photo can show some of the variants
 
-The same serum is sold as 30 ml and as 50 ml. Those differ in exactly two things a customer
-cares about — millilitres and price — and share everything else, so they are one product with
-two variants rather than two products.
+A product has up to `MAX_PRODUCT_IMAGES = 20` photos. An upload goes to the end of the
+gallery (`409 too_many_images` past the ceiling); the **first photo is the primary one** — the
+catalogue card, the search dropdown, `og:image` and the first JSON-LD image. `is_primary` is
+kept equal to "first in order" for older readers. Deleting the primary photo promotes the next.
+
+A photo may be **tagged with volumes and shades** — any number of each
+(`product_images.volumes_ml` / `shades`, arrays, empty meaning "any"). A variant fits a photo
+when it has one of its volumes and one of its shades: an untagged photo belongs to every
+variant, one tagged "01 Nude" and "05 Rose" to those two shades in every volume — a shot of two
+tubes side by side, or of a palette. Tags rather than foreign keys to variants because that is
+what a photo depicts — a tube photographed once is the shade, not "05 Rose in 30 ml" — and
+because tags survive a variant being renamed. Every tag must name a volume or shade the product
+is sold in, and together they must meet in at least one variant (`409 image_variant_unknown`);
+a partly empty combination (30 and 50 ml with a shade sold in 30 ml only) is accepted. This is
+checked for the photos whose tags a request changes — a photo merely moved in the gallery keeps
+whatever it had. Tags are stored deduplicated: volumes ascending, a shade once whatever its
+case. When a variant edit leaves a tag naming nothing (its shade or volume withdrawn), that
+tag is dropped from the photo instead of left stale, and volumes and shades that survive but no
+longer meet lose the volumes and keep the shades. A photo that loses **everything it is of** —
+every shade it names, or, with no shade, every volume — is **hidden** instead: emptied lists
+would read as "any", and a shot of a withdrawn "05 Rose" would turn up on every other shade's
+page (and on the card, were it the primary one). Bringing the shade back does not unhide it;
+the owner does that in the gallery.
+
+A photo can also be **hidden** (`product_images.hidden`): shown for no variant, kept in the
+gallery. It is a flag of its own rather than empty lists, because empty already means "any" —
+and "every volume" has to stay "any" so a volume added later picks the photo up. A hidden photo
+keeps no tags, and the storefront never sees it: public product responses leave it out (the
+next shown photo becomes the primary one), and `variant_image` / `primary_image` pass it over.
+Admin endpoints return it with `hidden: true`.
+
+The admin edits all of this through `AdminProductGallery`, which lays the gallery out the way
+the owner thinks about it — by shade, not by photo. Its groups are "Для всех тонов" (untagged),
+one per shade (tagged with exactly that shade), "Для нескольких тонов" (two or more shades — a
+palette, two tubes side by side) and "Скрытые" (hidden); the last two appear only when
+something is in them. A product without shades but in several volumes is grouped by volume
+the same way, and a product sold in one variant has a single group. Each group has its own
+"Добавить" tile (several files at once, or dropped onto the group), and a photo added there
+gets the group's tag — nothing to pick. Everything rarer happens in the photo's dialog, opened
+by clicking the thumbnail: "Все тона" / "Только выбранные тона" (checkboxes) / "Скрыть", an
+opt-in volume limit for a shaded product, the alt text, "Главное фото" and delete. The arrows
+under a thumbnail swap it with its neighbour **within the group**: order between groups never
+matters, because photos of different groups differ in specificity and the storefront ranks by
+that first. Below the groups, "Как увидит покупатель" runs `imagesForVariant` for a chosen
+variant, so the owner sees the exact order the product page will use.
+
+On a saved product every gallery edit is saved at once (`PUT …/images`, alt included); the
+groups follow the product's **saved** variants, since the server checks tags against those, and
+the form says so when the variants table has unsaved shades. On the create page the photos wait
+in the form, grouped by the rows typed so far, and are uploaded with their tags right after the
+product is created; a tag whose shade was renamed in the meantime is dropped there rather than
+refused by the server.
+
+Which photo shows a variant is one rule in two places: `variant_image` in
+`app/catalog/images.py` (cart lines, order snapshots) and `imagesForVariant` in
+`packages/widgets/src/utils/variants.ts` (the product page's gallery). Photos tagged with
+other volumes or shades only are left out; among those that fit, the most specific goes
+first — tagged with shades and volumes, then shades, then volumes, then untagged (how many
+shades a photo names does not count) — with the
+primary photo and then gallery order breaking ties. A shade outranks a volume because two
+shades look different and two volumes of one cream do not.
+
+The order and the tags are saved together, for the whole gallery at once
+(`PUT /admin/products/{id}/images`): the order is a property of the list, and a list that is
+not exactly the product's current gallery is refused (`409 product_images_mismatch`) — the
+form is looking at a gallery another tab has since changed.
+
+### A product is sold in variants: volumes and shades
+
+The same serum is sold as 30 ml and as 50 ml; the same lipstick as "01 Nude" and "05 Rose"; a
+foundation in two volumes of every one of its shades. Those share a name, a description, a
+brand and an address, and differ in what the customer picks — so they are one product with
+several variants rather than several products. A variant is identified by the pair
+**(volume, shade)**, and the two axes are independent.
 
 - **Every product has at least one variant.** A product with nothing to measure (pads, a
-  sheet mask) has a single variant with `volume_ml = None`. There is no "product without
-  variants" state: the whole catalogue was migrated into this shape, so the code has one
-  path rather than two.
+  sheet mask) has a single variant with `volume_ml = None` and `shade = None`. There is no
+  "product without variants" state: the whole catalogue was migrated into this shape, so the
+  code has one path rather than two.
+- **The price follows the volume.** Every shade of one volume costs the same; that is what
+  the owner asked for, and it is what lets the storefront print one price above the shade
+  buttons. It is still stored on each variant row — a cart line, an order line and a
+  repricing all point at a variant — and `ProductService._require_specs` refuses a list
+  whose shades of one volume disagree (`409 variant_shade_prices_differ`).
+- **Shades are all or none.** Either every live variant of a product names a shade or none
+  does (`409 variant_shade_missing`): a nameless button next to "01 Nude" is in practice a
+  missed cell. The import can leave a product half-way (see below), and says so.
+- **A shade is free text compared without case** — "05 rose" from a price list is the
+  "05 Rose" already in the catalogue. One rule, `shade_key` in `app/catalog/shades.py`,
+  mirrored by `shadeKey` in `packages/widgets/src/utils/variants.ts`; the unique index
+  compares `lower(shade)` the same way. Inner whitespace is collapsed on the way in, the
+  case is kept for display.
 - **`products.price_cents`, `products.volume_ml` and `products.in_stock` are derived** from
   the live variants and rewritten by `ProductService.refresh_display_fields` on every write
-  that can move them. `price_cents` is the cheapest live variant (the "от N ₽" on a card),
-  `volume_ml` is the volume only while there is exactly one (NULL after that — no single
-  number describes a product sold in two), and `in_stock` is "any of them is".
-  They stay columns on the product because every bulk read uses them and none of those reads
-  wants a join: the price sort and filter, the search, the stock filter, the xlsx export,
-  the sitemap, the JSON-LD and the card.
+  that can move them. `price_cents` is the cheapest live variant, `volume_ml` is the volume
+  only while the live variants share one volume (NULL after that — no single number
+  describes a product sold in two; a lipstick in ten shades of one size keeps its), and `in_stock` is "any of them is". They stay columns on the product
+  because every bulk read uses them and none of those reads wants a join: the price sort and
+  filter, the search, the stock filter, the xlsx export, the sitemap, the JSON-LD and the card.
+- **"от" means the variants cost different amounts**, not that there are several of them: a
+  lipstick in ten shades has one price. The card, the search dropdown (`priceVaries`), the
+  admin table, the `<title>` and the JSON-LD all ask `hasPriceRange`, never `variants.length`.
 - **Variants are soft-deleted too** (`deleted_at`), for the same reason products are: a
-  withdrawn volume is still quoted by orders that were already confirmed, and by carts that
+  withdrawn variant is still quoted by orders that were already confirmed, and by carts that
   get it back if the owner puts it back. Taking one off and putting it back revives the same
-  row, which is why the uniqueness rule is a pair of partial indexes — one row per volume,
-  and at most one row without a volume (Postgres NULLs are distinct, so the second index is
-  what says so).
-- **Withdrawing a volume takes it out of every PENDING order** (`OrdersService.drop_variants`,
+  row, which is why the uniqueness rule is a partial index — one live row per
+  `(product_id, volume_ml, lower(shade))`, with `NULLS NOT DISTINCT` so that a product
+  cannot collect several nameless variants either.
+- **Withdrawing a variant takes it out of every PENDING order** (`OrdersService.drop_variants`,
   run by the admin PATCH), exactly as soft-deleting a product does — an order left with
   nothing becomes `CANCELLED_BY_OWNER`, and the customer is told over Telegram with the
-  volume named. Confirmed and later orders keep their lines: those are a record of what was
-  agreed. The other volumes of the same product are untouched, which is the whole difference
+  variant named. Confirmed and later orders keep their lines: those are a record of what was
+  agreed. The other variants of the same product are untouched, which is the whole difference
   from `drop_product`.
-- **The list of volumes is replaced whole** (`PATCH /admin/products/{id}` with `variants`)
-  and reconciled **by volume**, not by position. A variant's id is what a cart line and a
-  pending order point at, so a saved price edit lands on the existing row — replacing the
-  list wholesale would empty every cart in the shop each time the owner corrected a number.
+- **The list of variants is replaced whole** (`PATCH /admin/products/{id}` with `variants`)
+  and reconciled **by id first, then by (volume, shade)**, not by position. A variant's id is
+  what a cart line and a pending order point at, so a saved price edit lands on the existing
+  row — replacing the list wholesale would empty every cart in the shop each time the owner
+  corrected a number. The id is what keeps a **renamed shade** the same variant ("Rosee" →
+  "Rose"): matched by name alone, a rename is a withdrawal plus a new arrival, and the
+  withdrawal would take the shade out of every cart and pending order. The admin form sends
+  the id of every row it loaded. **The id holds only while the volume does**: a row moved from
+  30 ml to 50 ml is a new variant and the old one is withdrawn (with its notice), because the
+  two are different things at different prices, not a typo — matching it by id would quietly
+  swap what every cart and pending order holds.
+- **A renamed shade reaches the pending orders.** Order lines snapshot the shade, and a
+  PENDING one follows a rename the way it follows a price (`OrdersService.rename_variants`,
+  called by the admin PATCH and by the import), so the bill, the bot and the purchase list do
+  not go on quoting the old spelling. No notice is sent: the tube is the same.
+- **Reconciling flushes in two steps.** Postgres checks the unique index row by row, so a swap
+  of two shade names — or a rename onto the name of a shade being withdrawn — would collide
+  with itself halfway through the UPDATEs. Rows that leave the list or change key step out of
+  the index first (they are marked withdrawn and flushed), then come back with their final
+  keys. A renamed shade also carries the **photo tags** that named it, as long as the rename is
+  unambiguous (`_retag_images`).
 - `price_cents` / `volume_ml` / `in_stock` sent on the product itself are shorthand for
   "the only variant" and keep working while there is one. Once a product is sold in several,
-  they are refused with `409 product_has_variants`: applying one price to every volume would
+  they are refused with `409 product_has_variants`: applying one price to every variant would
   silently undo the split.
 - **Products are soft-deleted** (`deleted_at`) so order snapshots stay valid. Admin listings
   can ask for them back with `includeDeleted`; `POST /admin/products/{id}/restore` undoes it.
@@ -306,15 +409,27 @@ two variants rather than two products.
   product; anything still outside `SLUG_PATTERN` after that fails the row. Ceilings: `MAX_IMPORT_ROWS = 50 000`,
   `MAX_REPORTED_ERRORS = 200`, text columns 255 chars. A too-big file is refused as a file
   error, not per row: xlsx is deflate, and 4 MB can expand to ~150 MB of parsed rows.
-- **A row is a volume, and a file repeats the slug once per volume** — which is how a
+- **A row is a variant, and a file repeats the slug once per variant** — which is how a
   supplier's price list is already written, and how the export writes it back. The
   product-level columns come from the first row of a slug and are reasserted by the rest;
-  price, volume and stock land on a variant of their own, matched by volume so the row (and
-  the carts pointing at it) survives. Volumes the file does not mention are **left alone**,
-  never withdrawn: a price list is usually partial, and reading silence as "take it off the
-  shelf" would empty the shop from a file meant to move a few numbers.
-- Two rows with the same `(slug, volume)` are a reported row error rather than a silent
-  overwrite, and so is an **empty `volume` cell for a product that already has volumes**:
+  price, volume, shade and stock land on a variant of their own, matched by (volume, shade)
+  so the row (and the carts pointing at it) survives. Variants the file does not mention are
+  **left alone**, never withdrawn: a price list is usually partial, and reading silence as
+  "take it off the shelf" would empty the shop from a file meant to move a few numbers.
+- **The `shade` column** (aliases `тон`, `оттенок`) names the shade. Whatever a row prices,
+  every shade of the same volume gets that price; two rows giving one volume two prices are
+  a reported row error. **Without the column**, a row prices every shade of its volume at
+  once — that is what a price is anyway — but a row that also sets stock for a product in
+  several shades is refused, since stock belongs to each shade. A product's single nameless
+  variant that receives its first shade keeps its row (and its carts). A file can leave a
+  product with some variants shaded and some not — 30 ml rows with shades, the 50 ml row in
+  another file — and the summary reports that once per product rather than guessing; the
+  admin form refuses to save the mix, which points the owner straight at it. A row that
+  would add a variant past `MAX_PRODUCT_VARIANTS` is refused, as the form refuses it.
+- Two rows with the same `(slug, volume, shade)` are a reported row error rather than a silent
+  overwrite (only rows that were applied count: a refused row neither claims its variant nor
+  sets its volume's price for the rows after it), and so is an **empty `volume` cell for a product that already has volumes** (or
+  an empty `shade` cell for a product that already has shades):
   "no volume" is a real variant, so the row would otherwise add a third, nameless one next
   to 30 ml and 50 ml out of what is in practice a missed cell. A product whose only variant
   has no volume is still priced by such a row — the rule is about creating one. A file **without** a `volume` column is an ordinary price list: the row is a
@@ -329,14 +444,15 @@ endpoint answers `409 no_active_cycle`. That is the whole reason the wishlist ex
 cycle-independent and the only place to park items between cycles.
 
 **A cart line is a variant, not a product** (`UNIQUE(cart_id, variant_id)`), and is addressed
-by one: `PATCH`/`DELETE /cart/items/{variant_id}`. 30 ml and 50 ml of one serum are two lines
-with their own prices and quantities. Stock is read off the variant, not the product — the
+by one: `PATCH`/`DELETE /cart/items/{variant_id}`. 30 ml and 50 ml of one serum, or two shades
+of one lipstick, are two lines with their own quantities. A line shows the photo of its own
+variant when the gallery has one (`variant_image`), not the product's first. Stock is read off the variant, not the product — the
 product counts as in stock while _any_ volume is, so filtering on it would leave a sold-out
 30 ml sitting in a cart because the 50 ml is still available.
 
-The **wishlist stays product-level**: "I want this serum", and the volume is chosen when it
-goes into the cart. So the cart rescue at the close of a cycle collapses two volumes of one
-product into one wishlist row.
+The **wishlist stays product-level**: "I want this serum", and the volume and shade are chosen
+when it goes into the cart. So the cart rescue at the close of a cycle collapses two variants of
+one product into one wishlist row.
 
 Quantities are capped at `MAX_ITEM_QUANTITY = 999`, enforced on both the cart and the order
 edit endpoints — a ceiling on one side only just moves where the overflow lands.
@@ -344,7 +460,8 @@ edit endpoints — a ceiling on one side only just moves where the overflow land
 ## Orders
 
 Checkout turns a cart into an `Order` with denormalized `OrderItem` lines (name, slug, price,
-**volume**, image snapshot) and a `total_cents`. Only the lines that went into the order leave
+**volume**, **shade**, image snapshot — the variant's own photo when it has one) and a
+`total_cents`. Only the lines that went into the order leave
 the cart: a line hidden from it (product discontinued or out of stock) stays and reappears
 when the product does.
 
@@ -352,12 +469,15 @@ A customer's cancel/restore/edit and the owner's status change lock the order ro
 (`get_for_user(for_update=True)`, `update_status`), so the two sides cannot both pass their
 checks against the same PENDING and have the later commit win.
 
-The volume is a snapshot on the line, unlike brand and category, which are read from the live
-catalogue (`OrdersService.load_item_tags`): it is what the customer _chose_ between, and once
-a product is sold in two volumes the product row no longer knows which one a line was. For
+The volume and the shade are snapshots on the line, unlike brand and category, which are read
+from the live catalogue (`OrdersService.load_item_tags`): they are what the customer _chose_
+between, and once a product is sold in two variants the product row no longer knows which one
+a line was. Every text that names a line — the bot's messages, the purchase list, the
+checklist — names it with `product_label` (`app/catalog/labels.py`): "Тональный крем, 30 мл,
+21 Light". For
 the same reason a price change is pulled through by **variant** (`reprice_variants`): an
 order for 30 ml must not get more expensive because the 50 ml did. The owner's purchase list
-splits by volume too — 30 ml and 50 ml are two things to buy.
+splits by volume and shade too — 30 ml and 50 ml, or "01" and "05", are two things to buy.
 
 ### Orders placed by an admin
 
@@ -531,11 +651,11 @@ is never downloaded — only Telegram's `file_id` is stored, enough for the bot 
 Two sheets, and they are opposites. Cell values starting with `=` are forced to text in
 both — a product name from an import must not become a formula.
 
-`GET /admin/export/orders` builds an xlsx purchase list: one row per **volume** summed across
-every order in the cycle, **Russian headers**, optional price columns. Per volume, not per
-product, because that is what the owner buys — 30 ml and 50 ml of one serum are two things,
-and one summed line would be a number nobody can act on. The volume rides in the name cell
-("Сыворотка Centella, 50 мл"): the sheet is read one line at a time, and a far-right column
+`GET /admin/export/orders` builds an xlsx purchase list: one row per **variant** summed across
+every order in the cycle, **Russian headers**, optional price columns. Per variant, not per
+product, because that is what the owner buys — 30 ml and 50 ml of one serum, or two shades of
+one lipstick, are two things, and one summed line would be a number nobody can act on. The
+variant rides in the name cell ("Сыворотка Centella, 50 мл", "Помада Velvet, 05 Rose"): the sheet is read one line at a time, and a far-right column
 is one the eye has to travel to on every row. It is read by a person (or handed to a
 supplier) and never uploaded back.
 
@@ -546,15 +666,17 @@ rather than the page. Cancelled orders are left out, since the checklist has no 
 filter of its own. Each name links to the product page by the live catalogue slug
 (none once the product row is gone). The "bought" ticks are not stored on the server: they live in the
 browser's `localStorage` (`useChecklistMarks`), keyed by cycle, and a row is identified by
-name + volume + price — not quantity, so a cancellation after the purchase does not untick
+name + volume + price (+ shade, appended only when there is one, so marks made before shades
+existed still match) — not quantity, so a cancellation after the purchase does not untick
 what was already bought.
 
 `GET /admin/export/products` dumps the live catalogue, and exists for the round trip:
 export → edit prices and stock in Excel → upload the same file back through
 `POST /admin/catalog/import`. So its headers are the **import's own column names**
-(`name`, `slug`, `brand`, `category`, `price`, `volume`, `inStock`), not Russian captions —
-a caption would break the file on the way back in. A product sold in several volumes is
-**several rows with the same slug**, one per volume, which is exactly what the import reads. `inStock` is written `да`/`нет`, which
+(`name`, `slug`, `brand`, `category`, `price`, `volume`, `shade`, `inStock`), not Russian
+captions — a caption would break the file on the way back in. A product sold in several
+variants is **several rows with the same slug**, one per variant, which is exactly what the
+import reads. `inStock` is written `да`/`нет`, which
 the import reads as a boolean, and `category` carries the slug, which is the category's
 identity.
 

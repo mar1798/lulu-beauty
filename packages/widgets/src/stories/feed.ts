@@ -14,6 +14,7 @@ import {
   IAdminChecklistProps,
   IAdminOrdersTableProps,
   IAdminProductFormProps,
+  IAdminProductGalleryProps,
   IAdminProductsTableProps,
   IAdminUser,
   IAdminUsersTableProps,
@@ -662,6 +663,36 @@ export const feedProductWithVariants = (overrides: Partial<IProduct> = {}): IPro
   })
 }
 
+/**
+ * Тоналка в двух объёмах и трёх тонах: оси независимы, и у каждого тона есть
+ * оба объёма. Цена — своя у объёма и одна у его тонов, как требует бэкенд.
+ * Одного тона в 50 мл нет в наличии — чтобы погашенная кнопка была видна.
+ */
+export const feedProductWithShades = (overrides: Partial<IProduct> = {}): IProduct => {
+  const priceCents = faker.number.int({ min: PRICE_MIN, max: PRICE_MAX })
+  const shades = ['21 Light', '23 Beige', '25 Sand']
+  const variants = [30, 50].flatMap(volumeMl =>
+    shades.map(shade => ({
+      id: faker.string.uuid(),
+      volumeMl,
+      shade,
+      priceCents: volumeMl === 30 ? priceCents : Math.round(priceCents * LARGER_PRICE_FACTOR),
+      inStock: !(volumeMl === 50 && shade === '25 Sand'),
+    }))
+  )
+
+  return feedProduct({
+    priceCents,
+    volumeMl: null,
+    variants,
+    images: [
+      feedProductImageDto(true, 0),
+      { ...feedProductImageDto(false, 1), shades: ['23 Beige'] },
+    ],
+    ...overrides,
+  })
+}
+
 export const feedProductCard = (): IProductCardProps => {
   const product = feedProduct()
 
@@ -1258,10 +1289,33 @@ export const feedAdminProductForm = (): IAdminProductFormProps => {
     brands: ['COSRX', 'Laneige', 'Medi-Peel', 'Round Lab', 'Some By Mi'],
     product,
     onSubmit: noop,
-    // У товара фотография одна — админка показывает ровно её.
-    images: product.images.slice(0, 1),
-    onImageUpload: noop,
+    images: product.images,
+    onImagesUpload: noop,
     onImageDelete: noop,
+    onImagesArrange: noop,
+  }
+}
+
+/** Помада в двух объёмах и трёх тонах: общие фото, фото тонов, палетка и скрытое. */
+export const feedAdminProductGallery = (): IAdminProductGalleryProps => {
+  const variants = [30, 50].flatMap(volumeMl =>
+    ['01 Nude', '05 Rose', '12 Berry'].map(shade => ({ volumeMl, shade }))
+  )
+  const images: IProductImage[] = [
+    feedProductImageDto(true, 0),
+    { ...feedProductImageDto(false, 1), shades: ['05 Rose'] },
+    { ...feedProductImageDto(false, 2), shades: ['05 Rose'], volumesMl: [50] },
+    { ...feedProductImageDto(false, 3), shades: ['01 Nude', '12 Berry'] },
+    { ...feedProductImageDto(false, 4), hidden: true },
+  ]
+
+  return {
+    images,
+    variants,
+    productName: 'Помада Velvet',
+    onChange: noop,
+    onAdd: noop,
+    onDelete: noop,
   }
 }
 

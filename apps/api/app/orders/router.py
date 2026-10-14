@@ -74,6 +74,7 @@ def _order_item(item: OrderItem, tags: ProductTags) -> OrderItemResponse:
         product_brand=tags.brand,
         product_category_name=tags.category_name,
         product_volume_ml=item.product_volume_ml,
+        product_shade=item.product_shade,
     )
 
 

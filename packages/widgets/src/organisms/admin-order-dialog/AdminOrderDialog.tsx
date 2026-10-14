@@ -69,6 +69,8 @@ const asItem = (line: IAdminOrderDraftLine): IItemRowItem => ({
   productBrand: line.productBrand,
   productCategoryName: null,
   productVolumeMl: line.productVolumeMl,
+  // Без тона две строки одной помады в черновике выглядели бы одинаково.
+  productShade: line.productShade ?? null,
 })
 
 export const AdminOrderDialog: FC<IAdminOrderDialogProps & IBasicStyling> = ({

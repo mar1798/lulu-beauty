@@ -114,6 +114,7 @@ Owner-only (`ADMIN` or `SUPER_ADMIN`, checked on the API — the frontend gate i
 | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `GET`    | `/admin/users`, `/admin/brands`, `/admin/products`, `/admin/products/{id}`, `/admin/orders`, `/admin/orders/cycles`, `/admin/cycles`, `/admin/cycles/{id}/deletion`, `/admin/checklist`, `/admin/export/orders`, `/admin/export/products`         |
 | `PATCH`  | `/admin/users/{id}/role`, `/admin/categories/{id}`, `/admin/products/{id}`, `/admin/cycles/{id}`, `/admin/orders/{id}/status`                                                                                                                     |
+| `PUT`    | `/admin/products/{id}/images` (the gallery's order and photo tags, whole)                                                                                                                                                                         |
 | `POST`   | `/admin/categories`, `/admin/products`, `/admin/products/{id}/restore`, `/admin/products/{id}/images`, `/admin/catalog/import`, `/admin/cycles`, `/admin/cycles/{id}/close`, `/admin/export/links`, `/admin/orders`, `/admin/orders/{id}/message` |
 | `DELETE` | `/admin/categories/{id}`, `/admin/products/{id}` (soft), `/admin/products/{id}/images/{image_id}`, `/admin/cycles/{id}`, `/admin/orders/{id}`                                                                                                     |
 
@@ -149,6 +150,18 @@ be forgotten. `UsersService.get`, `list_page`, `OrdersService.load_customers`,
 `recipients.get_users` and `notify._load_customer` all do it, which is what keeps the
 placeholder name and the filled-in phone out of the admin order list and out of a message
 to the owner.
+
+### A product photo is added, not replaced
+
+`POST /admin/products/{id}/images` appends to the gallery (multipart `file`, `alt`, and the
+optional tags as repeated fields — one `volumesMl` or `shades` per tag — plus `hidden=true`
+for a photo shown nowhere, since a form cannot send an empty list). The cheap refusals — a full gallery, a tag the product
+has no variant for — are checked before the file is written, and a refusal after the write
+removes the file again, so a refused upload leaves nothing on disk. `PUT
+/admin/products/{id}/images` takes `{"images": [{id, volumesMl, shades, hidden, alt?}, …]}` — the
+whole gallery in its new order. `alt` is applied only to the photos that send the key (blank or
+null clears it), so a client that saves only order and tags keeps every caption; both endpoints
+cap it at `MAX_IMAGE_ALT_LENGTH` (255, the column). See "A product has a gallery" in [domain.md](domain.md).
 
 ### Product photos are re-encoded on upload
 
@@ -246,10 +259,12 @@ and 404s the second, so a withdrawn product's URL keeps whatever search signals 
 withdrawal here is not: the xlsx import revives a product it meets again, and the admin can
 restore one by hand.
 
-The four variant codes are all 409s the owner's product form can point at a row with: an
-empty list of volumes, the same volume twice, past `MAX_PRODUCT_VARIANTS`, and a flat
-price/volume/stock sent to a product sold in several. The alternative to the third one is a
-500 out of the partial unique index at flush.
+The six variant codes are all 409s the owner's product form can point at a row with: an
+empty list of variants, the same (volume, shade) twice, past `MAX_PRODUCT_VARIANTS`, a flat
+price/volume/stock sent to a product sold in several, a shade on some rows but not all
+(`variant_shade_missing`), and two prices for the shades of one volume
+(`variant_shade_prices_differ`). The alternative to the second one is a 500 out of the
+partial unique index at flush.
 
 **Money** is integer `*_cents`. **Products are soft-deleted**, and so are their variants.
 See [domain.md](domain.md).
@@ -349,9 +364,9 @@ same way `/brands` does — with the difference that the brand query is capped i
 fetch): this one runs on every debounced keystroke, and a one-letter query must not drag
 back the whole brand list to throw all but five of it away. `q` is one character minimum
 (only an empty query is refused) and 255 maximum. A product row also carries
-`variantCount`: with several volumes its `priceCents` is the cheapest of them, and the row
-says "от N" exactly as the catalogue card does — `volumeMl` cannot stand in for the count,
-since it is NULL both for a product with no volume and for one sold in several.
+`priceVaries`: when its variants cost different amounts, `priceCents` is the cheapest of
+them, and the row says "от N" exactly as the catalogue card does. Not `variantCount > 1`
+(still sent, for older clients): a lipstick in ten shades has ten variants and one price.
 
 ## Rate limiting
 

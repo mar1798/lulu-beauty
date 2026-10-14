@@ -9,7 +9,7 @@ from sqlalchemy.orm import selectinload
 
 from app.auth.models import User
 from app.cart.models import Cart, CartItem
-from app.catalog.images import primary_image_url
+from app.catalog.images import variant_image_url
 from app.catalog.models import Category, Product, ProductVariant
 from app.cycles.models import CycleStatus, OrderCycle
 from app.cycles.service import CyclesService
@@ -184,9 +184,12 @@ def _snapshot_line(product: Product, variant: ProductVariant, quantity: int) -> 
         variant_id=variant.id,
         product_name=product.name,
         product_slug=product.slug,
-        product_image_url=primary_image_url(product.images),
+        # The variant's own photo when it has one: the line is "05 Rose", and the order
+        # page and the owner's table should show that colour, not the first one shot.
+        product_image_url=variant_image_url(product.images, variant.volume_ml, variant.shade),
         product_price_cents=variant.price_cents,
         product_volume_ml=variant.volume_ml,
+        product_shade=variant.shade,
         quantity=quantity,
     )
 
@@ -226,6 +229,7 @@ class OrderPriceChange:
     # price moves on one volume, and an order holding both would otherwise get two
     # messages about "Сыворотка" quoting two different numbers.
     product_volume_ml: int | None
+    product_shade: str | None
     old_price_cents: int
     new_price_cents: int
     total_cents: int
@@ -238,8 +242,9 @@ class OrderItemDrop:
     order_id: uuid.UUID
     user_id: uuid.UUID
     product_name: str
-    # Which volume is gone — the whole news when only one of them was taken off.
+    # Which volume and shade are gone — the whole news when only one was taken off.
     product_volume_ml: int | None
+    product_shade: str | None
     total_cents: int
     # The dropped line was the only one: an order with nothing in it is not an order, so
     # it is cancelled rather than left empty — and that is different news for the customer.
@@ -914,6 +919,7 @@ class OrdersService:
                     user_id=order.user_id,
                     product_name=item.product_name,
                     product_volume_ml=item.product_volume_ml,
+                    product_shade=item.product_shade,
                     old_price_cents=old_price_cents,
                     new_price_cents=item.product_price_cents,
                     total_cents=order.total_cents,
@@ -924,6 +930,34 @@ class OrdersService:
         if changes:
             await self._session.flush()
         return changes
+
+    async def rename_variants(self, shades: Mapping[uuid.UUID, str | None]) -> None:
+        """Pulls a renamed shade through every order still awaiting confirmation.
+
+        The same reasoning as `reprice_variants`: a PENDING order has bought nothing yet,
+        so its lines follow the catalogue, while a confirmed one keeps what was agreed. A
+        rename keeps the variant (`ProductService._apply_specs` matches it by id), so the
+        customer's cart already shows the new name — and without this the bill, the bot
+        and the purchase list would go on quoting the old one, the purchase list even
+        splitting "Rosee" and "Rose" into two lines of one tube.
+
+        No notice: the customer chose the same tube, and a corrected spelling is not news.
+        """
+        if not shades:
+            return
+
+        changed = False
+        for order in await self._pending_orders_with_variants(list(shades)):
+            for item in order.items:
+                if item.variant_id is None or item.variant_id not in shades:
+                    continue
+                shade = shades[item.variant_id]
+                if item.product_shade != shade:
+                    item.product_shade = shade
+                    changed = True
+
+        if changed:
+            await self._session.flush()
 
     async def drop_product(self, product_id: uuid.UUID) -> list[OrderItemDrop]:
         """Takes a product out of every order still awaiting confirmation.
@@ -994,6 +1028,7 @@ class OrdersService:
                     user_id=order.user_id,
                     product_name=item.product_name,
                     product_volume_ml=item.product_volume_ml,
+                    product_shade=item.product_shade,
                     total_cents=order.total_cents,
                     is_cancelled=is_cancelled,
                 )

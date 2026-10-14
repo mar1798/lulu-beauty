@@ -196,27 +196,28 @@ async def test_update_canonicalizes_the_brand(db_session: AsyncSession) -> None:
     assert updated.brand == "Round Lab"
 
 
-async def test_add_image_replaces_every_previous_one(db_session: AsyncSession) -> None:
-    """A product carries exactly one photo — including ones left by older, multi-image data."""
+async def test_add_image_appends_to_the_gallery(db_session: AsyncSession) -> None:
+    """A product has a gallery now: an upload goes to the end, and the first stays primary."""
     product = await make_product(db_session)
-    await make_product_image(db_session, product, url="old.jpg", is_primary=True)
-    await make_product_image(db_session, product, url="older.jpg", sort_order=1)
+    await make_product_image(db_session, product, url="first.jpg", is_primary=True)
     service = ProductService(db_session)
 
-    added, replaced = await service.add_image(product.id, "new.jpg", "Новое фото")
+    added = await service.add_image(product.id, "second.jpg", "Второе фото")
 
     images = (
         (
             await db_session.execute(
-                select(ProductImage).where(ProductImage.product_id == product.id)
+                select(ProductImage)
+                .where(ProductImage.product_id == product.id)
+                .order_by(ProductImage.sort_order)
             )
         )
         .scalars()
         .all()
     )
-    assert [image.id for image in images] == [added.id]
-    assert added.url == "new.jpg"
-    assert added.is_primary is True
+    assert [image.url for image in images] == ["first.jpg", "second.jpg"]
+    assert added.is_primary is False
+    assert added.sort_order == 1
 
 
 async def test_restore_undoes_a_soft_delete(db_session: AsyncSession) -> None:

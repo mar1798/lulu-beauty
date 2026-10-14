@@ -19,6 +19,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from app.auth.models import User
 from app.cart.schemas import CartItemResponse, CartResponse
+from app.catalog.labels import product_label
 from app.common.limits import MAX_WISHLIST_ITEMS
 from app.config import settings
 from app.cycles.models import OrderCycle
@@ -358,7 +359,9 @@ PAYMENT_DETAILS = (
 
 def _bill_line(item: OrderItem) -> str:
     """A line of the bill — HTML, so the product name is escaped."""
-    label = html.escape(product_label(item.product_name, item.product_volume_ml))
+    label = html.escape(
+        product_label(item.product_name, item.product_volume_ml, item.product_shade)
+    )
     quantity = f" × {item.quantity}" if item.quantity > 1 else ""
     price = format_price(item.product_price_cents * item.quantity, grouped=False)
     return f"• {label}{quantity} - {price}"
@@ -654,19 +657,6 @@ def shop_message_too_soon(interval_seconds: int, seconds_left: int) -> str:
     )
 
 
-def product_label(product_name: str, volume_ml: int | None) -> str:
-    """The product, and the volume when it has one — "Сыворотка Centella, 50 мл".
-
-    Один текст на все сообщения о позиции: у товара, который продаётся в 30 и 50 мл,
-    название само по себе не называет ничего. Без объёма два уведомления об одной
-    заявке — «цена выросла» и «цена снизилась» — читались бы как про один и тот же
-    товар и противоречили друг другу.
-    """
-    if volume_ml is None:
-        return product_name
-    return f"{product_name}, {volume_ml} мл"
-
-
 def order_item_repriced(
     order_id: uuid.UUID,
     product_name: str,
@@ -700,7 +690,7 @@ def orders_repriced(changes: Sequence[OrderPriceChange]) -> str:
         change = changes[0]
         return order_item_repriced(
             change.order_id,
-            product_label(change.product_name, change.product_volume_ml),
+            product_label(change.product_name, change.product_volume_ml, change.product_shade),
             change.old_price_cents,
             change.new_price_cents,
             change.total_cents,
@@ -709,7 +699,7 @@ def orders_repriced(changes: Sequence[OrderPriceChange]) -> str:
     lines = [f"Изменились цены в {len(changes)} ваших заявках."]
     lines.extend(
         f"{order_reference(change.order_id)} - "
-        f"{product_label(change.product_name, change.product_volume_ml)}: "
+        f"{product_label(change.product_name, change.product_volume_ml, change.product_shade)}: "
         f"{_price_direction(change.old_price_cents, change.new_price_cents)} "
         f"с {format_price(change.old_price_cents)} до {format_price(change.new_price_cents)}. "
         f"Сумма заявки теперь {format_price(change.total_cents)}."
@@ -730,7 +720,7 @@ def orders_items_dropped(drops: Sequence[OrderItemDrop]) -> str:
 
     if len(drops) == 1:
         drop = drops[0]
-        label = product_label(drop.product_name, drop.product_volume_ml)
+        label = product_label(drop.product_name, drop.product_volume_ml, drop.product_shade)
         return (
             order_cancelled_last_item_removed(drop.order_id, label)
             if drop.is_cancelled
@@ -742,7 +732,8 @@ def orders_items_dropped(drops: Sequence[OrderItemDrop]) -> str:
     lines = [f"Мы сняли товары с продажи - это затронуло {count} ваших {affected}."]
     for order_id, order_drops in by_order.items():
         names = ", ".join(
-            product_label(drop.product_name, drop.product_volume_ml) for drop in order_drops
+            product_label(drop.product_name, drop.product_volume_ml, drop.product_shade)
+            for drop in order_drops
         )
         removed = plural(len(order_drops), "товар", "товара", "товаров")
         tail = (
@@ -1141,8 +1132,8 @@ def my_orders(orders: list[Order], total: int | None = None) -> str:
 
 
 def cart_item_label(item: CartItemResponse) -> str:
-    """The product, and the volume when it has one — "Сыворотка Centella, 50 мл"."""
-    return product_label(item.product_name, item.product_volume_ml)
+    """The product, and the variant when it has one — "Сыворотка Centella, 50 мл"."""
+    return product_label(item.product_name, item.product_volume_ml, item.product_shade)
 
 
 def my_cart(cart: CartResponse) -> str:
@@ -1184,11 +1175,12 @@ def my_wishlist(wishlist: WishlistResponse) -> str:
 
     shown = wishlist.items[:MAX_LISTED_WISHLIST_ITEMS]
     lines = ["В избранном:"]
-    # "от" when the product is sold in several volumes: `price_cents` is the cheapest of
-    # them, and printing it flat would quote a price the bigger one is not sold at.
+    # "от" when the product's variants cost different amounts: `price_cents` is the
+    # cheapest of them, and printing it flat would quote a price the bigger volume is not
+    # sold at. Shades alone do not make it "от" — they share their volume's price.
     lines += [
         f"• {item.product.name} - "
-        f"{'от ' if len(item.product.variants) > 1 else ''}"
+        f"{'от ' if len({v.price_cents for v in item.product.variants}) > 1 else ''}"
         f"{format_price(item.product.price_cents)}"
         for item in shown
     ]

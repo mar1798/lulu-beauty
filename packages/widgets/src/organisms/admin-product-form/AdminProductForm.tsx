@@ -1,5 +1,5 @@
 import clsx from 'clsx'
-import { type FC, type FormEvent, useEffect, useId, useMemo, useRef, useState } from 'react'
+import { type FC, type FormEvent, useEffect, useRef, useState } from 'react'
 import type {
   IAdminProductFormProps,
   IAdminProductValues,
@@ -7,33 +7,37 @@ import type {
   IBasicStyling,
   IProduct,
   IProductImage,
+  IProductImageArrangement,
+  IProductVariant,
   ISelectOption,
+  IVariantTags,
 } from '../../types'
 import { IconTrash } from '../../svg/icons'
 import { Alert } from '../../atoms/alert'
-import { AppImage } from '../../atoms/app-image'
 import { Button } from '../../atoms/button'
 import { Combobox } from '../../atoms/combobox'
-import { Heading } from '../../atoms/heading'
 import { IconButton } from '../../atoms/icon-button'
 import { Input } from '../../atoms/input'
 import { Select } from '../../atoms/select'
 import { Switch } from '../../atoms/switch'
 import { Text } from '../../atoms/text'
-import { FileDropzone } from '../../molecules/file-dropzone'
 import { RichTextEditor } from '../../molecules/rich-text-editor'
+import { AdminProductGallery } from '../admin-product-gallery'
 import { categoryOptions } from '../../utils/categories'
 import { plainTextToHtml, richTextLength } from '../../utils/richText'
 import { slugify } from '../../utils/slug'
+import { formatVariant, shadeKey } from '../../utils/variants'
 import * as styles from './AdminProductForm.css'
 
 /**
- * Карточка товара в админке: поля товара и, у сохранённого, его фотография.
+ * Карточка товара в админке: поля товара и, у сохранённого, его галерея.
  *
- * Цена и объём живут не на товаре, а в таблице «Объёмы»: одна сыворотка
- * продаётся и в 30 мл, и в 50 мл, у каждого своя цена и свой остаток. Строка
- * там всегда хотя бы одна — обычный товар это ровно одна строка, и отдельной
- * «простой» формы для него нет: две формы разошлись бы в проверках.
+ * Цена, объём и тон живут не на товаре, а в таблице вариантов: одна сыворотка
+ * продаётся и в 30 мл, и в 50 мл, одна помада — в «01 Nude» и «05 Rose», а
+ * тоналка бывает в обоих объёмах каждого тона. У каждой строки своё наличие;
+ * цена — своя у объёма и общая у его тонов (это проверяет и форма, и сервер).
+ * Строка там всегда хотя бы одна — обычный товар это ровно одна строка, и
+ * отдельной «простой» формы для него нет: две формы разошлись бы в проверках.
  *
  * Цена вводится в сомах, а наружу уходит в копейках — как её хранит бэкенд.
  * Обратное («введите копейки») переложило бы на владельца арифметику,
@@ -51,15 +55,16 @@ import * as styles from './AdminProductForm.css'
  * остаётся редактируемым: как только владелец правит его руками, автоподстановка
  * выключается — иначе она затирала бы правку на каждом нажатии в названии.
  *
- * Фотография у товара одна: загрузка на бэкенде не добавляет её к прежним,
- * а заменяет их. Поэтому тут нет ни «сделать главной», ни отдельной кнопки
- * «заменить» — выбор нового файла и есть замена. `images` остаётся списком:
- * у товаров, заведённых до этого правила, может лежать несколько снимков, и
- * их нужно показать (и дать удалить), а не спрятать.
+ * Фото у товара — галерея, разложенная по тонам (`AdminProductGallery`):
+ * фото, добавленное в группу тона, к нему и привязано. У сохранённого товара
+ * каждая правка галереи сохраняется сразу, всей галереей (`onImagesArrange`),
+ * а группы строятся по сохранённым вариантам — привязку к несохранённому
+ * сервер не примет.
  *
- * При создании товара фото грузить некуда: у него нет id. Поэтому файл
- * копится в форме и улетает вместе с остальными полями по сабмиту
- * (см. `IAdminProductValues.image`).
+ * При создании товара фото грузить некуда: у него нет id. Поэтому файлы
+ * копятся в форме вместе с привязками — группы там строятся по набранным
+ * строкам вариантов — и улетают вместе с остальными полями по сабмиту
+ * (см. `IAdminProductValues.images`).
  */
 
 /*
@@ -89,14 +94,59 @@ const VOLUME_MAX_LENGTH = String(MAX_VOLUME_ML).length
 /** `MAX_PRICE_CENTS` бэкенда, в сомах: дальше не проходит 32-битная колонка. */
 const MAX_PRICE = 20_000_000
 
-/** `MAX_PRODUCT_VARIANTS` бэкенда: столько объёмов у одного товара не бывает. */
-const MAX_VARIANTS = 20
+/** `MAX_PRODUCT_VARIANTS` бэкенда: все объёмы на все тона. */
+const MAX_VARIANTS = 100
 
-/** Потолок `MAX_IMAGE_BYTES` бэкенда. Файл там пережимается в WebP, поэтому лимит
- * стоит на загрузке, а не на том, что окажется на диске. */
-const IMAGE_MAX_BYTES = 15 * 1024 * 1024
-const IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp']
-const IMAGE_SIZES = { fb: '160px' } as const
+/** `MAX_SHADE_LENGTH` бэкенда. */
+const SHADE_MAX_LENGTH = 64
+
+/** Варианты, к которым можно привязать фото, — без повторов и без недописанных строк. */
+type IGalleryVariant = Pick<IProductVariant, 'volumeMl' | 'shade'>
+
+/**
+ * Привязка фото, которую сервер примет у этих вариантов: метки, которых у
+ * товара больше нет, отбрасываются, а объёмы, не сошедшиеся с тонами, — тоже,
+ * как это делает и сервер при правке вариантов. Тон мог исчезнуть, пока фото
+ * ждало создания товара: его переименовали в строке вариантов.
+ */
+const liveImageTags = (variants: IGalleryVariant[], image: IProductImage): IVariantTags => {
+  if (image.hidden === true) {
+    return { volumesMl: [], shades: [], hidden: true }
+  }
+
+  const volumes = (image.volumesMl ?? []).filter(volume =>
+    variants.some(variant => variant.volumeMl === volume)
+  )
+  const shades = (image.shades ?? []).filter(shade =>
+    variants.some(variant => shadeKey(variant.shade) === shadeKey(shade))
+  )
+  const fits = variants.some(
+    variant =>
+      (volumes.length === 0 || (variant.volumeMl !== null && volumes.includes(variant.volumeMl))) &&
+      (shades.length === 0 || shades.some(shade => shadeKey(shade) === shadeKey(variant.shade)))
+  )
+
+  return { volumesMl: fits ? volumes : [], shades, hidden: false }
+}
+
+/** Галерея — в тот вид, в котором её сохраняет сервер. */
+const toArrangement = (images: IProductImage[]): IProductImageArrangement[] =>
+  images.map(image => ({
+    id: image.id,
+    volumesMl: image.hidden === true ? [] : (image.volumesMl ?? []),
+    shades: image.hidden === true ? [] : (image.shades ?? []),
+    hidden: image.hidden ?? false,
+    alt: image.alt,
+  }))
+
+/** Фото, ждущее создания товара: файл и то, как его покажет галерея. */
+interface IPendingImage {
+  image: IProductImage
+  file: File
+}
+
+let nextPendingId = 0
+
 const CENTS = 100
 
 const priceToInput = (priceCents: number): string =>
@@ -166,25 +216,38 @@ const parsePrice = (value: string): number | null => {
 }
 
 /**
- * Строка таблицы «Объёмы» как её держит форма — строками, а не числами.
+ * Строка таблицы вариантов как её держит форма — строками, а не числами.
  *
- * `id` не приходит с бэкенда и туда не уезжает: он нужен только React'у как
- * ключ. Сверять строки с вариантами товара сервер будет по объёму (см.
- * `ProductService._apply_specs`), поэтому переносить сюда настоящий id значило
- * бы намекать на связь, которой в запросе нет.
+ * `id` — ключ для React, у новой строки своего варианта нет. `variantId` —
+ * вариант, из которого строка загружена: он уезжает на сервер, и по нему
+ * сервер узнаёт строку, у которой поправили тон (см.
+ * `ProductService._apply_specs`). Без него исправление опечатки в тоне
+ * снимало бы старый тон из всех корзин и заявок. Объём так не правится:
+ * строка с другим объёмом — новый вариант, а прежний снимается, потому что
+ * 30 и 50 мл — разные товары по разной цене, а не опечатка.
  */
 interface IVariantRow {
   id: string
+  variantId: string | null
   volume: string
+  shade: string
   price: string
   inStock: boolean
 }
 
 let nextRowId = 0
-const makeRow = (volume = '', price = '', inStock = true): IVariantRow => {
+const makeRow = (patch: Partial<Omit<IVariantRow, 'id'>> = {}): IVariantRow => {
   nextRowId += 1
 
-  return { id: `variant-${nextRowId}`, volume, price, inStock }
+  return {
+    id: `variant-${nextRowId}`,
+    variantId: null,
+    volume: '',
+    shade: '',
+    price: '',
+    inStock: true,
+    ...patch,
+  }
 }
 
 /**
@@ -199,11 +262,13 @@ const toVariantRows = (product?: IProduct): IVariantRow[] => {
   }
 
   return product.variants.map(variant =>
-    makeRow(
-      variant.volumeMl === null ? '' : String(variant.volumeMl),
-      priceToInput(variant.priceCents),
-      variant.inStock
-    )
+    makeRow({
+      variantId: variant.id,
+      volume: variant.volumeMl === null ? '' : String(variant.volumeMl),
+      shade: variant.shade ?? '',
+      price: priceToInput(variant.priceCents),
+      inStock: variant.inStock,
+    })
   )
 }
 
@@ -215,8 +280,9 @@ export const AdminProductForm: FC<IAdminProductFormProps & IBasicStyling> = ({
   isSubmitting = false,
   error,
   images,
-  onImageUpload,
+  onImagesUpload,
   onImageDelete,
+  onImagesArrange,
   isImageBusy = false,
   imageError,
   footer,
@@ -259,37 +325,52 @@ export const AdminProductForm: FC<IAdminProductFormProps & IBasicStyling> = ({
     field?.focus({ preventScroll: true })
   }, [invalidSubmits])
 
-  const [imageAlt, setImageAlt] = useState('')
-  const mediaTitleId = useId()
-  const createMediaTitleId = useId()
+  /*
+    Фото при создании: грузить некуда, пока у товара нет id, поэтому файлы
+    копятся здесь вместе с привязками и уезжают с остальными полями по сабмиту.
+    Превью — object URL файла; он освобождается, когда фото убирают, и при
+    уходе со страницы.
+  */
+  const [pendingImages, setPendingImages] = useState<IPendingImage[]>([])
+  const previewUrls = useRef(new Set<string>())
 
-  // Фото при создании: грузить некуда, пока у товара нет id, поэтому файл
-  // копится локально и уезжает вместе с остальными полями по сабмиту.
-  const [pendingImage, setPendingImage] = useState<File | null>(null)
-  const [pendingImageAlt, setPendingImageAlt] = useState('')
-  const pendingImagePreview = useMemo(
-    () => (pendingImage === null ? null : URL.createObjectURL(pendingImage)),
-    [pendingImage]
-  )
+  useEffect(() => {
+    const urls = previewUrls.current
 
-  useEffect(
-    () => () => {
-      if (pendingImagePreview !== null) {
-        URL.revokeObjectURL(pendingImagePreview)
+    return () => {
+      for (const url of urls) {
+        URL.revokeObjectURL(url)
       }
-    },
-    [pendingImagePreview]
-  )
+    }
+  }, [])
 
   /*
     Разобранные строки таблицы: пересчитываются на каждый ввод, ровно как
     раньше пересчитывались одиночные поля цены и объёма.
   */
   const parsedVariants = variants.map(row => ({
+    id: row.variantId,
     volumeMl: parseVolume(row.volume),
+    shade: row.shade.split(/\s+/).filter(Boolean).join(' ') || null,
     priceCents: parsePrice(row.price),
     inStock: row.inStock,
   }))
+  /* Тон есть хоть у одной строки — значит, он нужен всем. */
+  const hasShades = parsedVariants.some(row => row.shade !== null)
+
+  /*
+    Варианты, по которым галерея нового товара строит группы: набранные строки,
+    у которых объём разобрался. У сохранённого товара — его сохранённые
+    варианты: к ним сервер и сверяет привязку.
+  */
+  const typedVariants: IGalleryVariant[] = parsedVariants.flatMap(row =>
+    row.volumeMl === undefined ? [] : [{ volumeMl: row.volumeMl, shade: row.shade }]
+  )
+  const variantKey = (variant: IGalleryVariant): string =>
+    `${variant.volumeMl ?? ''}|${shadeKey(variant.shade) ?? ''}`
+  const savedKeys = new Set((product?.variants ?? []).map(variantKey))
+  const hasUnsavedVariants =
+    product !== undefined && typedVariants.some(variant => !savedKeys.has(variantKey(variant)))
 
   /**
    * Написание бренда, уже принятое в каталоге, если он там есть.
@@ -333,14 +414,42 @@ export const AdminProductForm: FC<IAdminProductFormProps & IBasicStyling> = ({
       return 'Цена в сомах, например 1250 или 1250.50'
     }
 
-    return priceCents > MAX_PRICE * CENTS ? 'Цена не больше 20 000 000 сом' : null
+    if (priceCents > MAX_PRICE * CENTS) {
+      return 'Цена не больше 20 000 000 сом'
+    }
+
+    /*
+      Тона одного объёма стоят одинаково — так считает и сервер. Ошибка у
+      нижней строки: верхняя задала цену объёму, нижняя с ней разошлась.
+    */
+    const { volumeMl } = parsedVariants[index]
+    const differs = parsedVariants.some(
+      (other, otherIndex) =>
+        otherIndex < index &&
+        other.volumeMl === volumeMl &&
+        other.priceCents !== null &&
+        other.priceCents !== priceCents
+    )
+
+    return differs ? 'У тонов одного объёма цена одна - как в строке выше' : null
+  }
+
+  /** Тон: длина, и либо у всех строк, либо ни у одной. */
+  const validateShade = (index: number): string | null => {
+    const { shade } = parsedVariants[index]
+
+    if (shade === null) {
+      return hasShades ? 'Укажите тон - у других строк он есть' : null
+    }
+
+    return shade.length > SHADE_MAX_LENGTH ? `Тон длиннее ${SHADE_MAX_LENGTH} символов` : null
   }
 
   /**
    * Объём проверяется не только сам по себе, но и против строк выше: два
-   * одинаковых объёма у одного товара бэкенд отвергает (частичный уникальный
-   * индекс), и поймать это здесь дешевле, чем показать потом ответ сервера над
-   * всей формой, не указав, какая из строк лишняя.
+   * одинаковых варианта (объём и тон) у одного товара бэкенд отвергает
+   * (частичный уникальный индекс), и поймать это здесь дешевле, чем показать
+   * потом ответ сервера над всей формой, не указав, какая из строк лишняя.
    */
   const validateVolume = (index: number): string | null => {
     const { volumeMl } = parsedVariants[index]
@@ -353,11 +462,17 @@ export const AdminProductForm: FC<IAdminProductFormProps & IBasicStyling> = ({
       return 'Объём не больше 10 000 мл'
     }
 
+    const key = shadeKey(parsedVariants[index].shade)
     const isDuplicate = parsedVariants.some(
-      (other, otherIndex) => otherIndex < index && other.volumeMl === volumeMl
+      (other, otherIndex) =>
+        otherIndex < index && other.volumeMl === volumeMl && shadeKey(other.shade) === key
     )
 
-    return isDuplicate ? 'Такой объём уже есть выше' : null
+    if (!isDuplicate) {
+      return null
+    }
+
+    return hasShades ? 'Такой объём с этим тоном уже есть выше' : 'Такой объём уже есть выше'
   }
 
   const errors = {
@@ -387,6 +502,7 @@ export const AdminProductForm: FC<IAdminProductFormProps & IBasicStyling> = ({
   const variantErrors = variants.map((_row, index) => ({
     price: validatePrice(index),
     volume: validateVolume(index),
+    shade: validateShade(index),
   }))
 
   // Деревом, как в фильтрах: подкатегория под своим разделом.
@@ -394,6 +510,14 @@ export const AdminProductForm: FC<IAdminProductFormProps & IBasicStyling> = ({
     categories,
     category => category.id
   )
+
+  /** Подпись кнопки «убрать» — с тем, что убирается: строк одного товара бывает сорок. */
+  const removeLabel = (index: number): string => {
+    const { volumeMl, shade } = parsedVariants[index]
+    const label = formatVariant(volumeMl ?? null, shade)
+
+    return label === null ? 'Убрать вариант' : `Убрать вариант ${label}`
+  }
 
   const updateRow = (index: number, patch: Partial<IVariantRow>): void => {
     setVariants(current =>
@@ -415,7 +539,9 @@ export const AdminProductForm: FC<IAdminProductFormProps & IBasicStyling> = ({
       return
     }
 
-    if (variantErrors.some(row => row.price !== null || row.volume !== null)) {
+    if (
+      variantErrors.some(row => row.price !== null || row.volume !== null || row.shade !== null)
+    ) {
       setInvalidSubmits(current => current + 1)
       return
     }
@@ -427,7 +553,9 @@ export const AdminProductForm: FC<IAdminProductFormProps & IBasicStyling> = ({
         return
       }
       submittedVariants.push({
+        id: row.id,
         volumeMl: row.volumeMl,
+        shade: row.shade,
         priceCents: row.priceCents,
         inStock: row.inStock,
       })
@@ -454,7 +582,17 @@ export const AdminProductForm: FC<IAdminProductFormProps & IBasicStyling> = ({
       categoryId: categoryId === '' ? null : categoryId,
       inStock: submittedVariants.some(variant => variant.inStock),
       isFeatured,
-      image: pendingImage === null ? null : { file: pendingImage, alt: pendingImageAlt.trim() },
+      images: pendingImages.map(({ image, file }) => {
+        const tags = liveImageTags(typedVariants, image)
+
+        return {
+          file,
+          alt: image.alt ?? '',
+          volumesMl: tags.volumesMl,
+          shades: tags.shades,
+          hidden: tags.hidden ?? false,
+        }
+      }),
     }
 
     onSubmit(values)
@@ -533,12 +671,12 @@ export const AdminProductForm: FC<IAdminProductFormProps & IBasicStyling> = ({
             скринридер должен объявлять «Объём» вместе с ней, а не отдельным
             разделом страницы.
           */}
-          <legend className={styles.variantsLegend}>Объёмы и цены</legend>
+          <legend className={styles.variantsLegend}>Варианты и цены</legend>
 
           <Text tone="secondary" size="sm">
-            Один товар может продаваться в нескольких объёмах - у каждого своя цена и своё наличие.
-            Если объём у товара один или его нет вовсе (патчи, тканевые маски), оставьте одну
-            строку.
+            Товар может продаваться в нескольких объёмах и тонах - строка на каждый вариант, у
+            каждого своё наличие. Цена своя у объёма и одна у всех его тонов. Если вариант у товара
+            один (патчи, тканевые маски), оставьте одну строку, а тон - пустым.
           </Text>
 
           {variants.map((row, index) => (
@@ -556,6 +694,17 @@ export const AdminProductForm: FC<IAdminProductFormProps & IBasicStyling> = ({
               />
 
               <Input
+                label="Тон"
+                value={row.shade}
+                maxLength={SHADE_MAX_LENGTH}
+                hint={index === 0 ? 'Необязательно, например 05 Rose' : undefined}
+                error={isSubmitted ? variantErrors[index].shade : null}
+                onChange={next => {
+                  updateRow(index, { shade: next })
+                }}
+              />
+
+              <Input
                 label="Цена, сом"
                 value={row.price}
                 inputMode="decimal"
@@ -567,10 +716,8 @@ export const AdminProductForm: FC<IAdminProductFormProps & IBasicStyling> = ({
               />
 
               {/*
-                Тумблер и «убрать» — одной ячейкой: у них нет подписи сверху,
-                и порознь они вставали в сетку по её верхнему краю, то есть на
-                уровень подписей соседних полей, а не самих полей. Вместе они
-                же держат одну строку и на телефоне, где поля идут столбцом.
+                Тумблер и «убрать» — одной полкой под полями строки: четвёртой
+                колонкой они сжимали поле объёма до переноса подписи.
               */}
               <div className={styles.variantControls}>
                 <Switch
@@ -588,7 +735,7 @@ export const AdminProductForm: FC<IAdminProductFormProps & IBasicStyling> = ({
                 {variants.length > 1 && (
                   <IconButton
                     icon={<IconTrash />}
-                    label={`Убрать объём${row.volume === '' ? '' : ` ${row.volume} мл`}`}
+                    label={removeLabel(index)}
                     size="sm"
                     variant="danger"
                     onClick={() => {
@@ -606,10 +753,29 @@ export const AdminProductForm: FC<IAdminProductFormProps & IBasicStyling> = ({
             type="button"
             disabled={variants.length >= MAX_VARIANTS}
             onClick={() => {
-              setVariants(current => [...current, makeRow()])
+              /*
+                У товара с тонами новая строка — копия объёма и цены последней:
+                тона одного объёма идут подряд и стоят одинаково, и вбивать одно
+                и то же десять раз — не работа, а повод опечататься. Без тонов
+                строка пустая: следующий вариант там — другой объём, и копия
+                сразу была бы дублем.
+              */
+              setVariants(current => {
+                const last = current[current.length - 1]
+                const isShaded = current.some(row => row.shade.trim() !== '')
+
+                return [
+                  ...current,
+                  makeRow(
+                    last === undefined || !isShaded
+                      ? {}
+                      : { volume: last.volume, price: last.price }
+                  ),
+                ]
+              })
             }}
           >
-            Добавить объём
+            Добавить вариант
           </Button>
         </fieldset>
 
@@ -640,123 +806,85 @@ export const AdminProductForm: FC<IAdminProductFormProps & IBasicStyling> = ({
       </form>
 
       {product === undefined && (
-        <section className={styles.mediaPanel} aria-labelledby={createMediaTitleId}>
-          <Heading level={2} size="sm" id={createMediaTitleId}>
-            Фотография
-          </Heading>
+        <AdminProductGallery
+          className={styles.mediaPanel}
+          images={pendingImages.map(({ image }) => image)}
+          variants={typedVariants}
+          productName={name}
+          isBusy={isSubmitting}
+          hint="Фото загрузятся вместе с товаром. Тона и объёмы берутся из таблицы вариантов."
+          onChange={next => {
+            setPendingImages(current =>
+              next.flatMap(image => {
+                const file = current.find(item => item.image.id === image.id)?.file
 
-          {pendingImage === null ? (
-            <FileDropzone
-              label="Фото товара"
-              accept={IMAGE_TYPES.join(',')}
-              allowedTypes={IMAGE_TYPES}
-              maxBytes={IMAGE_MAX_BYTES}
-              hint="JPEG, PNG или WebP, до 15 МБ. Необязательно - можно добавить и позже."
-              buttonLabel="Выбрать фотографию"
-              onSelect={setPendingImage}
-            />
-          ) : (
-            <>
-              <div className={styles.thumb}>
-                {pendingImagePreview !== null && (
-                  <AppImage
-                    className={styles.thumbImage}
-                    image={{ src: pendingImagePreview, alt: pendingImageAlt || name }}
-                    sizes={IMAGE_SIZES}
-                    fill={true}
-                  />
-                )}
+                return file === undefined ? [] : [{ image, file }]
+              })
+            )
+          }}
+          onAdd={uploads => {
+            // Вне апдейтера: в StrictMode он вызывается дважды, а URL и id нужны по одному.
+            const start = pendingImages.length
+            const added = uploads.map((upload, index): IPendingImage => {
+              const url = URL.createObjectURL(upload.file)
+              previewUrls.current.add(url)
+              nextPendingId += 1
 
-                <IconButton
-                  className={styles.thumbDelete}
-                  icon={<IconTrash />}
-                  label="Убрать фотографию"
-                  size="sm"
-                  variant="danger"
-                  onClick={() => {
-                    setPendingImage(null)
-                    setPendingImageAlt('')
-                  }}
-                />
-              </div>
+              return {
+                file: upload.file,
+                image: {
+                  id: `pending-${nextPendingId}`,
+                  url,
+                  alt: null,
+                  sortOrder: start + index,
+                  isPrimary: start + index === 0,
+                  volumesMl: upload.volumesMl,
+                  shades: upload.shades,
+                  hidden: upload.hidden,
+                },
+              }
+            })
 
-              <Input
-                label="Описание фотографии (alt)"
-                value={pendingImageAlt}
-                hint="Что на снимке - необязательно"
-                onChange={setPendingImageAlt}
-              />
-            </>
-          )}
-        </section>
+            setPendingImages(current => [...current, ...added])
+          }}
+          onDelete={removed => {
+            URL.revokeObjectURL(removed.url)
+            previewUrls.current.delete(removed.url)
+            setPendingImages(current =>
+              current
+                .filter(item => item.image.id !== removed.id)
+                .map((item, index) => ({
+                  ...item,
+                  image: { ...item.image, sortOrder: index, isPrimary: index === 0 },
+                }))
+            )
+          }}
+        />
       )}
 
-      {images !== undefined && onImageUpload !== undefined && onImageDelete !== undefined && (
-        <section className={styles.mediaPanel} aria-labelledby={mediaTitleId}>
-          <Heading level={2} size="sm" id={mediaTitleId}>
-            Фотография
-          </Heading>
-
-          {images.length === 0 ? (
-            <Text tone="secondary" size="sm">
-              Пока без фотографии - в каталоге у товара будет заглушка
-            </Text>
-          ) : (
-            <ul className={styles.gallery}>
-              {images.map((image: IProductImage) => (
-                <li key={image.id} className={styles.thumb}>
-                  <AppImage
-                    className={styles.thumbImage}
-                    image={{ src: image.url, alt: image.alt ?? name }}
-                    sizes={IMAGE_SIZES}
-                    fill={true}
-                  />
-
-                  <IconButton
-                    className={styles.thumbDelete}
-                    icon={<IconTrash />}
-                    label={`Удалить фотографию${image.alt === null ? '' : ` «${image.alt}»`}`}
-                    size="sm"
-                    variant="danger"
-                    disabled={isImageBusy}
-                    onClick={() => {
-                      onImageDelete(image)
-                    }}
-                  />
-                </li>
-              ))}
-            </ul>
-          )}
-
-          <Input
-            label="Описание фотографии (alt)"
-            value={imageAlt}
-            hint="Что на снимке - текст читают поисковики и скринридеры"
-            onChange={setImageAlt}
-          />
-
-          <FileDropzone
-            label={images.length === 0 ? 'Фото товара' : 'Другая фотография'}
-            accept={IMAGE_TYPES.join(',')}
-            allowedTypes={IMAGE_TYPES}
-            maxBytes={IMAGE_MAX_BYTES}
-            hint={`JPEG, PNG или WebP, до 15 МБ${
-              images.length === 0
-                ? ''
-                : images.length === 1
-                  ? '. Новый файл заменит текущую фотографию.'
-                  : '. Новый файл заменит все текущие фотографии.'
-            }`}
+      {product !== undefined &&
+        images !== undefined &&
+        onImagesUpload !== undefined &&
+        onImageDelete !== undefined && (
+          <AdminProductGallery
+            className={styles.mediaPanel}
+            images={images}
+            variants={product.variants}
+            productName={name}
+            isBusy={isImageBusy}
             error={imageError}
-            disabled={isImageBusy}
-            buttonLabel="Выбрать фотографию"
-            onSelect={file => {
-              onImageUpload({ file, alt: imageAlt.trim() })
-              setImageAlt('')
+            hint={
+              hasUnsavedVariants
+                ? 'Новые тона и объёмы появятся здесь после «Сохранить»'
+                : undefined
+            }
+            onChange={next => {
+              onImagesArrange?.(toArrangement(next))
             }}
+            onAdd={onImagesUpload}
+            onDelete={onImageDelete}
           />
-        </section>
-      )}
+        )}
     </div>
   )
 }

@@ -3,6 +3,20 @@ import { border, color, rem, transition } from '../../styling/lib'
 import { focusVisibleRing } from '../../styling/mixin'
 import { vars } from '../../styling/themes/contract.css'
 
+/** Ряды объёма и тона друг под другом. */
+export const root = style({
+  display: 'flex',
+  flexDirection: 'column',
+  gap: vars.space.md,
+})
+
+/** Подпись ряда и сами кнопки. */
+export const group = style({
+  display: 'flex',
+  flexDirection: 'column',
+  gap: vars.space.xs,
+})
+
 export const container = style({
   display: 'flex',
   flexWrap: 'wrap',
@@ -43,6 +57,19 @@ export const option = style([
         backgroundColor: color.brand('600'),
         borderColor: color.brand('600'),
         color: color.text('inverse'),
+      },
+      /**
+       * Кончилось — приглушено и зачёркнуто, но выбирается: цену и наличие
+       * говорит строка над переключателем, и узнать их можно только выбрав.
+       */
+      '&[data-unavailable="true"]': {
+        color: color.text('muted'),
+        textDecoration: 'line-through',
+        boxShadow: 'none',
+      },
+      '&[data-unavailable="true"][aria-checked="true"]': {
+        color: color.text('inverse'),
+        opacity: 0.7,
       },
     },
   },

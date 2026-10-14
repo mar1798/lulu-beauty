@@ -23,6 +23,8 @@ interface IProductTagsInput {
    * а сказать «30 / 50 мл» всё равно надо.
    */
   volumeLabel?: string | null
+  /** Тон позиции — уточняет её так же, как объём, и стоит после него. */
+  shade?: string | null
 }
 
 /**
@@ -33,7 +35,7 @@ interface IProductTagsInput {
  * на телефоне оставалось «Round lab · Clea…» — категория и объём пропадали
  * вместе. Обрезка делается по метке (`clampTag`) там, где они рисуются.
  *
- * Объём последним — он уточняет товар, а не называет его. Пустые строки
+ * Объём и тон последними — они уточняют товар, а не называют его. Пустые строки
  * отбрасываются наравне с `null`: из прайса приходит и то, и другое.
  */
 export const productTags = ({
@@ -41,7 +43,8 @@ export const productTags = ({
   categoryName,
   volumeMl,
   volumeLabel,
+  shade,
 }: IProductTagsInput): string[] =>
-  [brand, categoryName, volumeLabel ?? formatVolume(volumeMl)].filter(
+  [brand, categoryName, volumeLabel ?? formatVolume(volumeMl), shade].filter(
     (value): value is string => value !== null && value !== undefined && value.trim() !== ''
   )

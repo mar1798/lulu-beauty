@@ -8,6 +8,7 @@ import { Badge } from '../../atoms/badge'
 import { Price } from '../../atoms/price'
 import { Text } from '../../atoms/text'
 import { clampTag, productTags } from '../../utils/tags'
+import { formatShadeCount, hasPriceRange, variantVolumes } from '../../utils/variants'
 import { formatVolumes } from '../../utils/volume'
 import * as styles from './ProductCard.css'
 
@@ -45,19 +46,23 @@ export const ProductCard: FC<IProductCardProps & IBasicStyling> = ({
 }) => {
   const image = primaryImage(product.images)
   /*
-    Товар продаётся в нескольких объёмах. Тогда `priceCents` — цена самого
-    дешёвого из них, а `volumeMl` у товара нет вовсе: одним числом его не
-    описать. Подпись поэтому собирается из вариантов («30 / 50 мл»), а цена
-    подписывается «от».
+    Товар продаётся в нескольких объёмах. Тогда `volumeMl` у товара нет вовсе:
+    одним числом его не описать, и подпись собирается из вариантов («30 / 50 мл»).
+    Цена подписывается «от», только когда варианты стоят по-разному: тона одного
+    объёма стоят одинаково, и помада в десяти тонах — это цена, а не «от».
   */
-  const hasSeveralVolumes = product.variants.length > 1
-  /* Марка, категория и объём — приглушённые метки под названием (см. `productTags`). */
-  const tags = productTags({
-    brand: product.brand,
-    categoryName,
-    volumeMl: product.volumeMl,
-    volumeLabel: hasSeveralVolumes ? formatVolumes(product.variants) : null,
-  })
+  const hasSeveralVolumes = variantVolumes(product.variants).length > 1
+  const isPriceFrom = hasPriceRange(product.variants)
+  /* Марка, категория, объём и число тонов — приглушённые метки под названием (см. `productTags`). */
+  const tags = [
+    ...productTags({
+      brand: product.brand,
+      categoryName,
+      volumeMl: product.volumeMl,
+      volumeLabel: hasSeveralVolumes ? formatVolumes(product.variants) : null,
+    }),
+    formatShadeCount(product.variants),
+  ].filter((tag): tag is string => tag !== null)
 
   return (
     <article className={clsx(styles.container, className)}>
@@ -114,7 +119,7 @@ export const ProductCard: FC<IProductCardProps & IBasicStyling> = ({
             className={styles.price}
             size="md"
             priceCents={product.priceCents}
-            isFrom={hasSeveralVolumes}
+            isFrom={isPriceFrom}
           />
           {action !== undefined && action !== null && (
             <span className={styles.action}>{action}</span>

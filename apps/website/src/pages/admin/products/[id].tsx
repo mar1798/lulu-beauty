@@ -1,7 +1,12 @@
 import React, { useState } from 'react'
 import { useRouter } from 'next/router'
 import useSWR, { mutate as globalMutate } from 'swr'
-import type { IAdminProductValues, IProductImage, IProductImageUpload } from 'widgets/types'
+import type {
+  IAdminProductValues,
+  IProductImage,
+  IProductImageArrangement,
+  IProductImageUpload,
+} from 'widgets/types'
 import { Alert, Button, Skeleton } from 'widgets/atoms'
 import { EmptyState } from 'widgets/molecules'
 import { AdminProductForm } from 'widgets/organisms'
@@ -9,6 +14,7 @@ import { useConfirm, useToast } from 'widgets/contexts'
 import { AdminShell } from '@/layouts/AdminShell'
 import { isApiError, messageForError } from '@/services/apiErrors'
 import {
+  arrangeProductImages,
   deleteProduct,
   deleteProductImage,
   getAdminProduct,
@@ -28,12 +34,11 @@ import {
 } from '@/services/swrKeys'
 
 /**
- * Карточка товара: поля и фотография.
+ * Карточка товара: поля и галерея.
  *
- * Фотография у товара одна: загрузка на бэкенде заменяет прежнюю, а не
- * добавляется к ней. Поэтому после загрузки и удаления товар перезагружается
- * целиком — локально это значило бы повторить логику бэкенда второй раз
- * и однажды разойтись с ней.
+ * После загрузки, удаления и перестановки фото товар перезагружается целиком:
+ * какое фото стало главным и в каком порядке легла галерея, решает бэкенд, и
+ * повторять это здесь значило бы однажды с ним разойтись.
  *
  * Удалённый товар не редиректит и не прячется: он открывается как обычно, но
  * сверху висит предупреждение и кнопка восстановления. Иначе ссылка из списка
@@ -147,24 +152,45 @@ const AdminProductPage: React.FC = () => {
       await mutate()
     } catch (cause: unknown) {
       setImageError(messageForError(cause, 'admin.product.images'))
+      // Из пачки фото часть могла загрузиться до отказа — галерея должна их показать.
+      void mutate()
     } finally {
       setIsImageBusy(false)
     }
   }
 
-  const handleImageUpload = (upload: IProductImageUpload): void => {
+  /*
+    Несколько фото — по одному и по порядку: параллельные загрузки легли бы в
+    галерею в порядке ответов, а не выбора. На первой неудаче остальные не
+    грузятся — причина у них, скорее всего, та же (лимит, формат).
+  */
+  const handleImagesUpload = (uploads: IProductImageUpload[]): void => {
     if (productId === null) {
       return
     }
 
     void runImageAction(
-      () =>
-        uploadProductImage(productId, {
-          file: upload.file,
-          alt: upload.alt === '' ? undefined : upload.alt,
-        }),
-      'Фотография загружена'
+      async () => {
+        for (const upload of uploads) {
+          await uploadProductImage(productId, {
+            file: upload.file,
+            alt: upload.alt === '' ? undefined : upload.alt,
+            volumesMl: upload.volumesMl,
+            shades: upload.shades,
+            hidden: upload.hidden,
+          })
+        }
+      },
+      uploads.length === 1 ? 'Фотография загружена' : `Загружено фотографий: ${uploads.length}`
     )
+  }
+
+  const handleImagesArrange = (arrangement: IProductImageArrangement[]): void => {
+    if (productId === null) {
+      return
+    }
+
+    void runImageAction(() => arrangeProductImages(productId, arrangement), 'Галерея сохранена')
   }
 
   const handleImageDelete = async (image: IProductImage): Promise<void> => {
@@ -277,10 +303,11 @@ const AdminProductPage: React.FC = () => {
           onSubmit={values => {
             void handleSubmit(values)
           }}
-          onImageUpload={handleImageUpload}
+          onImagesUpload={handleImagesUpload}
           onImageDelete={image => {
             void handleImageDelete(image)
           }}
+          onImagesArrange={handleImagesArrange}
           footer={
             product.deletedAt === null ? (
               <Button

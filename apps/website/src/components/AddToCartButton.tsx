@@ -4,6 +4,7 @@ import type { IControlSize, IProduct } from 'widgets/types'
 import { Button, IconButton, Tooltip } from 'widgets/atoms'
 import { useToast } from 'widgets/contexts'
 import { IconCart, IconCheck, IconPlus } from 'widgets/svg'
+import { variantShades, variantVolumes } from 'widgets/utils'
 import { useAuth } from '@/contexts/AuthContext'
 import { useCart } from '@/contexts/CartContext'
 import { useActiveCycle } from '@/hooks/useActiveCycle'
@@ -61,6 +62,18 @@ const CLOSED_REASON = 'Сейчас нет открытого сбора - то�
  * кнопку уже никто не смотрит, и смысла в ней нет.
  */
 const CONFIRMATION_MS = 1200
+
+/** Что предстоит выбрать на странице товара: объём, тон или и то и другое. */
+const chooseLabel = (product: IProduct): string => {
+  const hasShades = variantShades(product.variants).length > 0
+  const hasVolumes = variantVolumes(product.variants).length > 1
+
+  if (hasShades && hasVolumes) {
+    return 'Выбрать вариант'
+  }
+
+  return hasShades ? 'Выбрать тон' : 'Выбрать объём'
+}
 
 export const AddToCartButton: React.FC<{
   /**
@@ -289,8 +302,12 @@ export const AddToCartButton: React.FC<{
     void add()
   }
 
-  // Погашенная кнопка без выбранного объёма подписана тем, что делала бы при открытом сборе.
-  const label = target === null ? 'Выбрать объём' : 'В корзину'
+  /*
+    Погашенная кнопка без выбранного варианта подписана тем, что делала бы при
+    открытом сборе, — и называет то, что выбирать: у помады в одном объёме
+    «выбрать объём» было бы неправдой.
+  */
+  const label = target === null ? chooseLabel(product) : 'В корзину'
 
   const button = isCompact ? (
     <IconButton

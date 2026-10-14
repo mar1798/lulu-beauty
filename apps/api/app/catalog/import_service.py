@@ -16,7 +16,13 @@ from sqlalchemy.orm import selectinload
 from app.catalog.models import Category, Product, ProductVariant
 from app.catalog.schemas import SLUG_PATTERN, ImportRowErrorResponse, ImportSummaryResponse
 from app.catalog.service import UNIQUE_VIOLATION, ProductService
-from app.common.limits import MAX_PRICE_CENTS, MAX_VOLUME_ML
+from app.catalog.shades import normalize_shade, shade_key
+from app.common.limits import (
+    MAX_PRICE_CENTS,
+    MAX_PRODUCT_VARIANTS,
+    MAX_SHADE_LENGTH,
+    MAX_VOLUME_ML,
+)
 from app.orders.service import OrderPriceChange, OrdersService
 
 REQUIRED_HEADERS = {"name", "slug", "price"}
@@ -30,6 +36,9 @@ HEADER_ALIASES = {
     "volume_ml": "volume",
     "объем": "volume",
     "объём": "volume",
+    # A shade column under any of the names a Russian price list gives it.
+    "тон": "shade",
+    "оттенок": "shade",
 }
 # The columns are String(255) in the database; past that the row failed at flush, which is
 # a 500 for the whole upload rather than one reported line.
@@ -48,10 +57,10 @@ MAX_IMPORT_ROWS = 50_000
 MAX_REPORTED_ERRORS = 200
 # How many slugs are looked up per round-trip when resolving a file against the catalogue.
 _SLUG_CHUNK = 5000
-# The columns of a row that describe the *volume* rather than the product. A file carries
-# one row per volume, repeating the slug, so these three are the only ones two rows of one
+# The columns of a row that describe the *variant* rather than the product. A file carries
+# one row per variant, repeating the slug, so these are the only ones two rows of one
 # product are expected to disagree about.
-_VARIANT_FIELDS = ("price_cents", "volume_ml", "in_stock")
+_VARIANT_FIELDS = ("price_cents", "volume_ml", "in_stock", "shade")
 TRUTHY_VALUES = {"true", "1", "yes", "y", "да"}
 FALSY_VALUES = {"false", "0", "no", "n", "нет"}
 
@@ -372,35 +381,71 @@ class CatalogImportService:
             for product in existing.values()
             for variant in product.variants
         }
+        # The shades, for the same reason: a row can respell a shade ("05 rose" for
+        # "05 Rose") or give a nameless variant its first one, and the pending orders
+        # holding that variant follow it (`OrdersService.rename_variants`).
+        previous_shades = {
+            variant.id: variant.shade
+            for product in existing.values()
+            for variant in product.variants
+        }
 
         # A file carries one row per volume and repeats the slug, so the counters count
         # *products*: two rows for one serum are one product created, not one created and
         # one updated.
         touched: dict[str, Product] = {}
-        # Whether the file says which volume each row is about. Without the column a row
-        # is a price for "the product", which only means something while the product has
-        # a single volume — see `_upsert_variant`.
+        # Whether the file says which volume and which shade each row is about. Without a
+        # column, a row speaks for every variant along that axis — see `_upsert_variant`.
         has_volume_column = "volume" in columns
-        seen_volumes: set[tuple[str, int | None]] = set()
+        has_shade_column = "shade" in columns
+        seen_variants: set[tuple[str, int | None, str | None]] = set()
+        # The price each volume of each product was given by this file, so that two
+        # shades of one volume priced differently are caught at the second row rather
+        # than settled by whichever came last.
+        volume_prices: dict[tuple[str, int | None], int] = {}
+        # The last row each product was applied from — where a remark about the product
+        # as a whole is filed. Not row 0: that one means "the whole file was refused", and
+        # the page says exactly that over a file whose rows have in fact been applied.
+        last_rows: dict[str, int] = {}
 
         for row_number, fields in validated:
             slug = str(fields["slug"])
             raw_volume = fields.get("volume_ml")
             volume_ml = raw_volume if isinstance(raw_volume, int) else None
-            # Only when the file names volumes: without the column a repeated slug is the
-            # long-standing "last line wins", and files that relied on it still work.
-            if has_volume_column:
-                if (slug, volume_ml) in seen_volumes:
-                    self._report(errors, row_number, "этот объём у товара уже был выше в файле")
+            raw_shade = fields.get("shade")
+            shade = raw_shade if isinstance(raw_shade, str) else None
+            # Only when the file names variants: without either column a repeated slug is
+            # the long-standing "last line wins", and files that relied on it still work.
+            names_variants = has_volume_column or has_shade_column
+            variant_key = (slug, volume_ml, shade_key(shade))
+            price = cast(int, fields["price_cents"])
+            if names_variants:
+                if variant_key in seen_variants:
+                    self._report(errors, row_number, "этот вариант товара уже был выше в файле")
                     continue
-                seen_volumes.add((slug, volume_ml))
+                known_price = volume_prices.get((slug, volume_ml))
+                if known_price is not None and known_price != price:
+                    self._report(
+                        errors,
+                        row_number,
+                        "у всех тонов одного объёма цена одна - выше в файле у этого объёма "
+                        "другая цена",
+                    )
+                    continue
 
             was_known = slug in existing
             try:
-                product = self._upsert(existing, fields, has_volume_column)
+                product = self._upsert(existing, fields, has_volume_column, has_shade_column)
             except ImportRowError as error:
                 self._report(errors, row_number, str(error))
                 continue
+            last_rows[slug] = row_number
+            # Remembered only once the row is applied: a refused row neither names a
+            # variant nor prices a volume, and holding it against the next row would
+            # refuse a correct line for a mistake that was already reported.
+            if names_variants:
+                seen_variants.add(variant_key)
+                volume_prices.setdefault((slug, volume_ml), price)
 
             if slug not in touched:
                 touched[slug] = product
@@ -408,6 +453,21 @@ class CatalogImportService:
                     updated += 1
                 else:
                     created += 1
+
+        # A product comes in shades or it does not (`ProductService._require_specs`). A file
+        # can leave one half-way — shades for 30 ml, the 50 ml row not in this file — and
+        # nothing in a single row can tell; so it is said once, per product, at the end,
+        # against the product's last row in the file.
+        # The rows are kept: the owner finishes the job in the form, which refuses to save
+        # the mix and so points straight at it.
+        for slug, product in touched.items():
+            if len({variant.shade is None for variant in product.live_variants}) > 1:
+                self._report(
+                    errors,
+                    last_rows[slug],
+                    f"у товара {slug} тон указан не у всех вариантов - допишите его в файле "
+                    "или в карточке товара",
+                )
 
         # The three display columns on the product follow its variants — see
         # `ProductService.refresh_display_fields`. Done for the whole file at once, after
@@ -458,7 +518,17 @@ class CatalogImportService:
         # One call for the whole file, not one per product: a price list moves thousands
         # of prices, and a round trip each would hold this process — which also runs the
         # bot and the scheduler — for the length of the import.
-        changes = await OrdersService(self._session).reprice_variants(moved)
+        orders = OrdersService(self._session)
+        # Renamed before repriced, so a price notice quotes the shade as the file spells it.
+        await orders.rename_variants(
+            {
+                variant.id: variant.shade
+                for product in touched.values()
+                for variant in product.live_variants
+                if variant.id in previous_shades and previous_shades[variant.id] != variant.shade
+            }
+        )
+        changes = await orders.reprice_variants(moved)
 
         return ImportSummaryResponse(created=created, updated=updated, errors=errors), changes
 
@@ -540,6 +610,11 @@ class CatalogImportService:
 
         if "volume" in columns:
             fields["volume_ml"] = parse_volume_ml(row.get("volume"))
+        if "shade" in columns:
+            shade = normalize_shade(row.get("shade"))
+            if shade is not None and len(shade) > MAX_SHADE_LENGTH:
+                raise ImportRowError(f"тон длиннее {MAX_SHADE_LENGTH} символов")
+            fields["shade"] = shade
         if "in_stock" in columns:
             fields["in_stock"] = parse_in_stock(row.get("in_stock"))
         if "description" in columns:
@@ -581,7 +656,11 @@ class CatalogImportService:
             errors.append(ImportRowErrorResponse(row=row, message=message))
 
     def _upsert(
-        self, existing: dict[str, Product], fields: dict[str, object], has_volume_column: bool
+        self,
+        existing: dict[str, Product],
+        fields: dict[str, object],
+        has_volume_column: bool,
+        has_shade_column: bool,
     ) -> Product:
         """Applies one row: the product it names, and the volume that row is about.
 
@@ -625,77 +704,135 @@ class CatalogImportService:
             # Re-importing revives a previously discontinued product.
             product.deleted_at = None
 
-        self._upsert_variant(product, variant_fields, has_volume_column)
+        self._upsert_variant(product, variant_fields, has_volume_column, has_shade_column)
         return product
 
     @staticmethod
     def _upsert_variant(
-        product: Product, variant_fields: dict[str, object], has_volume_column: bool
+        product: Product,
+        variant_fields: dict[str, object],
+        has_volume_column: bool,
+        has_shade_column: bool,
     ) -> None:
-        """The volume this row is about, created or updated in place.
+        """The variant this row is about, created or updated in place.
 
-        Matched by volume, and updated rather than replaced, because a variant's id is
-        what carts and pending orders hold: a price list that replaced the rows would
-        empty every cart in the shop on its way through.
+        Matched by (volume, shade), and updated rather than replaced, because a variant's
+        id is what carts and pending orders hold: a price list that replaced the rows
+        would empty every cart in the shop on its way through.
 
-        Without a `volume` column the row is a price for "the product", which is only
-        answerable while the product is sold in one volume. For a product sold in several
-        it is refused per row instead of guessed — writing one price onto every volume
-        would quietly undo the split, and picking one of them at random is worse.
+        A file without one of the two columns speaks for every variant along that axis,
+        as far as that is answerable:
 
-        An empty `volume` cell for a product that already has volumes is refused for the
-        same reason: "no volume" is a real variant (pads, a sheet mask), so an empty cell
-        in a file that names volumes would add a third, nameless one next to 30 ml and
-        50 ml — a "Один размер" button on the product page out of what is in practice a
-        missed cell. A volumeless variant the product already has is still updated: the
-        rule is about *creating* one, not about refusing to price a row that exists.
+        - Without `volume` the row is a price for "the product", which is only answerable
+          while the product is sold in one volume. For a product sold in several it is
+          refused per row instead of guessed — writing one price onto every volume would
+          quietly undo the split, and picking one of them at random is worse.
+        - Without `shade` the row prices every shade of its volume at once, which is what
+          a price is anyway: the shades of one volume share it. Stock is not shared, so a
+          row that also sets stock for a product in several shades is refused.
+
+        An empty cell is refused where it would *create* a variant beside named ones: "no
+        volume" and "no shade" are real variants, so an empty cell in a file that names
+        them would add a nameless one next to 30 ml and 50 ml, or next to "01 Nude" — a
+        button with nothing on it, out of what is in practice a missed cell. A nameless
+        variant the product already has is still updated, and one gets its first shade
+        in place, keeping the carts that point at it.
+
+        Whatever the row prices, every shade of the same volume gets the same price.
         """
         raw_volume = variant_fields.get("volume_ml")
         volume_ml = raw_volume if isinstance(raw_volume, int) else None
+        raw_shade = variant_fields.get("shade")
+        shade = raw_shade if isinstance(raw_shade, str) else None
+        key = shade_key(shade)
+        price_cents = cast(int, variant_fields["price_cents"])
         live = product.live_variants
 
-        if has_volume_column:
-            variant = next((row for row in live if row.volume_ml == volume_ml), None)
+        if not has_volume_column and len({row.volume_ml for row in live}) > 1:
+            raise ImportRowError("у товара несколько объёмов - добавьте в файл колонку «объём»")
+
+        def fits(row: ProductVariant) -> bool:
+            if has_volume_column and row.volume_ml != volume_ml:
+                return False
+            return not has_shade_column or shade_key(row.shade) == key
+
+        candidates = [row for row in live if fits(row)]
+
+        if len(candidates) > 1:
+            # Only reachable without a shade column: the shades of one volume.
+            if "in_stock" in variant_fields:
+                raise ImportRowError(
+                    "у товара несколько тонов - наличие указывается для каждого тона, "
+                    "добавьте в файл колонку «тон»"
+                )
+            for row in candidates:
+                row.price_cents = price_cents
+            return
+
+        variant = candidates[0] if candidates else None
+        if variant is None:
             if (
-                variant is None
+                has_volume_column
                 and volume_ml is None
                 and any(row.volume_ml is not None for row in live)
             ):
                 raise ImportRowError("у товара есть объёмы - укажите объём в строке")
+            if any(row.shade is not None for row in live):
+                if not has_shade_column:
+                    raise ImportRowError("у товара есть тона - добавьте в файл колонку «тон»")
+                if key is None:
+                    raise ImportRowError("у товара есть тона - укажите тон в строке")
+            if not has_volume_column:
+                volume_ml = live[0].volume_ml if live else None
+            if key is not None:
+                # The product's nameless variant of this volume takes the shade, rather
+                # than standing beside it: that is the product going from "one lipstick"
+                # to "this lipstick in shades", and its carts follow the first shade.
+                variant = next(
+                    (row for row in live if row.shade is None and row.volume_ml == volume_ml),
+                    None,
+                )
+            if variant is None and len(live) >= MAX_PRODUCT_VARIANTS:
+                # The form's ceiling (`ProductService._require_specs`) holds for a file
+                # too: a price list is the likelier of the two to grow a page without end.
+                raise ImportRowError(
+                    f"у товара уже {MAX_PRODUCT_VARIANTS} вариантов - больше не добавить"
+                )
             if variant is None:
-                # A volume withdrawn earlier comes back as itself, so the carts and
+                # A variant withdrawn earlier comes back as itself, so the carts and
                 # pending orders still pointing at it start working again.
                 variant = next(
                     (
                         row
                         for row in product.variants
-                        if row.deleted_at is not None and row.volume_ml == volume_ml
+                        if row.deleted_at is not None
+                        and row.volume_ml == volume_ml
+                        and shade_key(row.shade) == key
                     ),
                     None,
                 )
                 if variant is not None:
                     variant.deleted_at = None
-        elif len(live) > 1:
-            raise ImportRowError("у товара несколько объёмов - добавьте в файл колонку «объём»")
-        else:
-            variant = live[0] if live else None
-
-        if variant is None:
-            product.variants.append(
-                ProductVariant(
+            if variant is None:
+                variant = ProductVariant(
                     volume_ml=volume_ml,
-                    price_cents=cast(int, variant_fields["price_cents"]),
-                    in_stock=bool(variant_fields.get("in_stock", True)),
+                    shade=shade,
+                    price_cents=price_cents,
+                    in_stock=True,
                     sort_order=len(product.variants),
                 )
-            )
-            return
+                product.variants.append(variant)
 
-        variant.price_cents = cast(int, variant_fields["price_cents"])
+        variant.price_cents = price_cents
         if "in_stock" in variant_fields:
             variant.in_stock = bool(variant_fields["in_stock"])
         if has_volume_column:
             variant.volume_ml = volume_ml
+        if has_shade_column:
+            variant.shade = shade
+        for row in product.live_variants:
+            if row.volume_ml == variant.volume_ml:
+                row.price_cents = price_cents
 
     async def _load_products_by_slug(self, slugs: list[str]) -> dict[str, Product]:
         """The products these rows will update, keyed by slug — chunked, not one big IN.
