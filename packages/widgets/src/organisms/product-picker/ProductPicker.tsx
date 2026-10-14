@@ -11,7 +11,7 @@ import { Skeleton } from '../../atoms/skeleton'
 import { Text } from '../../atoms/text'
 import { VisuallyHidden } from '../../atoms/visually-hidden'
 import { primaryImage } from '../../molecules/product-card'
-import { formatVolume } from '../../utils/volume'
+import { formatVariant } from '../../utils/variants'
 import { SearchField } from '../../molecules/search-field'
 import * as styles from './ProductPicker.css'
 
@@ -164,12 +164,12 @@ export const ProductPicker: FC<IProductPickerProps & IBasicStyling> = ({
         {products.flatMap(product =>
           product.variants.map(variant => {
             const isAdded = addedVariantIds.includes(variant.id)
-            const volume = formatVolume(variant.volumeMl)
-            // Объём в названии — только когда их несколько: у обычного товара
-            // он и так стоит меткой в каталоге, а тут занял бы место зря.
+            const label = formatVariant(variant.volumeMl, variant.shade)
+            // Вариант в названии — только когда их несколько: у обычного товара
+            // объём и так стоит меткой в каталоге, а тут занял бы место зря.
             const title =
-              product.variants.length > 1 && volume !== null
-                ? `${product.name}, ${volume}`
+              product.variants.length > 1 && label !== null
+                ? `${product.name}, ${label}`
                 : product.name
 
             return (

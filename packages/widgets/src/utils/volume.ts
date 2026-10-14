@@ -29,9 +29,10 @@ export const formatVolume = (volumeMl: number | null | undefined): string | null
  * вариант один и он без числа.
  */
 export const formatVolumes = (variants: IProductVariant[]): string | null => {
-  const volumes = variants
-    .map(variant => variant.volumeMl)
-    .filter((volume): volume is number => volume !== null && volume > 0)
+  /* Без повторов: у товара с тонами каждый объём встречается в каждом тоне. */
+  const volumes = [...new Set(variants.map(variant => variant.volumeMl))].filter(
+    (volume): volume is number => volume !== null && volume > 0
+  )
 
   if (volumes.length === 0) {
     return null

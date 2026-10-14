@@ -154,6 +154,7 @@ export interface IApiClient {
   get: <T>(path: string, options?: IRequestOptions) => Promise<T>
   post: <T>(path: string, options?: IRequestOptions) => Promise<T>
   patch: <T>(path: string, options?: IRequestOptions) => Promise<T>
+  put: <T>(path: string, options?: IRequestOptions) => Promise<T>
   remove: <T>(path: string, options?: IRequestOptions) => Promise<T>
   /** Абсолютный URL — нужен там, где скачивание отдаётся браузеру (`<a download>`). */
   url: (path: string, query?: Record<string, QueryValue>) => string
@@ -163,6 +164,7 @@ const createClient = (target: Target): IApiClient => ({
   get: (path, options) => request(target, 'GET', path, options),
   post: (path, options) => request(target, 'POST', path, options),
   patch: (path, options) => request(target, 'PATCH', path, options),
+  put: (path, options) => request(target, 'PUT', path, options),
   remove: (path, options) => request(target, 'DELETE', path, options),
   url: (path, query) => buildUrl(target, path, query),
 })

@@ -106,18 +106,20 @@ removes its line from every PENDING order and cancels any order left empty. Conf
 later orders keep their snapshots. Copy must therefore say "snapshot as of confirmation", not
 "as of checkout". See [domain.md](domain.md#price-snapshots).
 
-A price belongs to a **volume**, so the rewrite is keyed by variant: an order for 30 ml does
-not move because the 50 ml did. Adding a volume to a product is `PATCH /admin/products/{id}`
-with the whole `variants` list — it replaces the old one, matched by volume, so the rows that
-survive keep their ids and nobody's cart empties. Dropping a volume from that list is the
-same event as deleting a product, scoped to one volume: its lines leave every PENDING order,
-an order left empty is cancelled, and the customer is told. See
-[domain.md](domain.md#a-product-is-sold-in-volumes).
+A price belongs to a **volume** (and is shared by its shades), so the rewrite is keyed by
+variant: an order for 30 ml does not move because the 50 ml did. Adding a variant to a product
+is `PATCH /admin/products/{id}` with the whole `variants` list — it replaces the old one,
+matched by id and then by (volume, shade), so the rows that survive keep their ids and nobody's
+cart empties. Dropping a variant from that list is the same event as deleting a product,
+scoped to one variant: its lines leave every PENDING order, an order left empty is cancelled,
+and the customer is told. See
+[domain.md](domain.md#a-product-is-sold-in-variants-volumes-and-shades).
 
-## Add a field to a product's volumes
+## Add a field to a product's variants
 
-The volume (`ProductVariant`) is what a cart line, an order line and the storefront selector
-all point at, so a field on it travels further than one on the product:
+The variant (`ProductVariant`) is what a cart line, an order line and the storefront selector
+all point at, so a field on it travels further than one on the product. The shade is the
+worked example — `git log -S product_shade` shows every place it had to reach:
 
 1. `app/catalog/models.py`, then a migration. Everything about the new table is free of the
    release guard, but a column on `cart_items`/`order_items` is not — see
@@ -129,9 +131,13 @@ all point at, so a field on it travels further than one on the product:
    `ProductService.refresh_display_fields` — that is the one place those columns are written.
 4. `IProductVariant` in `packages/widgets/src/types.ts`, the `feedProduct*` fixtures, then
    `VariantSelector` / `AdminProductForm`.
-5. The xlsx import and export both carry a row per volume: `_upsert_variant` in
+5. The xlsx import and export both carry a row per variant: `_upsert_variant` in
    `app/catalog/import_service.py` and `_rows` in `app/export/products.py` have to agree, or
    a downloaded file stops reading back.
+6. If an order line has to remember it, it is a snapshot column on `order_items`, filled by
+   `_snapshot_line`, carried by `OrderPriceChange`/`OrderItemDrop`, and named in
+   `product_label` (`app/catalog/labels.py`) and its twin `formatVariant` in
+   `packages/widgets/src/utils/variants.ts`.
 
 ## Add an admin action that changes the catalog
 

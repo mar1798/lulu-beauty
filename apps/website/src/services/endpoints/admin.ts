@@ -12,6 +12,7 @@ import type {
   IPage,
   IProduct,
   IProductImage,
+  IProductImageArrangement,
   OrderStatus,
   ISortDirection,
   Role,
@@ -119,10 +120,17 @@ export const ADMIN_PRODUCT_SORT_DEFAULT: IAdminProductSort = {
 export const listAdminBrands = (includeDeleted = false): Promise<string[]> =>
   api.get('/admin/brands', { query: { includeDeleted } })
 
-/** Один объём товара в запросе: список заменяет объёмы целиком. */
+/** Один вариант товара в запросе: список заменяет варианты целиком. */
 export interface IProductVariantInput {
+  /**
+   * Вариант, из которого строка формы загружена; `null` — новый. По нему
+   * бэкенд узнаёт строку с переименованным тоном и оставляет её тем же вариантом.
+   */
+  id?: string | null
   /** Миллилитры; `null` — товару нечего измерять (патчи, тканевые маски). */
   volumeMl: number | null
+  /** Тон; `null` — товар без тонов. */
+  shade?: string | null
   priceCents: number
   inStock: boolean
 }
@@ -139,11 +147,11 @@ export interface IProductInput {
   /** Обязателен: бэкенд не примет ни создание, ни изменение товара без бренда. */
   brand: string
   /**
-   * Объёмы товара. Присланный список заменяет прежний целиком: форма
-   * показывает все объёмы сразу, и список, который умеет только расти, не
-   * дал бы снять ни один. Сверяет их бэкенд по объёму, а не по порядку, —
-   * поэтому правка цены не трогает строку, на которую ссылаются чужие
-   * корзины (`ProductService._apply_specs`).
+   * Варианты товара. Присланный список заменяет прежний целиком: форма
+   * показывает все варианты сразу, и список, который умеет только расти, не
+   * дал бы снять ни один. Сверяет их бэкенд по id, а без него — по объёму и
+   * тону, а не по порядку, — поэтому правка цены не трогает строку, на
+   * которую ссылаются чужие корзины (`ProductService._apply_specs`).
    */
   variants?: IProductVariantInput[]
   /**
@@ -204,13 +212,21 @@ export const restoreProduct = (productId: string): Promise<IProduct> =>
 export interface IProductImageInput {
   file: File
   alt?: string
+  /** Для каких вариантов фото; не передано или пусто — для любых. */
+  volumesMl?: number[]
+  shades?: string[]
+  /** Фото не показывается ни для какого варианта; привязки тогда не важны. */
+  hidden?: boolean
 }
 
 /**
- * multipart/form-data: поля называются `file` и `alt`.
+ * multipart/form-data: поля `file`, `alt` и по полю `volumesMl` / `shades` на
+ * каждую привязку — так FastAPI собирает из формы список. Скрытое фото —
+ * отдельным полем `hidden`: пустой список форма не передаст, а без привязок
+ * фото и так «для любых».
  *
- * Загрузка — это замена: у товара одна фотография, и бэкенд убирает прежнюю
- * (а у старых товаров — все прежние) в той же транзакции.
+ * Загрузка добавляет фото в конец галереи; первое фото товара становится
+ * главным. Больше `MAX_PRODUCT_IMAGES` бэкенд не примет (`too_many_images`).
  */
 export const uploadProductImage = (
   productId: string,
@@ -224,8 +240,31 @@ export const uploadProductImage = (
     body.append('alt', input.alt)
   }
 
+  for (const volumeMl of input.volumesMl ?? []) {
+    body.append('volumesMl', String(volumeMl))
+  }
+
+  for (const shade of input.shades ?? []) {
+    body.append('shades', shade)
+  }
+
+  if (input.hidden === true) {
+    body.append('hidden', 'true')
+  }
+
   return api.post(`/admin/products/${encodeURIComponent(productId)}/images`, { body })
 }
+
+/**
+ * Порядок галереи, привязки и описания (`alt`) всех её фото — одним запросом. Список обязан
+ * быть галереей целиком: если её успели поменять в другой вкладке, бэкенд
+ * ответит `product_images_mismatch`, и страницу надо перечитать.
+ */
+export const arrangeProductImages = (
+  productId: string,
+  images: IProductImageArrangement[]
+): Promise<IProductImage[]> =>
+  api.put(`/admin/products/${encodeURIComponent(productId)}/images`, { body: { images } })
 
 export const deleteProductImage = (productId: string, imageId: string): Promise<void> =>
   api.remove(

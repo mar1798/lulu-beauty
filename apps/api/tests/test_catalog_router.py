@@ -192,6 +192,7 @@ async def test_suggest_returns_the_three_groups(client: AsyncClient) -> None:
                 "brand": "Anua",
                 "priceCents": 1000,
                 "variantCount": 1,
+                "priceVaries": False,
                 "inStock": True,
                 "imageUrl": "http://x/1.jpg",
                 "imageAlt": "Роза",
@@ -218,9 +219,103 @@ async def test_a_pin_past_the_limit_is_a_conflict(client: AsyncClient) -> None:
     with patch("app.catalog.router.ProductService") as mock_service_cls:
         service = mock_service_cls.return_value
         service.variant_prices = AsyncMock(return_value={})
+        service.variant_shades = AsyncMock(return_value={})
         service.live_variant_ids = AsyncMock(return_value=set())
         service.update = AsyncMock(side_effect=FeaturedLimitError)
         response = await client.patch(f"/admin/products/{uuid.uuid4()}", json={"isFeatured": True})
 
     assert response.status_code == 409
     assert response.json()["detail"] == "featured_limit_reached"
+
+
+def _png() -> bytes:
+    from io import BytesIO
+
+    from PIL import Image
+
+    buffer = BytesIO()
+    Image.new("RGB", (8, 8), "white").save(buffer, format="PNG")
+    return buffer.getvalue()
+
+
+async def test_a_photo_shade_is_measured_once_normalised(client: AsyncClient) -> None:
+    # Spaces the form would trim do not count against the limit; the name itself does.
+    from app.catalog.service import ProductService
+
+    app.dependency_overrides[require_admin] = lambda: CurrentUser(id=uuid.uuid4(), role=Role.ADMIN)
+    product = _product()
+    with (
+        patch("app.catalog.router.ProductService") as mock_service_cls,
+        patch("app.catalog.router.storage_service") as storage,
+    ):
+        mock_service_cls.require_known_tags = ProductService.require_known_tags
+        mock_service_cls.return_value.get_by_id = AsyncMock(return_value=product)
+        storage.save = AsyncMock()
+        padded = await client.post(
+            f"/admin/products/{product.id}/images",
+            files={"file": ("photo.png", _png(), "image/png")},
+            data={"shades": "05 Rose" + " " * 80},
+        )
+        too_long = await client.post(
+            f"/admin/products/{product.id}/images",
+            files={"file": ("photo.png", _png(), "image/png")},
+            data={"shades": "x" * 65},
+        )
+
+    # Past the length check: refused for naming a shade the product has none of.
+    assert padded.json()["detail"] == "image_variant_unknown"
+    assert too_long.status_code == 422
+    assert too_long.json()["detail"] == "shade_too_long"
+    storage.save.assert_not_called()
+
+
+async def test_an_unknown_photo_tag_is_refused_before_the_file_is_stored(
+    client: AsyncClient,
+) -> None:
+    # A refusal after the write would leave a file on disk for the request to clean up;
+    # the tag is known up front, so it is checked up front.
+    from app.catalog.service import ProductService
+
+    app.dependency_overrides[require_admin] = lambda: CurrentUser(id=uuid.uuid4(), role=Role.ADMIN)
+    product = _product()
+    with (
+        patch("app.catalog.router.ProductService") as mock_service_cls,
+        patch("app.catalog.router.storage_service") as storage,
+    ):
+        mock_service_cls.require_known_tags = ProductService.require_known_tags
+        mock_service_cls.return_value.get_by_id = AsyncMock(return_value=product)
+        storage.save = AsyncMock()
+        response = await client.post(
+            f"/admin/products/{product.id}/images",
+            files={"file": ("photo.png", _png(), "image/png")},
+            data={"shades": "05 Rose"},
+        )
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == "image_variant_unknown"
+    storage.save.assert_not_called()
+
+
+async def test_gallery_save_passes_alt_only_for_photos_that_send_one(
+    client: AsyncClient,
+) -> None:
+    # Absent means "keep": an older tab saving only the order must not wipe the captions.
+    app.dependency_overrides[require_admin] = lambda: CurrentUser(id=uuid.uuid4(), role=Role.ADMIN)
+    app.dependency_overrides[get_session] = lambda: MagicMock(commit=AsyncMock())
+    product_id, captioned, untouched = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+    with patch("app.catalog.router.ProductService") as mock_service_cls:
+        mock_service_cls.return_value.arrange_images = AsyncMock(return_value=[])
+        response = await client.put(
+            f"/admin/products/{product_id}/images",
+            json={
+                "images": [
+                    {"id": str(captioned), "alt": "  Tube, front  "},
+                    {"id": str(untouched)},
+                ]
+            },
+        )
+
+    assert response.status_code == 200
+    arrangement = mock_service_cls.return_value.arrange_images.call_args.args[1]
+    assert (arrangement[0].alt, arrangement[0].alt_given) == ("Tube, front", True)
+    assert (arrangement[1].alt, arrangement[1].alt_given) == (None, False)

@@ -121,6 +121,8 @@ class OrderItemResponse(CamelModel):
     # customer chose between, and the product row stops knowing it the moment the same
     # product is sold in a second volume.
     product_volume_ml: int | None = None
+    # The shade, a snapshot for the same reason.
+    product_shade: str | None = None
 
 
 class OrderResponse(CamelModel):

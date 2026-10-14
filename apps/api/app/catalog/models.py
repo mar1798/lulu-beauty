@@ -12,6 +12,7 @@ from sqlalchemy import (
     Text,
     text,
 )
+from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.catalog.search import NOISE_SQL
@@ -169,20 +170,50 @@ class ProductImage(UUIDPrimaryKeyMixin, Base):
     )
     url: Mapped[str] = mapped_column(String(2048))
     alt: Mapped[str | None] = mapped_column(String(255))
+    # Position in the gallery. The first photo is the product's own — the card, the
+    # search dropdown and the order line of a variant with no photo of its own show it —
+    # and `is_primary` is kept equal to "sort_order is the lowest" for older readers.
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
     is_primary: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Which variants the photo shows: the volumes and the shades it is of. An empty list
+    # is "any", so an untagged photo belongs to every variant, and a photo tagged with
+    # "01 Nude" and "05 Rose" alone to those two shades in every volume. Tags rather than
+    # foreign keys to variants because that is what a photo actually depicts — the
+    # shade, not "05 Rose in 30 ml" as one row — and a tube photographed once would
+    # otherwise be uploaded per volume. Lists, because one shot of a palette or of two
+    # tubes side by side is a photo of several. Always assigned whole, never mutated in
+    # place: SQLAlchemy does not see an `append` on an ARRAY column. The rule for picking
+    # photos lives in `catalog/images.py`.
+    volumes_ml: Mapped[list[int]] = mapped_column(
+        ARRAY(Integer), default=lambda: [], server_default=text("'{}'")
+    )
+    shades: Mapped[list[str]] = mapped_column(
+        ARRAY(String(64)), default=lambda: [], server_default=text("'{}'")
+    )
+    # Shown for no variant at all: the owner took every badge off. Kept apart from the
+    # lists rather than spelled as an empty one, because an empty list already means
+    # "any" — and "all of them" has to stay "any" so that a volume added later picks the
+    # photo up. A hidden photo is the admin form's alone: every storefront reader skips
+    # it (`catalog/images.py`, `product_response`). Its lists are kept empty.
+    hidden: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
 
     product: Mapped["Product"] = relationship(back_populates="images")
 
 
 class ProductVariant(UUIDPrimaryKeyMixin, TimestampMixin, Base):
-    """One buyable form of a product: a volume, with its own price and its own stock.
+    """One buyable form of a product: a volume and a shade, with its own price and stock.
 
-    The shop sells the same serum as 30 ml and 50 ml, and those differ in exactly two
-    things a customer cares about — millilitres and price — while sharing a name, a
-    description, a brand, photos and an address. So they are one `Product` with two
-    variants rather than two products: the alternative duplicates every shared field and
-    splits the catalogue page in two.
+    The shop sells the same serum as 30 ml and 50 ml, and the same lipstick in "01 Nude"
+    and "05 Rose"; those share a name, a description, a brand and an address, and differ
+    in what the customer picks. So they are one `Product` with several variants rather
+    than several products: the alternative duplicates every shared field and splits the
+    catalogue page in two.
+
+    The two axes are independent — a foundation can come in two volumes of every shade —
+    and a variant is identified by the pair. The price follows the volume alone: every
+    shade of one volume costs the same (`ProductService._require_specs`). It is still
+    stored per row, because a cart line, an order line and a repricing all point at a
+    variant, and a price living elsewhere would give each of them a second lookup.
 
     A product always has at least one variant. A product with nothing to distinguish
     (pads, a sheet mask) has a single variant with `volume_ml = None`, which is the shape
@@ -195,27 +226,23 @@ class ProductVariant(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 
     __tablename__ = "product_variants"
     __table_args__ = (
-        # One row per volume per product, withdrawn rows excluded so a volume can be
-        # taken off and later brought back. Partial for that reason alone: two *deleted*
-        # 50 ml rows are history, not a conflict.
+        # One live row per (volume, shade) per product, withdrawn rows excluded so a
+        # variant can be taken off and later brought back. Partial for that reason alone:
+        # two *deleted* "50 ml, 05 Rose" rows are history, not a conflict.
         #
-        # NULLS NOT DISTINCT is the point of the second index rather than a detail of
-        # this one: in Postgres NULLs are distinct by default, so the constraint above
-        # says nothing at all about the no-volume variant, and a product could quietly
-        # collect several of them. The two indexes together mean "one row per volume,
-        # and at most one row without a volume".
+        # NULLS NOT DISTINCT is the point rather than a detail: in Postgres NULLs are
+        # distinct by default, and both halves of the key are NULL for most of the
+        # catalogue (a sheet mask has neither). Without it a product could quietly collect
+        # several nameless variants. The shade is compared lower-cased, as `shade_key`
+        # compares it, so "05 rose" from a price list is the "05 Rose" already there.
         Index(
-            "uq_product_variants_live_volume",
+            "uq_product_variants_live_key",
             "product_id",
             "volume_ml",
+            text("lower(shade)"),
             unique=True,
+            postgresql_nulls_not_distinct=True,
             postgresql_where=text("deleted_at IS NULL"),
-        ),
-        Index(
-            "uq_product_variants_live_novolume",
-            "product_id",
-            unique=True,
-            postgresql_where=text("deleted_at IS NULL AND volume_ml IS NULL"),
         ),
     )
 
@@ -224,6 +251,10 @@ class ProductVariant(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
     # Millilitres, or None for a product that has no volume to speak of.
     volume_ml: Mapped[int | None] = mapped_column(Integer)
+    # The shade's name as the brand prints it ("05 Rose"), or None for a product that
+    # does not come in shades. Either every live variant of a product has one or none
+    # does — see `ProductService._require_specs`.
+    shade: Mapped[str | None] = mapped_column(String(64))
     price_cents: Mapped[int] = mapped_column(Integer)
     in_stock: Mapped[bool] = mapped_column(Boolean, default=True)
     sort_order: Mapped[int] = mapped_column(Integer, default=0)

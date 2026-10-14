@@ -121,6 +121,8 @@ async def make_product_image(
     url: str = "http://localhost:3001/files/image.jpg",
     sort_order: int = 0,
     is_primary: bool = False,
+    volumes_ml: list[int] | None = None,
+    shades: list[str] | None = None,
 ) -> ProductImage:
     image = ProductImage(
         product_id=product.id,
@@ -128,6 +130,8 @@ async def make_product_image(
         alt=None,
         sort_order=sort_order,
         is_primary=is_primary,
+        volumes_ml=volumes_ml or [],
+        shades=shades or [],
     )
     session.add(image)
     await session.flush()

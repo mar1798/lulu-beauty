@@ -85,4 +85,18 @@ describe('AdminOrderDialog', () => {
 
     expect(screen.getByText('Итого · 1 позиция')).toBeTruthy()
   })
+
+  it('показывает тон строки черновика — два тона одного товара различимы', () => {
+    const props = feedAdminOrderDialog()
+    const [first] = props.lines
+    const lines = [
+      { ...first, variantId: 'nude', productVolumeMl: 4, productShade: '01 Nude' },
+      { ...first, variantId: 'rose', productVolumeMl: 4, productShade: '05 Rose' },
+    ]
+
+    renderWidget(<AdminOrderDialog {...props} lines={lines} />)
+
+    expect(screen.getByText(/01 Nude/)).toBeTruthy()
+    expect(screen.getByText(/05 Rose/)).toBeTruthy()
+  })
 })

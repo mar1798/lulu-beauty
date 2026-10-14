@@ -12,6 +12,7 @@ from openpyxl.utils import get_column_letter
 from sqlalchemy import func, literal, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.catalog.labels import product_label
 from app.catalog.models import Product
 from app.config import settings
 from app.cycles.models import OrderCycle
@@ -48,11 +49,11 @@ CellValue = str | float | None
 
 @dataclass(frozen=True)
 class OrderExportRow:
-    """One line of the purchase list: the same volume of the same product, summed.
+    """One line of the purchase list: the same variant of the same product, summed.
 
-    A *volume*, not a product: the shop buys 30 ml and 50 ml of one serum as two separate
-    things, and summing them onto one line would send the owner to the supplier with a
-    number they cannot act on.
+    A *variant*, not a product: the shop buys 30 ml and 50 ml of one serum, or "01 Nude"
+    and "05 Rose" of one lipstick, as separate things, and summing them onto one line
+    would send the owner to the supplier with a number they cannot act on.
     """
 
     product_name: str
@@ -60,6 +61,7 @@ class OrderExportRow:
     brand: str
     quantity: int
     unit_price_cents: int
+    shade: str | None = None
     # The live catalogue slug — what the admin checklist links to. None when the product
     # row is gone (a hard delete); the sheet does not use it.
     product_slug: str | None = None
@@ -70,16 +72,14 @@ class OrderExportRow:
 
     @property
     def label(self) -> str:
-        """What goes in the name cell: the product, and the volume when it has one.
+        """What goes in the name cell: the product, and the variant when it has one.
 
         In the name rather than in a column of its own because this sheet is read as a
-        shopping list, one line at a time — "Сыворотка Centella, 50 мл" is the thing to
-        pick off the shelf, and the volume in a far-right column is one the eye has to
-        travel to on every row.
+        shopping list, one line at a time — "Помада Velvet, 05 Rose" is the thing to pick
+        off the shelf, and the shade in a far-right column is one the eye has to travel
+        to on every row.
         """
-        if self.volume_ml is None:
-            return self.product_name
-        return f"{self.product_name}, {self.volume_ml} мл"
+        return product_label(self.product_name, self.volume_ml, self.shade)
 
 
 def _money(cents: int) -> float:
@@ -257,9 +257,10 @@ class ExportService:
     ) -> list[OrderExportRow]:
         """The purchase list: every ordered product summed across the orders in scope.
 
-        Grouped in SQL rather than in Python, so the sheet is one row per volume no matter
-        how many customers asked for it — and the volume is in the key for the same reason
-        the name is: two volumes of one serum are two things to buy. The grouping key
+        Grouped in SQL rather than in Python, so the sheet is one row per variant no matter
+        how many customers asked for it — and the volume and shade are in the key for the
+        same reason the name is: two volumes of one serum, or two shades of one lipstick,
+        are two things to buy. The grouping key
         includes the snapshotted price as well:
         order items keep the price they were bought at, and two orders placed either side of
         a price change are genuinely two lines on the supplier's list, not one line with an
@@ -281,6 +282,7 @@ class ExportService:
             select(
                 OrderItem.product_name,
                 OrderItem.product_volume_ml,
+                OrderItem.product_shade,
                 Product.brand,
                 Product.slug,
                 price.label("unit_price_cents"),
@@ -290,12 +292,17 @@ class ExportService:
             .join(Order, Order.id == OrderItem.order_id)
             .outerjoin(Product, Product.id == OrderItem.product_id)
             .group_by(
-                OrderItem.product_name, OrderItem.product_volume_ml, Product.brand, Product.slug
+                OrderItem.product_name,
+                OrderItem.product_volume_ml,
+                OrderItem.product_shade,
+                Product.brand,
+                Product.slug,
             )
             .order_by(
                 Product.brand.nulls_last(),
                 OrderItem.product_name,
                 OrderItem.product_volume_ml.nulls_first(),
+                OrderItem.product_shade.nulls_first(),
             )
         )
         if include_prices:
@@ -312,6 +319,7 @@ class ExportService:
             OrderExportRow(
                 product_name=product_name,
                 volume_ml=volume_ml,
+                shade=shade,
                 brand=brand if brand else "-",
                 quantity=int(total_quantity),
                 unit_price_cents=unit_price_cents,
@@ -320,6 +328,7 @@ class ExportService:
             for (
                 product_name,
                 volume_ml,
+                shade,
                 brand,
                 product_slug,
                 unit_price_cents,

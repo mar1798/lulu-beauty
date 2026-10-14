@@ -10,7 +10,7 @@ import { Skeleton } from '../../atoms/skeleton'
 import { orderNumber } from '../../molecules/order-card'
 import { StatusSelect } from '../../molecules/status-select'
 import { formatDateTime } from '../../utils/datetime'
-import { formatVolume } from '../../utils/volume'
+import { formatVariant } from '../../utils/variants'
 import { pluralize } from '../../utils/plural'
 import * as styles from './AdminOrdersTable.css'
 
@@ -243,16 +243,17 @@ export const AdminOrdersTable: FC<IAdminOrdersTableProps & IBasicStyling> = ({
                           <ul className={styles.items}>
                             {order.items.map(item => {
                               /*
-                                Объём отдельной подписью, а не в названии: две
-                                строки одного товара — это два объёма, и без
-                                него владелец видит в закупке дубль. Ключ тоже
-                                по нему: у двух объёмов совпадают и slug, и имя.
+                                Вариант отдельной подписью, а не в названии: две
+                                строки одного товара — это два объёма или два
+                                тона, и без него владелец видит в закупке дубль.
+                                Ключ тоже по нему: у двух вариантов совпадают и
+                                slug, и имя.
                               */
-                              const volume = formatVolume(item.productVolumeMl)
+                              const volume = formatVariant(item.productVolumeMl, item.productShade)
 
                               return (
                                 <li
-                                  key={`${item.productSlug}-${item.productVolumeMl ?? 'one'}`}
+                                  key={`${item.productSlug}-${item.productVolumeMl ?? 'one'}-${item.productShade ?? ''}`}
                                   className={styles.item}
                                 >
                                   <span className={styles.itemName}>

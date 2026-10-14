@@ -1,5 +1,5 @@
 import type { IFaqItem, IProduct } from 'widgets/types'
-import { formatVolume } from 'widgets/utils'
+import { formatVolume, hasPriceRange } from 'widgets/utils'
 import { INSTAGRAM_URL } from '@/utils/contacts'
 import {
   absoluteUrl,
@@ -94,10 +94,12 @@ export function storeLd(): IJsonLdNode {
  * его ещё не написал — то же самое, что стоит в `<meta name="description">`:
  * марка, название и цена. Ничего не выдумывается.
  *
- * У товара, который продаётся в нескольких объёмах, одного предложения нет:
- * цен столько же, сколько объёмов. Тогда пишется `AggregateOffer` с вилкой от
- * дешёвого к дорогому — это ровно то, что schema.org для такого и заводил, и
- * единственный честный способ не объявить цену 30 мл ценой товара.
+ * У товара, который продаётся в нескольких объёмах по разной цене, одного
+ * предложения нет: цен столько же, сколько объёмов. Тогда пишется
+ * `AggregateOffer` с вилкой от дешёвого к дорогому — это ровно то, что
+ * schema.org для такого и заводил, и единственный честный способ не объявить
+ * цену 30 мл ценой товара. Тона одного объёма стоят одинаково, и помада в
+ * десяти тонах — обычное `Offer` с одной ценой.
  *
  * `categoryPath` — категория с разделом впереди через « > »: так schema.org
  * записывает вложенную категорию.
@@ -105,7 +107,7 @@ export function storeLd(): IJsonLdNode {
 export function productLd(product: IProduct, categoryPath: string | null): IJsonLdNode {
   const path = `/catalog/${product.slug}`
   const url = absoluteUrl(path)
-  const hasSeveralVolumes = product.variants.length > 1
+  const isPriceRange = hasPriceRange(product.variants)
   const volume = formatVolume(product.volumeMl)
   const prices = product.variants.map(variant => variant.priceCents)
   /*
@@ -126,7 +128,7 @@ export function productLd(product: IProduct, categoryPath: string | null): IJson
     ...(product.brand !== null && { brand: { '@type': 'Brand', name: product.brand } }),
     ...(volume !== null && { size: volume }),
     ...(categoryPath !== null && { category: categoryPath }),
-    offers: hasSeveralVolumes
+    offers: isPriceRange
       ? {
           '@type': 'AggregateOffer',
           url,

@@ -60,22 +60,31 @@ export const AdminImportPanel: FC<IAdminImportPanelProps & IBasicStyling> = ({
           <code className={styles.code}>description</code>,{' '}
           <code className={styles.code}>category</code> (слаг или название),{' '}
           <code className={styles.code}>volume</code> (объём в мл),{' '}
+          <code className={styles.code}>shade</code> (тон, например 05 Rose),{' '}
           <code className={styles.code}>inStock</code>. Товар с уже существующим slug обновляется,
           новый - создаётся; незнакомая категория заводится сама.
         </Text>
 
         {/*
-          Главное, чего не понять из списка колонок: строка — это объём, а не
+          Главное, чего не понять из списка колонок: строка — это вариант, а не
           товар. Без этой фразы владелец не догадается, как завести второй
-          объём файлом, и будет плодить товары с разными slug.
+          объём или тон файлом, и будет плодить товары с разными slug.
         */}
         <Text tone="secondary" size="sm">
-          Строка - это <b>объём</b>, а не товар: чтобы продавать одно и то же в 30 и 50 мл,
-          поставьте две строки с одним <code className={styles.code}>slug</code> и разным{' '}
-          <code className={styles.code}>volume</code> - у каждой своя цена и своё наличие. Объёмы,
-          которых в файле нет, остаются как были: снять объём можно в карточке товара. Файл без
-          колонки <code className={styles.code}>volume</code> - обычный прайс: он меняет цену там,
-          где объём у товара один.
+          Строка - это <b>вариант</b>, а не товар: чтобы продавать одно и то же в 30 и 50 мл или в
+          нескольких тонах, поставьте по строке на вариант с одним{' '}
+          <code className={styles.code}>slug</code> и разными{' '}
+          <code className={styles.code}>volume</code> и <code className={styles.code}>shade</code>.
+          Наличие у каждой строки своё, а цена у всех тонов одного объёма одна. Варианты, которых в
+          файле нет, остаются как были: снять вариант можно в карточке товара.
+        </Text>
+
+        <Text tone="secondary" size="sm">
+          Без колонки <code className={styles.code}>volume</code> файл - обычный прайс: он меняет
+          цену там, где объём у товара один. Без колонки <code className={styles.code}>shade</code>{' '}
+          строка задаёт цену сразу всем тонам своего объёма, но наличие у товара с тонами так не
+          поменять - для него нужна колонка <code className={styles.code}>shade</code>. Если тон
+          указан у товара, то он нужен у всех его вариантов.
         </Text>
 
         <FileDropzone

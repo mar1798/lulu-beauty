@@ -45,11 +45,11 @@ from app.export.service import (
 
 SHEET_TITLE = "Каталог"
 
-HEADER = ["name", "slug", "brand", "category", "price", "volume", "inStock"]
+HEADER = ["name", "slug", "brand", "category", "price", "volume", "shade", "inStock"]
 
 # Column indexes, by the header above. Named because both width and alignment are keyed
 # off them.
-TEXT_COLUMNS = (0, 1, 2, 3)
+TEXT_COLUMNS = (0, 1, 2, 3, 6)
 PRICE_COLUMN = 4
 VOLUME_COLUMN = 5
 
@@ -71,6 +71,7 @@ class ProductExportRow:
     category_slug: str | None
     price_cents: int
     volume_ml: int | None
+    shade: str | None
     in_stock: bool
 
 
@@ -94,6 +95,7 @@ def _cell_values(row: ProductExportRow) -> list[CellValue]:
         row.category_slug or "",
         row.price_cents / 100,
         row.volume_ml,
+        row.shade or "",
         IN_STOCK_YES if row.in_stock else IN_STOCK_NO,
     ]
 
@@ -200,8 +202,9 @@ class CatalogExportService:
         Not the admin catalogue's order (`name`, `id`): a sheet is worked through one
         supplier at a time, and a screen is scrolled looking for one product by name.
 
-        One row per volume, with the slug repeated: this is a price list, and a price
-        belongs to a volume. It reads back through the import unchanged.
+        One row per variant — volume and shade — with the slug repeated: this is a price
+        list, and a price belongs to a volume while stock belongs to a shade of it. It
+        reads back through the import unchanged.
 
         `id` last, and not for show. Product names are not unique — a re-imported
         duplicate, two products that genuinely share a name — so `(brand, name)` leaves
@@ -232,6 +235,7 @@ class CatalogExportService:
                 category_slug=product.category.slug if product.category else None,
                 price_cents=variant.price_cents,
                 volume_ml=variant.volume_ml,
+                shade=variant.shade,
                 in_stock=variant.in_stock,
             )
             for product in products

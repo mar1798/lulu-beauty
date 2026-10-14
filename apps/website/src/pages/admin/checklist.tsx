@@ -21,13 +21,17 @@ import { adminChecklistKey } from '@/services/swrKeys'
  */
 
 /**
- * Ключ строки — то же, по чему бэкенд её группирует: название, объём и цена.
+ * Ключ строки — то же, по чему бэкенд её группирует: название, объём, тон и цена.
  * Количество в ключ не входит намеренно: отменённая после покупки заявка
  * уменьшает число, и снятая из-за этого отметка заставила бы перепроверять
  * уже купленное.
  */
 const itemKey = (item: IAdminChecklist['items'][number]): string =>
-  `${item.productName}|${item.volumeMl ?? ''}|${item.unitPriceCents}`
+  `${item.productName}|${item.volumeMl ?? ''}|${item.unitPriceCents}${
+    // Тон — хвостом и только когда он есть: ключи строк без тона остаются
+    // прежними, и отметки «куплено», сделанные до тонов, не слетают.
+    item.shade ? `|${item.shade}` : ''
+  }`
 
 const cycleSummary = (cycle: NonNullable<IAdminChecklist['cycle']>): string => {
   const name = cycle.label ?? 'Без подписи'

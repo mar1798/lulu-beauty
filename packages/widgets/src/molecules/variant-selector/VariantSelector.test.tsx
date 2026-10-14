@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { fireEvent, screen } from '@testing-library/react'
 import type { IProductVariant } from '../../types'
 import { VariantSelector } from '.'
-import { feedVariantSelector } from '../../stories/feed'
+import { feedProductWithShades, feedVariantSelector } from '../../stories/feed'
 import { renderWidget } from '../../testing/render'
 
 const noop = (): void => {}
@@ -111,5 +111,63 @@ describe('VariantSelector', () => {
     const options = screen.getAllByRole('radio')
     expect(options[0]).toHaveAttribute('tabindex', '0')
     expect(options[1]).toHaveAttribute('tabindex', '-1')
+  })
+})
+
+describe('VariantSelector с тонами', () => {
+  const shaded = (): IProductVariant[] => feedProductWithShades().variants
+
+  it('рисует два ряда: объёмы и тона выбранного объёма', () => {
+    const variants = shaded()
+
+    renderWidget(
+      <VariantSelector variants={variants} selectedId={variants[0].id} onSelect={noop} />
+    )
+
+    const volumes = screen.getByRole('radiogroup', { name: 'Объём' })
+    const shades = screen.getByRole('radiogroup', { name: 'Тон' })
+    expect(volumes.querySelectorAll('[role="radio"]')).toHaveLength(2)
+    expect(shades.querySelectorAll('[role="radio"]')).toHaveLength(3)
+    expect(screen.getByText('Тон: 21 Light')).toBeInTheDocument()
+  })
+
+  it('при смене объёма сохраняет тон', () => {
+    const variants = shaded()
+    const onSelect = vi.fn()
+    const beige30 = variants.find(v => v.volumeMl === 30 && v.shade === '23 Beige')
+    const beige50 = variants.find(v => v.volumeMl === 50 && v.shade === '23 Beige')
+
+    renderWidget(
+      <VariantSelector variants={variants} selectedId={beige30?.id ?? null} onSelect={onSelect} />
+    )
+    fireEvent.click(screen.getByRole('radio', { name: '50 мл' }))
+
+    expect(onSelect).toHaveBeenCalledWith(beige50?.id)
+  })
+
+  it('выбор тона уходит наверх id варианта', () => {
+    const variants = shaded()
+    const onSelect = vi.fn()
+    const sand30 = variants.find(v => v.volumeMl === 30 && v.shade === '25 Sand')
+
+    renderWidget(
+      <VariantSelector variants={variants} selectedId={variants[0].id} onSelect={onSelect} />
+    )
+    fireEvent.click(screen.getByRole('radio', { name: '25 Sand' }))
+
+    expect(onSelect).toHaveBeenCalledWith(sand30?.id)
+  })
+
+  it('гасит кончившийся тон, но даёт его выбрать', () => {
+    const variants = shaded()
+    const sand50 = variants.find(v => v.volumeMl === 50 && v.shade === '25 Sand')
+
+    renderWidget(
+      <VariantSelector variants={variants} selectedId={sand50?.id ?? null} onSelect={noop} />
+    )
+
+    const option = screen.getByRole('radio', { name: '25 Sand' })
+    expect(option).toHaveAttribute('data-unavailable', 'true')
+    expect(option).not.toBeDisabled()
   })
 })

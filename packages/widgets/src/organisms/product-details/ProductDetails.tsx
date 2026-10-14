@@ -10,7 +10,7 @@ import { Text } from '../../atoms/text'
 import { ProductGallery } from '../../molecules/product-gallery'
 import { VariantSelector } from '../../molecules/variant-selector'
 import { CART_ACTION_TRANSITION } from '../../utils/motion'
-import { formatVolume } from '../../utils/volume'
+import { formatVariant, imagesForVariant, shadeKey } from '../../utils/variants'
 import * as styles from './ProductDetails.css'
 
 /**
@@ -250,13 +250,23 @@ export const ProductDetails: FC<IProductDetailsProps & IBasicStyling> = ({
   const hasChoice = product.variants.length > 1
   const priceCents = selected?.priceCents ?? product.priceCents
   const inStock = selected?.inStock ?? product.inStock
-  // Метка объёма стоит рядом с маркой только тогда, когда он один: иначе объём
-  // выбирают, и говорить о нём в справочной строке значит называть неверный.
-  const volume = hasChoice ? null : formatVolume(selected?.volumeMl ?? product.volumeMl)
+  // Метка варианта стоит рядом с маркой только тогда, когда он один: иначе
+  // вариант выбирают, и говорить о нём в справочной строке значит называть неверный.
+  const volume = hasChoice
+    ? null
+    : formatVariant(selected?.volumeMl ?? product.volumeMl, selected?.shade ?? null)
+  /*
+    Галерея следует за выбранным вариантом: фото этого тона и объёма первыми,
+    фото чужих тонов скрыты (см. `imagesForVariant`). Ключ — пара «объём +
+    тон», то есть то, от чего зависит набор фото: фото бывают привязаны и к
+    объёму, поэтому смена объёма тоже открывает галерею с начала.
+  */
+  const images = imagesForVariant(product.images, selected)
+  const galleryKey = `${selected?.volumeMl ?? ''}|${shadeKey(selected?.shade) ?? ''}`
 
   return (
     <div className={clsx(styles.container, className)}>
-      <ProductGallery images={product.images} productName={product.name} />
+      <ProductGallery key={galleryKey} images={images} productName={product.name} />
 
       <div className={styles.info}>
         {(product.brand !== null ||
@@ -272,7 +282,7 @@ export const ProductDetails: FC<IProductDetailsProps & IBasicStyling> = ({
             {categoryName !== undefined && categoryName !== null && (
               <Badge tone="brand">{categoryName}</Badge>
             )}
-            {/* Объём — такая же справочная метка, как марка и категория, и стоит с ними. */}
+            {/* Вариант — такая же справочная метка, как марка и категория, и стоит с ними. */}
             {volume !== null && <Badge tone="brand">{volume}</Badge>}
           </span>
         )}

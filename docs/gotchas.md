@@ -177,9 +177,19 @@ directly.** They are recomputed from the live variants by
 a price on the product and the next variant edit overwrites it — while the storefront keeps
 offering the variant's own price, because that is what the cart charges.
 
-**A product sold in several volumes has `volume_ml IS NULL`**, exactly like a product that has
-no volume at all (pads, a sheet mask). The two are told apart by the length of `variants`, not
-by the column — a query that reads "no volume" off `volume_ml` alone answers both the same.
+**A product sold in several variants has `volume_ml IS NULL`**, exactly like a product that
+has no volume at all (pads, a sheet mask) — and a lipstick in ten shades of no particular
+volume looks the same too. They are told apart by `variants`, not by the column — a query that
+reads "no volume" off `volume_ml` alone answers all three the same.
+
+**"Several variants" is not "several prices".** Shades share their volume's price, so "от" is
+`hasPriceRange(variants)`, never `variants.length > 1`; the same goes for "several volumes",
+which is `variantVolumes(variants).length > 1` — a foundation in two volumes has six variants.
+
+**A gallery edit in the same session needs a fresh collection.** `product.images` is loaded
+once per session; `ProductService.add_image` appends through the collection and gallery edits
+reload it with `populate_existing`, because a row added beside a product already in the
+identity map leaves `product.images` stale for everything later in the request.
 
 **`Settings` is instantiated at import time**, and several fields have no default. Anything
 importing `app.*` without them fails immediately — including Alembic. That's why

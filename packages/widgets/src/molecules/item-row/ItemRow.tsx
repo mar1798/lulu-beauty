@@ -78,6 +78,7 @@ export const ItemRow: FC<IItemRowProps & IBasicStyling> = ({
     brand: item.productBrand,
     categoryName: item.productCategoryName,
     volumeMl: item.productVolumeMl,
+    shade: item.productShade,
   })
 
   return (

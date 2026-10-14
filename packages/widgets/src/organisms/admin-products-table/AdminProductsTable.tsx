@@ -19,6 +19,7 @@ import { Select } from '../../atoms/select'
 import { Skeleton } from '../../atoms/skeleton'
 import { primaryImage } from '../../molecules/product-card'
 import { formatShortDate } from '../../utils/datetime'
+import { hasPriceRange } from '../../utils/variants'
 import * as styles from './AdminProductsTable.css'
 
 /**
@@ -244,14 +245,15 @@ export const AdminProductsTable: FC<IAdminProductsTableProps & IBasicStyling> = 
 
                       <td className={styles.cell} role="cell" data-label="Цена">
                         {/*
-                        «от» у товара в нескольких объёмах — то же, что на
-                        витрине: в колонке стоит цена самого дешёвого, и без
-                        оговорки владелец читал бы её как цену товара.
+                        «от» у товара, варианты которого стоят по-разному, — то
+                        же, что на витрине: в колонке стоит цена самого
+                        дешёвого, и без оговорки владелец читал бы её как цену
+                        товара. Тона одного объёма стоят одинаково и «от» не дают.
                       */}
                         <Price
                           priceCents={product.priceCents}
                           size="sm"
-                          isFrom={product.variants.length > 1}
+                          isFrom={hasPriceRange(product.variants)}
                         />
                       </td>
 

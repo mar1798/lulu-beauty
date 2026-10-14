@@ -147,16 +147,34 @@ export interface IProductImage {
   alt: string | null
   sortOrder: number
   isPrimary: boolean
+  /**
+   * Какие варианты на фото: объёмы и тона. Пустой список — «любой»: фото без
+   * меток относится ко всему товару, а с тонами «01 Nude» и «05 Rose» — к этим
+   * двум тонам в любом объёме. Как их выбирают — `imagesForVariant`.
+   */
+  volumesMl?: number[]
+  shades?: string[]
+  /**
+   * Фото не показывается ни для одного варианта — владелец его скрыл.
+   * Такие фото приходят только в админку: витрине API их не отдаёт.
+   */
+  hidden?: boolean
 }
 
 /**
- * Один объём товара — то, что покупатель на самом деле выбирает и кладёт в
- * корзину. Своя цена и своё наличие: 30 мл могут кончиться, пока 50 мл лежат.
+ * Один вариант товара — объём, тон или оба сразу: то, что покупатель на самом
+ * деле выбирает и кладёт в корзину. Своё наличие — 30 мл могут кончиться, пока
+ * 50 мл лежат, — и своя цена, общая для всех тонов одного объёма.
  */
 export interface IProductVariant {
   id: string
   /** Миллилитры; `null` — товару нечего измерять (патчи, тканевые маски). */
   volumeMl: number | null
+  /**
+   * Тон, как его пишет марка («05 Rose»); `null` — товар без тонов. Либо тон
+   * есть у всех вариантов товара, либо ни у одного.
+   */
+  shade?: string | null
   priceCents: number
   inStock: boolean
 }
@@ -240,6 +258,8 @@ export interface IItemRowItem {
   productBrand: string | null
   productCategoryName: string | null
   productVolumeMl: number | null
+  /** Тон — снимок, как и объём: это то, что покупатель выбрал. */
+  productShade?: string | null
 }
 
 /**
@@ -401,6 +421,7 @@ export interface IAdminOrderDraftLine {
   productImageUrl: string | null
   productBrand: string | null
   productVolumeMl: number | null
+  productShade?: string | null
   priceCents: number
   quantity: number
 }
@@ -1388,6 +1409,40 @@ export interface IVariantSelectorProps {
   onSelect: (variantId: string) => void
 }
 
+/**
+ * Привязка фото к вариантам в том виде, в каком её хранит сервер: пустой
+ * список — «любой», `hidden` — «ни для какого», и тогда списки пусты.
+ */
+export interface IVariantTags {
+  volumesMl: number[]
+  shades: string[]
+  hidden?: boolean
+}
+
+/**
+ * Галерея товара в админке, разложенная по тонам (у товара без тонов — по
+ * объёмам). Целиком управляемая: порядок, привязки, описания и сами файлы
+ * держит тот, кто её рисует, — форма при создании товара или страница
+ * сохранённого.
+ */
+export interface IAdminProductGalleryProps {
+  /** Фото по порядку галереи; первое — главное. */
+  images: IProductImage[]
+  /** Варианты, к которым можно привязать фото: группы и галочки строятся по ним. */
+  variants: Pick<IProductVariant, 'volumeMl' | 'shade'>[]
+  /** Запасной `alt` для превью, когда у фото своего нет. */
+  productName: string
+  /** Галерея после правки — целиком, в новом порядке: порядок, привязки, описания. */
+  onChange: (images: IProductImage[]) => void
+  /** Новые файлы с привязкой группы, в которую их добавили; встают в конец галереи. */
+  onAdd: (uploads: IProductImageUpload[]) => void
+  onDelete: (image: IProductImage) => void
+  isBusy?: boolean
+  error?: string | null
+  /** Пояснение под заголовком — например, что новые тона появятся после сохранения. */
+  hint?: string
+}
+
 export interface IProductGalleryProps {
   images: IProductImage[]
   /** Запасной `alt`, когда у картинки его нет. */
@@ -2137,17 +2192,32 @@ export interface IAdminProductsTableProps {
 }
 
 /** Фото, выбранное при создании товара — грузится вместе с ним, отдельного id ещё нет. */
-export interface IAdminProductPendingImage {
-  file: File
-  alt: string
-}
-
-/** Одна строка таблицы «Объёмы» в форме товара. */
+/** Одна строка таблицы вариантов в форме товара. */
 export interface IAdminProductVariantValues {
+  /**
+   * Вариант, из которого строка загружена; `null` — строка новая. По нему
+   * бэкенд узнаёт переименованный тон: без id переименование — это снятие
+   * старого тона и заведение нового, и старый уходит из корзин и заявок.
+   */
+  id: string | null
   /** `null` — объём не указан; бэкенд отвергает ноль, а не считает его пропуском. */
   volumeMl: number | null
+  /** `null` — без тона. Тон либо у всех строк, либо ни у одной. */
+  shade: string | null
   priceCents: number
   inStock: boolean
+}
+
+/**
+ * Фото галереи на своём месте: порядок — индекс в списке, метки — для каких
+ * вариантов, `alt` — описание (`null` — без описания).
+ */
+export interface IProductImageArrangement {
+  id: string
+  volumesMl: number[]
+  shades: string[]
+  hidden: boolean
+  alt: string | null
 }
 
 export interface IAdminProductValues {
@@ -2174,13 +2244,21 @@ export interface IAdminProductValues {
   inStock: boolean
   /** Показывать карточку в герое главной. */
   isFeatured: boolean
-  /** `null` в режиме редактирования и когда при создании фото не выбрано. */
-  image: IAdminProductPendingImage | null
+  /**
+   * Фото, выбранные при создании, по порядку и с привязками — первое станет
+   * главным. Пусто в режиме редактирования: там фото грузятся сразу, у товара
+   * уже есть id.
+   */
+  images: IProductImageUpload[]
 }
 
 export interface IProductImageUpload {
   file: File
   alt: string
+  /** Для каких вариантов фото; пустые списки — для любых, `hidden` — ни для каких. */
+  volumesMl: number[]
+  shades: string[]
+  hidden: boolean
 }
 
 export interface IAdminProductFormProps {
@@ -2197,17 +2275,20 @@ export interface IAdminProductFormProps {
   isSubmitting?: boolean
   error?: string | null
   /**
-   * Фотография есть только у сохранённого товара: грузить её некуда, пока
-   * у него нет id. При создании вместо неё показывается один выбор файла
-   * (см. `IAdminProductValues.image`), который уходит вместе с сабмитом.
-   *
-   * Список, а не одна картинка: у товара фотография одна, но у заведённых
-   * до этого правила могло остаться несколько — их нужно показать и дать удалить.
+   * Галерея есть только у сохранённого товара: грузить фото некуда, пока у
+   * него нет id. При создании вместо неё фото копятся в форме (см.
+   * `IAdminProductValues.images`) и уходят вместе с сабмитом.
    */
   images?: IProductImage[]
-  /** Загрузка — это замена: бэкенд убирает прежние фотографии товара. */
-  onImageUpload?: (upload: IProductImageUpload) => void
+  /** Новые фото — пачкой, по порядку: встают в конец галереи. */
+  onImagesUpload?: (uploads: IProductImageUpload[]) => void
   onImageDelete?: (image: IProductImage) => void
+  /**
+   * Новый порядок галереи, метки и описания фото — всей галереей сразу:
+   * порядок — свойство списка, и по одному фото его не сохранить. Первое —
+   * главное.
+   */
+  onImagesArrange?: (arrangement: IProductImageArrangement[]) => void
   isImageBusy?: boolean
   imageError?: string | null
   /** Слот под удаление/восстановление товара. */
@@ -2340,6 +2421,7 @@ export interface IChecklistItem {
   /** Для ссылки на страницу товара. `null` — товара в каталоге больше нет. */
   productSlug: string | null
   volumeMl: number | null
+  shade?: string | null
   brand: string
   quantity: number
   unitPriceCents: number

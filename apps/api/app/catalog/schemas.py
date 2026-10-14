@@ -1,14 +1,19 @@
 import uuid
 from datetime import datetime
+from typing import Annotated
 
 from pydantic import Field, field_validator
 
 from app.catalog.rich_text import html_to_text
+from app.catalog.shades import normalize_shade
 from app.common.limits import (
     MAX_DESCRIPTION_HTML_LENGTH,
     MAX_DESCRIPTION_LENGTH,
+    MAX_IMAGE_ALT_LENGTH,
     MAX_PRICE_CENTS,
+    MAX_PRODUCT_IMAGES,
     MAX_PRODUCT_VARIANTS,
+    MAX_SHADE_LENGTH,
     MAX_VOLUME_ML,
 )
 from app.common.schemas import CamelModel, require_not_null
@@ -44,37 +49,99 @@ def require_description_length(value: str | None) -> str | None:
     return value
 
 
+def require_shade(value: str | None) -> str | None:
+    """A shade name as it is stored — trimmed, inner spaces collapsed, None if blank.
+
+    Normalised here rather than in the service so that the length limit and the stored
+    value agree on what the string is, as `require_brand` does for the brand.
+    """
+    shade = normalize_shade(value)
+    if shade is not None and len(shade) > MAX_SHADE_LENGTH:
+        raise ValueError(f"shade is longer than {MAX_SHADE_LENGTH} characters")
+    return shade
+
+
 class ProductImageResponse(CamelModel):
     id: uuid.UUID
     url: str
     alt: str | None
     sort_order: int
     is_primary: bool
+    # Which variants the photo shows; empty is "any". See `ProductImage.volumes_ml`.
+    volumes_ml: list[int] = Field(default_factory=list)
+    shades: list[str] = Field(default_factory=list)
+    # Shown for no variant; only the admin endpoints ever return such a photo.
+    hidden: bool = False
 
 
 class ProductVariantResponse(CamelModel):
-    """One volume of a product, as the storefront offers it.
+    """One variant of a product — a volume, a shade, or both — as the storefront offers it.
 
-    `id` is what the cart is told about — the customer picks a volume, not a product.
+    `id` is what the cart is told about — the customer picks a variant, not a product.
     """
 
     id: uuid.UUID
     volume_ml: int | None
+    shade: str | None = None
     price_cents: int
     in_stock: bool
 
 
 class ProductVariantRequest(CamelModel):
-    """One row of the owner's "Объёмы" table.
+    """One row of the owner's variants table.
 
-    No id: the list is reconciled against the product by volume (see
-    `ProductService._apply_specs`), so the form sends what it shows and the server
-    keeps the rows that survive.
+    The list is reconciled against the product by `id` when the row carries one, and by
+    (volume, shade) otherwise (see `ProductService._apply_specs`), so the form sends what
+    it shows and the server keeps the rows that survive.
     """
 
+    id: uuid.UUID | None = None
     volume_ml: int | None = Field(default=None, gt=0, le=MAX_VOLUME_ML)
+    shade: str | None = None
     price_cents: int = Field(ge=0, le=MAX_PRICE_CENTS)
     in_stock: bool = True
+
+    @field_validator("shade")
+    @classmethod
+    def _validate_shade(cls, value: str | None) -> str | None:
+        return require_shade(value)
+
+
+class ProductImageArrangementRequest(CamelModel):
+    """One photo in the gallery the owner saves: which one, and which variants it shows."""
+
+    id: uuid.UUID
+    # Bounded by the variants: a tag names a volume or a shade some variant has.
+    volumes_ml: list[Annotated[int, Field(gt=0, le=MAX_VOLUME_ML)]] = Field(
+        default_factory=list, max_length=MAX_PRODUCT_VARIANTS
+    )
+    shades: list[str] = Field(default_factory=list, max_length=MAX_PRODUCT_VARIANTS)
+    # Shown for no variant — see `ProductImage.hidden`; the lists are ignored then.
+    hidden: bool = False
+    # Optional so that a client sending only the order and tags keeps every photo's alt;
+    # sent as null or blank, it clears it (see `ImageArrangement.alt_given`).
+    alt: str | None = Field(default=None, max_length=MAX_IMAGE_ALT_LENGTH)
+
+    @field_validator("shades")
+    @classmethod
+    def _validate_shades(cls, value: list[str]) -> list[str]:
+        return [shade for shade in map(require_shade, value) if shade is not None]
+
+    @field_validator("alt")
+    @classmethod
+    def _validate_alt(cls, value: str | None) -> str | None:
+        return (value or "").strip() or None
+
+
+class ProductImagesArrangeRequest(CamelModel):
+    """The whole gallery in its new order — every photo the product has, each once.
+
+    Whole rather than per photo, because the order is a property of the list: moving
+    one photo moves the others, and two requests racing to do it would leave positions
+    neither of them asked for.
+    """
+
+    images: list[ProductImageArrangementRequest] = Field(max_length=MAX_PRODUCT_IMAGES)
 
 
 class CategoryResponse(CamelModel):
@@ -262,11 +329,14 @@ class SuggestProductResponse(CamelModel):
     slug: str
     brand: str | None
     price_cents: int
-    # How many volumes the product is sold in. The dropdown needs it for one thing only:
-    # with several, `price_cents` is the cheapest of them, and the row has to say "от" —
-    # the card next to it already does, and two different readings of one number in one
-    # search is worse than either.
+    # How many variants the product is sold in. Kept for older clients; the "от" reads
+    # `price_varies` now, because a lipstick in ten shades has ten variants and one price.
     variant_count: int
+    # Whether the variants cost different amounts. The dropdown needs it for one thing
+    # only: then `price_cents` is the cheapest of them, and the row has to say "от" — the
+    # card next to it already does, and two readings of one number in one search is worse
+    # than either.
+    price_varies: bool = False
     in_stock: bool
     image_url: str | None
     image_alt: str | None

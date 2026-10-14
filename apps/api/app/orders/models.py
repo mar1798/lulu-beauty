@@ -194,6 +194,9 @@ class OrderItem(UUIDPrimaryKeyMixin, Base):
     # the same for every line of it; the volume is the thing the customer *chose*, and
     # once a product has several, the product row no longer knows which one this was.
     product_volume_ml: Mapped[int | None] = mapped_column(Integer)
+    # The shade, snapshotted for the same reason as the volume: it is the other half of
+    # what the customer chose, and "Помада Velvet" alone does not say which one to buy.
+    product_shade: Mapped[str | None] = mapped_column(String(64))
     quantity: Mapped[int] = mapped_column(Integer)
 
     order: Mapped["Order"] = relationship(back_populates="items")

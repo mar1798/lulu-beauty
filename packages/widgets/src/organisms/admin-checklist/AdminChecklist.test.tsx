@@ -74,4 +74,18 @@ describe('AdminChecklist', () => {
     expect(screen.getByText('601')).toBeTruthy()
     expect(screen.queryByText('600,50')).toBeNull()
   })
+
+  it('называет в подписи чекбокса тон — строки одной помады не сливаются', () => {
+    const props = feedAdminChecklist()
+    const [first] = props.items
+    const items = [
+      { ...first, key: 'nude', productName: 'Помада Velvet', volumeMl: 4, shade: '01 Nude' },
+      { ...first, key: 'rose', productName: 'Помада Velvet', volumeMl: 4, shade: '05 Rose' },
+    ]
+
+    renderWidget(<AdminChecklist {...props} items={items} />)
+
+    expect(screen.getByRole('checkbox', { name: 'Помада Velvet, 4 мл, 01 Nude' })).toBeTruthy()
+    expect(screen.getByRole('checkbox', { name: 'Помада Velvet, 4 мл, 05 Rose' })).toBeTruthy()
+  })
 })

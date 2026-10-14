@@ -9,6 +9,7 @@ import type {
 import { useConfirm, useToast } from 'widgets/contexts'
 import { useDebouncedValue } from 'widgets/hooks'
 import { primaryImage } from 'widgets/molecules'
+import { imagesForVariant } from 'widgets/utils'
 import { adminOrderNumber } from 'widgets/organisms'
 import { useProductSearch } from '@/hooks/useProductSearch'
 import { isApiError, messageForError } from '@/services/apiErrors'
@@ -176,9 +177,14 @@ export const useAdminOrderDraft = (): IAdminOrderDraft => {
           variantId,
           productName: product.name,
           productSlug: product.slug,
-          productImageUrl: primaryImage(product.images)?.url ?? null,
+          // Фото выбранного тона, как его снимет в заявку бэкенд (`variant_image`).
+          productImageUrl:
+            imagesForVariant(product.images, variant)[0]?.url ??
+            primaryImage(product.images)?.url ??
+            null,
           productBrand: product.brand,
           productVolumeMl: variant.volumeMl,
+          productShade: variant.shade ?? null,
           priceCents: variant.priceCents,
           quantity: 1,
         },

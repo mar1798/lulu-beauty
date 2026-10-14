@@ -1,5 +1,5 @@
 import uuid
-from collections.abc import AsyncIterator, Sequence
+from collections.abc import AsyncIterator, Iterable, Sequence
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from typing import Any
@@ -9,12 +9,18 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased, selectinload
 
+from app.catalog.images import image_shade_keys
 from app.catalog.models import Category, Product, ProductImage, ProductVariant
-from app.catalog.results import CatalogSuggestions, VariantSpec
+from app.catalog.results import CatalogSuggestions, ImageArrangement, VariantSpec
 from app.catalog.rich_text import Description, description_from_html
 from app.catalog.search import normalize_search
+from app.catalog.shades import normalize_shade, shade_key
 from app.catalog.sorting import DEFAULT_ORDER, ProductOrder
-from app.common.limits import MAX_FEATURED_PRODUCTS, MAX_PRODUCT_VARIANTS
+from app.common.limits import (
+    MAX_FEATURED_PRODUCTS,
+    MAX_PRODUCT_IMAGES,
+    MAX_PRODUCT_VARIANTS,
+)
 from app.orders.models import OrderItem
 
 
@@ -24,6 +30,64 @@ class SlugAlreadyExistsError(Exception):
 
 # Postgres' SQLSTATE for a unique-constraint violation.
 UNIQUE_VIOLATION = "23505"
+
+
+def _variant_key(variant: ProductVariant) -> tuple[int | None, str | None]:
+    """What identifies a variant within its product — the unique index's own key."""
+    return variant.volume_ml, shade_key(variant.shade)
+
+
+def _spec_key(spec: VariantSpec) -> tuple[int | None, str | None]:
+    return spec.volume_ml, shade_key(spec.shade)
+
+
+def _tags_fit(
+    variants: Sequence[ProductVariant], volumes_ml: Sequence[int], shades: Sequence[str]
+) -> bool:
+    """Whether photo tags name only what the product is sold in — empty lists are "any".
+
+    Every volume and every shade has to be a live one, and together they have to meet in
+    at least one variant: "50 ml, 05 Rose" on a product whose 50 ml does not come in
+    that shade is a photo of nothing. A combination that is partly empty — 30 and 50 ml
+    with "01 Nude", sold in 30 ml only — is accepted: the photo shows what does exist.
+    """
+    live_volumes = {variant.volume_ml for variant in variants}
+    live_shades = {shade_key(variant.shade) for variant in variants}
+    keys = {shade_key(shade) for shade in shades}
+    if not set(volumes_ml) <= live_volumes or not keys <= live_shades:
+        return False
+    return any(
+        (not volumes_ml or variant.volume_ml in volumes_ml)
+        and (not keys or shade_key(variant.shade) in keys)
+        for variant in variants
+    )
+
+
+def clean_tags(
+    volumes_ml: Iterable[int], shades: Iterable[str | None]
+) -> tuple[list[int], list[str]]:
+    """Photo tags as they are stored: each volume and shade once, shades normalised.
+
+    Volumes ascending, shades in the order given, the first spelling of a shade winning
+    over a later one in another case — "05 Rose" and "05 rose" are one shade.
+    """
+    unique_shades: dict[str, str] = {}
+    for raw in shades:
+        shade = normalize_shade(raw)
+        key = shade_key(shade)
+        if shade is not None and key is not None:
+            unique_shades.setdefault(key, shade)
+    return sorted(set(volumes_ml)), list(unique_shades.values())
+
+
+def _same_tags(
+    image: ProductImage, volumes_ml: Sequence[int], shades: Sequence[str], hidden: bool
+) -> bool:
+    return (
+        image.hidden == hidden
+        and set(image.volumes_ml or []) == set(volumes_ml)
+        and image_shade_keys(image) == {key for key in map(shade_key, shades) if key is not None}
+    )
 
 
 @asynccontextmanager
@@ -86,11 +150,42 @@ class EmptyVariantsError(Exception):
 
 
 class DuplicateVariantVolumeError(Exception):
-    """The same volume twice in one product's list of volumes."""
+    """The same variant — the same volume and shade — twice in one product's list."""
 
 
 class TooManyVariantsError(Exception):
-    """Past `MAX_PRODUCT_VARIANTS` volumes on one product."""
+    """Past `MAX_PRODUCT_VARIANTS` variants on one product."""
+
+
+class ShadeMissingError(Exception):
+    """Some of a product's variants name a shade and some do not.
+
+    A product comes in shades or it does not. A nameless variant next to "01 Nude" and
+    "05 Rose" would be a button with nothing on it, and in practice it is a missed cell.
+    """
+
+
+class ShadePricesDifferError(Exception):
+    """Two shades of the same volume were given different prices.
+
+    The price follows the volume: a lipstick costs the same in every shade, and the
+    storefront says so by printing one price over the shade buttons. Refused rather than
+    resolved, because which of the two numbers was meant is the owner's call.
+    """
+
+
+class TooManyImagesError(Exception):
+    """Past `MAX_PRODUCT_IMAGES` photos on one product."""
+
+
+class ImageArrangementError(Exception):
+    """A gallery was saved that is not this product's gallery — a photo missing, extra
+    or twice. Another tab added or removed one since the form loaded."""
+
+
+class ImageTagUnknownError(Exception):
+    """A photo was tagged with a volume or a shade the product is not sold in, or with
+    volumes and shades that meet in no variant."""
 
 
 class ProductHasVariantsError(Exception):
@@ -614,7 +709,7 @@ class ProductService:
             in_stock=in_stock,
             is_featured=is_featured,
         )
-        self._apply_specs(product, specs)
+        await self._apply_specs(product, specs)
         async with _slug_conflict_as_error(self._session):
             self._session.add(product)
         await self._session.refresh(product, attribute_names=["images", "variants"])
@@ -632,12 +727,13 @@ class ProductService:
         updates: dict[str, Any],
         variants: Sequence[VariantSpec] | None = None,
     ) -> Product:
-        """Edit a product, and — when `variants` is given — the volumes it is sold in.
+        """Edit a product, and — when `variants` is given — the variants it is sold in.
 
         `variants` is a full replacement of the list, not a patch of it: the owner's form
-        shows every volume at once, and a list that only ever grows would leave no way to
-        take one off. Reconciliation is by volume, so the rows (and the carts and pending
-        orders pointing at them) survive a price edit — see `_apply_specs`.
+        shows every variant at once, and a list that only ever grows would leave no way to
+        take one off. Reconciliation is by id and then by (volume, shade), so the rows (and
+        the carts and pending orders pointing at them) survive a price edit or a renamed
+        shade — see `_apply_specs`.
         """
         product = await self.get_by_id(product_id)
 
@@ -676,7 +772,11 @@ class ProductService:
             setattr(product, field, value)
 
         if variants is not None:
-            self._apply_specs(product, self._require_specs(variants))
+            specs = self._require_specs(variants)
+            # Inside the slug guard: reconciling can flush (see `_apply_specs`), and that
+            # flush carries the product's own edits — a new slug among them.
+            async with _slug_conflict_as_error(self._session):
+                await self._apply_specs(product, specs)
         elif single_fields:
             # The only variant follows the product's own fields, which is what makes the
             # shorthand true rather than merely accepted: an import that moves a price
@@ -706,6 +806,19 @@ class ProductService:
         )
         return {variant_id: price_cents for variant_id, price_cents in result.all()}
 
+    async def variant_shades(self, product_id: uuid.UUID) -> dict[uuid.UUID, str | None]:
+        """Each of this product's variants' shade right now, keyed by variant id.
+
+        Read by the admin PATCH *before* it writes, as `variant_prices` is: a shade
+        renamed in place is only recognisable against the name it had.
+        """
+        result = await self._session.execute(
+            select(ProductVariant.id, ProductVariant.shade).where(
+                ProductVariant.product_id == product_id
+            )
+        )
+        return {variant_id: shade for variant_id, shade in result.all()}
+
     async def live_variant_ids(self, product_id: uuid.UUID) -> set[uuid.UUID]:
         """Which of this product's volumes are on the shelf right now.
 
@@ -724,63 +837,207 @@ class ProductService:
 
     @staticmethod
     def _require_specs(specs: Sequence[VariantSpec]) -> list[VariantSpec]:
-        """The owner's list of volumes, checked before anything is written.
+        """The owner's list of variants, checked before anything is written.
 
-        Both failures are the form's to show, not the database's to discover: an empty
-        list has no price to put on a card, and the same volume twice would hit the
-        partial unique index as a 500 at flush.
+        Every failure is the form's to show, not the database's to discover: an empty
+        list has no price to put on a card, the same variant twice would hit the partial
+        unique index as a 500 at flush, and the two shade rules below are what keeps a
+        shaded product's page readable.
         """
         specs = list(specs)
         if not specs:
             raise EmptyVariantsError
         if len(specs) > MAX_PRODUCT_VARIANTS:
             raise TooManyVariantsError
-        volumes = [spec.volume_ml for spec in specs]
-        if len(set(volumes)) != len(volumes):
+        keys = [_spec_key(spec) for spec in specs]
+        if len(set(keys)) != len(keys):
             raise DuplicateVariantVolumeError
+        # All or none — see `ShadeMissingError`.
+        shaded = {spec.shade is not None for spec in specs}
+        if len(shaded) > 1:
+            raise ShadeMissingError
+        # One price per volume — see `ShadePricesDifferError`.
+        prices: dict[int | None, int] = {}
+        for spec in specs:
+            if prices.setdefault(spec.volume_ml, spec.price_cents) != spec.price_cents:
+                raise ShadePricesDifferError
         return specs
 
-    def _apply_specs(self, product: Product, specs: Sequence[VariantSpec]) -> None:
+    async def _apply_specs(self, product: Product, specs: Sequence[VariantSpec]) -> None:
         """Reconcile a product's variants against the list the owner submitted.
 
-        Matched by volume, and that is the whole design: a variant's id is what a cart
-        line and a pending order hold, so a saved price edit must land on the existing
-        row. Replacing the list wholesale — delete all, insert all — would empty every
-        cart in the shop each time the owner corrected a number.
+        Matched by id when the line carries one, and by (volume, shade) otherwise — and
+        that is the whole design: a variant's id is what a cart line and a pending order
+        hold, so a saved price edit must land on the existing row. Replacing the list
+        wholesale — delete all, insert all — would empty every cart in the shop each time
+        the owner corrected a number. The id is what lets a shade be renamed in place.
 
-        A volume that disappears from the list is soft-deleted rather than removed: it is
-        still quoted by orders waiting for confirmation, and bringing it back later
+        The id holds only while the volume does. A shade's name is a label — "Rosee" and
+        "Rose" are the same tube — but 30 ml and 50 ml are two things at two prices, and
+        moving a row from one to the other would quietly swap what every cart and pending
+        order holds. So a line whose volume changed is a new variant, and the row it came
+        from is withdrawn, with the notice a withdrawal carries.
+
+        A variant that disappears from the list is soft-deleted rather than removed: it
+        is still quoted by orders waiting for confirmation, and bringing it back later
         revives the same row (which is also why the unique index is partial).
         """
-        existing = {variant.volume_ml: variant for variant in product.live_variants}
+        live = product.live_variants
+        by_id = {variant.id: variant for variant in live}
+        by_key = {_variant_key(variant): variant for variant in live}
+        before = {variant.id: _variant_key(variant) for variant in live}
+        claimed: set[uuid.UUID] = set()
 
-        for sort_order, spec in enumerate(specs):
-            variant = existing.pop(spec.volume_ml, None)
+        # Ids first, for every line, before any line is matched by key: a line renamed
+        # to a name another line used to have must not be taken by that other line.
+        chosen: list[ProductVariant | None] = []
+        for spec in specs:
+            variant = by_id.get(spec.id) if spec.id is not None else None
+            if variant is not None and (
+                variant.id in claimed or variant.volume_ml != spec.volume_ml
+            ):
+                variant = None
+            if variant is not None:
+                claimed.add(variant.id)
+            chosen.append(variant)
+
+        for index, spec in enumerate(specs):
+            if chosen[index] is not None:
+                continue
+            variant = by_key.get(_spec_key(spec))
+            if variant is not None and variant.id not in claimed:
+                claimed.add(variant.id)
+                chosen[index] = variant
+
+        now = datetime.now(UTC)
+        # Every row that leaves the list, and every row whose key is about to change, is
+        # first taken out of the unique index (which covers live rows only) and flushed.
+        # Postgres checks the index row by row, so without this a swap of two shade names,
+        # or a rename onto the name of a shade being withdrawn, collides with itself
+        # halfway through the UPDATEs. The renamed rows come back below, with their final
+        # keys, and those are unique among themselves — `_require_specs` saw to that.
+        moving = {
+            variant.id
+            for spec, variant in zip(specs, chosen, strict=True)
+            if variant is not None and _variant_key(variant) != _spec_key(spec)
+        }
+        stepping_out = [
+            variant for variant in live if variant.id not in claimed or variant.id in moving
+        ]
+        for variant in stepping_out:
+            variant.deleted_at = now
+        if stepping_out:
+            await self._session.flush()
+
+        for sort_order, (spec, found) in enumerate(zip(specs, chosen, strict=True)):
+            variant = found
             if variant is None:
-                # A volume the owner had withdrawn earlier comes back as itself, so the
+                # A variant the owner had withdrawn earlier comes back as itself, so the
                 # cart lines and orders that still point at it start working again.
-                variant = self._revive_variant(product, spec.volume_ml)
+                variant = self._revive_variant(product, spec, claimed)
             if variant is None:
-                variant = ProductVariant(volume_ml=spec.volume_ml)
+                variant = ProductVariant()
                 product.variants.append(variant)
+            variant.deleted_at = None
+            variant.volume_ml = spec.volume_ml
+            variant.shade = spec.shade
             variant.price_cents = spec.price_cents
             variant.in_stock = spec.in_stock
             variant.sort_order = sort_order
 
-        now = datetime.now(UTC)
-        for variant in existing.values():
-            variant.deleted_at = now
-
+        self._retag_images(product, before)
         self.refresh_display_fields(product)
 
     @staticmethod
-    def _revive_variant(product: Product, volume_ml: int | None) -> ProductVariant | None:
-        """A withdrawn variant of this volume, un-withdrawn — or None if there is none."""
+    def _revive_variant(
+        product: Product, spec: VariantSpec, claimed: set[uuid.UUID]
+    ) -> ProductVariant | None:
+        """A withdrawn variant with this key — or None if there is none.
+
+        Not one of `claimed`: those are live rows stepping out of the index for a moment
+        on their way to another key, and taking one would hand a single row to two lines.
+        """
+        key = _spec_key(spec)
         for variant in product.variants:
-            if variant.deleted_at is not None and variant.volume_ml == volume_ml:
-                variant.deleted_at = None
+            if (
+                variant.deleted_at is not None
+                and variant.id not in claimed
+                and _variant_key(variant) == key
+            ):
+                claimed.add(variant.id)
                 return variant
         return None
+
+    @staticmethod
+    def _retag_images(
+        product: Product, before: dict[uuid.UUID, tuple[int | None, str | None]]
+    ) -> None:
+        """Keep every photo tag pointing at something the product is still sold in.
+
+        A photo is tagged by name ("05 Rose"), not by row, so renaming the shade in the
+        variants table would otherwise orphan its photo — still tagged with the old name,
+        matching nothing, and so shown nowhere. A rename that is unambiguous moves the
+        tag: the old name is gone from every live variant, and every variant that had it
+        now has the same new one. (A volume never changes in place — see `_apply_specs`.)
+
+        A tag that still names nothing after that — its shade or volume was withdrawn —
+        is dropped from the photo's lists rather than kept, and lists whose survivors no
+        longer meet in any variant keep their shades, which is what the photo is of. A
+        stale tag would hide the photo on the storefront, and the gallery could not be
+        rearranged around it (`arrange_images` refuses unknown tags).
+
+        A photo whose every shade was withdrawn — or, untagged by shade, every volume — is
+        hidden rather than left with empty lists: empty is "any", and a shot of "05 Rose"
+        would turn up on every other shade's page, and on the card if it was the primary
+        one. Hidden, it stays in the admin gallery for the owner to retag or delete.
+        """
+        live = product.live_variants
+        live_volumes = {variant.volume_ml for variant in live}
+        live_shades = {shade_key(variant.shade) for variant in live}
+        shade_moves: dict[str, set[str | None]] = {}
+        for variant in live:
+            old = before.get(variant.id)
+            if old is None:
+                continue
+            _old_volume, old_shade = old
+            if old_shade is not None and old_shade != shade_key(variant.shade):
+                shade_moves.setdefault(old_shade, set()).add(variant.shade)
+
+        def moved(shade: str) -> str:
+            if shade_key(shade) in live_shades:
+                return shade
+            targets = shade_moves.get(shade_key(shade) or "", set())
+            if len({shade_key(target) for target in targets}) == 1:
+                return next(iter(targets)) or shade
+            return shade
+
+        for image in product.images:
+            if image.hidden:
+                continue
+            volumes, shades = clean_tags(
+                image.volumes_ml or [], [moved(shade) for shade in image.shades or []]
+            )
+            # What the photo is of: its shades, or its volumes when it names no shade.
+            subject_gone = (
+                not any(shade_key(shade) in live_shades for shade in shades)
+                if shades
+                else bool(volumes) and not any(volume in live_volumes for volume in volumes)
+            )
+            if subject_gone:
+                image.volumes_ml = []
+                image.shades = []
+                image.hidden = True
+                continue
+            if not _tags_fit(live, volumes, shades):
+                volumes = [volume for volume in volumes if volume in live_volumes]
+                shades = [shade for shade in shades if shade_key(shade) in live_shades]
+                if not _tags_fit(live, volumes, shades):
+                    volumes = []
+            # Assigned only when something changed, so an untouched photo stays clean.
+            if volumes != (image.volumes_ml or []):
+                image.volumes_ml = volumes
+            if shades != (image.shades or []):
+                image.shades = shades
 
     @staticmethod
     def refresh_display_fields(product: Product) -> None:
@@ -801,7 +1058,10 @@ class ProductService:
         if not live:
             return
         product.price_cents = min(variant.price_cents for variant in live)
-        product.volume_ml = live[0].volume_ml if len(live) == 1 else None
+        # Counted by volume, not by row: a lipstick in ten shades of one size is still
+        # one volume, and the card and the page title should go on saying so.
+        volumes = {variant.volume_ml for variant in live}
+        product.volume_ml = next(iter(volumes)) if len(volumes) == 1 else None
         product.in_stock = any(variant.in_stock for variant in live)
 
     async def _require_featured_slot(self) -> None:
@@ -855,57 +1115,150 @@ class ProductService:
         return product
 
     async def add_image(
-        self, product_id: uuid.UUID, url: str, alt: str | None
-    ) -> tuple[ProductImage, list[str]]:
-        """Sets the product's photo, dropping whatever it had before.
+        self,
+        product_id: uuid.UUID,
+        url: str,
+        alt: str | None,
+        volumes_ml: Sequence[int] = (),
+        shades: Sequence[str] = (),
+        hidden: bool = False,
+    ) -> ProductImage:
+        """Adds a photo at the end of the product's gallery.
 
-        A product carries exactly one photo, so an upload is a replacement rather
-        than an append. Doing it here (instead of asking the caller to delete
-        first) keeps the product from being briefly photo-less between the two
-        requests, and cleans up rows left by earlier multi-image data.
-
-        Returns the new image and the urls of the ones it replaced — minus any that an
-        order still points at. The files behind the rest are the caller's to remove, and
-        only once this transaction has committed: deleting them here would strand a live
-        row on a missing file the moment anything further down the request rolled back.
+        The first photo a product gets is its primary one; later ones queue behind it
+        until the owner reorders them (`arrange_images`). The tags say which variants the
+        photo shows and must name a volume and a shade the product is sold in; a hidden
+        photo shows none and keeps no tags (`ProductImage.hidden`).
         """
-        await self.get_by_id(product_id)  # 404s if missing/soft-deleted
-
-        existing = await self._session.execute(
-            select(ProductImage).where(ProductImage.product_id == product_id)
-        )
-        replaced_urls = []
-        for image in existing.scalars():
-            replaced_urls.append(image.url)
-            await self._session.delete(image)
-        await self._session.flush()
-        replaced_urls = await self._unreferenced(replaced_urls)
+        product = await self._get_for_gallery(product_id)
+        if len(product.images) >= MAX_PRODUCT_IMAGES:
+            raise TooManyImagesError
+        volumes, shade_names = ([], []) if hidden else clean_tags(volumes_ml, shades)
+        self.require_known_tags(product, volumes, shade_names)
 
         image = ProductImage(
             product_id=product_id,
             url=url,
             alt=alt,
-            is_primary=True,
-            sort_order=0,
+            is_primary=not product.images,
+            sort_order=max((image.sort_order for image in product.images), default=-1) + 1,
+            volumes_ml=volumes,
+            shades=shade_names,
+            hidden=hidden,
         )
-        self._session.add(image)
+        # Through the collection rather than `session.add`: the product is in the identity
+        # map, and a row added beside it would leave `product.images` stale for everything
+        # later in the request that reads the gallery — the cart's photo among them.
+        product.images.append(image)
         await self._session.flush()
-        return image, replaced_urls
+        return image
+
+    async def _get_for_gallery(self, product_id: uuid.UUID) -> Product:
+        """The live product with its gallery read afresh, not from the identity map.
+
+        A gallery edit is checked against the photos the product has — how many, which
+        ids — and a collection loaded earlier in the session may predate a photo added
+        or removed since. `populate_existing` makes the load overwrite it.
+        """
+        result = await self._session.execute(
+            select(Product)
+            .where(Product.id == product_id, Product.deleted_at.is_(None))
+            .options(selectinload(Product.images), selectinload(Product.variants))
+            .execution_options(populate_existing=True)
+        )
+        product = result.scalar_one_or_none()
+        if product is None:
+            raise ProductNotFoundError
+        return product
+
+    async def arrange_images(
+        self, product_id: uuid.UUID, arrangement: Sequence[ImageArrangement]
+    ) -> list[ProductImage]:
+        """Put the gallery in the owner's order and retag its photos, all at once — and
+        rewrite the alt text of each photo that sends one.
+
+        The list has to be the product's gallery exactly — every photo once, none from
+        elsewhere. Anything else means the form is looking at a gallery another tab has
+        since changed, and saving its order would quietly drop the newcomer's position or
+        resurrect a deleted photo's.
+
+        The first photo becomes the primary one: the card, the search dropdown and an
+        order line without a variant photo of its own all show it.
+        """
+        product = await self._get_for_gallery(product_id)
+        images = {image.id: image for image in product.images}
+        ids = [entry.id for entry in arrangement]
+        if len(set(ids)) != len(ids) or set(ids) != set(images):
+            raise ImageArrangementError
+
+        # Only the tags this save changes: a photo the owner merely moved keeps whatever
+        # it had, and refusing the whole gallery over an old tag nobody touched would
+        # leave no way to reorder it short of deleting that photo.
+        # A hidden photo keeps no tags: they would come back the moment it is shown
+        # again, and nobody would remember choosing them.
+        tags = {
+            entry.id: ([], []) if entry.hidden else clean_tags(entry.volumes_ml, entry.shades)
+            for entry in arrangement
+        }
+        for entry in arrangement:
+            volumes, shades = tags[entry.id]
+            if not _same_tags(images[entry.id], volumes, shades, entry.hidden):
+                self.require_known_tags(product, volumes, shades)
+
+        for sort_order, entry in enumerate(arrangement):
+            image = images[entry.id]
+            image.sort_order = sort_order
+            image.is_primary = sort_order == 0
+            volumes, shades = tags[entry.id]
+            # A photo whose tags did not change keeps its own spelling of them.
+            if not _same_tags(image, volumes, shades, entry.hidden):
+                image.volumes_ml = volumes
+                image.shades = shades
+                image.hidden = entry.hidden
+            if entry.alt_given:
+                image.alt = entry.alt
+
+        await self._session.flush()
+        return sorted(images.values(), key=lambda image: image.sort_order)
+
+    @staticmethod
+    def require_known_tags(
+        product: Product, volumes_ml: Sequence[int], shades: Sequence[str]
+    ) -> None:
+        """Photo tags have to name only what the product is sold in.
+
+        A tag that matches no variant hides the photo everywhere, which is never what the
+        owner meant — most likely the form was loaded before a volume was taken off.
+        """
+        if not _tags_fit(product.live_variants, volumes_ml, shades):
+            raise ImageTagUnknownError
 
     async def delete_image(self, product_id: uuid.UUID, image_id: uuid.UUID) -> str | None:
         """Drops the row and hands back the url to delete after the commit — or None when
-        the file has to stay, because an order still shows it (see `_unreferenced`)."""
+        the file has to stay, because an order still shows it (see `_unreferenced`).
+
+        Deleting the primary photo promotes the next one, so the card is never left
+        without a picture while the gallery still has one.
+        """
+        # Not `_get_for_gallery`: a photo of a withdrawn product can still be deleted.
         result = await self._session.execute(
-            select(ProductImage).where(
-                ProductImage.id == image_id, ProductImage.product_id == product_id
-            )
+            select(Product)
+            .where(Product.id == product_id)
+            .options(selectinload(Product.images))
+            .execution_options(populate_existing=True)
         )
-        image = result.scalar_one_or_none()
-        if image is None:
+        product = result.scalar_one_or_none()
+        images = sorted(product.images if product else [], key=lambda image: image.sort_order)
+        image = next((candidate for candidate in images if candidate.id == image_id), None)
+        if product is None or image is None:
             raise ProductImageNotFoundError
 
         url = image.url
+        product.images.remove(image)
         await self._session.delete(image)
+        rest = [candidate for candidate in images if candidate.id != image_id]
+        if rest and not any(candidate.is_primary for candidate in rest):
+            rest[0].is_primary = True
         # An empty list means the file is still an order's picture — see `_unreferenced`.
         return url if await self._unreferenced([url]) else None
 
