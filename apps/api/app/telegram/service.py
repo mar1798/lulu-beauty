@@ -236,12 +236,14 @@ class NotificationsService:
         # without a button that means going to find the site by hand. The owner's own
         # cancellation also asks the customer to write if it is a mistake, so that one
         # carries the address the text promises, and so does the thanks after pickup —
-        # it asks for the customer's impressions, and Instagram is where they go.
-        keyboard = (
-            keyboards.owner_contact_actions()
-            if order.status in (OrderStatus.CANCELLED_BY_OWNER, OrderStatus.COMPLETED)
-            else keyboards.orders_link()
-        )
+        # it asks for the customer's impressions, so it adds the Google review on top.
+        keyboard: InlineKeyboardMarkup | None
+        if order.status is OrderStatus.COMPLETED:
+            keyboard = keyboards.order_completed_actions()
+        elif order.status is OrderStatus.CANCELLED_BY_OWNER:
+            keyboard = keyboards.owner_contact_actions()
+        else:
+            keyboard = keyboards.orders_link()
         if await self._try_send(user.telegram_chat_id, message, reply_markup=keyboard):
             logger.info("Notified %s about order %s → %s", user.phone, order.id, order.status)
             return

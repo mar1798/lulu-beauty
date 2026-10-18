@@ -264,6 +264,38 @@ async def test_send_order_status_offers_the_instagram_on_the_owners_cancellation
     assert keyboards.INSTAGRAM_URL in urls
 
 
+async def test_send_order_status_asks_for_a_google_review_after_pickup(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("app.config.settings.google_review_url", "https://g.page/r/abc/review")
+    bot = AsyncMock()
+    service = NotificationsService(bot)
+
+    await service.send_order_status(_user(telegram_chat_id=42), _order(OrderStatus.COMPLETED))
+
+    markup = bot.send_message.await_args.kwargs["reply_markup"]
+    urls = [keyboards.button_target(button) for row in markup.inline_keyboard for button in row]
+    assert urls[0] == "https://g.page/r/abc/review"
+    assert keyboards.INSTAGRAM_URL in urls
+
+
+async def test_send_order_status_offers_no_review_on_the_owners_cancellation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Просить отзыв под «заявка отменена» — худшее место для такой просьбы."""
+    monkeypatch.setattr("app.config.settings.google_review_url", "https://g.page/r/abc/review")
+    bot = AsyncMock()
+    service = NotificationsService(bot)
+
+    await service.send_order_status(
+        _user(telegram_chat_id=42), _order(OrderStatus.CANCELLED_BY_OWNER)
+    )
+
+    markup = bot.send_message.await_args.kwargs["reply_markup"]
+    urls = [keyboards.button_target(button) for row in markup.inline_keyboard for button in row]
+    assert "https://g.page/r/abc/review" not in urls
+
+
 async def test_send_order_status_stays_silent_on_the_customers_own_cancellation() -> None:
     """Telling someone what they just did themselves reads as if someone else did it."""
     bot = AsyncMock()

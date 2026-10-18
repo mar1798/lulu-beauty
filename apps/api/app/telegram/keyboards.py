@@ -348,7 +348,8 @@ def owner_message_actions(order_id: uuid.UUID | None) -> InlineKeyboardMarkup:
 
 def owner_contact_actions() -> InlineKeyboardMarkup:
     """Under the messages that send the customer to the owner — a deleted order, one the
-    owner cancelled, and the thanks after pickup: the list, and the way to write.
+    owner cancelled, a rejected receipt: the list, and the way to write. The thanks after
+    pickup gets the same rows through `order_completed_actions`, under its review button.
 
     Instagram is the point of this keyboard — the cancellations tell the customer to
     write in Instagram if it is a mistake, the thanks asks for impressions, and without
@@ -362,6 +363,23 @@ def owner_contact_actions() -> InlineKeyboardMarkup:
         rows.append([orders])
     rows.append([instagram_button()])
     return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def order_completed_actions() -> InlineKeyboardMarkup:
+    """Under the thanks after pickup: the Google review on top, then what
+    `owner_contact_actions` offers.
+
+    The thanks asks for impressions, and a review on the Business Profile is where they
+    help the shop most — it is what ranks Sululu on the map for a plain «косметика».
+    On top for that reason. Without `GOOGLE_REVIEW_URL` (an unverified profile has no
+    review link) the button drops out and the keyboard is the contact one unchanged.
+    """
+    contact = owner_contact_actions().inline_keyboard
+    review_url = settings.google_review_url
+    if not review_url:
+        return InlineKeyboardMarkup(inline_keyboard=contact)
+    review = InlineKeyboardButton(text=messages.GOOGLE_REVIEW_BUTTON, url=review_url)
+    return InlineKeyboardMarkup(inline_keyboard=[[review], *contact])
 
 
 def privacy_link() -> InlineKeyboardMarkup | None:
