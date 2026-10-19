@@ -143,6 +143,7 @@ def test_export_filename_is_dated_so_the_owner_can_tell_two_downloads_apart() ->
 
     assert first == ""
     assert rest.endswith(".xlsx")
-    assert date.fromisoformat(rest.removesuffix(".xlsx")) == datetime.now(
-        ZoneInfo(settings.cycle_timezone)
-    ).date()
+    assert (
+        date.fromisoformat(rest.removesuffix(".xlsx"))
+        == datetime.now(ZoneInfo(settings.cycle_timezone)).date()
+    )
