@@ -108,6 +108,7 @@ const AdminProductPage: React.FC = () => {
         categoryId: values.categoryId,
         inStock: values.inStock,
         isFeatured: values.isFeatured,
+        shadeLabel: values.shadeLabel,
       })
 
       notify({ tone: 'success', title: 'Товар сохранён' })

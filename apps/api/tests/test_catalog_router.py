@@ -11,6 +11,7 @@ from app.auth.models import Role
 from app.catalog.models import Category, Product, ProductImage, ProductVariant
 from app.catalog.results import CatalogSuggestions
 from app.catalog.service import FeaturedLimitError
+from app.catalog.shades import ShadeLabel
 from app.catalog.sorting import DEFAULT_ORDER, ProductOrder, SortDirection, SortField
 from app.db import get_session
 from app.main import app
@@ -37,6 +38,7 @@ def _product(*, deleted_at: datetime | None = None) -> Product:
         category_id=None,
         in_stock=True,
         is_featured=False,
+        shade_label=ShadeLabel.TONE,
         deleted_at=deleted_at,
     )
     product.images = []

@@ -12,10 +12,12 @@ from sqlalchemy import (
     Text,
     text,
 )
+from sqlalchemy import Enum as SAEnum
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.catalog.search import NOISE_SQL
+from app.catalog.shades import ShadeLabel
 from app.common.mixins import TimestampMixin, UUIDPrimaryKeyMixin
 from app.db import Base
 
@@ -141,6 +143,15 @@ class Product(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     # A server default rather than only a Python one, so the release before this one can
     # still insert products after a rollback (`docs/backend.md`, "Migrations").
     is_featured: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
+    # What the storefront calls the variants' shades — "Тон", "Цвет", "Оттенок" (see
+    # `ShadeLabel`). Kept on a product without shades too, where nothing shows it, so that
+    # taking the shades off and putting them back does not lose the owner's choice. A
+    # server default for the same reason `is_featured` has one.
+    shade_label: Mapped[ShadeLabel] = mapped_column(
+        SAEnum(ShadeLabel, name="shade_label"),
+        default=ShadeLabel.TONE,
+        server_default=ShadeLabel.TONE.value,
+    )
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     category: Mapped["Category | None"] = relationship(back_populates="products")

@@ -5,7 +5,7 @@ from typing import Annotated
 from pydantic import Field, field_validator
 
 from app.catalog.rich_text import html_to_text
-from app.catalog.shades import normalize_shade
+from app.catalog.shades import ShadeLabel, normalize_shade
 from app.common.limits import (
     MAX_DESCRIPTION_HTML_LENGTH,
     MAX_DESCRIPTION_LENGTH,
@@ -198,6 +198,8 @@ class ProductResponse(CamelModel):
     in_stock: bool
     # Pinned by the owner to the home page's hero (at most `MAX_FEATURED_PRODUCTS`).
     is_featured: bool
+    # What the variants' shades are called on the page — "Тон", "Цвет" (see `ShadeLabel`).
+    shade_label: ShadeLabel
     images: list[ProductImageResponse]
     # Every volume the product is sold in, in the order the owner arranged them
     # (`sort_order`) — not by price: the selector on the page is read left to right as a
@@ -238,6 +240,7 @@ class ProductCreateRequest(CamelModel):
     in_stock: bool = True
     # Past the limit this is a 409 `featured_limit_reached`, not a quiet `false`.
     is_featured: bool = False
+    shade_label: ShadeLabel = ShadeLabel.TONE
     # Omitted means "sold in one form", described by price_cents/volume_ml/in_stock
     # above — the shape the xlsx import sends and the shape most products have.
     variants: list[ProductVariantRequest] | None = Field(
@@ -274,6 +277,7 @@ class ProductUpdateRequest(CamelModel):
     # Pinning a product that is not pinned yet is refused past the limit (409
     # `featured_limit_reached`); unpinning always goes through.
     is_featured: bool | None = None
+    shade_label: ShadeLabel | None = None
     # A full replacement of the volume list when present, omitted to leave it alone.
     # `null` is not a way to clear it: a product without volumes has no price to show
     # (409 product_variants_empty says so), so there is nothing to mean by it.
@@ -291,9 +295,11 @@ class ProductUpdateRequest(CamelModel):
     def _validate_description_html(cls, value: str | None) -> str | None:
         return require_description_length(value)
 
-    # The columns behind these five are NOT NULL — unlike description/volume_ml/category_id
+    # The columns behind these six are NOT NULL — unlike description/volume_ml/category_id
     # just above, which a PATCH may legitimately clear.
-    @field_validator("name", "slug", "price_cents", "in_stock", "is_featured", mode="before")
+    @field_validator(
+        "name", "slug", "price_cents", "in_stock", "is_featured", "shade_label", mode="before"
+    )
     @classmethod
     def _reject_null(cls, value: object) -> object:
         return require_not_null(value)

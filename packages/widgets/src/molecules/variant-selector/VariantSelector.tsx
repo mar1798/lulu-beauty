@@ -2,6 +2,7 @@ import clsx from 'clsx'
 import { type FC, type KeyboardEvent, useRef } from 'react'
 import type { IBasicStyling, IVariantSelectorProps } from '../../types'
 import { Text } from '../../atoms/text'
+import { shadeLabelForms } from '../../utils/shadeLabel'
 import { shadeKey, variantShades, variantVolumes } from '../../utils/variants'
 import { formatVolume } from '../../utils/volume'
 import * as styles from './VariantSelector.css'
@@ -163,6 +164,7 @@ export const VariantSelector: FC<IVariantSelectorProps & IBasicStyling> = ({
   variants,
   selectedId,
   onSelect,
+  shadeLabel,
   className,
 }) => {
   const selected = variants.find(variant => variant.id === selectedId) ?? null
@@ -208,6 +210,9 @@ export const VariantSelector: FC<IVariantSelectorProps & IBasicStyling> = ({
     }
   }
 
+  /* «Тон», «Цвет», «Аромат» — как товар называет свои тона. */
+  const forms = shadeLabelForms(shadeLabel)
+
   return (
     <div className={clsx(styles.root, className)}>
       {volumes.length > 1 && (
@@ -227,13 +232,13 @@ export const VariantSelector: FC<IVariantSelectorProps & IBasicStyling> = ({
       )}
 
       <OptionGroup
-        label="Тон"
-        caption={selected?.shade ? `Тон: ${selected.shade}` : 'Тон'}
+        label={forms.title}
+        caption={selected?.shade ? `${forms.title}: ${selected.shade}` : forms.title}
         selectedId={selectedId}
         onSelect={onSelect}
         options={ofVolume.map(variant => ({
           id: variant.id,
-          label: variant.shade ?? 'Без тона',
+          label: variant.shade ?? `Без ${forms.genitive}`,
           isUnavailable: !variant.inStock,
         }))}
       />

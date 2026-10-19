@@ -35,6 +35,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.catalog.models import Product
+from app.catalog.shades import SHADE_LABEL_NAMES, ShadeLabel
 from app.config import settings
 from app.export.service import (
     MAX_TEXT_WIDTH,
@@ -45,11 +46,21 @@ from app.export.service import (
 
 SHEET_TITLE = "Каталог"
 
-HEADER = ["name", "slug", "brand", "category", "price", "volume", "shade", "inStock"]
+HEADER = [
+    "name",
+    "slug",
+    "brand",
+    "category",
+    "price",
+    "volume",
+    "shade",
+    "shadeLabel",
+    "inStock",
+]
 
 # Column indexes, by the header above. Named because both width and alignment are keyed
 # off them.
-TEXT_COLUMNS = (0, 1, 2, 3, 6)
+TEXT_COLUMNS = (0, 1, 2, 3, 6, 7)
 PRICE_COLUMN = 4
 VOLUME_COLUMN = 5
 
@@ -72,6 +83,9 @@ class ProductExportRow:
     price_cents: int
     volume_ml: int | None
     shade: str | None
+    # What the product calls its shades. Written in Russian ("Цвет"), which the import
+    # reads back, and only on a shaded row — on any other it would be a word about nothing.
+    shade_label: ShadeLabel
     in_stock: bool
 
 
@@ -96,6 +110,7 @@ def _cell_values(row: ProductExportRow) -> list[CellValue]:
         row.price_cents / 100,
         row.volume_ml,
         row.shade or "",
+        SHADE_LABEL_NAMES[row.shade_label] if row.shade is not None else "",
         IN_STOCK_YES if row.in_stock else IN_STOCK_NO,
     ]
 
@@ -236,6 +251,7 @@ class CatalogExportService:
                 price_cents=variant.price_cents,
                 volume_ml=variant.volume_ml,
                 shade=variant.shade,
+                shade_label=product.shade_label,
                 in_stock=variant.in_stock,
             )
             for product in products

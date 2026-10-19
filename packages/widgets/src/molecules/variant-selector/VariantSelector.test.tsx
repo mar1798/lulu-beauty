@@ -131,6 +131,23 @@ describe('VariantSelector с тонами', () => {
     expect(screen.getByText('Тон: 21 Light')).toBeInTheDocument()
   })
 
+  it('называет ряд тонов так, как их называет товар', () => {
+    const variants = shaded()
+
+    renderWidget(
+      <VariantSelector
+        variants={variants}
+        selectedId={variants[0].id}
+        onSelect={noop}
+        shadeLabel="COLOR"
+      />
+    )
+
+    expect(screen.getByRole('radiogroup', { name: 'Цвет' })).toBeInTheDocument()
+    expect(screen.getByText('Цвет: 21 Light')).toBeInTheDocument()
+    expect(screen.queryByRole('radiogroup', { name: 'Тон' })).toBeNull()
+  })
+
   it('при смене объёма сохраняет тон', () => {
     const variants = shaded()
     const onSelect = vi.fn()

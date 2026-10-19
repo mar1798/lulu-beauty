@@ -119,6 +119,13 @@ export type CycleStatus = 'UPCOMING' | 'ACTIVE' | 'CLOSED'
  * в копии сайта занято человеком, который ведёт магазин, а не уровнем доступа.
  */
 export type Role = 'CUSTOMER' | 'ADMIN' | 'SUPER_ADMIN'
+/**
+ * Как товар называет свои тона: «Тон» у тоналки, «Цвет» у помады, «Аромат» у
+ * парфюма. Закрытый список, а не свободный текст: слово склоняется везде, где
+ * встаёт в фразу («Выбрать цвет», «Для всех оттенков»), и формы каждого лежат
+ * в `SHADE_LABEL_FORMS`. Тот же список — `ShadeLabel` в `app/catalog/shades.py`.
+ */
+export type ShadeLabel = 'TONE' | 'COLOR' | 'SHADE' | 'SCENT'
 
 /** Конверт пагинации: `GET /products`, `GET /admin/products`, `GET /admin/orders`. */
 export interface IPage<T> {
@@ -215,6 +222,8 @@ export interface IProduct {
    * (сверх того бэкенд отвечает `featured_limit_reached`).
    */
   isFeatured: boolean
+  /** Как на странице называются тона вариантов. Есть и у товара без тонов — там его не видно. */
+  shadeLabel: ShadeLabel
   images: IProductImage[]
   /**
    * Объёмы, в которых товар продаётся, в порядке, заданном владельцем. Пустым
@@ -1407,6 +1416,8 @@ export interface IVariantSelectorProps {
   /** `null` — не выбрано ничего; бывает только у товара без объёмов вовсе. */
   selectedId: string | null
   onSelect: (variantId: string) => void
+  /** Как называть ряд тонов; по умолчанию «Тон». */
+  shadeLabel?: ShadeLabel
 }
 
 /**
@@ -1441,6 +1452,8 @@ export interface IAdminProductGalleryProps {
   error?: string | null
   /** Пояснение под заголовком — например, что новые тона появятся после сохранения. */
   hint?: string
+  /** Как товар называет тона — в заголовках групп и в окне фото; по умолчанию «Тон». */
+  shadeLabel?: ShadeLabel
 }
 
 export interface IProductGalleryProps {
@@ -2244,6 +2257,8 @@ export interface IAdminProductValues {
   inStock: boolean
   /** Показывать карточку в герое главной. */
   isFeatured: boolean
+  /** Как товар называет тона — подпись колонки здесь и ряда на странице товара. */
+  shadeLabel: ShadeLabel
   /**
    * Фото, выбранные при создании, по порядку и с привязками — первое станет
    * главным. Пусто в режиме редактирования: там фото грузятся сразу, у товара

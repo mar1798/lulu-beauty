@@ -56,6 +56,7 @@ const AdminProductCreatePage: React.FC = () => {
         categoryId: values.categoryId,
         inStock: values.inStock,
         isFeatured: values.isFeatured,
+        shadeLabel: values.shadeLabel,
       })
 
       /*

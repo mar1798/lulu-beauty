@@ -11,7 +11,7 @@ from app.catalog.import_service import (
     parse_volume_ml,
     validate_headers,
 )
-from app.catalog.shades import normalize_shade
+from app.catalog.shades import ShadeLabel, normalize_shade, parse_shade_label
 from app.config import settings
 from app.export.products import (
     HEADER,
@@ -30,6 +30,7 @@ def _row(**overrides: object) -> ProductExportRow:
         "price_cents": 15000,
         "volume_ml": 50,
         "shade": None,
+        "shade_label": ShadeLabel.TONE,
         "in_stock": True,
     }
     defaults.update(overrides)
@@ -63,7 +64,7 @@ def test_description_and_photos_are_not_columns() -> None:
 def test_writes_a_line_per_product() -> None:
     sheet = _sheet([_row(name="Крем", price_cents=15000, volume_ml=50)])
 
-    assert _values(sheet, 2) == ["Крем", "rose-serum", "Lulu", "care", 150, 50, None, "да"]
+    assert _values(sheet, 2) == ["Крем", "rose-serum", "Lulu", "care", 150, 50, None, None, "да"]
 
 
 def test_writes_the_shade_of_a_shaded_variant() -> None:
@@ -72,11 +73,26 @@ def test_writes_the_shade_of_a_shaded_variant() -> None:
     assert _values(sheet, 2)[HEADER.index("shade")] == "05 Rose"
 
 
+def test_writes_what_the_shades_are_called_in_russian() -> None:
+    """The word, not the code: the sheet is read by a person, and the import takes it back."""
+    sheet = _sheet([_row(shade="Red", shade_label=ShadeLabel.COLOR)])
+
+    assert _values(sheet, 2)[HEADER.index("shadeLabel")] == "Цвет"
+
+
+def test_leaves_the_label_empty_on_a_product_without_shades() -> None:
+    """Nothing on the page says it there — and an empty cell leaves it alone on the way
+    back, so the owner's choice survives the round trip all the same."""
+    sheet = _sheet([_row(shade=None, shade_label=ShadeLabel.SCENT)])
+
+    assert _values(sheet, 2)[HEADER.index("shadeLabel")] is None
+
+
 def test_missing_brand_volume_and_category_come_out_empty() -> None:
     sheet = _sheet([_row(brand=None, category_slug=None, volume_ml=None, in_stock=False)])
-    _, _, brand, category, _, volume, shade, in_stock = _values(sheet, 2)
+    _, _, brand, category, _, volume, shade, label, in_stock = _values(sheet, 2)
 
-    assert (brand, category, volume, shade) == (None, None, None, None)
+    assert (brand, category, volume, shade, label) == (None, None, None, None, None)
     assert in_stock == "нет"
 
 
@@ -85,7 +101,8 @@ def test_export_round_trips_through_the_import() -> None:
         _row(name="Крем", slug="krem", price_cents=15000, volume_ml=50, in_stock=True),
         _row(name="Тоник", slug="tonik", brand=None, category_slug=None, volume_ml=None,
              price_cents=999, in_stock=False),
-        _row(name="Помада", slug="pomada", volume_ml=None, shade="05 Rose", price_cents=700),
+        _row(name="Помада", slug="pomada", volume_ml=None, shade="05 Rose", price_cents=700,
+             shade_label=ShadeLabel.SHADE),
     ]  # fmt: skip
 
     parsed = parse_rows("catalog.xlsx", build_products_workbook(rows))
@@ -98,13 +115,14 @@ def test_export_round_trips_through_the_import() -> None:
             parse_price_cents(cells["price"]),
             parse_volume_ml(cells["volume"]),
             normalize_shade(cells["shade"]),
+            parse_shade_label(cells["shade_label"]),
             parse_in_stock(cells["in_stock"]),
         )
         for _, cells in parsed
     ] == [
-        ("Крем", "krem", 15000, 50, None, True),
-        ("Тоник", "tonik", 999, None, None, False),
-        ("Помада", "pomada", 700, None, "05 Rose", True),
+        ("Крем", "krem", 15000, 50, None, None, True),
+        ("Тоник", "tonik", 999, None, None, None, False),
+        ("Помада", "pomada", 700, None, "05 Rose", ShadeLabel.SHADE, True),
     ]
 
 

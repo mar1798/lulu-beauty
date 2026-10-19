@@ -380,6 +380,7 @@ async def create_product(
             _variant_specs(body.variants),
             body.description_html,
             body.is_featured,
+            body.shade_label,
         )
     except SlugAlreadyExistsError as error:
         raise HTTPException(status.HTTP_409_CONFLICT, "slug_already_exists") from error

@@ -70,6 +70,7 @@ def product_response(product: Product, *, include_hidden: bool = False) -> Produ
         category_id=product.category_id,
         in_stock=product.in_stock,
         is_featured=product.is_featured,
+        shade_label=product.shade_label,
         # Only the live ones: a withdrawn volume still has a row (orders quote it), but
         # it is not something the storefront may offer or the admin form may show back.
         variants=[

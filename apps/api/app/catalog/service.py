@@ -14,7 +14,7 @@ from app.catalog.models import Category, Product, ProductImage, ProductVariant
 from app.catalog.results import CatalogSuggestions, ImageArrangement, VariantSpec
 from app.catalog.rich_text import Description, description_from_html
 from app.catalog.search import normalize_search
-from app.catalog.shades import normalize_shade, shade_key
+from app.catalog.shades import ShadeLabel, normalize_shade, shade_key
 from app.catalog.sorting import DEFAULT_ORDER, ProductOrder
 from app.common.limits import (
     MAX_FEATURED_PRODUCTS,
@@ -671,6 +671,7 @@ class ProductService:
         variants: Sequence[VariantSpec] | None = None,
         description_html: str | None = None,
         is_featured: bool = False,
+        shade_label: ShadeLabel = ShadeLabel.TONE,
     ) -> Product:
         """A new product, with at least one variant — always.
 
@@ -708,6 +709,7 @@ class ProductService:
             category_id=category_id,
             in_stock=in_stock,
             is_featured=is_featured,
+            shade_label=shade_label,
         )
         await self._apply_specs(product, specs)
         async with _slug_conflict_as_error(self._session):

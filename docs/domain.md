@@ -341,6 +341,18 @@ several variants rather than several products. A variant is identified by the pa
   mirrored by `shadeKey` in `packages/widgets/src/utils/variants.ts`; the unique index
   compares `lower(shade)` the same way. Inner whitespace is collapsed on the way in, the
   case is kept for display.
+- **What the shades are called is the product's choice** (`products.shade_label`): "Тон" for
+  a foundation, "Цвет" for a lipstick, "Оттенок", "Аромат" for a perfume. It is a closed
+  enum (`ShadeLabel` in `app/catalog/shades.py`: `TONE`, `COLOR`, `SHADE`, `SCENT`, default
+  `TONE`), not free text, because the word is declined wherever it lands in a sentence —
+  "Выбрать цвет", "Без аромата", "Для всех оттенков" — and the site keeps every case of every
+  value in `SHADE_LABEL_FORMS` (`packages/widgets/src/utils/shadeLabel.ts`). The storefront
+  selector, the "Выбрать …" button on a card, the admin variants table and the admin gallery
+  say it; order lines, the bot and the purchase list print the shade's value alone
+  ("Помада, 05 Rose"), so nothing is snapshotted. The API error texts in `apiErrors.ts` keep
+  saying "тон" — they are admin-only and not tied to one product. Adding a value is an
+  `ALTER TYPE shade_label ADD VALUE` migration, its forms in `SHADE_LABEL_FORMS` and its word
+  in `SHADE_LABEL_NAMES`.
 - **`products.price_cents`, `products.volume_ml` and `products.in_stock` are derived** from
   the live variants and rewritten by `ProductService.refresh_display_fields` on every write
   that can move them. `price_cents` is the cheapest live variant, `volume_ml` is the volume
@@ -426,6 +438,11 @@ several variants rather than several products. A variant is identified by the pa
   another file — and the summary reports that once per product rather than guessing; the
   admin form refuses to save the mix, which points the owner straight at it. A row that
   would add a variant past `MAX_PRODUCT_VARIANTS` is refused, as the form refuses it.
+- **The `shadeLabel` column** sets what the product calls its shades. The cell takes the
+  Russian word ("Цвет", any case) or the code (`COLOR`); anything else is a row error naming
+  the four words. **An empty cell leaves the label alone** rather than resetting it to "Тон":
+  the export leaves it empty on rows without a shade, and the round trip must not undo the
+  owner's choice for a product whose shades are yet to come.
 - Two rows with the same `(slug, volume, shade)` are a reported row error rather than a silent
   overwrite (only rows that were applied count: a refused row neither claims its variant nor
   sets its volume's price for the rows after it), and so is an **empty `volume` cell for a product that already has volumes** (or
@@ -673,10 +690,11 @@ what was already bought.
 `GET /admin/export/products` dumps the live catalogue, and exists for the round trip:
 export → edit prices and stock in Excel → upload the same file back through
 `POST /admin/catalog/import`. So its headers are the **import's own column names**
-(`name`, `slug`, `brand`, `category`, `price`, `volume`, `shade`, `inStock`), not Russian
+(`name`, `slug`, `brand`, `category`, `price`, `volume`, `shade`, `shadeLabel`, `inStock`), not Russian
 captions — a caption would break the file on the way back in. A product sold in several
 variants is **several rows with the same slug**, one per variant, which is exactly what the
-import reads. `inStock` is written `да`/`нет`, which
+import reads. `shadeLabel` is written as the Russian word, and only on rows that have a shade.
+`inStock` is written `да`/`нет`, which
 the import reads as a boolean, and `category` carries the slug, which is the category's
 identity.
 
