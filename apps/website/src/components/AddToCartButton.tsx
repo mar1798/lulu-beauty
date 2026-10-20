@@ -4,7 +4,7 @@ import type { IControlSize, IProduct } from 'widgets/types'
 import { Button, IconButton, Tooltip } from 'widgets/atoms'
 import { useToast } from 'widgets/contexts'
 import { IconCart, IconCheck, IconPlus } from 'widgets/svg'
-import { variantShades, variantVolumes } from 'widgets/utils'
+import { shadeLabelForms, variantShades, variantVolumes } from 'widgets/utils'
 import { useAuth } from '@/contexts/AuthContext'
 import { useCart } from '@/contexts/CartContext'
 import { useActiveCycle } from '@/hooks/useActiveCycle'
@@ -63,7 +63,7 @@ const CLOSED_REASON = 'Сейчас нет открытого сбора - то�
  */
 const CONFIRMATION_MS = 1200
 
-/** Что предстоит выбрать на странице товара: объём, тон или и то и другое. */
+/** Что предстоит выбрать на странице товара: объём, тон (цвет, аромат) или и то и другое. */
 const chooseLabel = (product: IProduct): string => {
   const hasShades = variantShades(product.variants).length > 0
   const hasVolumes = variantVolumes(product.variants).length > 1
@@ -72,7 +72,7 @@ const chooseLabel = (product: IProduct): string => {
     return 'Выбрать вариант'
   }
 
-  return hasShades ? 'Выбрать тон' : 'Выбрать объём'
+  return hasShades ? `Выбрать ${shadeLabelForms(product.shadeLabel).accusative}` : 'Выбрать объём'
 }
 
 export const AddToCartButton: React.FC<{

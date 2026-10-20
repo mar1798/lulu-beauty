@@ -16,6 +16,7 @@ import type {
   OrderStatus,
   ISortDirection,
   Role,
+  ShadeLabel,
 } from 'widgets/types'
 import { api } from '../api'
 
@@ -172,6 +173,8 @@ export interface IProductInput {
    * 409 `featured_limit_reached` — какую отметку снять, решает владелец.
    */
   isFeatured?: boolean
+  /** Как называть тона на странице товара: «Тон», «Цвет», «Оттенок», «Аромат». */
+  shadeLabel?: ShadeLabel
 }
 
 export const listAdminProducts = (params: IAdminProductListParams = {}): Promise<IPage<IProduct>> =>

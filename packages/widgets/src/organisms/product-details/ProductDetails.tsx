@@ -311,6 +311,7 @@ export const ProductDetails: FC<IProductDetailsProps & IBasicStyling> = ({
             variants={product.variants}
             selectedId={selected?.id ?? null}
             onSelect={onSelectVariant}
+            shadeLabel={product.shadeLabel}
           />
         )}
 

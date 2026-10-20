@@ -1,5 +1,7 @@
 from typing import Literal
+from urllib.parse import urlsplit
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -15,6 +17,27 @@ class Settings(BaseSettings):
     # apart on purpose: one is a security boundary, the other is a public address, and
     # the day the site sits behind a CDN they stop being the same string.
     website_base_url: str = "http://localhost:3000"
+    # The "write a review" link of the shop's Google Business Profile. Empty until the
+    # profile is verified — Google hands out the link only then — and while empty the
+    # thanks after pickup simply carries no review button.
+    google_review_url: str = ""
+
+    @field_validator("google_review_url")
+    @classmethod
+    def _review_url_is_https(cls, value: str) -> str:
+        """Refuses a malformed link at startup rather than at the first pickup.
+
+        Telegram rejects a message whose url button it can't parse — the whole message,
+        not the button — so a typo here would silently cost every customer the thanks
+        and be noticed only in the logs.
+        """
+        value = value.strip()
+        if not value:
+            return value
+        parts = urlsplit(value)
+        if parts.scheme != "https" or not parts.netloc or any(c.isspace() for c in value):
+            raise ValueError("GOOGLE_REVIEW_URL must be an https:// link or empty")
+        return value
 
     jwt_access_secret: str
     jwt_access_ttl_seconds: int = 900

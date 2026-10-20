@@ -61,6 +61,8 @@ export const AdminImportPanel: FC<IAdminImportPanelProps & IBasicStyling> = ({
           <code className={styles.code}>category</code> (слаг или название),{' '}
           <code className={styles.code}>volume</code> (объём в мл),{' '}
           <code className={styles.code}>shade</code> (тон, например 05 Rose),{' '}
+          <code className={styles.code}>shadeLabel</code> (как называть тона на странице товара:
+          Тон, Цвет, Оттенок или Аромат; пустая ячейка ничего не меняет),{' '}
           <code className={styles.code}>inStock</code>. Товар с уже существующим slug обновляется,
           новый - создаётся; незнакомая категория заводится сама.
         </Text>

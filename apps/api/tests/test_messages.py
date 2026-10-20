@@ -5,6 +5,7 @@ from unittest.mock import MagicMock
 from app.auth.models import User
 from app.cart.schemas import CartItemResponse, CartResponse
 from app.catalog.schemas import ProductResponse
+from app.catalog.shades import ShadeLabel
 from app.common.limits import MAX_WISHLIST_ITEMS
 from app.cycles.models import OrderCycle
 from app.orders.models import Order, OrderItem, OrderStatus
@@ -436,6 +437,7 @@ def _wishlist(names: list[str]) -> WishlistResponse:
                     category_id=None,
                     in_stock=True,
                     is_featured=False,
+                    shade_label=ShadeLabel.TONE,
                     images=[],
                     deleted_at=None,
                     created_at=datetime(2030, 5, 1, tzinfo=UTC),

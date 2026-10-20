@@ -254,6 +254,35 @@ def test_owner_contact_actions_put_the_orders_above_the_instagram(
     ]
 
 
+def test_order_completed_actions_put_the_google_review_on_top(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Благодарность просит впечатлений, и отзыв в Google — главное, что с ними можно
+    сделать: он и поднимает магазин на карте. Поэтому первой строкой."""
+    monkeypatch.setattr("app.config.settings.website_base_url", "https://lulu.example.com/")
+    monkeypatch.setattr("app.config.settings.google_review_url", "https://g.page/r/abc/review")
+
+    rows = keyboards.order_completed_actions().inline_keyboard
+
+    assert [[keyboards.button_target(b) for b in row] for row in rows] == [
+        ["https://g.page/r/abc/review"],
+        ["https://lulu.example.com/orders"],
+        [keyboards.INSTAGRAM_URL],
+    ]
+
+
+def test_order_completed_actions_without_a_review_link_are_the_contact_ones(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Пока профиль не подтверждён, ссылки на отзыв нет — и кнопки тоже нет."""
+    monkeypatch.setattr("app.config.settings.website_base_url", "https://lulu.example.com/")
+    monkeypatch.setattr("app.config.settings.google_review_url", "")
+
+    rows = keyboards.order_completed_actions().inline_keyboard
+
+    assert rows == keyboards.owner_contact_actions().inline_keyboard
+
+
 def test_order_actions_add_the_admin_link_when_the_site_is_addressable(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

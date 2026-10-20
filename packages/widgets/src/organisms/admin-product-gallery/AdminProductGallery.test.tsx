@@ -32,6 +32,19 @@ describe('AdminProductGallery', () => {
     expect(within(group('05 Rose')).getByText('только 50 мл')).toBeInTheDocument()
   })
 
+  it('называет группы и выбор в окне словом товара', async () => {
+    renderWidget(<AdminProductGallery {...feedAdminProductGallery()} shadeLabel="SCENT" />)
+
+    expect(group('Для всех ароматов')).toBeInTheDocument()
+    expect(group('Для нескольких ароматов')).toBeInTheDocument()
+
+    const dialog = await openPhoto(1)
+    expect(within(dialog).getByRole('button', { name: 'Все ароматы' })).toBeInTheDocument()
+    expect(
+      within(dialog).getByRole('button', { name: 'Только выбранные ароматы' })
+    ).toBeInTheDocument()
+  })
+
   it('узнаёт тон фото без учёта регистра, как сервер', () => {
     const feed = feedAdminProductGallery()
     const images = feed.images.map((image, index) =>

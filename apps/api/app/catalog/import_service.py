@@ -16,7 +16,7 @@ from sqlalchemy.orm import selectinload
 from app.catalog.models import Category, Product, ProductVariant
 from app.catalog.schemas import SLUG_PATTERN, ImportRowErrorResponse, ImportSummaryResponse
 from app.catalog.service import UNIQUE_VIOLATION, ProductService
-from app.catalog.shades import normalize_shade, shade_key
+from app.catalog.shades import SHADE_LABEL_NAMES, normalize_shade, parse_shade_label, shade_key
 from app.common.limits import (
     MAX_PRICE_CENTS,
     MAX_PRODUCT_VARIANTS,
@@ -39,6 +39,8 @@ HEADER_ALIASES = {
     # A shade column under any of the names a Russian price list gives it.
     "тон": "shade",
     "оттенок": "shade",
+    # What the shades are called on the page — the export's camelCase `shadeLabel`.
+    "shadelabel": "shade_label",
 }
 # The columns are String(255) in the database; past that the row failed at flush, which is
 # a 500 for the whole upload rather than one reported line.
@@ -615,6 +617,19 @@ class CatalogImportService:
             if shade is not None and len(shade) > MAX_SHADE_LENGTH:
                 raise ImportRowError(f"тон длиннее {MAX_SHADE_LENGTH} символов")
             fields["shade"] = shade
+        if "shade_label" in columns:
+            # An empty cell leaves the label alone rather than resetting it to "Тон": the
+            # export leaves it empty for a product without shades, where nothing shows it,
+            # and the round trip must not undo a choice the owner made for later.
+            raw_label = row.get("shade_label", "").strip()
+            if raw_label:
+                label = parse_shade_label(raw_label)
+                if label is None:
+                    allowed = ", ".join(SHADE_LABEL_NAMES.values())
+                    raise ImportRowError(
+                        f"неизвестное название тона: {raw_label!r} - одно из: {allowed}"
+                    )
+                fields["shade_label"] = label
         if "in_stock" in columns:
             fields["in_stock"] = parse_in_stock(row.get("in_stock"))
         if "description" in columns:

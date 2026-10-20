@@ -11,6 +11,7 @@ import type {
   IProductVariant,
   ISelectOption,
   IVariantTags,
+  ShadeLabel,
 } from '../../types'
 import { IconTrash } from '../../svg/icons'
 import { Alert } from '../../atoms/alert'
@@ -25,6 +26,7 @@ import { RichTextEditor } from '../../molecules/rich-text-editor'
 import { AdminProductGallery } from '../admin-product-gallery'
 import { categoryOptions } from '../../utils/categories'
 import { plainTextToHtml, richTextLength } from '../../utils/richText'
+import { SHADE_LABEL_FORMS, SHADE_LABELS, shadeLabelForms } from '../../utils/shadeLabel'
 import { slugify } from '../../utils/slug'
 import { formatVariant, shadeKey } from '../../utils/variants'
 import * as styles from './AdminProductForm.css'
@@ -303,6 +305,9 @@ export const AdminProductForm: FC<IAdminProductFormProps & IBasicStyling> = ({
   const [variants, setVariants] = useState<IVariantRow[]>(() => toVariantRows(product))
   const [categoryId, setCategoryId] = useState(product?.categoryId ?? '')
   const [isFeatured, setIsFeatured] = useState(product?.isFeatured ?? false)
+  const [shadeLabel, setShadeLabel] = useState<ShadeLabel>(product?.shadeLabel ?? 'TONE')
+  /* Слово, которым товар называет тона, во всех нужных падежах: «Цвет», «цветов». */
+  const shadeForms = shadeLabelForms(shadeLabel)
   const [isSubmitted, setIsSubmitted] = useState(false)
 
   /*
@@ -431,7 +436,9 @@ export const AdminProductForm: FC<IAdminProductFormProps & IBasicStyling> = ({
         other.priceCents !== priceCents
     )
 
-    return differs ? 'У тонов одного объёма цена одна - как в строке выше' : null
+    return differs
+      ? `У ${shadeForms.genitivePlural} одного объёма цена одна - как в строке выше`
+      : null
   }
 
   /** Тон: длина, и либо у всех строк, либо ни у одной. */
@@ -439,10 +446,12 @@ export const AdminProductForm: FC<IAdminProductFormProps & IBasicStyling> = ({
     const { shade } = parsedVariants[index]
 
     if (shade === null) {
-      return hasShades ? 'Укажите тон - у других строк он есть' : null
+      return hasShades ? `Укажите ${shadeForms.accusative} - у других строк он есть` : null
     }
 
-    return shade.length > SHADE_MAX_LENGTH ? `Тон длиннее ${SHADE_MAX_LENGTH} символов` : null
+    return shade.length > SHADE_MAX_LENGTH
+      ? `${shadeForms.title} длиннее ${SHADE_MAX_LENGTH} символов`
+      : null
   }
 
   /**
@@ -472,7 +481,9 @@ export const AdminProductForm: FC<IAdminProductFormProps & IBasicStyling> = ({
       return null
     }
 
-    return hasShades ? 'Такой объём с этим тоном уже есть выше' : 'Такой объём уже есть выше'
+    return hasShades
+      ? `Такой объём с этим ${shadeForms.instrumental} уже есть выше`
+      : 'Такой объём уже есть выше'
   }
 
   const errors = {
@@ -503,6 +514,11 @@ export const AdminProductForm: FC<IAdminProductFormProps & IBasicStyling> = ({
     price: validatePrice(index),
     volume: validateVolume(index),
     shade: validateShade(index),
+  }))
+
+  const shadeLabelOptions: ISelectOption[] = SHADE_LABELS.map(label => ({
+    value: label,
+    label: SHADE_LABEL_FORMS[label].title,
   }))
 
   // Деревом, как в фильтрах: подкатегория под своим разделом.
@@ -582,6 +598,7 @@ export const AdminProductForm: FC<IAdminProductFormProps & IBasicStyling> = ({
       categoryId: categoryId === '' ? null : categoryId,
       inStock: submittedVariants.some(variant => variant.inStock),
       isFeatured,
+      shadeLabel,
       images: pendingImages.map(({ image, file }) => {
         const tags = liveImageTags(typedVariants, image)
 
@@ -679,6 +696,21 @@ export const AdminProductForm: FC<IAdminProductFormProps & IBasicStyling> = ({
             один (патчи, тканевые маски), оставьте одну строку, а тон - пустым.
           </Text>
 
+          {/*
+            Не у каждого товара «тон»: у помады это цвет, у парфюма аромат.
+            Слово уходит в подпись колонки ниже и в ряд выбора на странице товара.
+          */}
+          <Select
+            className={styles.shadeLabel}
+            label="Как называть тона"
+            value={shadeLabel}
+            options={shadeLabelOptions}
+            hint="Так ряд выбора будет подписан на странице товара"
+            onChange={next => {
+              setShadeLabel(next as ShadeLabel)
+            }}
+          />
+
           {variants.map((row, index) => (
             <div key={row.id} className={styles.variantRow}>
               <Input
@@ -694,7 +726,7 @@ export const AdminProductForm: FC<IAdminProductFormProps & IBasicStyling> = ({
               />
 
               <Input
-                label="Тон"
+                label={shadeForms.title}
                 value={row.shade}
                 maxLength={SHADE_MAX_LENGTH}
                 hint={index === 0 ? 'Необязательно, например 05 Rose' : undefined}
@@ -810,6 +842,7 @@ export const AdminProductForm: FC<IAdminProductFormProps & IBasicStyling> = ({
           className={styles.mediaPanel}
           images={pendingImages.map(({ image }) => image)}
           variants={typedVariants}
+          shadeLabel={shadeLabel}
           productName={name}
           isBusy={isSubmitting}
           hint="Фото загрузятся вместе с товаром. Тона и объёмы берутся из таблицы вариантов."
@@ -870,12 +903,13 @@ export const AdminProductForm: FC<IAdminProductFormProps & IBasicStyling> = ({
             className={styles.mediaPanel}
             images={images}
             variants={product.variants}
+            shadeLabel={shadeLabel}
             productName={name}
             isBusy={isImageBusy}
             error={imageError}
             hint={
               hasUnsavedVariants
-                ? 'Новые тона и объёмы появятся здесь после «Сохранить»'
+                ? `Новые ${shadeForms.plural} и объёмы появятся здесь после «Сохранить»`
                 : undefined
             }
             onChange={next => {

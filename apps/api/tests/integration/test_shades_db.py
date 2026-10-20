@@ -19,6 +19,7 @@ from app.catalog.service import (
     ShadePricesDifferError,
     TooManyImagesError,
 )
+from app.catalog.shades import ShadeLabel
 from app.common.limits import MAX_PRODUCT_IMAGES, MAX_PRODUCT_VARIANTS
 from app.orders.service import OrdersService
 from tests.integration.factories import make_cycle, make_product, make_product_image, make_user
@@ -763,3 +764,63 @@ async def test_a_refused_row_does_not_hold_its_variant_against_the_next(
         "у товара есть тона - укажите тон в строке",
         "этот вариант товара уже был выше в файле",
     ]
+
+
+async def _shade_label(session: AsyncSession, slug: str) -> ShadeLabel:
+    session.expire_all()
+    product = (await session.execute(select(Product).where(Product.slug == slug))).scalar_one()
+    return product.shade_label
+
+
+async def test_a_product_calls_its_shades_tone_unless_told_otherwise(
+    db_session: AsyncSession,
+) -> None:
+    product = await _lipstick(db_session)
+
+    assert product_response(product).shade_label == ShadeLabel.TONE
+
+
+async def test_the_shades_label_is_set_and_changed_by_the_form(db_session: AsyncSession) -> None:
+    service = ProductService(db_session)
+    product = await service.create(
+        name="Парфюм",
+        slug="parfum",
+        description=None,
+        brand="Lulu",
+        price_cents=90000,
+        category_id=None,
+        in_stock=True,
+        shade_label=ShadeLabel.SCENT,
+    )
+    assert await _shade_label(db_session, "parfum") == ShadeLabel.SCENT
+
+    await service.update(product.id, {"shade_label": ShadeLabel.COLOR})
+
+    assert await _shade_label(db_session, "parfum") == ShadeLabel.COLOR
+
+
+async def test_the_import_reads_the_shades_label_in_russian(db_session: AsyncSession) -> None:
+    errors = await _import(
+        db_session,
+        "name,slug,price,shade,shadeLabel\n"
+        "Помада,pomada,700,Red,цвет\n"
+        "Помада,pomada,700,Pink,Цвет\n",
+    )
+
+    assert errors == []
+    assert await _shade_label(db_session, "pomada") == ShadeLabel.COLOR
+
+
+async def test_an_empty_shades_label_cell_leaves_the_label_alone(db_session: AsyncSession) -> None:
+    await _import(db_session, "name,slug,price,shadeLabel\nПарфюм,parfum,900,Аромат\n")
+
+    errors = await _import(db_session, "name,slug,price,shadeLabel\nПарфюм,parfum,950,\n")
+
+    assert errors == []
+    assert await _shade_label(db_session, "parfum") == ShadeLabel.SCENT
+
+
+async def test_an_unknown_shades_label_is_a_row_error(db_session: AsyncSession) -> None:
+    errors = await _import(db_session, "name,slug,price,shadeLabel\nПомада,pomada,700,Вкус\n")
+
+    assert errors == ["неизвестное название тона: 'Вкус' - одно из: Тон, Цвет, Оттенок, Аромат"]

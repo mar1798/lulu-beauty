@@ -28,6 +28,7 @@ import {
   taggableVolumes,
   variantShades,
 } from '../../utils/variants'
+import { type IShadeLabelForms, shadeLabelForms } from '../../utils/shadeLabel'
 import { formatVolume } from '../../utils/volume'
 import * as styles from './AdminProductGallery.css'
 
@@ -150,7 +151,12 @@ const groupKeyOf = (
   return 'all'
 }
 
-const buildGroups = (axis: IAxis, shades: string[], volumes: number[]): IGroup[] => {
+const buildGroups = (
+  axis: IAxis,
+  shades: string[],
+  volumes: number[],
+  forms: IShadeLabelForms
+): IGroup[] => {
   if (axis === null) {
     return [{ key: 'all', title: 'Все фото', tags: ANY }]
   }
@@ -160,7 +166,7 @@ const buildGroups = (axis: IAxis, shades: string[], volumes: number[]): IGroup[]
     ? shades.map(shade => ({
         key: `shade:${shadeKey(shade) ?? ''}`,
         title: shade,
-        hint: 'Своих фото нет - при этом тоне покажутся общие',
+        hint: `Своих фото нет - при этом ${forms.prepositional} покажутся общие`,
         tags: { volumesMl: [], shades: [shade], hidden: false },
       }))
     : volumes.map(volume => ({
@@ -173,16 +179,16 @@ const buildGroups = (axis: IAxis, shades: string[], volumes: number[]): IGroup[]
   return [
     {
       key: 'all',
-      title: isShade ? 'Для всех тонов' : 'Для всех объёмов',
+      title: isShade ? `Для всех ${forms.genitivePlural}` : 'Для всех объёмов',
       hint: isShade
-        ? 'Видны при любом тоне - после фото самого тона'
+        ? `Видны при любом ${forms.prepositional} - после фото самого ${forms.genitive}`
         : 'Видны при любом объёме - после фото самого объёма',
       tags: ANY,
     },
     ...own,
     {
       key: 'several',
-      title: isShade ? 'Для нескольких тонов' : 'Для нескольких объёмов',
+      title: isShade ? `Для нескольких ${forms.genitivePlural}` : 'Для нескольких объёмов',
       hint: isShade
         ? 'Например, палетка или два тюбика рядом'
         : 'Фото, отмеченные на нескольких объёмах',
@@ -256,9 +262,12 @@ export const AdminProductGallery: FC<IAdminProductGalleryProps & IBasicStyling> 
   isBusy = false,
   error,
   hint,
+  shadeLabel,
   className,
 }) => {
   const titleId = useId()
+  /* «Тон», «Цвет», «Аромат» — как товар называет свои тона, во всех нужных падежах. */
+  const forms = shadeLabelForms(shadeLabel)
   const inputRef = useRef<HTMLInputElement>(null)
   /** Группа, в которую добавляются выбранные файлы: кнопка «Добавить» ставит её перед диалогом. */
   const targetRef = useRef<IVariantTags>(ANY)
@@ -272,7 +281,7 @@ export const AdminProductGallery: FC<IAdminProductGalleryProps & IBasicStyling> 
   const axis = axisOf(variants)
   const shades = variantShades(variants)
   const volumes = taggableVolumes(variants)
-  const groups = buildGroups(axis, shades, volumes)
+  const groups = buildGroups(axis, shades, volumes, forms)
   const keyOf = (image: IProductImage): string => groupKeyOf(image, axis, shades, volumes)
   const isFull = images.length >= MAX_IMAGES
 
@@ -399,7 +408,9 @@ export const AdminProductGallery: FC<IAdminProductGalleryProps & IBasicStyling> 
   /** Что не так с набранным, словами; `null` — можно сохранять. */
   const draftProblem = (current: IDraft): string | null => {
     if (current.scope === 'some' && current.picked.length === 0) {
-      return axis === 'volume' ? 'Отметьте хотя бы один объём' : 'Отметьте хотя бы один тон'
+      return axis === 'volume'
+        ? 'Отметьте хотя бы один объём'
+        : `Отметьте хотя бы один ${forms.accusative}`
     }
 
     if (current.scope !== 'hidden' && current.isVolumeLimited && current.volumes.length === 0) {
@@ -410,7 +421,7 @@ export const AdminProductGallery: FC<IAdminProductGalleryProps & IBasicStyling> 
 
     return tags.hidden === true || fitsSomeVariant(variants, tags.volumesMl, tags.shades)
       ? null
-      : 'Такого варианта нет: ни в одном из отмеченных объёмов нет отмеченных тонов'
+      : `Такого варианта нет: ни в одном из отмеченных объёмов нет отмеченных ${forms.genitivePlural}`
   }
 
   const saveEditor = (): void => {
@@ -643,14 +654,16 @@ export const AdminProductGallery: FC<IAdminProductGalleryProps & IBasicStyling> 
   const scopeChoices: Array<{ scope: IScope; label: string }> = [
     {
       scope: 'all',
-      label: axis === 'shade' ? 'Все тона' : axis === 'volume' ? 'Все объёмы' : 'Показывать',
+      label:
+        axis === 'shade' ? `Все ${forms.plural}` : axis === 'volume' ? 'Все объёмы' : 'Показывать',
     },
     ...(axis === null
       ? []
       : [
           {
             scope: 'some' as const,
-            label: axis === 'shade' ? 'Только выбранные тона' : 'Только выбранные объёмы',
+            label:
+              axis === 'shade' ? `Только выбранные ${forms.plural}` : 'Только выбранные объёмы',
           },
         ]),
     { scope: 'hidden', label: 'Скрыть' },
@@ -803,7 +816,7 @@ export const AdminProductGallery: FC<IAdminProductGalleryProps & IBasicStyling> 
         </Heading>
         <Text size="sm" tone="secondary">
           {axis === 'shade'
-            ? 'Добавляйте фото прямо в группу тона - оно сразу к нему привязано. Нажмите на фото, чтобы поменять тон, описание или скрыть его.'
+            ? `Добавляйте фото прямо в группу ${forms.genitive} - оно сразу к нему привязано. Нажмите на фото, чтобы поменять ${forms.accusative}, описание или скрыть его.`
             : axis === 'volume'
               ? 'Добавляйте фото прямо в группу объёма - оно сразу к нему привязано. Нажмите на фото, чтобы поменять привязку, описание или скрыть его.'
               : 'Первое фото - главное. Нажмите на фото, чтобы поменять описание или скрыть его.'}

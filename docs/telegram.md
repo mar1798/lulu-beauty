@@ -377,6 +377,14 @@ at a time. A timer picking `CANCELLED_BY_OWNER` on their behalf would be the sho
 смогла достать" about goods nobody had looked for, and an order three weeks old may still be
 one a slow owner is about to confirm.
 
+**The thanks after pickup asks for a Google review.** `order_completed_actions` puts
+«⭐ Оставить отзыв в Google» above the orders link and the Instagram, pointing at
+`GOOGLE_REVIEW_URL`. Reviews on the Business Profile are what rank the shop on the map for a
+bare «косметика», and the moment the goods are in hand is the one moment to ask. Only there:
+a review button under a cancellation would be asking at the worst time. With the variable
+empty, which is how it stays until Google verifies the profile and hands out the link, the
+button drops out and the keyboard is the contact one unchanged.
+
 Message copy lives in `messages.py` and is Russian. The bot omits link buttons pointing at
 `localhost` — Telegram rejects those — so those buttons simply don't appear in local dev.
 On an `https` site every link to it is a **`web_app` button**, not a url one

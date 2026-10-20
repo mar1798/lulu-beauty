@@ -624,6 +624,7 @@ export const feedProduct = (overrides: Partial<IProduct> = {}): IProduct => {
     categoryId: faker.string.uuid(),
     inStock: true,
     isFeatured: false,
+    shadeLabel: 'TONE',
     images: [feedProductImageDto(true, 0), feedProductImageDto(false, 1)],
     variants: [{ id: faker.string.uuid(), volumeMl, priceCents, inStock: true }],
     deletedAt: null,

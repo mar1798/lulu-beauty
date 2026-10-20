@@ -299,6 +299,29 @@ describe('AdminProductForm и тона', () => {
     expect(onSubmit).not.toHaveBeenCalled()
     expect(screen.getByText('Укажите тон - у других строк он есть')).toBeInTheDocument()
   })
+
+  it('называет тона выбранным словом и отдаёт его с сабмитом', async () => {
+    const onSubmit = vi.fn()
+
+    renderWidget(<AdminProductForm {...feedAdminProductForm()} onSubmit={onSubmit} />)
+
+    await userEvent.click(screen.getByRole('combobox', { name: 'Как называть тона' }))
+    await userEvent.click(screen.getByRole('option', { name: 'Цвет' }))
+
+    // Колонка и ошибки говорят тем же словом, что увидит покупатель.
+    // Сначала цвет, потом строка: у товара с тонами новая строка — копия объёма и цены.
+    await userEvent.type(screen.getByRole('textbox', { name: 'Цвет' }), 'Red')
+    await userEvent.click(screen.getByRole('button', { name: 'Добавить вариант' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Сохранить' }))
+
+    expect(onSubmit).not.toHaveBeenCalled()
+    expect(screen.getByText('Укажите цвет - у других строк он есть')).toBeInTheDocument()
+
+    await userEvent.type(screen.getAllByRole('textbox', { name: 'Цвет' })[1], 'Pink')
+    await userEvent.click(screen.getByRole('button', { name: 'Сохранить' }))
+
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ shadeLabel: 'COLOR' }))
+  })
 })
 
 describe('AdminProductForm и фото', () => {
