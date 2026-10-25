@@ -302,28 +302,43 @@ const OrderPage: React.FC = () => {
           // не смотрят на список, и вернуть надо понимая, что именно убрали.
           const name = item?.productName
 
-          void runAction(
-            () => removeMyOrderItem(order.id, itemId),
-            'Позиция убрана из заявки',
-            'order.item.remove',
-            itemId,
-            {
-              tone: 'warning',
-              subject: name,
-              undo:
-                variantId === null
-                  ? undefined
-                  : () => {
-                      void runAction(
-                        () => addMyOrderItem(order.id, variantId, quantity),
-                        'Позиция снова в заявке',
-                        'order.item.add',
-                        null,
-                        { subject: name }
-                      )
-                    },
+          void (async (): Promise<void> => {
+            const confirmed = await confirm({
+              title: 'Удалить товар из заявки?',
+              description:
+                name === undefined ? undefined : `«${name}» больше не будет в этой заявке`,
+              confirmLabel: 'Удалить',
+              cancelLabel: 'Оставить',
+              tone: 'danger',
+            })
+
+            if (!confirmed) {
+              return
             }
-          )
+
+            await runAction(
+              () => removeMyOrderItem(order.id, itemId),
+              'Позиция убрана из заявки',
+              'order.item.remove',
+              itemId,
+              {
+                tone: 'warning',
+                subject: name,
+                undo:
+                  variantId === null
+                    ? undefined
+                    : () => {
+                        void runAction(
+                          () => addMyOrderItem(order.id, variantId, quantity),
+                          'Позиция снова в заявке',
+                          'order.item.add',
+                          null,
+                          { subject: name }
+                        )
+                      },
+              }
+            )
+          })()
         }}
         /*
           Добавление товара прямо в заявку, а не через корзину: корзина копится
