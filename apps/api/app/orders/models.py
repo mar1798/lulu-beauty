@@ -1,6 +1,7 @@
 import enum
 import uuid
 from datetime import datetime, timedelta
+from typing import Any
 
 from sqlalchemy import (
     BigInteger,
@@ -11,10 +12,12 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    select,
     text,
 )
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.sql.elements import ColumnElement
 
 from app.common.mixins import TimestampMixin, UUIDPrimaryKeyMixin
 from app.db import Base
@@ -164,7 +167,7 @@ class Order(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     request_id: Mapped[uuid.UUID | None] = mapped_column()
 
     items: Mapped[list["OrderItem"]] = relationship(
-        back_populates="order", cascade="all, delete-orphan"
+        back_populates="order", cascade="all, delete-orphan", order_by=lambda: _item_order()
     )
 
 
@@ -200,3 +203,22 @@ class OrderItem(UUIDPrimaryKeyMixin, Base):
     quantity: Mapped[int] = mapped_column(Integer)
 
     order: Mapped["Order"] = relationship(back_populates="items")
+
+
+def _item_order() -> list[ColumnElement[Any]]:
+    """The cart's order — by name, then the volumes the way the owner sorted them.
+
+    Without an ORDER BY the lines came back in heap order, and Postgres writes an
+    UPDATE as a new row version elsewhere in the table, so changing a quantity moved
+    the line. The variant's position is looked up rather than snapshotted: it is the
+    owner's to change, and a line whose variant is gone sorts last within its name.
+    The id breaks the remaining ties so the order never depends on the heap.
+    """
+    from app.catalog.models import ProductVariant
+
+    variant_position = (
+        select(ProductVariant.sort_order)
+        .where(ProductVariant.id == OrderItem.variant_id)
+        .scalar_subquery()
+    )
+    return [OrderItem.product_name.asc(), variant_position.asc().nulls_last(), OrderItem.id.asc()]

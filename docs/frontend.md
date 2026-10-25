@@ -317,7 +317,9 @@ key)` answers "prefilled on this page and rendered less than 60 s ago" — `useA
   button: that add would be refused. Restoring reports its own result with a second toast, and pressing the button
   closes the first one immediately. Removals that are a step inside a larger move, not a
   user's decision — `EditableOrderNotice` emptying the cart into an open order — call the
-  context directly and stay silent.
+  context directly and stay silent. Removing an item from a submitted order also asks first
+  (`confirm`, «Удалить товар из заявки?»): it changes what the owner sees, while the cart and
+  the wishlist only change the person's own draft.
 - **Anything the session decides must not resize the page.** All pages are static, so the
   first frame does not know guest from signed-in, and `/cart`, `/wishlist` and `/login` used
   to swap a short "войдите" for a full list half a second later — the footer rode along, and

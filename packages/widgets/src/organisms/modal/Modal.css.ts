@@ -64,6 +64,5 @@ export const body = style({
 
 export const footer = style({
   ...flexRow(8),
-  flexWrap: 'wrap',
   justifyContent: 'flex-end',
 })
