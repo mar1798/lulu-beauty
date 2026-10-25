@@ -118,7 +118,7 @@ def test_owner_message_names_the_order_and_keeps_the_text_as_written() -> None:
 
     assert "#a1b2c3d4" in text
     assert "Крем <50 мл> закончился" in text
-    assert "Ответьте на это сообщение или напишите в Instagram." in text
+    assert "Ответьте на это сообщение или напишите в Instagram" in text
 
 
 def test_customer_reply_header_names_the_order_only_when_there_is_one() -> None:
@@ -358,7 +358,7 @@ def test_order_created_for_customer_lists_the_order_and_what_can_be_done() -> No
     assert "Для вас оформлена заявка #a1b2c3d4 в сборе «Июнь»" in open_text
     assert "Крем &lt;SPF&gt;" in open_text
     assert "<b>20 сом</b>" in open_text
-    assert "поменять на сайте" in open_text
+    assert "изменить состав заказа" in open_text
     assert "отменить на сайте" in closed_text
     assert "поменять" not in closed_text
     # Short dash in copy, never the long one.

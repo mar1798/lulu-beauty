@@ -247,6 +247,9 @@ const nextConfig = {
     return [{ source: '/files/:path*', destination: `${apiBaseUrl}/files/:path*` }]
   },
   allowedDevOrigins: ALLOWED_DEV_ORIGINS,
+  // Значок Next в углу страницы в режиме разработки: перекрывает вёрстку и
+  // мешает скриншотам. Ошибки сборки и рантайма оверлей показывает и без него.
+  devIndicators: false,
   reactStrictMode: true,
   transpilePackages: ['widgets'],
   /**
