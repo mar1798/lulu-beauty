@@ -329,6 +329,9 @@ class OrdersService:
         ordered_ids = [cart_item.id for cart_item, _, _ in rows]
         await self._session.execute(delete(CartItem).where(CartItem.id.in_(ordered_ids)))
         await self._session.flush()
+        # The lines went in in whatever order the cart rows came back; read them back
+        # in `Order.items` order, the one every later fetch of this order has.
+        await self._session.refresh(order, attribute_names=["items"])
         return order
 
     async def admin_order_cycles(self, user_id: uuid.UUID | None = None) -> list[AdminOrderCycle]:
@@ -701,6 +704,9 @@ class OrdersService:
 
         self._recalculate_total(order)
         await self._session.flush()
+        # The append put the new line last; read the lines back so the response already
+        # has them in `Order.items` order instead of moving the line on the next fetch.
+        await self._session.refresh(order, attribute_names=["items"])
         return order
 
     async def set_item_quantity(

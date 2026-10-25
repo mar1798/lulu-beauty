@@ -456,6 +456,56 @@ async def test_add_item_appends_a_line_and_recalculates(db_session: AsyncSession
     assert updated.total_cents == 1000 + 5000
 
 
+def _lines(order: Order) -> list[str]:
+    return [f"{item.product_name} {item.product_volume_ml}" for item in order.items]
+
+
+async def test_items_come_in_cart_order_and_stay_put_after_a_quantity_change(
+    db_session: AsyncSession,
+) -> None:
+    """By name, then the volumes as the owner sorted them — and an UPDATE moves nothing.
+
+    The lines used to come back in heap order, and Postgres writes an updated row
+    elsewhere in the table, so changing a quantity sent the line to the end.
+    """
+    user = await make_user(db_session)
+    await make_cycle(db_session)
+    cart = CartService(db_session)
+    serum = await make_product(
+        db_session, name="Serum", variants=[(50, 3000, True), (30, 2000, True)]
+    )
+    for name in ("Toner", "Balm"):
+        product = await make_product(db_session, name=name, volume_ml=100)
+        await cart.add_item(user.id, variant_id(product), 1)
+    await cart.add_item(user.id, variant_id(serum, 30), 1)
+    await cart.add_item(user.id, variant_id(serum, 50), 1)
+    service = OrdersService(db_session)
+    order = await service.checkout(user.id, note=None)
+    user_id, order_id = user.id, order.id
+    item_ids = [item.id for item in order.items]
+
+    expected = ["Balm 100", "Serum 50", "Serum 30", "Toner 100"]
+    assert _lines(order) == expected
+
+    for item_id in item_ids:
+        await service.set_item_quantity(user_id, order_id, item_id, 3)
+        # A fresh read, not the collection already in the session.
+        db_session.expire_all()
+        assert _lines(await service.get_for_user(user_id, order_id)) == expected
+
+
+async def test_add_item_puts_the_new_line_in_place_in_the_response(
+    db_session: AsyncSession,
+) -> None:
+    user_id, order = await _order_with_items(db_session, lines=2)
+    product = await make_product(db_session, name="Product 0a")
+    service = OrdersService(db_session)
+
+    updated = await service.add_item(user_id, order.id, variant_id(product), 1)
+
+    assert [item.product_name for item in updated.items] == ["Product 0", "Product 0a", "Product 1"]
+
+
 async def test_add_item_merges_into_the_line_that_is_already_there(
     db_session: AsyncSession,
 ) -> None:
