@@ -146,7 +146,7 @@ def cart_last_chance(cycle: OrderCycle) -> str:
     return (
         f"⏳ Последний шанс: сбор{cycle_mention(cycle)} закрывается "
         f"{format_deadline(cycle.deadline_at)}.\n"
-        "Товары из корзины удалятся, если до этого времени не оформить заявку."
+        "Товары из корзины удалятся, если до этого времени не оформить заявку"
     )
 
 
@@ -158,17 +158,17 @@ def cart_moved_to_wishlist(title: str, saved: int, dropped: int) -> str:
     открывает пустую корзину и считает, что сайт потерял его выбор.
     """
     lines = [
-        f"Сбор {title} закрыт - заявку по нему вы не оформили.",
+        f"Сбор {title} закрыт - заявку по нему вы не оформили",
         # Обещать «вернётся в корзину» нельзя: обратного переноса нет, товары
         # добавляются в корзину поштучно, вручную, и только при открытом сборе.
         f"Сохранили {saved} {plural(saved, 'товар', 'товара', 'товаров')} из корзины "
-        "в избранном: список дождётся следующего сбора.",
+        "в избранном: список дождётся следующего сбора",
     ]
     if dropped:
         fit = plural(dropped, "не поместился", "не поместились", "не поместилось")
         lines.append(
             f"Ещё {dropped} {plural(dropped, 'товар', 'товара', 'товаров')} {fit} "
-            f"- в избранном уже {MAX_WISHLIST_ITEMS} позиций."
+            f"- в избранном уже {MAX_WISHLIST_ITEMS} позиций"
         )
     return "\n".join(lines)
 
@@ -268,7 +268,7 @@ def account_deleted_for_owner(order_ids: Sequence[uuid.UUID]) -> str:
         [
             "🗑 Покупатель удалил аккаунт",
             f"{plural(count, 'Отменена заявка', 'Отменены заявки', 'Отменены заявки')}: {listed}",
-            "Эти позиции больше не нужно закупать.",
+            "Эти позиции больше не нужно закупать",
         ]
     )
 
@@ -279,11 +279,14 @@ _ORDER_STATUS_NEWS = {
     OrderStatus.PENDING: "снова ждёт подтверждения - мы вернули её в работу",
     # CONFIRMED is not here: it gets a message of its own, with the bill and the
     # requisites (`order_confirmed`), sent instead of a one-line status update.
-    OrderStatus.READY: "готова к выдаче. О получении договоритесь лично.",
+    OrderStatus.READY: (
+        "Здравствуйте! Ваш заказ готов к выдаче🛍\n"
+        "Свяжемся с вами как можно скорее чтобы договориться о получении!😇"
+    ),
     # COMPLETED is not here either: the thanks after pickup is a letter of its own
     # (`order_completed`), not a status line.
     OrderStatus.CANCELLED_BY_OWNER: (
-        "отменена Sululu. Если это ошибка - напишите в Instagram Sululu."
+        "отменена Sululu. Если это ошибка - напишите в Instagram Sululu"
     ),
     # Про свою же отмену покупателю сообщать нечего: он её и сделал, а уведомление
     # выглядело бы так, будто её сделал кто-то другой.
@@ -299,7 +302,7 @@ def order_completed(order: Order) -> str:
         "Спасибо, что выбрали Sululu и доверили нам свой заказ! 🫶🏻\n\n"
         "Надеюсь, всё пришло в целости и сохранности и вы остались довольны покупкой\n\n"
         "Буду очень рада, если поделитесь своими впечатлениями! Для меня это особенно ценно, "
-        "ведь Sululu только начинает свой путь ✨\n\n"
+        "ведь Sululu только начинает свой путь✨\n\n"
         "До новых заказов!\n"
         "С любовью, Sululu💞"
     )
@@ -332,9 +335,9 @@ def order_created_for_customer(order: Order, cycle: OrderCycle | None, *, is_ope
     """
     where = f" в сборе {html.escape(cycle_title(cycle))}" if cycle else ""
     action = (
-        "Пока сбор открыт, состав можно поменять на сайте."
+        "Пока сбор открыт, вы можете изменить состав заказа или отменить заявку на сайте"
         if is_open
-        else "Если заявка не нужна - её можно отменить на сайте."
+        else "Если заявка не нужна - её можно отменить на сайте"
     )
     return "\n".join(
         [
@@ -344,7 +347,8 @@ def order_created_for_customer(order: Order, cycle: OrderCycle | None, *, is_ope
             "",
             f"Сумма: <b>{format_price(order.total_cents, grouped=False)}</b>",
             "",
-            "Заявка ожидает подтверждения. Когда подтвердим - пришлём сумму к оплате и реквизиты.",
+            "Ваша заявка принята и ожидает подтверждения 💜",
+            "Как только мы её подтвердим, отправим вам итоговую сумму и реквизиты для оплаты",
             action,
         ]
     )
@@ -401,8 +405,9 @@ def order_confirmed(order: Order, *, first_cycle: bool) -> str:
             "Если всё верно, можете произвести оплату по реквизитам:",
             "",
             PAYMENT_DETAILS,
+            "",
             "После оплаты, пожалуйста, отправьте сюда чек🤍",
-            "Доставка будет осуществлена в течение 3 рабочих дней🫶🫧",
+            "Доставка будет осуществлена в течение 3-5 рабочих дней🫶",
             "Спасибо за доверие к <b>Sululu</b>!✨",
         ]
     )
@@ -411,7 +416,7 @@ def order_confirmed(order: Order, *, first_cycle: bool) -> str:
 def receipt_prompt(order_id: uuid.UUID) -> str:
     return (
         f"Пришлите чек об оплате заявки {order_reference(order_id)} ответом на это сообщение"
-        " - фото или PDF-файлом."
+        " - фото или PDF-файлом"
     )
 
 
@@ -420,26 +425,26 @@ def receipt_too_many(order_id: uuid.UUID) -> str:
     (`payments.service.MAX_PENDING_RECEIPTS`): место освобождает ответ владельца."""
     return (
         f"По заявке {order_reference(order_id)} уже есть чеки, которые ждут проверки. "
-        "Как только мы их сверим, я напишу сюда - тогда при необходимости пришлите новый."
+        "Как только мы их сверим, я напишу сюда - тогда при необходимости пришлите новый"
     )
 
 
 def receipt_received(order_id: uuid.UUID) -> str:
     return (
         f"Спасибо! Чек по заявке {order_reference(order_id)} получен🤍\n"
-        "Как только мы сверим оплату, я напишу сюда."
+        "Как только мы сверим оплату, я напишу сюда"
     )
 
 
 def receipt_duplicate(order_id: uuid.UUID) -> str:
-    return f"Этот чек по заявке {order_reference(order_id)} уже у нас - сверяем оплату."
+    return f"Этот чек по заявке {order_reference(order_id)} уже у нас - сверяем оплату"
 
 
 RECEIPT_NOTHING_AWAITING = (
     "Сейчас у вас нет заявок, которые ждут оплаты. Сумму и реквизиты я пришлю сюда, "
-    "когда заявку подтвердят."
+    "когда заявку подтвердят"
 )
-RECEIPT_UNSUPPORTED = "Чек нужен фотографией или PDF-файлом - другие файлы я не принимаю."
+RECEIPT_UNSUPPORTED = "Чек нужен фотографией или PDF-файлом - другие файлы я не принимаю"
 RECEIPT_WHICH_ORDER = "За какую заявку этот чек?"
 # In the input field while the receipt prompt waits for its reply.
 RECEIPT_PLACEHOLDER = "Фото или PDF чека"
@@ -452,7 +457,7 @@ def receipt_order_choice(order: Order) -> str:
 
 def receipt_filed(order_id: uuid.UUID) -> str:
     """Replaces the «за какую заявку» question once it has been answered."""
-    return f"Чек отнесён к заявке {order_reference(order_id)}."
+    return f"Чек отнесён к заявке {order_reference(order_id)}"
 
 
 def receipt_for_owner(order: Order, customer: User | None) -> str:
@@ -475,7 +480,7 @@ def payment_resolution(*, accepted: bool) -> str:
 def payment_accepted(order: Order) -> str:
     return (
         f"Оплата по заявке {order_reference(order.id)} получена - спасибо!🤍\n"
-        "Напишу сюда, когда заказ будет готов."
+        "Свяжемся с вами когда заказ будет готов"
     )
 
 
@@ -483,7 +488,7 @@ def payment_rejected(order: Order) -> str:
     return (
         f"Не получилось сверить оплату по заявке {order_reference(order.id)} с этим чеком. "
         f"Проверьте, пожалуйста, сумму ({format_price(order.total_cents)}) и пришлите чек "
-        "ещё раз - или напишите в Instagram Sululu."
+        "ещё раз - или напишите в Instagram Sululu"
     )
 
 
@@ -504,7 +509,7 @@ def order_deleted(order_id: uuid.UUID, status: OrderStatus) -> str | None:
         return None
     return (
         f"Заявка {order_reference(order_id)} удалена Sululu. "
-        "Если это ошибка - напишите в Instagram Sululu."
+        "Если это ошибка - напишите в Instagram Sululu"
     )
 
 
@@ -531,7 +536,7 @@ CUSTOMER_REPLY_HEADERS = (
 )
 
 # Под каждым письмом владельца — и под каждой его частью, если оно длинное.
-_OWNER_MESSAGE_FOOTER = "\n\nОтветьте на это сообщение или напишите в Instagram."
+_OWNER_MESSAGE_FOOTER = "\n\nОтветьте на это сообщение или напишите в Instagram"
 
 
 def owner_message(reference: str | None, text: str | None, *, wish: bool = False) -> str:
@@ -580,8 +585,8 @@ def reply_prompt(order_id: uuid.UUID | None) -> str:
     пишут магазину вообще.
     """
     if order_id is None:
-        return f"{SHOP_PROMPT_HEADER} - я передам его."
-    return f"{REPLY_PROMPT_HEADER} по заявке {order_reference(order_id)} - я передам его."
+        return f"{SHOP_PROMPT_HEADER} - я передам его"
+    return f"{REPLY_PROMPT_HEADER} по заявке {order_reference(order_id)} - я передам его"
 
 
 # In the input field while the reply prompt waits for its answer.
@@ -620,22 +625,22 @@ def customer_reply_for_owner(reference: str | None, customer: User) -> str:
 
 # Покупателю, чей ответ ушёл владельцу. Без него ответ выглядит канувшим: на
 # остальное бот отвечает сам, и тишину человек прочтёт как «не дошло».
-CUSTOMER_REPLY_FORWARDED = "Передал ваш ответ Sululu."
+CUSTOMER_REPLY_FORWARDED = "Передал ваш ответ Sululu"
 
 # Владельцу — исход его ответа покупателю прямо в чате (`handlers.handle_owner_reply`).
-OWNER_REPLY_SENT = "Отправил покупателю."
+OWNER_REPLY_SENT = "Отправил покупателю"
 OWNER_REPLY_CUSTOMER_GONE = (
-    "Не нашёл, кому отправить: покупатель удалил аккаунт или отвязал чат от бота."
+    "Не нашёл, кому отправить: покупатель удалил аккаунт или отвязал чат от бота"
 )
 OWNER_REPLY_BLOCKED = (
-    "Покупатель заблокировал бота - через бота сообщение не дойдёт, напишите ему в Instagram."
+    "Покупатель заблокировал бота - через бота сообщение не дойдёт, напишите ему в Instagram"
 )
-OWNER_REPLY_FAILED = "Telegram не принял сообщение. Попробуйте ещё раз через минуту."
+OWNER_REPLY_FAILED = "Telegram не принял сообщение. Попробуйте ещё раз через минуту"
 # Ответ на сообщение, о котором бот не помнит, от кого оно: пришло до того, как он
 # начал это записывать (`handlers.handle_owner_reply`).
 OWNER_REPLY_UNTRACKED = (
     "Не знаю, от кого это сообщение, - ответить на него здесь не получится. "
-    "Напишите покупателю кнопкой у заявки в админке."
+    "Напишите покупателю кнопкой у заявки в админке"
 )
 
 
@@ -643,7 +648,7 @@ def owner_reply_wish_unreachable(phone: str) -> str:
     """Номер с пожелания не ведёт к привязанному чату: покупатель отвязал бота, или
     пожелание оставлено ещё гостем, до того как форма стала требовать вход. Звонок —
     единственный путь. Номер повторён, чтобы не листать к пожеланию."""
-    return f"Этот покупатель не в боте - через бота ответ не дойдёт. Позвоните ему: {phone}."
+    return f"Этот покупатель не в боте - через бота ответ не дойдёт. Позвоните ему: {phone}"
 
 
 def shop_message_too_soon(interval_seconds: int, seconds_left: int) -> str:
@@ -674,7 +679,7 @@ def order_item_repriced(
         f"В заявке {order_reference(order_id)} изменилась цена.\n"
         f"{product_name}: {direction} с {format_price(old_price_cents)} "
         f"до {format_price(new_price_cents)}.\n"
-        f"Сумма заявки теперь {format_price(total_cents)}."
+        f"Сумма заявки теперь {format_price(total_cents)}"
     )
 
 
@@ -702,7 +707,7 @@ def orders_repriced(changes: Sequence[OrderPriceChange]) -> str:
         f"{product_label(change.product_name, change.product_volume_ml, change.product_shade)}: "
         f"{_price_direction(change.old_price_cents, change.new_price_cents)} "
         f"с {format_price(change.old_price_cents)} до {format_price(change.new_price_cents)}. "
-        f"Сумма заявки теперь {format_price(change.total_cents)}."
+        f"Сумма заявки теперь {format_price(change.total_cents)}"
         for change in changes
     )
     return "\n".join(lines)
@@ -741,7 +746,7 @@ def orders_items_dropped(drops: Sequence[OrderItemDrop]) -> str:
             if order_drops[0].is_cancelled
             else f"сумма заявки теперь {format_price(order_drops[0].total_cents)}"
         )
-        lines.append(f"{order_reference(order_id)} - убран {removed}: {names}; {tail}.")
+        lines.append(f"{order_reference(order_id)} - убран {removed}: {names}; {tail}")
     return "\n".join(lines)
 
 
@@ -754,7 +759,7 @@ def order_item_removed(order_id: uuid.UUID, product_name: str, total_cents: int)
     return (
         f"Из заявки {order_reference(order_id)} убран товар: {product_name} - "
         "мы сняли его с продажи.\n"
-        f"Сумма заявки теперь {format_price(total_cents)}."
+        f"Сумма заявки теперь {format_price(total_cents)}"
     )
 
 
@@ -767,7 +772,7 @@ def order_cancelled_last_item_removed(order_id: uuid.UUID, product_name: str) ->
     return (
         f"Заявка {order_reference(order_id)} отменена: мы сняли с продажи "
         f"единственный товар в ней - {product_name}.\n"
-        "Соберите новую заявку, пока сбор открыт."
+        "Соберите новую заявку, пока сбор открыт"
     )
 
 
@@ -792,10 +797,10 @@ def stale_orders_for_owner(cycle: OrderCycle, count: int) -> str:
     orders = plural(count, "заявка", "заявки", "заявок")
     waiting = plural(count, "ждёт", "ждут", "ждут")
     decision = (
-        "Подтвердите её, если всё-таки закупили, иначе отмените - и человек перестанет ждать."
+        "Подтвердите её, если всё-таки закупили, иначе отмените - и человек перестанет ждать"
         if count == 1
         else "Подтвердите те, что вы всё-таки закупили, остальные отмените - "
-        "и люди перестанут ждать."
+        "и люди перестанут ждать"
     )
     return (
         f"В сборе {cycle_title(cycle)} - {count} {orders} без ответа, {waiting} "
@@ -805,8 +810,8 @@ def stale_orders_for_owner(cycle: OrderCycle, count: int) -> str:
 
 def cycle_opened(cycle: OrderCycle) -> str:
     return (
-        f"Открыт новый сбор{cycle_mention(cycle)}.\n"
-        f"Заявки принимаются до {format_deadline(cycle.deadline_at)}."
+        f"Открыт новый сбор{cycle_mention(cycle)} в Sululu\n"
+        f"Заявки принимаются до {format_deadline(cycle.deadline_at)}"
     )
 
 
@@ -826,9 +831,9 @@ def cycle_deadline_changed(cycle: OrderCycle, previous_deadline_at: datetime) ->
         f"Стало: {format_deadline(cycle.deadline_at)}.",
     ]
     if moved_earlier:
-        lines.append("Успейте оформить заявку - после закрытия корзина уедет в избранное.")
+        lines.append("Успейте оформить заявку - после закрытия корзина уедет в избранное")
     else:
-        lines.append("Время собрать заявку ещё есть.")
+        lines.append("Время собрать заявку ещё есть")
     return "\n".join(lines)
 
 
@@ -841,9 +846,9 @@ def cycle_closed_for_customer(cycle: OrderCycle) -> str:
     и считает их поломкой.
     """
     return (
-        f"Сбор {cycle_title(cycle)} закрыт - заявки приняты.\n"
-        "Изменить состав уже нельзя. Мы подтвердим вашу заявку и напишем сюда, "
-        "когда всё будет готово к выдаче."
+        f"Сбор {cycle_title(cycle)} закрыт - заявки приняты!\n"
+        "Изменить заявку уже нельзя. Мы подтвердим вашу заявку и напишем сюда, "
+        "когда всё будет готово к выдаче"
     )
 
 
@@ -862,7 +867,7 @@ def cycle_closed_for_owner(cycle: OrderCycle, orders_count: int, total_cents: in
         f"Сбор {cycle_title(cycle)} закрыт.\n"
         f"Заявок: {orders_count}\n"
         f"Сумма: {format_price(total_cents)}\n"
-        "Отменённые заявки в сумму не входят."
+        "Отменённые заявки в сумму не входят"
     )
 
 
@@ -873,7 +878,7 @@ SHARE_CONTACT_BUTTON = "Поделиться номером телефона"
 START = (
     "Добро пожаловать в Sululu! Поделитесь номером телефона, чтобы привязать "
     "этот чат к вашему аккаунту: сюда придут вход на сайт, подтверждение заявки "
-    "и напоминания о дедлайне."
+    "и напоминания о дедлайне сборов"
 )
 
 #: Фиксация согласия, вторым сообщением сразу за `START`.
@@ -897,7 +902,7 @@ CONSENT = (
     f"Нажимая «{SHARE_CONTACT_BUTTON}», вы соглашаетесь на обработку персональных "
     "данных: Sululu сохранит ваш номер, имя из профиля Telegram и этот чат - чтобы "
     "принимать заявки и писать вам о них. Аккаунт можно удалить в любой момент, "
-    "и тогда эти данные стираются."
+    "и тогда эти данные стираются"
 )
 
 
@@ -922,7 +927,7 @@ MENU_REPLY = "✍️ Написать Sululu"
 
 # Sent with the keyboard itself, when there is nothing else to say — after linking, or
 # when someone asks for the menu back.
-MENU_PROMPT = "Чем помочь? Выберите кнопку ниже."
+MENU_PROMPT = "Чем помочь? Выберите кнопку ниже"
 
 # ─── Inline buttons and their answers ────────────────────────────────────────────
 
@@ -964,7 +969,7 @@ UNLINK_KEEP_BUTTON = "Оставить как есть"
 
 UNLINK_CONFIRM = (
     "Отвязать этот чат от вашего аккаунта? Заявки и избранное останутся на сайте, но "
-    "уведомления и вход через Telegram сюда больше не придут."
+    "уведомления и вход через Telegram сюда больше не придут"
 )
 UNLINK_KEPT = "Ничего не меняю - чат остался привязан"
 
@@ -974,7 +979,7 @@ CALLBACK_NOT_FOR_YOU = "Эта кнопка работает только у а�
 CALLBACK_ORDER_GONE = "Заявка не найдена - возможно, она уже удалена"
 CALLBACK_ORDER_MOVED_ON = (
     "С этой заявкой уже что-то произошло: её отменили или она ушла дальше по статусам. "
-    "Откройте админку, чтобы посмотреть."
+    "Откройте админку, чтобы посмотреть"
 )
 CALLBACK_NOT_LINKED = "Этот чат и так не привязан к аккаунту"
 CALLBACK_PAYMENT_ALREADY_ACCEPTED = "Оплата по этой заявке уже подтверждена"
@@ -986,20 +991,20 @@ CALLBACK_RECEIPT_FILE_GONE = "Не вижу файла - пришлите чек
 # Ответ на слишком частые нажатия (`throttling.py`). Про «секунду» — чтобы человек
 # понял, что ждать нужно мгновение, а не что бот сломался: молчание в ответ на нажатие
 # читается именно как поломка.
-TOO_FAST = "Слишком много запросов подряд. Подождите секунду и попробуйте снова."
+TOO_FAST = "Слишком много запросов подряд. Подождите секунду и попробуйте снова"
 
 
 def callback_applied(status: OrderStatus) -> str:
     return f"Заявка - {ORDER_STATUS_LABEL[status].lower()}"
 
 
-LINKED = "Готово! Этот чат привязан к вашему номеру телефона.\nКнопки ниже - всё, что я умею."
+LINKED = "Готово! Этот чат привязан к вашему номеру телефона.\nКнопки ниже - всё, что я умею"
 
 # Ответ на вход с сайта. Про «вернитесь на вкладку» — не вежливость: вкладка входит сама,
 # и без этой строки человек остаётся в Telegram ждать кода, которого больше не бывает.
 LOGIN_CONFIRMED = (
-    "Вход подтверждён. Вернитесь на вкладку с сайтом - она уже впустила вас.\n"
-    "Кнопки ниже - всё, что я умею."
+    "Вход подтверждён. Вернитесь на вкладку с сайтом - она уже впустила вас\n"
+    "Кнопки ниже - всё, что я умею"
 )
 
 
@@ -1010,7 +1015,7 @@ def login_alert(authorized_at: datetime) -> str:
     return (
         f"Вход на сайт подтверждён {format_deadline(authorized_at)}.\n"
         "Если вы не входили - например, открыли ссылку из чужого сообщения - "
-        "нажмите «Это не я»: я закрою вход и завершу все сеансы на сайте."
+        "нажмите «Это не я»: я закрою вход и завершу все сеансы на сайте"
     )
 
 
@@ -1027,26 +1032,26 @@ LOGIN_REJECTED = (
     "Если сайт уже был открыт в чужой вкладке, доступ там пропадёт в течение "
     "нескольких минут.\n"
     "Чтобы войти самому, откройте сайт и нажмите «Войти через Telegram» - "
-    "ссылку из чужого сообщения открывать не нужно."
+    "ссылку из чужого сообщения открывать не нужно"
 )
 
 CALLBACK_LOGIN_GONE = "Этот вход уже закрыт - отменять нечего"
 
 ALREADY_LINKED = (
     "Этот чат уже привязан к вашему номеру. Чтобы войти на сайте, нажмите там "
-    "«Войти через Telegram» - я подтвержу вход сам."
+    "«Войти через Telegram» - я подтвержу вход сам"
 )
 
 # Прислали чужую карточку контакта. Формулировка без обвинений: чаще всего это
 # промах по списку контактов, а не попытка привязать чужой номер.
 FOREIGN_CONTACT = (
     "Привязать можно только свой номер телефона. Отправьте /start и нажмите "
-    "«Поделиться номером телефона» - Telegram подставит ваш номер сам."
+    "«Поделиться номером телефона» - Telegram подставит ваш номер сам"
 )
 
 NOT_LINKED = (
     "Этот чат не привязан к аккаунту. Нажмите «Поделиться номером телефона» - "
-    "тогда я смогу показать ваши заявки, корзину и избранное."
+    "тогда я смогу показать ваши заявки, корзину и избранное"
 )
 
 HELP = (
@@ -1060,7 +1065,7 @@ HELP = (
     "Сам напишу, когда откроется новый сбор, когда до дедлайна останутся сутки "
     "и когда изменится статус вашей заявки.\n\n"
     "Чек об оплате присылайте сюда - фотографией или PDF-файлом, я передам его Sululu.\n\n"
-    "Кнопки пропали? /menu вернёт их, /help - эта справка."
+    "Кнопки пропали? /menu вернёт их, /help - эта справка"
 )
 
 # Ответ на любой текст, который не совпал с кнопкой. Приходит вместе с клавиатурой:
@@ -1070,7 +1075,7 @@ HELP = (
 FALLBACK = (
     "Не понял вас. Выберите кнопку ниже 👇\n\n"
     f"Если хотите, чтобы я передал сообщение Sululu, нажмите «{MENU_REPLY}» "
-    "или ответьте на сообщение Sululu."
+    "или ответьте на сообщение Sululu"
 )
 
 # Ответ, который некому передать: ни у одного владельца нет привязанного чата или
@@ -1078,7 +1083,7 @@ FALLBACK = (
 # что это сделал.
 CUSTOMER_REPLY_NOT_DELIVERED = (
     f"Не получилось передать сообщение Sululu. Попробуйте позже или напишите "
-    f"в Instagram - он в «{MENU_LINKS}»."
+    f"в Instagram - он в «{MENU_LINKS}»"
 )
 
 # Ответ кнопки «Ссылки». Обе ссылки приходят кнопками под сообщением — в тексте их
@@ -1100,7 +1105,7 @@ def site_unavailable(url: str) -> str:
     return f"Магазин, корзина и заявки - на сайте:\n{url}\n\nНовинки и анонсы - в Instagram:"
 
 
-UNLINKED = "Чат отвязан. Подтверждения заявок и напоминания сюда больше не придут."
+UNLINKED = "Чат отвязан. Подтверждения заявок и напоминания сюда больше не придут"
 
 # Отдельным сообщением, а не хвостом UNLINKED: клавиатура принадлежит чату, а не
 # сообщению, и снять её редактированием старого сообщения нельзя — нужно новое.
@@ -1130,7 +1135,7 @@ def my_orders(orders: list[Order], total: int | None = None) -> str:
     ]
     hidden = (total if total is not None else len(orders)) - len(shown)
     if hidden > 0:
-        lines.append(f"…и ещё {hidden} - весь список на сайте.")
+        lines.append(f"…и ещё {hidden} - весь список на сайте")
     return "\n".join(lines)
 
 
@@ -1159,7 +1164,7 @@ def my_cart(cart: CartResponse) -> str:
         lines.append(f"…и ещё {len(cart.items) - len(shown)}")
     lines.append(f"Итого: {format_price(cart.total_cents)}")
     if cart.cycle_deadline_at is not None:
-        lines.append(f"Оформить заявку нужно до {format_deadline(cart.cycle_deadline_at)}.")
+        lines.append(f"Оформить заявку нужно до {format_deadline(cart.cycle_deadline_at)}")
     return "\n".join(lines)
 
 
@@ -1173,7 +1178,7 @@ def my_wishlist(wishlist: WishlistResponse) -> str:
     if not wishlist.items:
         return (
             "В избранном пусто. Нажмите ♥ на товаре в каталоге - он сохранится здесь "
-            "и не пропадёт, когда закроется сбор."
+            "и не пропадёт, когда закроется сбор"
         )
 
     shown = wishlist.items[:MAX_LISTED_WISHLIST_ITEMS]
@@ -1189,14 +1194,14 @@ def my_wishlist(wishlist: WishlistResponse) -> str:
     ]
     hidden = len(wishlist.items) - len(shown)
     if hidden > 0:
-        lines.append(f"…и ещё {hidden} - весь список на сайте.")
+        lines.append(f"…и ещё {hidden} - весь список на сайте")
     return "\n".join(lines)
 
 
 def current_deadline(cycle: OrderCycle | None) -> str:
     if cycle is None:
         # Not a failure — an ordinary state of the shop between cycles.
-        return "Сейчас сбор заказов закрыт. Как только откроется новый, я напишу."
+        return "Сейчас сбор заказов закрыт. Как только откроется новый, я напишу"
     # Без подписи от «Сбор — заявки до…» остаётся заголовок ни о чём: отвечаем прямо.
     if not cycle.label:
         return f"Заявки принимаются до {format_deadline(cycle.deadline_at)}"
