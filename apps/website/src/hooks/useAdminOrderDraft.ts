@@ -8,10 +8,9 @@ import type {
 } from 'widgets/types'
 import { useConfirm, useToast } from 'widgets/contexts'
 import { useDebouncedValue } from 'widgets/hooks'
-import { primaryImage } from 'widgets/molecules'
-import { imagesForVariant } from 'widgets/utils'
 import { adminOrderNumber } from 'widgets/organisms'
 import { useProductSearch } from '@/hooks/useProductSearch'
+import { catalogLine, clampQuantity } from '@/utils/orderDraft'
 import { randomUuid } from '@/utils/uuid'
 import { isApiError, messageForError } from '@/services/apiErrors'
 import { createAdminOrder, listAdminOrderCycles, listAdminUsers } from '@/services/endpoints/admin'
@@ -45,9 +44,6 @@ import {
 
 /** Строк в выдаче поиска покупателя: дальше имя проще уточнить, чем листать. */
 const CUSTOMER_RESULT_LIMIT = 8
-
-/** Потолок количества — тот же, что у бэкенда (`MAX_ITEM_QUANTITY`). */
-const MAX_QUANTITY = 999
 
 interface IAdminOrderDraft {
   /** Пропсы окна целиком — страница только раскладывает их в `AdminOrderDialog`. */
@@ -154,51 +150,27 @@ export const useAdminOrderDraft = (): IAdminOrderDraft => {
 
   /** Товар из выдачи поиска — в черновик; уже добавленный объём прибавляется к своей строке. */
   const add = (variantId: string): void => {
-    const product = products.products?.find(candidate =>
-      candidate.variants.some(variant => variant.id === variantId)
-    )
-    const variant = product?.variants.find(candidate => candidate.id === variantId)
+    const line = catalogLine(products.products, variantId)
 
-    if (product === undefined || variant === undefined) {
+    if (line === null) {
       return
     }
 
-    setLines(current => {
-      if (current.some(line => line.variantId === variantId)) {
-        return current.map(line =>
-          line.variantId === variantId
-            ? { ...line, quantity: Math.min(line.quantity + 1, MAX_QUANTITY) }
-            : line
-        )
-      }
-
-      return [
-        ...current,
-        {
-          variantId,
-          productName: product.name,
-          productSlug: product.slug,
-          // Фото выбранного тона, как его снимет в заявку бэкенд (`variant_image`).
-          productImageUrl:
-            imagesForVariant(product.images, variant)[0]?.url ??
-            primaryImage(product.images)?.url ??
-            null,
-          productBrand: product.brand,
-          productVolumeMl: variant.volumeMl,
-          productShade: variant.shade ?? null,
-          priceCents: variant.priceCents,
-          quantity: 1,
-        },
-      ]
-    })
+    setLines(current =>
+      current.some(existing => existing.variantId === variantId)
+        ? current.map(existing =>
+            existing.variantId === variantId
+              ? { ...existing, quantity: clampQuantity(existing.quantity + 1) }
+              : existing
+          )
+        : [...current, line]
+    )
   }
 
   const setQuantity = (variantId: string, quantity: number): void => {
     setLines(current =>
       current.map(line =>
-        line.variantId === variantId
-          ? { ...line, quantity: Math.min(Math.max(quantity, 1), MAX_QUANTITY) }
-          : line
+        line.variantId === variantId ? { ...line, quantity: clampQuantity(quantity) } : line
       )
     )
   }

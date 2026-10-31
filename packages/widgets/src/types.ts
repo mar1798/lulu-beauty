@@ -394,6 +394,11 @@ export interface IAdminOrder extends IOrder {
   createdById: string | null
   /** Имя того админа. `null` и при заявке из админки, если его аккаунта больше нет. */
   createdByName: string | null
+  /**
+   * Версия состава: растёт с каждой его правкой. Уходит обратно с правкой из
+   * админки — бэкенд откажет (`order_changed`), если состав успели поменять.
+   */
+  revision: number
 }
 
 /**
@@ -2030,6 +2035,52 @@ export interface IAdminOrderDialogProps {
 }
 
 /**
+ * Строка состава в окне «Изменить заявку». Бывшая в заявке — со своим
+ * `itemId` и ценой снимка: та цена, по которой заявку взяли или оплатили, при
+ * правке не меняется. Добавленная сейчас — без `itemId`, по цене каталога.
+ */
+export interface IAdminOrderEditLine extends Omit<IAdminOrderDraftLine, 'variantId'> {
+  /** Ключ строки в окне: `itemId` у бывшей в заявке, `variantId` у новой. */
+  key: string
+  itemId: string | null
+  /** `null` — объём с тех пор удалён из каталога насовсем; строка остаётся. */
+  variantId: string | null
+}
+
+/**
+ * Окно, где админ меняет состав чужой заявки: «Ожидает подтверждения»,
+ * «Ожидает оплаты» и «Подтверждена». Статус от правки не меняется, покупатель
+ * только получает новый состав в боте.
+ */
+export interface IAdminOrderEditDialogProps {
+  isOpen: boolean
+  /** Отмена, крестик, Escape. Спросить ли подтверждение — решает страница. */
+  onClose: () => void
+  /**
+   * Заявка, как её прочитали при открытии окна. Держится и после закрытия —
+   * окно уезжает с анимацией, и пустая шапка мигнула бы на выходе.
+   */
+  order: IAdminOrder | null
+  /** Поиск товара — те же пропсы, что у `ProductPicker`, без добавленных. */
+  productSearch: Pick<
+    IProductPickerProps,
+    'query' | 'onQueryChange' | 'products' | 'isSearching' | 'error'
+  >
+  lines: IAdminOrderEditLine[]
+  onAdd: (variantId: string) => void
+  onQuantityChange: (key: string, quantity: number) => void
+  onRemove: (key: string) => void
+  /** Состав отличается от того, что в заявке, — без этого сохранять нечего. */
+  hasChanges: boolean
+  /** Для ссылки с позиции на страницу товара. */
+  buildProductHref: (productSlug: string) => string
+  isBusy?: boolean
+  /** Почему не сохранилось — остаётся в окне вместе с правкой. */
+  error?: string | null
+  onSubmit: () => void
+}
+
+/**
  * Окно сообщения покупателю через бота. Текст — снаружи (`value`/`onChange`):
  * страница очищает его после отправки и держит, если отправка не удалась.
  */
@@ -2484,6 +2535,12 @@ export interface IAdminOrdersTableProps {
    * найти. Кнопка стоит в колонке действий рядом с удалением.
    */
   onMessage?: (order: IAdminOrder) => void
+  /**
+   * «Изменить состав». Кнопка есть у каждой заявки, но доступна только в
+   * `ADMIN_EDITABLE_STATUSES`: дальше товар на полке или выдан, а отменённая
+   * заявка — запись о том, что её нет.
+   */
+  onEdit?: (order: IAdminOrder) => void
   buildProductHref: (productSlug: string) => string
   isLoading?: boolean
   skeletonRows?: number

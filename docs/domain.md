@@ -532,6 +532,39 @@ and trimmed like any other, cancellable by its customer. What differs is how it 
   message says what they can do with it: change it while the cycle is open, cancel it
   once it has closed.
 
+### Orders edited by an admin
+
+An admin can rewrite what any customer's order holds from the orders panel
+(`PUT /admin/orders/{id}/items`, `OrdersService.edit_by_admin`): take out what could not be
+bought, add what the customer asked for in a message, change a quantity.
+
+- **Where.** `ADMIN_EDITABLE_STATUSES` — `PENDING`, `AWAITING_PAYMENT` and `CONFIRMED`,
+  whatever the cycle is doing. From `READY` the goods are on the shelf or handed over, and a
+  cancelled order is the record of one that is off; those refuse with `409 order_not_editable`.
+  The website mirrors the set (`isAdminEditable`) to grey the button out.
+- **The status never moves, and nothing is asked of the customer.** An unpaid bill is not
+  re-issued (`confirmed_at` stays), a paid order stays paid, no new receipt is expected. Any
+  difference in money is settled by the owner in person. The customer is only told — one
+  bot message with the new lines and sum (`messages.order_edited`) — and only when
+  something actually changed.
+- **The whole composition at once.** The request names the order's lines to keep with their
+  quantities (left out — removed) and the volumes to add, so the order is never left
+  half-edited and the customer hears about it once. Leaving nothing is a cancellation, not
+  an edit: `409 last_order_item`.
+- **Prices.** A kept line keeps its snapshot — the price the order was taken or paid at —
+  even if its product has since left the catalogue. An added line is taken at today's
+  price, under the same rule as placing an order: a discontinued or sold-out volume refuses
+  the whole edit (`404 product_not_found`). A volume already on a kept line joins it. A
+  `PENDING` order is then repriced as usual.
+- **`orders.revision`** moves with every change to the lines (`_recalculate_total`). The
+  panel sends back the one it opened with, and a draft built on lines the customer, a
+  catalogue edit or another admin has since changed is `409 order_changed` instead of a
+  silent overwrite. `updated_at` would not do: a change that keeps the total untouched never
+  updates the order row. A catalogue edit running at the same moment as the save is not
+  caught yet: it reads its orders without a lock.
+- **The purchase list follows.** It is computed live from the cycle's orders, so an edit
+  after the cycle closed changes it — the point, when the edit is "не смогла достать".
+
 ### Statuses
 
 ```

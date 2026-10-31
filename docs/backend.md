@@ -114,7 +114,7 @@ Owner-only (`ADMIN` or `SUPER_ADMIN`, checked on the API — the frontend gate i
 | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `GET`    | `/admin/users`, `/admin/brands`, `/admin/products`, `/admin/products/{id}`, `/admin/orders`, `/admin/orders/cycles`, `/admin/cycles`, `/admin/cycles/{id}/deletion`, `/admin/checklist`, `/admin/export/orders`, `/admin/export/products`         |
 | `PATCH`  | `/admin/users/{id}/role`, `/admin/categories/{id}`, `/admin/products/{id}`, `/admin/cycles/{id}`, `/admin/orders/{id}/status`                                                                                                                     |
-| `PUT`    | `/admin/products/{id}/images` (the gallery's order and photo tags, whole)                                                                                                                                                                         |
+| `PUT`    | `/admin/products/{id}/images` (the gallery's order and photo tags, whole), `/admin/orders/{id}/items` (an order's composition, whole)                                                                                                             |
 | `POST`   | `/admin/categories`, `/admin/products`, `/admin/products/{id}/restore`, `/admin/products/{id}/images`, `/admin/catalog/import`, `/admin/cycles`, `/admin/cycles/{id}/close`, `/admin/export/links`, `/admin/orders`, `/admin/orders/{id}/message` |
 | `DELETE` | `/admin/categories/{id}`, `/admin/products/{id}` (soft), `/admin/products/{id}/images/{image_id}`, `/admin/cycles/{id}`, `/admin/orders/{id}`                                                                                                     |
 
@@ -233,8 +233,8 @@ cycle_already_closed      cycle_closed_recently     cycle_has_orders
 cycle_not_closed          cycle_not_found           cycle_orders_changed
 export_link_invalid       invalid_refresh_token     invalid_token
 last_order_item           no_active_cycle           not_authenticated
-order_item_not_found      order_not_editable        order_not_found
-order_not_restorable      order_status_not_assignable
+order_changed             order_item_not_found      order_not_editable
+order_not_found           order_not_restorable      order_status_not_assignable
 order_status_transition_invalid                     super_admin_immutable
 super_admin_not_assignable                          super_admin_only
 featured_limit_reached

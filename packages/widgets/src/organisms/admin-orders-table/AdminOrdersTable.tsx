@@ -1,13 +1,14 @@
 import clsx from 'clsx'
 import { Fragment, type FC, useState } from 'react'
 import type { IAdminOrdersTableProps, IBasicStyling } from '../../types'
-import { IconTelegram, IconTrash } from '../../svg/icons'
+import { IconPencil, IconTelegram, IconTrash } from '../../svg/icons'
 import { AppLink } from '../../atoms/app-link'
 import { Badge } from '../../atoms/badge'
 import { IconButton } from '../../atoms/icon-button'
 import { Price } from '../../atoms/price'
 import { Skeleton } from '../../atoms/skeleton'
 import { orderNumber } from '../../molecules/order-card'
+import { isAdminEditable } from '../../molecules/order-status-badge'
 import { StatusSelect } from '../../molecules/status-select'
 import { formatDateTime } from '../../utils/datetime'
 import { formatVariant } from '../../utils/variants'
@@ -31,13 +32,17 @@ import * as styles from './AdminOrdersTable.css'
  * Ниже `md` та же разметка раскладывается в карточки (см. миксин
  * `styling/mixin/table.ts`): название колонки берётся из `data-label`, а роли
  * проставлены явно — `display: block` снимает встроенные роли таблицы. Статус и
- * кнопки действий (написать через бота, удалить) делят на карточке одну строку:
+ * кнопки действий (изменить состав, написать через бота, удалить) делят на карточке одну строку:
  * остальные ячейки занимают всю ширину, эти две — нет, и подписи у статуса там
  * тоже нет.
  *
  * «Написать через бота» — для покупателя, которого по номеру в Telegram не
  * найти: поиск по номеру закрывается настройками приватности, а чат с ботом от
  * номера не зависит. Без привязки к боту кнопка недоступна и говорит почему.
+ *
+ * «Изменить состав» доступна до оплаты включительно (`isAdminEditable`). У
+ * остальных заявок кнопка на месте, но недоступна и говорит почему: иначе
+ * кнопки в строках сдвигались бы от статуса к статусу.
  *
  * Заявка, которую оформил админ за покупателя, помечена под датой — с именем
  * того админа: их бывает несколько, и иначе не понять, откуда она взялась.
@@ -62,6 +67,7 @@ export const AdminOrdersTable: FC<IAdminOrdersTableProps & IBasicStyling> = ({
   onStatusChange,
   onDelete,
   onMessage,
+  onEdit,
   buildProductHref,
   isLoading = false,
   skeletonRows = DEFAULT_SKELETON_ROWS,
@@ -86,7 +92,7 @@ export const AdminOrdersTable: FC<IAdminOrdersTableProps & IBasicStyling> = ({
     Колонка действий необязательна, а `colSpan` у скелетонов и состава — нет.
     Она есть, если есть хоть одно действие.
   */
-  const hasActions = onDelete !== undefined || onMessage !== undefined
+  const hasActions = onDelete !== undefined || onMessage !== undefined || onEdit !== undefined
   const columnCount = hasActions ? BASE_COLUMNS + 1 : BASE_COLUMNS
 
   return (
@@ -206,6 +212,23 @@ export const AdminOrdersTable: FC<IAdminOrdersTableProps & IBasicStyling> = ({
                       {hasActions && (
                         <td className={styles.actionsCell} role="cell">
                           <div className={styles.actions}>
+                            {onEdit !== undefined && (
+                              <IconButton
+                                icon={<IconPencil />}
+                                label={`Изменить состав заявки № ${adminOrderNumber(order.id)}`}
+                                size="sm"
+                                hasPopup="dialog"
+                                disabled={busyId === order.id}
+                                unavailableReason={
+                                  isAdminEditable(order.status)
+                                    ? null
+                                    : 'Состав меняется только до оплаты включительно'
+                                }
+                                onClick={() => {
+                                  onEdit(order)
+                                }}
+                              />
+                            )}
                             {onMessage !== undefined && (
                               <IconButton
                                 icon={<IconTelegram />}

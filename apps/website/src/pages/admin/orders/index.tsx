@@ -6,6 +6,7 @@ import { EmptyState, ORDER_STATUSES, Pagination, orderStatusLabel } from 'widget
 import {
   AdminMessageDialog,
   AdminOrderDialog,
+  AdminOrderEditDialog,
   AdminOrdersTable,
   adminOrderNumber,
 } from 'widgets/organisms'
@@ -15,6 +16,7 @@ import { IconDownload, IconPlus } from 'widgets/svg'
 import { AdminShell } from '@/layouts/AdminShell'
 import { useActiveCycle } from '@/hooks/useActiveCycle'
 import { useAdminOrderDraft } from '@/hooks/useAdminOrderDraft'
+import { useAdminOrderEdit } from '@/hooks/useAdminOrderEdit'
 import { saveBlob } from '@/services/api'
 import { isApiError, messageForError } from '@/services/apiErrors'
 import {
@@ -52,6 +54,10 @@ import { useClampedPage } from '@/hooks/useClampedPage'
  *
  * «Создать заявку» — окно, где админ оформляет заявку за покупателя: опоздал к
  * дедлайну или попросил в личке. Всё состояние окна — в `useAdminOrderDraft`.
+ *
+ * Карандаш в строке — окно правки состава: до оплаты включительно, статус от
+ * неё не меняется, покупатель получает новый состав в боте. Всё состояние
+ * окна — в `useAdminOrderEdit`.
  *
  * Качается через `fetch`, а не обычной ссылкой: ручка админская,
  * и отказ (403, 500) на ссылке превратился бы в скачанный файл с текстом
@@ -93,6 +99,7 @@ const AdminOrdersPage: React.FC = () => {
   const { notify } = useToast()
   const { confirm } = useConfirm()
   const draft = useAdminOrderDraft()
+  const edit = useAdminOrderEdit()
 
   /*
     Выбор владельца, а не действующий фильтр: пока он ничего не выбрал (`null`),
@@ -401,6 +408,7 @@ const AdminOrdersPage: React.FC = () => {
           void handleDelete(order)
         }}
         onMessage={openMessage}
+        onEdit={edit.open}
         emptyState={
           <EmptyState
             title="Заявок нет"
@@ -425,6 +433,8 @@ const AdminOrdersPage: React.FC = () => {
       />
 
       <AdminOrderDialog {...draft.dialog} />
+
+      <AdminOrderEditDialog {...edit.dialog} />
 
       {data !== undefined && data.total > PAGE_SIZE && (
         <Pagination

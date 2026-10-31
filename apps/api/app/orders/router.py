@@ -12,6 +12,7 @@ from app.orders.models import Order, OrderItem, OrderStatus
 from app.orders.schemas import (
     AdminOrderCreateRequest,
     AdminOrderCycleResponse,
+    AdminOrderEditRequest,
     AdminOrderMessageRequest,
     AdminOrderPageResponse,
     AdminOrderResponse,
@@ -30,6 +31,7 @@ from app.orders.service import (
     LastOrderItemError,
     NoActiveCycleError,
     NoCycleForOrderError,
+    OrderChangedError,
     OrderCycleUnavailableError,
     OrderFlags,
     OrderItemNotFoundError,
@@ -50,6 +52,7 @@ from app.telegram.notify import (
     notify_order_cancelled_by_customer,
     notify_order_created_for_customer,
     notify_order_deleted,
+    notify_order_edited,
     notify_order_status,
 )
 from app.telegram.service import Delivery
@@ -151,6 +154,7 @@ def _admin_order_response(
         can_message=customer is not None and customer.telegram_chat_id is not None,
         created_by_id=order.created_by_id,
         created_by_name=creator.name if creator is not None else None,
+        revision=order.revision,
     )
 
 
@@ -495,6 +499,54 @@ async def create_order_admin(
     if created:
         background_tasks.add_task(notify_new_order, order.id)
         background_tasks.add_task(notify_order_created_for_customer, order.id)
+    return response
+
+
+@router.put("/admin/orders/{order_id}/items", response_model=AdminOrderResponse)
+async def edit_order_admin(
+    order_id: uuid.UUID,
+    body: AdminOrderEditRequest,
+    background_tasks: BackgroundTasks,
+    session: AsyncSession = Depends(get_session),
+    _admin: CurrentUser = Depends(require_admin),
+) -> AdminOrderResponse:
+    """The owner rewrites an order's composition — awaiting confirmation, payment, or paid.
+
+    The status stays where it is and nothing is asked of the customer: after the commit
+    they are sent the new composition and the sum, and that is all. A save that changed
+    nothing sends nothing.
+    """
+    service = OrdersService(session)
+    try:
+        order, changed = await service.edit_by_admin(
+            order_id,
+            body.revision,
+            {line.item_id: line.quantity for line in body.items},
+            [(line.variant_id, line.quantity) for line in body.added],
+        )
+    except OrderNotFoundError as error:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "order_not_found") from error
+    except OrderNotEditableError as error:
+        raise HTTPException(status.HTTP_409_CONFLICT, "order_not_editable") from error
+    except OrderChangedError as error:
+        raise HTTPException(status.HTTP_409_CONFLICT, "order_changed") from error
+    except OrderItemNotFoundError as error:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "order_item_not_found") from error
+    except LastOrderItemError as error:
+        raise HTTPException(status.HTTP_409_CONFLICT, "last_order_item") from error
+    except ProductNotFoundError as error:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "product_not_found") from error
+
+    customers = await service.load_customers([order])
+    creators = await service.load_creators([order])
+    tags = await service.load_item_tags([order])
+    with_receipts = await PaymentsService(session).orders_with_receipts([order.id])
+    response = _admin_order_response(
+        order, customers.get(order.user_id), tags, with_receipts, creators
+    )
+    await session.commit()
+    if changed:
+        background_tasks.add_task(notify_order_edited, order.id)
     return response
 
 

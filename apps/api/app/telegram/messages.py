@@ -374,6 +374,28 @@ def order_created_for_customer(order: Order, cycle: OrderCycle | None, *, is_ope
     )
 
 
+def order_edited(order: Order) -> str:
+    """Владелец изменил состав заявки в админке — покупателю новый состав и сумма.
+
+    Только сообщить: статус не меняется, и ничего от покупателя не ждут — ни нового
+    подтверждения, ни нового чека. Перечислены все строки, как в счёте: сравнивать
+    покупатель будет с тем, что помнит, и «и ещё 2» не дали бы увидеть, что поменялось.
+
+    HTML: названия товаров экранируются в `_bill_line`.
+    """
+    return "\n".join(
+        [
+            f"Заявка {order_reference(order.id)} изменена",
+            "",
+            "Новый состав:",
+            f"🛍{_items_count(order)}",
+            *(_bill_line(item) for item in order.items),
+            "",
+            f"Сумма: <b>{format_price(order.total_cents, grouped=False)}</b>",
+        ]
+    )
+
+
 # Where the money goes. Written into the text rather than kept in settings: it is part
 # of the wording, and the owner reads and changes it the same way as the rest of it.
 PAYMENT_DETAILS = (

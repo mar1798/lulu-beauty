@@ -108,6 +108,27 @@ async def notify_order_created_for_customer(order_id: uuid.UUID) -> None:
         logger.exception("Failed to tell the customer about order %s", order_id)
 
 
+async def notify_order_edited(order_id: uuid.UUID) -> None:
+    """Tells the customer the owner changed their order's composition from the panel.
+
+    Re-reads the order, so the lines sent are the ones the row holds by the time this
+    runs — a second edit committed in between is announced with its own lines, not
+    with a stale copy of the first.
+    """
+    try:
+        async with async_session() as session:
+            order = await _load_order(session, order_id)
+            if order is None:
+                return
+
+            customer = await _load_customer(session, order.user_id)
+            if customer is None:
+                return
+            await notifications_service.send_order_edited(customer, order)
+    except Exception:  # noqa: BLE001 - the edit is already committed; see module docstring
+        logger.exception("Failed to tell the customer about the edit of order %s", order_id)
+
+
 async def notify_order_status(order_id: uuid.UUID) -> None:
     """Tells the customer their order moved.
 

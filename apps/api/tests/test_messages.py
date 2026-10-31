@@ -365,6 +365,23 @@ def test_order_created_for_customer_lists_the_order_and_what_can_be_done() -> No
     assert "—" not in open_text + closed_text
 
 
+def test_order_edited_lists_the_new_composition_and_sum() -> None:
+    order = _order(items=2, total_cents=2000)
+    order.items[0].product_name = "Крем <SPF>"
+
+    text = messages.order_edited(order)
+
+    assert text.startswith("Заявка #a1b2c3d4 изменена")
+    assert "Новый состав:" in text
+    assert "2 позиции" in text
+    assert "Крем &lt;SPF&gt;" in text
+    assert "<b>20 сом</b>" in text
+    # Only news: nothing is asked of the customer, no bill and no receipt.
+    assert "реквизит" not in text
+    assert "чек" not in text
+    assert "—" not in text
+
+
 def test_my_orders_truncates_and_says_so() -> None:
     orders = [_order() for _ in range(messages.MAX_LISTED_ORDERS + 3)]
 

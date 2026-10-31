@@ -98,6 +98,22 @@ export const ORDER_STATUS_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
   CANCELLED_BY_OWNER: ['PENDING'],
 }
 
+/**
+ * Где админ ещё может менять состав заявки — зеркало `ADMIN_EDITABLE_STATUSES`
+ * в `apps/api/app/orders/models.py`. Вплоть до оплаты включительно: закупают
+ * под эти заявки, и то, чего не удалось достать, или то, что покупатель
+ * попросил добавить, правится здесь. С «Готова к выдаче» товар на полке или
+ * уже выдан, а отменённая заявка — запись о том, что её нет.
+ */
+export const ADMIN_EDITABLE_STATUSES: readonly OrderStatus[] = [
+  'PENDING',
+  'AWAITING_PAYMENT',
+  'CONFIRMED',
+]
+
+export const isAdminEditable = (status: OrderStatus): boolean =>
+  ADMIN_EDITABLE_STATUSES.includes(status)
+
 export const orderStatusLabel = (status: OrderStatus): string => VIEWS[status].label
 
 export const OrderStatusBadge: FC<IOrderStatusBadgeProps & IBasicStyling> = ({

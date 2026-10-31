@@ -61,6 +61,16 @@ OPEN_STATUSES = frozenset(
 # price — and from CONFIRMED on the order is paid for.
 PAYABLE_STATUSES = frozenset({OrderStatus.AWAITING_PAYMENT})
 
+# Where the owner may still change what an order holds (`OrdersService.edit_by_admin`).
+# Up to and including the payment: the goods are bought against these, and a line the
+# shop could not get, or one the customer asked to add, is corrected here. From READY on
+# the goods are on the shelf or handed over, and a cancelled order is the record of one
+# that is off — those stay as they are. The status itself never moves on an edit, and
+# nothing is asked of the customer: they are told the new composition and that is all.
+ADMIN_EDITABLE_STATUSES = frozenset(
+    {OrderStatus.PENDING, OrderStatus.AWAITING_PAYMENT, OrderStatus.CONFIRMED}
+)
+
 # Where an order may go from where it is. The owner's panel used to accept any target at
 # all, so a promise about an order — "подтверждена", "готова к выдаче" — could be made
 # about one the customer had already withdrawn, and a finished order could be walked back
@@ -184,6 +194,12 @@ class Order(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     # already made instead of making a second one. Checkout needs none: the cart row is
     # its key. NULL for every checkout, and Postgres lets NULLs repeat under UNIQUE.
     request_id: Mapped[uuid.UUID | None] = mapped_column()
+    # Moves on every change to the lines (`OrdersService._recalculate_total`). The admin
+    # panel sends back the one it opened its edit with, so a draft built on lines the
+    # customer, a catalogue edit or another admin has since changed is refused instead of
+    # quietly writing over them. `updated_at` would not do: a change that leaves the total
+    # where it was never touches the order row.
+    revision: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"))
 
     items: Mapped[list["OrderItem"]] = relationship(
         back_populates="order", cascade="all, delete-orphan", order_by=lambda: _item_order()

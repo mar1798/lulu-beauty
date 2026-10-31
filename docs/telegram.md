@@ -312,31 +312,32 @@ production token never receives an update — see **Local dev needs its own bot*
 `app/telegram/notify.py`. Everything addressed to "the owner" fans out to **every** account
 with admin rights — `ADMIN` and `SUPER_ADMIN` alike (`recipients.get_owners`).
 
-| Trigger                                                                     | Who hears                       |
-| --------------------------------------------------------------------------- | ------------------------------- |
-| New order — at checkout, or placed by an admin (then it names them)         | Owner                           |
-| Order an admin placed for the customer, listing its lines                   | That customer                   |
-| Order status change (incl. the owner undoing their own cancel)              | Customer                        |
-| Order taken (AWAITING_PAYMENT): the bill, requisites and «📎 Отправить чек» | Customer                        |
-| Payment receipt sent to the bot                                             | Owner (the file, with verdict)  |
-| Owner accepted / rejected a receipt, or marked the payment in the panel     | Customer                        |
-| Order cancelled by its customer, and that cancellation taken back           | Owner                           |
-| Order cancelled by its customer: confirmed, with the way to restore it      | That customer                   |
-| Order deleted by owner (unless it was already completed or cancelled)       | Customer                        |
-| Catalog price change repricing PENDING orders                               | Each affected customer          |
-| Product soft-deleted, dropping lines                                        | Each affected customer          |
-| Cycle opened / deadline moved                                               | Customers                       |
-| Deadline reminders (24h, 3h)                                                | Customers with a non-empty cart |
-| Cycle closed: shopping summary                                              | Owner                           |
-| Cycle closed: cart rescued into wishlist                                    | Each cart holder                |
-| Cycle closed                                                                | Customers with orders in it     |
-| Account erased, withdrawing its pending orders                              | Owner (one message naming them) |
-| Closed cycle still holding unanswered orders (once per cycle)               | Owner                           |
-| Wish for a product the catalog lacks, left under an empty search            | Owner (name, phone and text)    |
-| Owner's own text from the orders panel (sent in the request)                | That order's customer           |
-| Customer's reply to the owner's text or to the «Ответить» prompt            | Owner (name, phone and reply)   |
-| Owner's reply in the chat to a customer's passed-on message                 | That customer                   |
-| Owner's reply in the chat to a wish for the next cycle                      | Its writer, if linked by phone  |
+| Trigger                                                                       | Who hears                       |
+| ----------------------------------------------------------------------------- | ------------------------------- |
+| New order — at checkout, or placed by an admin (then it names them)           | Owner                           |
+| Order an admin placed for the customer, listing its lines                     | That customer                   |
+| Order's composition changed by an admin: the new lines and sum, nothing asked | That customer                   |
+| Order status change (incl. the owner undoing their own cancel)                | Customer                        |
+| Order taken (AWAITING_PAYMENT): the bill, requisites and «📎 Отправить чек»   | Customer                        |
+| Payment receipt sent to the bot                                               | Owner (the file, with verdict)  |
+| Owner accepted / rejected a receipt, or marked the payment in the panel       | Customer                        |
+| Order cancelled by its customer, and that cancellation taken back             | Owner                           |
+| Order cancelled by its customer: confirmed, with the way to restore it        | That customer                   |
+| Order deleted by owner (unless it was already completed or cancelled)         | Customer                        |
+| Catalog price change repricing PENDING orders                                 | Each affected customer          |
+| Product soft-deleted, dropping lines                                          | Each affected customer          |
+| Cycle opened / deadline moved                                                 | Customers                       |
+| Deadline reminders (24h, 3h)                                                  | Customers with a non-empty cart |
+| Cycle closed: shopping summary                                                | Owner                           |
+| Cycle closed: cart rescued into wishlist                                      | Each cart holder                |
+| Cycle closed                                                                  | Customers with orders in it     |
+| Account erased, withdrawing its pending orders                                | Owner (one message naming them) |
+| Closed cycle still holding unanswered orders (once per cycle)                 | Owner                           |
+| Wish for a product the catalog lacks, left under an empty search              | Owner (name, phone and text)    |
+| Owner's own text from the orders panel (sent in the request)                  | That order's customer           |
+| Customer's reply to the owner's text or to the «Ответить» prompt              | Owner (name, phone and reply)   |
+| Owner's reply in the chat to a customer's passed-on message                   | That customer                   |
+| Owner's reply in the chat to a wish for the next cycle                        | Its writer, if linked by phone  |
 
 **Three rules that the code is shaped around:**
 

@@ -9,6 +9,7 @@ import {
   IAdminOrder,
   IAdminOrderCycle,
   IAdminOrderDialogProps,
+  IAdminOrderEditDialogProps,
   ICustomerOption,
   ICustomerSelectProps,
   IAdminChecklistProps,
@@ -1144,6 +1145,49 @@ export const feedAdminOrderDialog = (): IAdminOrderDialogProps => {
   }
 }
 
+export const feedAdminOrderEditDialog = (): IAdminOrderEditDialogProps => {
+  const order = feedAdminOrder({ status: 'AWAITING_PAYMENT', customerName: 'Айгуль' })
+
+  return {
+    isOpen: true,
+    onClose: noop,
+    order,
+    productSearch: { query: '', onQueryChange: noop, products: null },
+    lines: [
+      ...order.items.map(item => ({
+        key: item.id,
+        itemId: item.id,
+        variantId: item.variantId,
+        productName: item.productName,
+        productSlug: item.productSlug,
+        productImageUrl: item.productImageUrl,
+        productBrand: item.productBrand,
+        productVolumeMl: item.productVolumeMl,
+        priceCents: item.productPriceCents,
+        quantity: item.quantity,
+      })),
+      {
+        key: 'new-line',
+        itemId: null,
+        variantId: faker.string.uuid(),
+        productName: 'Сыворотка Centella',
+        productSlug: 'centella',
+        productImageUrl: null,
+        productBrand: 'Skin1004',
+        productVolumeMl: 50,
+        priceCents: 145_000,
+        quantity: 1,
+      },
+    ],
+    onAdd: noop,
+    onQuantityChange: noop,
+    onRemove: noop,
+    hasChanges: true,
+    buildProductHref: slug => `/catalog/${slug}`,
+    onSubmit: noop,
+  }
+}
+
 export const feedConfirmDialog = (): IConfirmDialogProps => ({
   isOpen: true,
   title: 'Удалить категорию?',
@@ -1384,6 +1428,7 @@ export const feedAdminOrder = (overrides: Partial<IAdminOrder> = {}): IAdminOrde
   canMessage: true,
   createdById: null,
   createdByName: null,
+  revision: 1,
   ...overrides,
 })
 

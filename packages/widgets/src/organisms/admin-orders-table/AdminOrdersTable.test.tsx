@@ -68,4 +68,33 @@ describe('AdminOrdersTable', () => {
     expect(onMessage).toHaveBeenCalledWith(linked)
     expect(second.getAttribute('aria-disabled')).toBe('true')
   })
+
+  it('«Изменить состав» доступна до оплаты включительно', () => {
+    const onEdit = vi.fn()
+    const statuses = [
+      'PENDING',
+      'AWAITING_PAYMENT',
+      'CONFIRMED',
+      'READY',
+      'CANCELLED_BY_OWNER',
+    ] as const
+    const orders = statuses.map(status => feedAdminOrder({ status }))
+    const { getAllByRole } = renderWidget(
+      <AdminOrdersTable {...feedAdminOrdersTable()} orders={orders} onEdit={onEdit} />
+    )
+
+    const buttons = getAllByRole('button', { name: /Изменить состав заявки № / })
+    buttons.forEach(button => {
+      fireEvent.click(button)
+    })
+
+    expect(onEdit.mock.calls.map(([order]) => order)).toEqual(orders.slice(0, 3))
+    expect(buttons.map(button => button.getAttribute('aria-disabled'))).toEqual([
+      null,
+      null,
+      null,
+      'true',
+      'true',
+    ])
+  })
 })

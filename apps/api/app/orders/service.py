@@ -14,6 +14,7 @@ from app.catalog.models import Category, Product, ProductVariant
 from app.cycles.models import CycleStatus, OrderCycle
 from app.cycles.service import CyclesService
 from app.orders.models import (
+    ADMIN_EDITABLE_STATUSES,
     ADMIN_ORDER_WINDOW,
     ALLOWED_TRANSITIONS,
     OPEN_STATUSES,
@@ -53,6 +54,15 @@ class OrderNotEditableError(Exception):
 
 class OrderItemNotFoundError(Exception):
     pass
+
+
+class OrderChangedError(Exception):
+    """The order's lines moved since the admin panel read them (`Order.revision`).
+
+    The customer edited it, a catalogue change repriced or trimmed it, or another admin
+    saved first. The draft was built on lines that are no longer there, and saving it
+    would write over a change nobody in the panel has seen.
+    """
 
 
 class LastOrderItemError(Exception):
@@ -476,6 +486,100 @@ class OrdersService:
         await self._session.flush()
         return order, True
 
+    async def edit_by_admin(
+        self,
+        order_id: uuid.UUID,
+        revision: int,
+        kept: Mapping[uuid.UUID, int],
+        added: Sequence[tuple[uuid.UUID, int]],
+    ) -> tuple[Order, bool]:
+        """The owner rewrites what an order holds, whoever placed it.
+
+        The whole composition arrives at once, as the panel's draft has it: `kept` maps the
+        order's own lines to their new quantities, a line left out of it is removed, and
+        `added` are volumes from the catalogue. One request rather than the customer's
+        call per change, so the order is never left half-edited and the customer hears
+        about it once.
+
+        A kept line keeps its snapshot — the price is the one the order was taken or paid
+        at, and a line whose product has since left the catalogue may stay. An added one is
+        taken at today's price under the same rule as `create_for_customer`: a
+        discontinued or sold-out volume refuses the whole edit. A volume already on a kept
+        line joins that line, as it does in `add_item`.
+
+        `ADMIN_EDITABLE_STATUSES` only, and the status does not move: a paid order stays
+        paid, and the customer is only told. `revision` is the one the panel read the
+        order at — anything else is `OrderChangedError`.
+
+        Returns the order and whether anything changed: a save that left the lines as they
+        were is not news to send.
+        """
+        result = await self._session.execute(
+            select(Order)
+            .options(selectinload(Order.items))
+            .where(Order.id == order_id)
+            .with_for_update(of=Order)
+            .execution_options(populate_existing=True)
+        )
+        order = result.scalar_one_or_none()
+        if order is None:
+            raise OrderNotFoundError
+        if order.status not in ADMIN_EDITABLE_STATUSES:
+            raise OrderNotEditableError
+        if order.revision != revision:
+            raise OrderChangedError
+        if not kept.keys() <= {item.id for item in order.items}:
+            raise OrderItemNotFoundError
+
+        quantities: dict[uuid.UUID, int] = {}
+        for variant_id, quantity in added:
+            quantities[variant_id] = min(
+                quantities.get(variant_id, 0) + quantity, MAX_ITEM_QUANTITY
+            )
+        if not kept and not quantities:
+            raise LastOrderItemError
+
+        found: dict[uuid.UUID, tuple[ProductVariant, Product]] = {}
+        if quantities:
+            variants = await self._session.execute(
+                select(ProductVariant, Product)
+                .join(Product, Product.id == ProductVariant.product_id)
+                .where(
+                    ProductVariant.id.in_(quantities),
+                    ProductVariant.deleted_at.is_(None),
+                    ProductVariant.in_stock.is_(True),
+                    Product.deleted_at.is_(None),
+                )
+                .options(selectinload(Product.images))
+            )
+            found = {variant.id: (variant, product) for variant, product in variants.all()}
+            if found.keys() != quantities.keys():
+                raise ProductNotFoundError
+
+        if not quantities and kept == {item.id: item.quantity for item in order.items}:
+            return order, False
+
+        for item in list(order.items):
+            if item.id in kept:
+                item.quantity = kept[item.id]
+            else:
+                order.items.remove(item)
+
+        lines = {item.variant_id: item for item in order.items if item.variant_id is not None}
+        for variant_id, quantity in quantities.items():
+            existing = lines.get(variant_id)
+            if existing is not None:
+                existing.quantity = min(existing.quantity + quantity, MAX_ITEM_QUANTITY)
+            else:
+                variant, product = found[variant_id]
+                order.items.append(_snapshot_line(product, variant, quantity))
+
+        self._recalculate_total(order)
+        await self._session.flush()
+        # New lines went in last; read them back in `Order.items` order, as `add_item` does.
+        await self._session.refresh(order, attribute_names=["items"])
+        return order, True
+
     async def list_for_user(
         self,
         user_id: uuid.UUID,
@@ -661,7 +765,9 @@ class OrdersService:
 
     @staticmethod
     def _recalculate_total(order: Order) -> None:
+        """Every change to the lines comes through here, so the revision moves with it."""
         order.total_cents = sum(item.product_price_cents * item.quantity for item in order.items)
+        order.revision = (order.revision or 0) + 1
 
     @staticmethod
     def _find_item(order: Order, item_id: uuid.UUID) -> OrderItem:
