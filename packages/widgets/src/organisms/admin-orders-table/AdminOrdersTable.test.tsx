@@ -31,18 +31,19 @@ describe('AdminOrdersTable', () => {
     expect(container.querySelector('tfoot')).toBeNull()
   })
 
-  it('метит оплату: оплаченная важнее присланного чека, без чека метки нет', () => {
+  it('метит чек на проверке и неоплаченные, а оплату показывает статусом', () => {
     const orders = [
-      feedAdminOrder({ status: 'CONFIRMED', hasReceipt: true }),
-      feedAdminOrder({ status: 'READY', hasReceipt: true, paidAt: new Date().toISOString() }),
-      feedAdminOrder({ status: 'CONFIRMED' }),
+      feedAdminOrder({ status: 'AWAITING_PAYMENT', hasReceipt: true }),
+      feedAdminOrder({ status: 'CONFIRMED', paidAt: new Date().toISOString() }),
+      feedAdminOrder({ status: 'AWAITING_PAYMENT' }),
     ]
-    const { getAllByText } = renderWidget(
+    const { getAllByText, queryByText } = renderWidget(
       <AdminOrdersTable {...feedAdminOrdersTable()} orders={orders} />
     )
 
     expect(getAllByText('Чек на проверке')).toHaveLength(1)
-    expect(getAllByText('Оплачено')).toHaveLength(1)
+    expect(getAllByText('Не оплачено')).toHaveLength(1)
+    expect(queryByText('Оплачено')).toBeNull()
   })
 
   it('«Написать через бота» зовёт обработчик, а без привязки к боту недоступна', () => {
@@ -57,7 +58,9 @@ describe('AdminOrdersTable', () => {
       />
     )
 
-    const [first, second] = getAllByRole('button', { name: /Написать покупателю заявки № .* через бота/ })
+    const [first, second] = getAllByRole('button', {
+      name: /Написать покупателю заявки № .* через бота/,
+    })
     fireEvent.click(first)
     fireEvent.click(second)
 

@@ -123,7 +123,7 @@ async def notify_order_status(order_id: uuid.UUID) -> None:
             customer = await _load_customer(session, order.user_id)
             if customer is None:
                 return
-            first_cycle = order.status is OrderStatus.CONFIRMED and await _is_first_cycle(
+            first_cycle = order.status is OrderStatus.AWAITING_PAYMENT and await _is_first_cycle(
                 session, order.cycle_id
             )
             await notifications_service.send_order_status(customer, order, first_cycle=first_cycle)
@@ -188,6 +188,10 @@ async def notify_order_cancelled_by_customer(order_id: uuid.UUID, *, restored: b
     and until now it changed it silently: the row simply read differently the next time
     the admin list was opened. A restore is announced for the same reason the owner's
     own undo is announced to the customer — the previous message said the order was off.
+
+    A cancellation is also confirmed to the customer, with the way to take it back: the
+    button is easy to press by mistake. A restore is not — the page they pressed it on
+    already shows the order back, and the bot has nothing to add.
     """
     try:
         async with async_session() as session:
@@ -195,12 +199,15 @@ async def notify_order_cancelled_by_customer(order_id: uuid.UUID, *, restored: b
             if order is None:  # deleted between the commit and this task running
                 return
 
+            customer = await _load_customer(session, order.user_id)
+            if customer is not None and not restored:
+                await notifications_service.send_own_cancellation(customer, order)
+
             owners = await recipients.get_owners(session)
             if not owners:
                 logger.warning("No ADMIN user to notify about order %s", order_id)
                 return
 
-            customer = await _load_customer(session, order.user_id)
             for owner in owners:
                 await notifications_service.send_customer_cancellation(
                     owner, order, customer, restored=restored

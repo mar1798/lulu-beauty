@@ -535,6 +535,19 @@ def test_customer_cancellation_for_owner_survives_a_deleted_customer() -> None:
     assert "Покупатель: -" in text
 
 
+def test_order_cancelled_by_customer_says_who_and_the_way_back() -> None:
+    """Это подтверждение его же нажатия: «вами» отличает его от отмены Sululu, а
+    возврат назван, потому что отменить по ошибке легко."""
+    order = _order(status=OrderStatus.CANCELLED_BY_CUSTOMER)
+
+    text = messages.order_cancelled_by_customer(order)
+
+    assert messages.order_reference(order.id) in text
+    assert "отменена вами" in text
+    assert "вернуть" in text
+    assert "—" not in text
+
+
 def test_consent_names_the_button_it_is_about() -> None:
     """Согласие фиксируется до нажатия, а не в ответ на него: аккаунт заводится ровно
     в тот момент, когда человек делится номером, — поэтому текст называет ту самую

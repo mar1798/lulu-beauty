@@ -434,6 +434,37 @@ async def test_send_customer_cancellation_stays_quiet_on_a_dead_binding() -> Non
     bot.send_message.assert_not_awaited()
 
 
+async def test_send_own_cancellation_points_the_customer_at_their_orders(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Текст обещает вернуть заявку на странице заявок — кнопка ведёт туда."""
+    monkeypatch.setattr("app.config.settings.website_base_url", "https://lulu.example.com")
+    bot = AsyncMock()
+    service = NotificationsService(bot)
+
+    await service.send_own_cancellation(
+        _user(telegram_chat_id=42), _order(status=OrderStatus.CANCELLED_BY_CUSTOMER)
+    )
+
+    chat_id, message = bot.send_message.await_args.args
+    assert chat_id == 42
+    assert "отменена вами" in message
+    markup = bot.send_message.await_args.kwargs["reply_markup"]
+    buttons = [button for row in markup.inline_keyboard for button in row]
+    assert [keyboards.button_target(button) for button in buttons] == [
+        "https://lulu.example.com/orders"
+    ]
+
+
+async def test_send_own_cancellation_stays_quiet_on_a_dead_binding() -> None:
+    bot = AsyncMock()
+    service = NotificationsService(bot)
+
+    await service.send_own_cancellation(_user(telegram_chat_id=None), _order())
+
+    bot.send_message.assert_not_awaited()
+
+
 async def test_send_stale_orders_points_the_owner_at_the_panel(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -468,10 +499,10 @@ async def test_send_stale_orders_stays_quiet_on_a_dead_binding() -> None:
     bot.send_message.assert_not_awaited()
 
 
-async def test_confirmation_sends_the_bill_with_the_receipt_button() -> None:
+async def test_taking_the_order_sends_the_bill_with_the_receipt_button() -> None:
     bot = AsyncMock()
     service = NotificationsService(bot)
-    order = _order(OrderStatus.CONFIRMED)
+    order = _order(OrderStatus.AWAITING_PAYMENT)
 
     await service.send_order_status(_user(telegram_chat_id=42), order)
 
@@ -488,7 +519,7 @@ async def test_a_bill_too_long_for_one_message_goes_out_in_parts() -> None:
     used to leave the customer with no bill at all."""
     bot = AsyncMock()
     service = NotificationsService(bot)
-    order = _order(OrderStatus.CONFIRMED)
+    order = _order(OrderStatus.AWAITING_PAYMENT)
     order.items = [
         OrderItem(
             product_name=f"Увлажняющая сыворотка с центеллой и ниацинамидом №{n}",
@@ -555,6 +586,17 @@ async def test_a_receipt_to_a_blocked_owner_falls_back_to_the_log() -> None:
 
     # Must not raise: the receipt is already filed, and other owners are still to come.
     await service.send_receipt(_user(telegram_chat_id=7), receipt, order, None)
+
+
+async def test_a_payment_marked_by_hand_is_announced_like_an_accepted_receipt() -> None:
+    bot = AsyncMock()
+    service = NotificationsService(bot)
+    order = _order(OrderStatus.CONFIRMED)
+
+    await service.send_order_status(_user(telegram_chat_id=42), order)
+
+    bot.send_message.assert_awaited_once()
+    assert bot.send_message.await_args.args[1] == messages.payment_accepted(order)
 
 
 async def test_a_rejected_receipt_points_the_customer_at_the_owner() -> None:

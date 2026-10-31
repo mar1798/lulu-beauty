@@ -21,8 +21,9 @@ import * as styles from './AdminOrdersTable.css'
  * владельцу нужно собрать заказ, то есть видеть позиции нескольких заявок
  * подряд, и переходы туда-обратно этому мешают.
  *
- * Под суммой — метка оплаты: чек покупатель шлёт в бот, и там же владелец жмёт
- * «Оплата получена»; здесь видно, у каких заявок чек ждёт проверки.
+ * Под суммой — метка оплаты у заявок «Ожидает оплаты»: «Чек на проверке», если
+ * покупатель прислал чек в бот (там же владелец жмёт «Оплата получена»), иначе
+ * «Не оплачено». Сама оплата — уже статус («Подтверждена»), отдельной метки ей не нужно.
  *
  * Телефон — ссылка `tel:`: заявку владелец подтверждает в чате бота, но о выдаче
  * договаривается лично, и копировать номер для этого руками незачем.
@@ -176,14 +177,14 @@ export const AdminOrdersTable: FC<IAdminOrdersTableProps & IBasicStyling> = ({
                       <td className={styles.cell} role="cell" data-label="Сумма">
                         <div className={styles.total}>
                           <Price priceCents={order.totalCents} size="sm" />
-                          {order.paidAt !== null ? (
-                            <Badge tone="success" withDot={true}>
-                              Оплачено
+                          {order.hasReceipt ? (
+                            <Badge tone="warning" withDot={true}>
+                              Чек на проверке
                             </Badge>
                           ) : (
-                            order.hasReceipt && (
+                            order.status === 'AWAITING_PAYMENT' && (
                               <Badge tone="warning" withDot={true}>
-                                Чек на проверке
+                                Не оплачено
                               </Badge>
                             )
                           )}

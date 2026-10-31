@@ -602,6 +602,10 @@ class OrdersService:
         for order in orders:
             stage = clocks.get(order.cycle_id, _LOST_CYCLE).stage(now)
             is_pending = order.status == OrderStatus.PENDING
+            # Billed but unpaid: nothing of the customer's is spent yet, so backing out
+            # stays theirs to do — and the purchase window says nothing about it, since
+            # the owner has already answered this order with the bill.
+            is_billed = order.status == OrderStatus.AWAITING_PAYMENT
 
             flags[order.id] = OrderFlags(
                 is_editable=is_pending and stage is PendingStage.COLLECTING,
@@ -627,7 +631,7 @@ class OrdersService:
                 # as if it were new. What the order needs there is the shop's answer —
                 # the owner is nudged for one (`stale_order_sweep`), and the page says
                 # where to write meanwhile.
-                is_cancellable=is_pending and stage is not PendingStage.UNFULFILLED,
+                is_cancellable=(is_pending and stage is not PendingStage.UNFULFILLED) or is_billed,
                 pending_stage=stage if is_pending else None,
             )
 
@@ -643,7 +647,8 @@ class OrdersService:
         return order
 
     async def _get_cancellable(self, user_id: uuid.UUID, order_id: uuid.UUID) -> Order:
-        """The wider gate: PENDING whatever the cycle is doing, up to `UNFULFILLED`.
+        """The wider gate: PENDING whatever the cycle is doing, up to `UNFULFILLED`, and
+        AWAITING_PAYMENT whenever.
 
         Same error as editing when it refuses — from the customer's side both are "this
         request is already past the point where you decide", and the site picks the
@@ -743,8 +748,10 @@ class OrdersService:
         """Customer-side "delete": the owner keeps seeing the order, marked as cancelled
         *by the customer* — which is the whole difference from the owner dropping it.
 
-        Available while the order is PENDING, and deliberately not tied to the cycle the
-        way editing is. Nothing is bought against a PENDING order, so letting it go costs
+        Available while the order is PENDING or AWAITING_PAYMENT, and deliberately not tied
+        to the cycle the way editing is. A bill unpaid is a customer who has not committed
+        any money yet, and refusing them the button would only move "я передумал" into a
+        message to the owner. Nothing is bought against a PENDING order, so letting it go costs
         the owner a notification; the deadline it used to be tied to guards the purchase
         list, which a withdrawal shortens and never rewrites. Before that, an order left
         unanswered in a closed cycle had no action on it at all — the customer sat in
@@ -789,6 +796,10 @@ class OrdersService:
             raise OrderNotRestorableError
 
         order.status = OrderStatus.PENDING
+        # Cancelled from AWAITING_PAYMENT, it comes back unbilled: in PENDING it is
+        # repriced again, so the bill it had no longer holds, and the owner taking it
+        # again sends a fresh one.
+        order.confirmed_at = None
         await self._session.flush()
         return order
 
@@ -1190,11 +1201,14 @@ class OrdersService:
 
         changed = order.status != new_status
         order.status = new_status
-        if changed and new_status is OrderStatus.CONFIRMED:
+        if changed and new_status is OrderStatus.AWAITING_PAYMENT:
             order.confirmed_at = datetime.now(UTC)
+        if changed and new_status is OrderStatus.CONFIRMED and order.paid_at is None:
+            # Marked paid by hand: the money came some other way than a receipt in the bot.
+            order.paid_at = datetime.now(UTC)
         if new_status is OrderStatus.PENDING:
             # Back in PENDING the order is repriced and loses lines like any other, so a
-            # payment taken against its old total no longer covers it. Confirming it again
+            # payment taken against its old total no longer covers it. Taking it again
             # sends a fresh bill, and the owner settles the earlier money with the customer.
             order.paid_at = None
             order.confirmed_at = None

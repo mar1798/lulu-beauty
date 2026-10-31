@@ -1456,11 +1456,10 @@ export const feedAdminChecklist = (): IAdminChecklistProps => ({
 export const feedAdminOrdersTable = (): IAdminOrdersTableProps => ({
   orders: [
     feedAdminOrder({ note: 'Позвоните после 18:00.' }),
-    feedAdminOrder({ status: 'CONFIRMED', hasReceipt: true }),
+    feedAdminOrder({ status: 'AWAITING_PAYMENT', hasReceipt: true }),
     feedAdminOrder({ createdById: faker.string.uuid(), createdByName: 'Мария' }),
     feedAdminOrder({
       status: 'COMPLETED',
-      hasReceipt: true,
       paidAt: new Date(Date.now() - DAY_MS).toISOString(),
     }),
   ],

@@ -251,9 +251,9 @@ storage is in memory and a restart between the tap and the photo would lose it:
   a reply to the prompt by itself, and the prompt names the order — no state, nothing a
   restart could lose. A reply to the bill works the same way. The acknowledgement brings
   the reply keyboard back, since the `ForceReply` displaced it;
-- otherwise the candidates are the customer's unpaid **CONFIRMED** orders confirmed within
-  the last week (`RECEIPT_GUESS_WINDOW`, measured from `orders.confirmed_at`) — READY ones
-  and old cycles' leftovers are not guessed at. One candidate takes it;
+- otherwise the candidates are the customer's **AWAITING_PAYMENT** orders billed within
+  the last week (`RECEIPT_GUESS_WINDOW`, measured from `orders.confirmed_at`) — old
+  cycles' leftovers are not guessed at. One candidate takes it;
 - several: the bot replies to the file with one button per order, and the answer
   (`ReceiptOrderChoice`) finds the file again as the question's `reply_to_message`;
 - none: the customer is told nothing is waiting for payment.
@@ -312,30 +312,31 @@ production token never receives an update — see **Local dev needs its own bot*
 `app/telegram/notify.py`. Everything addressed to "the owner" fans out to **every** account
 with admin rights — `ADMIN` and `SUPER_ADMIN` alike (`recipients.get_owners`).
 
-| Trigger                                                               | Who hears                       |
-| --------------------------------------------------------------------- | ------------------------------- |
-| New order — at checkout, or placed by an admin (then it names them)   | Owner                           |
-| Order an admin placed for the customer, listing its lines             | That customer                   |
-| Order status change (incl. the owner undoing their own cancel)        | Customer                        |
-| Order confirmed: the bill, requisites and «📎 Отправить чек»          | Customer                        |
-| Payment receipt sent to the bot                                       | Owner (the file, with verdict)  |
-| Owner accepted / rejected a receipt                                   | Customer                        |
-| Order cancelled by its customer, and that cancellation taken back     | Owner                           |
-| Order deleted by owner (unless it was already completed or cancelled) | Customer                        |
-| Catalog price change repricing PENDING orders                         | Each affected customer          |
-| Product soft-deleted, dropping lines                                  | Each affected customer          |
-| Cycle opened / deadline moved                                         | Customers                       |
-| Deadline reminders (24h, 3h)                                          | Customers with a non-empty cart |
-| Cycle closed: shopping summary                                        | Owner                           |
-| Cycle closed: cart rescued into wishlist                              | Each cart holder                |
-| Cycle closed                                                          | Customers with orders in it     |
-| Account erased, withdrawing its pending orders                        | Owner (one message naming them) |
-| Closed cycle still holding unanswered orders (once per cycle)         | Owner                           |
-| Wish for a product the catalog lacks, left under an empty search      | Owner (name, phone and text)    |
-| Owner's own text from the orders panel (sent in the request)          | That order's customer           |
-| Customer's reply to the owner's text or to the «Ответить» prompt      | Owner (name, phone and reply)   |
-| Owner's reply in the chat to a customer's passed-on message           | That customer                   |
-| Owner's reply in the chat to a wish for the next cycle                | Its writer, if linked by phone  |
+| Trigger                                                                     | Who hears                       |
+| --------------------------------------------------------------------------- | ------------------------------- |
+| New order — at checkout, or placed by an admin (then it names them)         | Owner                           |
+| Order an admin placed for the customer, listing its lines                   | That customer                   |
+| Order status change (incl. the owner undoing their own cancel)              | Customer                        |
+| Order taken (AWAITING_PAYMENT): the bill, requisites and «📎 Отправить чек» | Customer                        |
+| Payment receipt sent to the bot                                             | Owner (the file, with verdict)  |
+| Owner accepted / rejected a receipt, or marked the payment in the panel     | Customer                        |
+| Order cancelled by its customer, and that cancellation taken back           | Owner                           |
+| Order cancelled by its customer: confirmed, with the way to restore it      | That customer                   |
+| Order deleted by owner (unless it was already completed or cancelled)       | Customer                        |
+| Catalog price change repricing PENDING orders                               | Each affected customer          |
+| Product soft-deleted, dropping lines                                        | Each affected customer          |
+| Cycle opened / deadline moved                                               | Customers                       |
+| Deadline reminders (24h, 3h)                                                | Customers with a non-empty cart |
+| Cycle closed: shopping summary                                              | Owner                           |
+| Cycle closed: cart rescued into wishlist                                    | Each cart holder                |
+| Cycle closed                                                                | Customers with orders in it     |
+| Account erased, withdrawing its pending orders                              | Owner (one message naming them) |
+| Closed cycle still holding unanswered orders (once per cycle)               | Owner                           |
+| Wish for a product the catalog lacks, left under an empty search            | Owner (name, phone and text)    |
+| Owner's own text from the orders panel (sent in the request)                | That order's customer           |
+| Customer's reply to the owner's text or to the «Ответить» prompt            | Owner (name, phone and reply)   |
+| Owner's reply in the chat to a customer's passed-on message                 | That customer                   |
+| Owner's reply in the chat to a wish for the next cycle                      | Its writer, if linked by phone  |
 
 **Three rules that the code is shaped around:**
 

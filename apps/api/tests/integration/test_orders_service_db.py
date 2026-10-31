@@ -250,9 +250,9 @@ async def test_list_admin_page_filters_by_status_and_paginates(
         await CartService(db_session).add_item(user.id, variant_id(product), 1)
         orders.append(await service.checkout(user.id, note=None))
 
-    await service.update_status(orders[0].id, OrderStatus.CONFIRMED)
+    await service.update_status(orders[0].id, OrderStatus.AWAITING_PAYMENT)
 
-    confirmed, total = await service.list_admin_page(None, OrderStatus.CONFIRMED, 1, 20)
+    confirmed, total = await service.list_admin_page(None, OrderStatus.AWAITING_PAYMENT, 1, 20)
     assert total == 1
     assert [order.id for order in confirmed] == [orders[0].id]
 
@@ -280,11 +280,11 @@ async def test_admin_summary_counts_lines_and_money_across_every_page(
     await cart.add_item(user.id, variant_id(cheap), 1)
     await service.checkout(user.id, note=None)
 
-    await service.update_status(two_lines.id, OrderStatus.CONFIRMED)
+    await service.update_status(two_lines.id, OrderStatus.AWAITING_PAYMENT)
 
     # Lines, not units: the first order is two lines however many of each it holds.
     assert await service.admin_summary(None, None) == (3, 2 * 1000 + 2500 + 1000)
-    assert await service.admin_summary(None, OrderStatus.CONFIRMED) == (2, 2 * 1000 + 2500)
+    assert await service.admin_summary(None, OrderStatus.AWAITING_PAYMENT) == (2, 2 * 1000 + 2500)
     assert await service.admin_summary(uuid.uuid4(), None) == (0, 0)
 
 
@@ -1190,3 +1190,60 @@ async def test_the_owner_cannot_revive_an_order_left_with_nothing(
 
     with pytest.raises(StatusTransitionError):
         await service.update_status(order.id, OrderStatus.PENDING)
+
+
+async def test_taking_an_order_bills_it_and_marking_the_payment_confirms_it(
+    db_session: AsyncSession,
+) -> None:
+    """PENDING → AWAITING_PAYMENT → CONFIRMED, and no step skipped: the payment marked by
+    hand stamps `paid_at` as an accepted receipt would."""
+    _, order = await _order_with_items(db_session)
+    service = OrdersService(db_session)
+
+    with pytest.raises(StatusTransitionError):
+        await service.update_status(order.id, OrderStatus.CONFIRMED)
+
+    await service.update_status(order.id, OrderStatus.AWAITING_PAYMENT)
+    assert order.confirmed_at is not None and order.paid_at is None
+    with pytest.raises(StatusTransitionError):
+        await service.update_status(order.id, OrderStatus.READY)
+
+    await service.update_status(order.id, OrderStatus.CONFIRMED)
+    assert order.paid_at is not None
+
+
+async def test_the_customer_may_back_out_of_an_unpaid_bill(db_session: AsyncSession) -> None:
+    """Cancelling outlives PENDING by one step, and the purchase window says nothing about
+    it: the order is billed, so it was answered however long ago the cycle closed."""
+    user_id, order = await _closed_cycle_order(db_session, timedelta(days=30))
+    service = OrdersService(db_session)
+    await service.update_status(order.id, OrderStatus.AWAITING_PAYMENT)
+
+    assert (await service.customer_flags([order]))[order.id].is_cancellable is True
+    await service.cancel(user_id, order.id)
+    assert order.status == OrderStatus.CANCELLED_BY_CUSTOMER
+
+
+async def test_a_paid_order_is_no_longer_the_customers_to_cancel(
+    db_session: AsyncSession,
+) -> None:
+    user_id, order = await _order_with_items(db_session)
+    service = OrdersService(db_session)
+    await service.update_status(order.id, OrderStatus.AWAITING_PAYMENT)
+    await service.update_status(order.id, OrderStatus.CONFIRMED)
+
+    with pytest.raises(OrderNotEditableError):
+        await service.cancel(user_id, order.id)
+
+
+async def test_a_bill_backed_out_of_comes_back_unbilled(db_session: AsyncSession) -> None:
+    """Restored, the order is PENDING and repriced again, so the bill it had is void."""
+    user_id, order = await _closed_cycle_order(db_session, timedelta(days=1))
+    service = OrdersService(db_session)
+    await service.update_status(order.id, OrderStatus.AWAITING_PAYMENT)
+    await service.cancel(user_id, order.id)
+
+    restored = await service.restore(user_id, order.id)
+
+    assert restored.status == OrderStatus.PENDING
+    assert restored.confirmed_at is None

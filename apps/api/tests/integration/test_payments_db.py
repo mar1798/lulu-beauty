@@ -69,7 +69,7 @@ async def _customer(session: AsyncSession) -> User:
 async def _order(
     session: AsyncSession,
     customer: User,
-    status: OrderStatus = OrderStatus.CONFIRMED,
+    status: OrderStatus = OrderStatus.AWAITING_PAYMENT,
     *,
     confirmed_ago: timedelta = timedelta(hours=1),
 ) -> Order:
@@ -350,7 +350,7 @@ async def test_a_reply_to_the_receipt_prompt_files_against_its_order_unasked(
     the prompt has already named the order."""
     customer = await _customer(bot_session)
     await _order(bot_session, customer)
-    second = await _order(bot_session, customer, OrderStatus.READY)
+    second = await _order(bot_session, customer)
     await bot_session.commit()
 
     photo = _photo_message()
@@ -399,14 +399,15 @@ async def test_a_reply_to_the_customers_own_message_is_not_taken_for_an_answer(
     assert photo.reply.await_args.args[0] == messages.RECEIPT_WHICH_ORDER
 
 
-async def test_only_orders_confirmed_within_a_week_are_offered(
+async def test_only_orders_billed_within_a_week_are_offered(
     bot_session: AsyncSession, forwarded: AsyncMock
 ) -> None:
-    """Orders from cycles long gone, and READY ones, are not guessed at or asked about."""
+    """Orders from cycles long gone, and paid ones, are not guessed at or asked about."""
     customer = await _customer(bot_session)
     recent = await _order(bot_session, customer, confirmed_ago=timedelta(days=6))
     newest = await _order(bot_session, customer)
     await _order(bot_session, customer, confirmed_ago=timedelta(days=8))
+    await _order(bot_session, customer, OrderStatus.CONFIRMED)
     await _order(bot_session, customer, OrderStatus.READY)
     await bot_session.commit()
 
@@ -432,7 +433,7 @@ async def test_a_reply_naming_an_old_order_still_files_against_it(
 ) -> None:
     """The window is for guessing; a reply to the bill says which order it is."""
     customer = await _customer(bot_session)
-    old = await _order(bot_session, customer, OrderStatus.READY, confirmed_ago=timedelta(days=30))
+    old = await _order(bot_session, customer, confirmed_ago=timedelta(days=30))
     await bot_session.commit()
 
     photo = _photo_message()
@@ -533,6 +534,7 @@ async def test_the_owner_accepting_a_receipt_marks_the_order_paid(
 
     await bot_session.refresh(order)
     assert order.paid_at is not None
+    assert order.status is OrderStatus.CONFIRMED
     receipt = await bot_session.get(PaymentReceipt, receipt_id)
     assert receipt is not None and receipt.verdict is ReceiptVerdict.ACCEPTED
     assert "Оплата получена" in query.message.edit_caption.await_args.kwargs["caption"]
@@ -606,7 +608,7 @@ async def test_a_receipt_rejected_meanwhile_is_not_rejected_again(
 async def test_receipts_sent_before_the_order_was_billed_again_cannot_be_decided(
     db_session: AsyncSession,
 ) -> None:
-    """Back to PENDING and confirmed again, the order owes a fresh bill: an undecided
+    """Back to PENDING and taken again, the order owes a fresh bill: an undecided
     receipt for the old one is neither shown as waiting nor accepted from the buttons
     still under it — until the customer sends it again."""
     order = await _order(db_session, await _customer(db_session))
@@ -621,7 +623,7 @@ async def test_receipts_sent_before_the_order_was_billed_again_cannot_be_decided
     assert await payments.orders_with_receipts([order.id]) == set()
     await orders.update_status(order.id, OrderStatus.PENDING)
     assert await payments.orders_with_receipts([order.id]) == set()
-    await orders.update_status(order.id, OrderStatus.CONFIRMED)
+    await orders.update_status(order.id, OrderStatus.AWAITING_PAYMENT)
     await db_session.commit()
 
     assert await payments.orders_with_receipts([order.id]) == set()
@@ -673,7 +675,7 @@ async def test_a_paid_order_taken_back_to_pending_owes_a_fresh_bill(
     db_session: AsyncSession,
 ) -> None:
     """Back in PENDING the order is repriced like any other, so the old payment no longer
-    covers it: confirming it again bills it again, and the same file reopens for review."""
+    covers it: taking it again bills it again, and the same file reopens for review."""
     order = await _order(db_session, await _customer(db_session))
     # Not empty: an empty order is refused its way back to PENDING.
     db_session.add(
@@ -688,7 +690,7 @@ async def test_a_paid_order_taken_back_to_pending_owes_a_fresh_bill(
     await orders.update_status(order.id, OrderStatus.PENDING)
     assert (order.paid_at, order.confirmed_at) == (None, None)
 
-    await orders.update_status(order.id, OrderStatus.CONFIRMED)
+    await orders.update_status(order.id, OrderStatus.AWAITING_PAYMENT)
     assert order.paid_at is None and order.confirmed_at is not None
 
     added = await PaymentsService(db_session).add_receipt(

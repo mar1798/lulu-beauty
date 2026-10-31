@@ -107,6 +107,7 @@ def _items_count(order: Order) -> str:
 
 ORDER_STATUS_LABEL = {
     OrderStatus.PENDING: "В ожидании",
+    OrderStatus.AWAITING_PAYMENT: "Ожидает оплаты",
     OrderStatus.CONFIRMED: "Подтверждена",
     OrderStatus.READY: "Готова к выдаче",
     OrderStatus.COMPLETED: "Выдана",
@@ -223,6 +224,21 @@ def customer_cancellation_for_owner(order: Order, customer: User | None, *, rest
     )
 
 
+def order_cancelled_by_customer(order: Order) -> str:
+    """Покупателю — подтверждение его же отмены.
+
+    Нажать «отменить» по ошибке легко, а на сайте после этого заявка просто меняет
+    статус. Сообщение в боте говорит, что отмена принята, и где её взять назад: окно
+    возврата то же, что у самой отмены (`OrdersService.restore`), так что в момент
+    отправки заявку на сайте ещё можно вернуть.
+    """
+    return (
+        f"Заявка {order_reference(order.id)} отменена вами.\n"
+        "Если это ошибка - вы можете вернуть её на странице ваших заявок "
+        "или оформить новую"
+    )
+
+
 # The opening of `wanted_product_for_owner`. The owner's reply to it goes back to the
 # writer (`handlers.handle_owner_reply`), found by the record of this message
 # (`relay.resolve`), not by anything written in it.
@@ -277,8 +293,10 @@ _ORDER_STATUS_NEWS = {
     # Владелец отменил заявку и передумал: покупатель уже получил «отменена Sululu»,
     # и без этой строки заявка воскресала бы у него молча.
     OrderStatus.PENDING: "снова ждёт подтверждения - мы вернули её в работу",
-    # CONFIRMED is not here: it gets a message of its own, with the bill and the
-    # requisites (`order_confirmed`), sent instead of a one-line status update.
+    # AWAITING_PAYMENT is not here: it gets a message of its own, with the bill and the
+    # requisites (`order_confirmed`), sent instead of a one-line status update. Nor is
+    # CONFIRMED: it is the payment, and says so (`payment_accepted`), whether a receipt
+    # or the owner's own mark in the panel made it.
     OrderStatus.READY: (
         "Здравствуйте! Ваш заказ готов к выдаче🛍\n"
         "Свяжемся с вами как можно скорее чтобы договориться о получении!😇"
@@ -288,8 +306,9 @@ _ORDER_STATUS_NEWS = {
     OrderStatus.CANCELLED_BY_OWNER: (
         "отменена Sululu. Если это ошибка - напишите в Instagram Sululu"
     ),
-    # Про свою же отмену покупателю сообщать нечего: он её и сделал, а уведомление
-    # выглядело бы так, будто её сделал кто-то другой.
+    # CANCELLED_BY_CUSTOMER не здесь: свою отмену покупатель получает отдельным
+    # сообщением (`order_cancelled_by_customer`) — со словом «вами» и с тем, как её
+    # вернуть, а не строкой статуса, будто заявку отменил кто-то другой.
 }
 
 
@@ -309,7 +328,8 @@ def order_completed(order: Order) -> str:
 
 
 def order_status_changed(order: Order) -> str | None:
-    """None means "say nothing" — currently only about the customer's own cancellation.
+    """None means "say nothing" here — the customer's own cancellation has a message of
+    its own (`order_cancelled_by_customer`), sent from the cancel endpoint.
 
     Sent for the owner's status changes only: the customer's own restore goes through
     `OrdersService.restore`, whose router queues no notification at all, so PENDING here
@@ -442,7 +462,7 @@ def receipt_duplicate(order_id: uuid.UUID) -> str:
 
 RECEIPT_NOTHING_AWAITING = (
     "Сейчас у вас нет заявок, которые ждут оплаты. Сумму и реквизиты я пришлю сюда, "
-    "когда заявку подтвердят"
+    "когда заявку примут"
 )
 RECEIPT_UNSUPPORTED = "Чек нужен фотографией или PDF-файлом - другие файлы я не принимаю"
 RECEIPT_WHICH_ORDER = "За какую заявку этот чек?"
@@ -478,9 +498,11 @@ def payment_resolution(*, accepted: bool) -> str:
 
 
 def payment_accepted(order: Order) -> str:
+    """Sent when the order goes AWAITING_PAYMENT → CONFIRMED, from a receipt accepted in
+    the bot or from the owner's mark in the panel — the customer is told the same either way."""
     return (
         f"Оплата по заявке {order_reference(order.id)} получена - спасибо!🤍\n"
-        "Свяжемся с вами когда заказ будет готов"
+        "Заявка подтверждена. Свяжемся с вами, когда заказ будет готов к выдаче😇"
     )
 
 
@@ -931,7 +953,7 @@ MENU_PROMPT = "Чем помочь? Выберите кнопку ниже"
 
 # ─── Inline buttons and their answers ────────────────────────────────────────────
 
-CONFIRM_BUTTON = "✅ Подтвердить"
+CONFIRM_BUTTON = "✅ Принять"
 CANCEL_BUTTON = "❌ Отменить"
 RECEIPT_BUTTON = "📎 Отправить чек"
 # Под сообщением магазина: там это ответ на конкретное сообщение, а не письмо вообще,
@@ -983,7 +1005,7 @@ CALLBACK_ORDER_MOVED_ON = (
 )
 CALLBACK_NOT_LINKED = "Этот чат и так не привязан к аккаунту"
 CALLBACK_PAYMENT_ALREADY_ACCEPTED = "Оплата по этой заявке уже подтверждена"
-CALLBACK_PAYMENT_ACCEPTED = "Оплата отмечена"
+CALLBACK_PAYMENT_ACCEPTED = "Оплата отмечена - заявка подтверждена"
 CALLBACK_RECEIPT_REJECTED = "Чек отклонён - покупатель получит сообщение"
 CALLBACK_RECEIPT_NOT_AWAITED = "Эта заявка уже не ждёт оплаты"
 CALLBACK_RECEIPT_FILE_GONE = "Не вижу файла - пришлите чек ещё раз"

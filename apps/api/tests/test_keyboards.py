@@ -105,7 +105,7 @@ def test_order_actions_offers_both_moves_for_the_same_order() -> None:
     assert [action.action for action in actions] == ["confirm", "cancel"]
     assert {action.order_id for action in actions} == {order_id}
     assert {keyboards.ACTION_STATUS[a.action] for a in actions} == {
-        OrderStatus.CONFIRMED,
+        OrderStatus.AWAITING_PAYMENT,
         OrderStatus.CANCELLED_BY_OWNER,
     }
 
