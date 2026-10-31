@@ -12,6 +12,7 @@ import { primaryImage } from 'widgets/molecules'
 import { imagesForVariant } from 'widgets/utils'
 import { adminOrderNumber } from 'widgets/organisms'
 import { useProductSearch } from '@/hooks/useProductSearch'
+import { randomUuid } from '@/utils/uuid'
 import { isApiError, messageForError } from '@/services/apiErrors'
 import { createAdminOrder, listAdminOrderCycles, listAdminUsers } from '@/services/endpoints/admin'
 import {
@@ -60,7 +61,7 @@ export const useAdminOrderDraft = (): IAdminOrderDraft => {
   const products = useProductSearch()
 
   const [isOpen, setIsOpen] = useState(false)
-  const [requestId, setRequestId] = useState(() => crypto.randomUUID())
+  const [requestId, setRequestId] = useState(() => randomUuid())
   const [customer, setCustomer] = useState<ICustomerOption | null>(null)
   const [customerQuery, setCustomerQuery] = useState('')
   const [chosenCycleId, setChosenCycleId] = useState<string | null>(null)
@@ -124,7 +125,7 @@ export const useAdminOrderDraft = (): IAdminOrderDraft => {
     setLines([])
     setNote('')
     setError(null)
-    setRequestId(crypto.randomUUID())
+    setRequestId(randomUuid())
     products.setQuery('')
   }
 
