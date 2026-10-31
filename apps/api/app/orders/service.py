@@ -947,6 +947,9 @@ class OrdersService:
                     Order.status == OrderStatus.PENDING,
                     Order.id.in_(select(OrderItem.order_id).where(OrderItem.variant_id.in_(chunk))),
                 )
+                .order_by(Order.id)
+                .with_for_update(of=Order)
+                .execution_options(populate_existing=True)
             )
             for order in result.scalars().all():
                 found.setdefault(order.id, order)
@@ -965,6 +968,16 @@ class OrdersService:
         product turned one import into a query per changed row, on the event loop this
         process shares with the bot and the scheduler. Chunked, since the same file may
         carry thousands of them and one enormous `IN` is its own kind of problem.
+
+        Locks the orders it returns, like every other path that rewrites an order's lines
+        (`get_for_user(for_update=True)`, `edit_by_admin`). Without it a customer's or the
+        owner's edit committed between this read and the flush is overwritten: the total
+        is summed from the stale lines and `revision` lands where the edit already put it,
+        so the panel's next draft passes a check it should fail. Same query, no extra round
+        trip — the cost is that an edit of one of these orders waits for the catalogue
+        change to commit. Postgres re-checks the PENDING filter on a row it waited for, so
+        an order confirmed or cancelled meanwhile drops out instead of being repriced.
+        Locked in id order within a chunk, so two bulk changes take shared rows in one order.
         """
         found: dict[uuid.UUID, Order] = {}
 
@@ -977,6 +990,9 @@ class OrdersService:
                     Order.status == OrderStatus.PENDING,
                     Order.id.in_(select(OrderItem.order_id).where(OrderItem.product_id.in_(chunk))),
                 )
+                .order_by(Order.id)
+                .with_for_update(of=Order)
+                .execution_options(populate_existing=True)
             )
             for order in result.scalars().all():
                 found.setdefault(order.id, order)

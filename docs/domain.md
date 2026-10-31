@@ -485,7 +485,11 @@ when the product does.
 
 A customer's cancel/restore/edit and the owner's status change lock the order row
 (`get_for_user(for_update=True)`, `update_status`), so the two sides cannot both pass their
-checks against the same PENDING and have the later commit win.
+checks against the same PENDING and have the later commit win. A catalogue change that
+rewrites PENDING orders (`reprice_variants`, `rename_variants`, `drop_product`, `drop_variants`)
+locks them too, in `_pending_orders_with_any`/`_pending_orders_with_variants`: otherwise it
+would sum the total from lines read before a concurrent edit and leave `Order.revision` where
+that edit put it, and the admin panel's stale draft would be accepted.
 
 The volume and the shade are snapshots on the line, unlike brand and category, which are read
 from the live catalogue (`OrdersService.load_item_tags`): they are what the customer _chose_
@@ -560,8 +564,8 @@ bought, add what the customer asked for in a message, change a quantity.
   panel sends back the one it opened with, and a draft built on lines the customer, a
   catalogue edit or another admin has since changed is `409 order_changed` instead of a
   silent overwrite. `updated_at` would not do: a change that keeps the total untouched never
-  updates the order row. A catalogue edit running at the same moment as the save is not
-  caught yet: it reads its orders without a lock.
+  updates the order row. A catalogue edit running at the same moment as the save waits for
+  the order's lock and moves the revision after it, like every other path that rewrites lines.
 - **The purchase list follows.** It is computed live from the cycle's orders, so an edit
   after the cycle closed changes it — the point, when the edit is "не смогла достать".
 

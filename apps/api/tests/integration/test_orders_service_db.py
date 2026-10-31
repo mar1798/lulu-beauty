@@ -1247,3 +1247,41 @@ async def test_a_bill_backed_out_of_comes_back_unbilled(db_session: AsyncSession
 
     assert restored.status == OrderStatus.PENDING
     assert restored.confirmed_at is None
+
+
+async def test_reprice_waits_for_an_admin_edit_in_flight(db_session: AsyncSession) -> None:
+    """A price change landing while the owner's edit is uncommitted.
+
+    `reprice_variants` used to read the order without a lock: it summed the total from the
+    quantity it had read, wrote it over the edit's, and set `revision` to the value the
+    edit had already given it — so the panel's next draft passed a check it should fail.
+    It locks the order now, waits for the edit and reprices the lines the edit left.
+
+    Staged like the double checkout above: the reprice must read while the edit holds the
+    lock, which `asyncio.gather` alone does not guarantee.
+    """
+    order, product = await _order_with(db_session, price_cents=1000, quantity=2)
+    order_id, item_id, volume_id = order.id, order.items[0].id, variant_id(product)
+    await db_session.commit()
+
+    edit_locked = asyncio.Event()
+
+    async def edit() -> None:
+        async with async_session() as session:
+            await OrdersService(session).edit_by_admin(order_id, 0, {item_id: 3}, [])
+            edit_locked.set()
+            await asyncio.sleep(0.3)
+            await session.commit()
+
+    async def reprice() -> None:
+        await edit_locked.wait()
+        async with async_session() as session:
+            await OrdersService(session).reprice_variant(volume_id, 1200)
+            await session.commit()
+
+    await asyncio.gather(edit(), reprice())
+
+    db_session.expire_all()
+    saved = (await db_session.execute(select(Order).where(Order.id == order_id))).scalar_one()
+    assert saved.total_cents == 3 * 1200
+    assert saved.revision == 2
