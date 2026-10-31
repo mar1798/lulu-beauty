@@ -751,6 +751,17 @@ name + volume + price (+ shade, appended only when there is one, so marks made b
 existed still match) — not quantity, so a cancellation after the purchase does not untick
 what was already bought.
 
+The owner can also add lines of their own — what no order asks for (bags, a tester,
+something for the shop): «Добавить пункт» on the page, a name, a quantity and a price per
+unit that defaults to 0. They are `checklist_extras` rows (`app/checklist/`), tied to the
+cycle the page is showing and deleted with it, appended after the order rows by
+`GET /admin/checklist` with an `extraId` and counted in the total. They live on the server,
+unlike the ticks: a line added on a laptop has to be on the phone in the shop. Added with
+`POST /admin/checklist/extras` (any cycle, closed ones included — the checklist shows the
+last closed one exactly when the owner is buying it) and removed with
+`DELETE /admin/checklist/extras/{id}`; there is no editing — delete and add again. They are
+not in the xlsx export, and nobody is notified. Their tick key is `extra|<id>`.
+
 `GET /admin/export/products` dumps the live catalogue, and exists for the round trip:
 export → edit prices and stock in Excel → upload the same file back through
 `POST /admin/catalog/import`. So its headers are the **import's own column names**

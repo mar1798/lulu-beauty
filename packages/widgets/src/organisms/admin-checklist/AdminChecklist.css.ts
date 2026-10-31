@@ -152,11 +152,26 @@ export const nameLink = style([
   focusVisibleRing(),
 ])
 
+/** Строкой-флексом — чтобы корзина ручного пункта стояла в ряд с подписью. */
 export const meta = style({
-  display: 'block',
+  display: 'flex',
+  alignItems: 'center',
+  columnGap: vars.space.xxs,
   marginTop: rem(2),
   font: font('13/18'),
   color: color.text('muted'),
+})
+
+/**
+ * Корзина у пункта, добавленного вручную, — в строке «добавлено вручную», а не
+ * отдельной колонкой: колонка на телефоне отняла бы ширину у всех названий ради
+ * нескольких строк. Кнопка рисуется в 32px при строке подписи в 18px, поэтому
+ * отрицательные поля сверху и снизу не дают ей раздвинуть строку таблицы.
+ */
+export const removeExtra = style({
+  display: 'inline-flex',
+  flexShrink: 0,
+  marginBlock: `calc(-1 * ${rem(7)})`,
 })
 
 export const numberCell = style({

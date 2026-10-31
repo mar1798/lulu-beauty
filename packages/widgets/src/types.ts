@@ -2495,6 +2495,11 @@ export interface IChecklistItem {
   brand: string
   quantity: number
   unitPriceCents: number
+  /**
+   * Есть только у пункта, который владелец добавил в список сам, а не пришёл
+   * из заявок: по нему пункт и удаляется.
+   */
+  extraId?: string | null
 }
 
 /** Ответ `GET /admin/checklist`: сбор, по которому собран список, и сами строки. */
@@ -2516,9 +2521,30 @@ export interface IAdminChecklistProps {
   checkedKeys: string[]
   onToggle: (key: string, checked: boolean) => void
   buildProductHref: (productSlug: string) => string
+  /**
+   * Удалить пункт, добавленный вручную (`extraId`). Без обработчика кнопки
+   * удаления нет. Строки из заявок не удаляются никогда — их меняют сами заявки.
+   */
+  onRemoveExtra?: (item: IChecklistItem) => void
   isLoading?: boolean
   skeletonRows?: number
   emptyState?: ReactNode
+}
+
+/** Значения формы «Добавить пункт» — уже разобранные, цена в копейках. */
+export interface IChecklistExtraInput {
+  name: string
+  quantity: number
+  unitPriceCents: number
+}
+
+export interface IAdminChecklistExtraDialogProps {
+  isOpen: boolean
+  isBusy?: boolean
+  /** Почему не сохранилось — остаётся в окне, чтобы набранное не пропало. */
+  error?: string | null
+  onSubmit: (input: IChecklistExtraInput) => void
+  onClose: () => void
 }
 
 export interface IAdminOrdersTableProps {

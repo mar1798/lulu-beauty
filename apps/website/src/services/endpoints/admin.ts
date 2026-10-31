@@ -7,6 +7,8 @@ import type {
   IAdminProductSortField,
   IAdminUser,
   ICategory,
+  IChecklistExtraInput,
+  IChecklistItem,
   IImportSummary,
   IOrderCycle,
   IPage,
@@ -428,3 +430,16 @@ export const deleteOrder = (orderId: string): Promise<void> =>
  */
 export const getAdminChecklist = (): Promise<IAdminChecklist> => api.get('/admin/checklist')
 
+/**
+ * Пункт, который владелец добавляет в чек-лист сам, — то, чего нет в заявках.
+ * Привязан к сбору, который сейчас на экране. Отвечает готовой строкой списка
+ * (с `extraId`), но страница всё равно перечитывает список целиком.
+ */
+export const addChecklistExtra = (
+  cycleId: string,
+  input: IChecklistExtraInput
+): Promise<Omit<IChecklistItem, 'key'>> =>
+  api.post('/admin/checklist/extras', { body: { cycleId, ...input } })
+
+export const deleteChecklistExtra = (extraId: string): Promise<void> =>
+  api.remove(`/admin/checklist/extras/${encodeURIComponent(extraId)}`)

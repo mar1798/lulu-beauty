@@ -11,6 +11,7 @@ from httpx import ASGITransport, AsyncClient
 from app.auth import token_service
 from app.auth.dependencies import CurrentUser, require_admin
 from app.auth.models import Role
+from app.checklist.models import ChecklistExtra
 from app.db import get_session
 from app.export.service import OrderExportRow
 from app.main import app
@@ -132,12 +133,16 @@ async def test_the_checklist_shows_the_open_cycle(client: AsyncClient) -> None:
         unit_price_cents=15000,
         product_slug="krem",
     )
+    extra = ChecklistExtra(name="Пакеты", quantity=10, unit_price_cents=0)
+    extra.id = uuid.uuid4()
 
     with (
         patch("app.export.router.CyclesService") as cycles_cls,
         patch("app.export.router.ExportService") as service_cls,
+        patch("app.export.router.ChecklistExtrasService") as extras_cls,
     ):
         cycles_cls.return_value.get_active_cycle = AsyncMock(return_value=active)
+        extras_cls.return_value.list = AsyncMock(return_value=[extra])
         cycles_cls.return_value.get_latest_closed_cycle = AsyncMock()
         service_cls.return_value.checklist_rows = AsyncMock(return_value=[row])
         async with client as c:
@@ -156,8 +161,21 @@ async def test_the_checklist_shows_the_open_cycle(client: AsyncClient) -> None:
             "brand": "Lulu",
             "quantity": 3,
             "unitPriceCents": 15000,
-        }
+            "extraId": None,
+        },
+        # The owner's own line, after the orders' ones.
+        {
+            "productName": "Пакеты",
+            "productSlug": None,
+            "volumeMl": None,
+            "shade": None,
+            "brand": "-",
+            "quantity": 10,
+            "unitPriceCents": 0,
+            "extraId": str(extra.id),
+        },
     ]
+    extras_cls.return_value.list.assert_awaited_once_with(active.id)
     cycles_cls.return_value.get_latest_closed_cycle.assert_not_awaited()
     service_cls.return_value.checklist_rows.assert_awaited_once_with(active.id)
 
@@ -170,7 +188,9 @@ async def test_without_an_open_cycle_the_checklist_falls_back_to_the_last_closed
     with (
         patch("app.export.router.CyclesService") as cycles_cls,
         patch("app.export.router.ExportService") as service_cls,
+        patch("app.export.router.ChecklistExtrasService") as extras_cls,
     ):
+        extras_cls.return_value.list = AsyncMock(return_value=[])
         cycles_cls.return_value.get_active_cycle = AsyncMock(return_value=None)
         cycles_cls.return_value.get_latest_closed_cycle = AsyncMock(return_value=closed)
         service_cls.return_value.checklist_rows = AsyncMock(return_value=[])

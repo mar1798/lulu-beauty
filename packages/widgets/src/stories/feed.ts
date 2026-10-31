@@ -13,6 +13,7 @@ import {
   ICustomerOption,
   ICustomerSelectProps,
   IAdminChecklistProps,
+  IAdminChecklistExtraDialogProps,
   IAdminOrdersTableProps,
   IAdminProductFormProps,
   IAdminProductGalleryProps,
@@ -1452,50 +1453,70 @@ export const feedAdminUsersTable = (): IAdminUsersTableProps => ({
 
 export const feedAdminChecklist = (): IAdminChecklistProps => ({
   items: [
+    ...[
+      {
+        productName: 'Гидрофильное масло Pure Cleansing',
+        volumeMl: 200,
+        brand: 'Anua',
+        quantity: 4,
+        unitPriceCents: 145_000,
+      },
+      {
+        productName: 'Тонер Heartleaf 77',
+        volumeMl: 250,
+        brand: 'Anua',
+        quantity: 2,
+        unitPriceCents: 165_000,
+      },
+      {
+        productName: 'Сыворотка Centella Ampoule',
+        volumeMl: 55,
+        brand: 'Skin1004',
+        quantity: 7,
+        unitPriceCents: 120_000,
+      },
+      {
+        productName: 'Сыворотка Centella Ampoule',
+        volumeMl: 100,
+        brand: 'Skin1004',
+        quantity: 1,
+        unitPriceCents: 189_000,
+      },
+      {
+        productName: 'Патчи для глаз',
+        volumeMl: null,
+        brand: '-',
+        quantity: 3,
+        unitPriceCents: 60_050,
+      },
+    ].map((item, index) => ({
+      ...item,
+      // Последний товар из каталога удалён насовсем: название без ссылки.
+      productSlug: index === 4 ? null : `product-${index}`,
+      key: `${item.productName}|${item.volumeMl}|${item.unitPriceCents}`,
+    })),
+    // Пункт, добавленный владельцем вручную: без бренда, объёма и ссылки, цена 0.
     {
-      productName: 'Гидрофильное масло Pure Cleansing',
-      volumeMl: 200,
-      brand: 'Anua',
-      quantity: 4,
-      unitPriceCents: 145_000,
-    },
-    {
-      productName: 'Тонер Heartleaf 77',
-      volumeMl: 250,
-      brand: 'Anua',
-      quantity: 2,
-      unitPriceCents: 165_000,
-    },
-    {
-      productName: 'Сыворотка Centella Ampoule',
-      volumeMl: 55,
-      brand: 'Skin1004',
-      quantity: 7,
-      unitPriceCents: 120_000,
-    },
-    {
-      productName: 'Сыворотка Centella Ampoule',
-      volumeMl: 100,
-      brand: 'Skin1004',
-      quantity: 1,
-      unitPriceCents: 189_000,
-    },
-    {
-      productName: 'Патчи для глаз',
+      productName: 'Пакеты для выдачи',
       volumeMl: null,
       brand: '-',
-      quantity: 3,
-      unitPriceCents: 60_050,
+      quantity: 20,
+      unitPriceCents: 0,
+      productSlug: null,
+      extraId: 'extra-1',
+      key: 'extra|extra-1',
     },
-  ].map((item, index) => ({
-    ...item,
-    // Последний товар из каталога удалён насовсем: название без ссылки.
-    productSlug: index === 4 ? null : `product-${index}`,
-    key: `${item.productName}|${item.volumeMl}|${item.unitPriceCents}`,
-  })),
+  ],
   checkedKeys: ['Тонер Heartleaf 77|250|165000'],
   onToggle: noop,
+  onRemoveExtra: noop,
   buildProductHref: slug => `/catalog/${slug}`,
+})
+
+export const feedAdminChecklistExtraDialog = (): IAdminChecklistExtraDialogProps => ({
+  isOpen: true,
+  onSubmit: noop,
+  onClose: noop,
 })
 
 export const feedAdminOrdersTable = (): IAdminOrdersTableProps => ({
