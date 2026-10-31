@@ -62,12 +62,13 @@ account_has_unfinished_orders`, `DELETION_BLOCKING_STATUSES`). The goods behind 
   were already bought and are still the customer's to collect; erasing would cancel a
   purchase that was already made and leave the owner without a name or a number to ask
   about it. The person collects the goods, or asks the owner to move the order — their own
-  cancellation stops at `PENDING` (`customer_flags`), whatever the cycle is doing, so
-  "cancel it yourself" is advice they cannot act on — and then deletes. The account page
+  cancellation stops at `AWAITING_PAYMENT` (`customer_flags`), whatever the cycle is doing,
+  so "cancel it yourself" is advice they cannot act on — and then deletes. The account page
   asks `GET /users/me/deletion` before it draws the button, so this arrives as a disabled
   button naming the orders, not as an error after the confirmation.
-- **`PENDING` orders** are withdrawn as `CANCELLED_BY_CUSTOMER` — nothing is bought
-  against them yet — and the owner is told in one message naming them
+- **`PENDING` and `AWAITING_PAYMENT` orders** are withdrawn as `CANCELLED_BY_CUSTOMER` —
+  none of them is paid for, and the customer could cancel each one themselves
+  (`DELETION_WITHDRAWN_STATUSES`) — and the owner is told in one message naming them
   (`messages.account_deleted_for_owner`). Finished and already-cancelled orders are left
   exactly as they are.
 - To every reader the row is gone: `UsersService.get` raises `UserNotFoundError` for it,
@@ -484,7 +485,11 @@ when the product does.
 
 A customer's cancel/restore/edit and the owner's status change lock the order row
 (`get_for_user(for_update=True)`, `update_status`), so the two sides cannot both pass their
-checks against the same PENDING and have the later commit win.
+checks against the same PENDING and have the later commit win. A catalogue change that
+rewrites PENDING orders (`reprice_variants`, `rename_variants`, `drop_product`, `drop_variants`)
+locks them too, in `_pending_orders_with_any`/`_pending_orders_with_variants`: otherwise it
+would sum the total from lines read before a concurrent edit and leave `Order.revision` where
+that edit put it, and the admin panel's stale draft would be accepted.
 
 The volume and the shade are snapshots on the line, unlike brand and category, which are read
 from the live catalogue (`OrdersService.load_item_tags`): they are what the customer _chose_
@@ -531,15 +536,56 @@ and trimmed like any other, cancellable by its customer. What differs is how it 
   message says what they can do with it: change it while the cycle is open, cancel it
   once it has closed.
 
+### Orders edited by an admin
+
+An admin can rewrite what any customer's order holds from the orders panel
+(`PUT /admin/orders/{id}/items`, `OrdersService.edit_by_admin`): take out what could not be
+bought, add what the customer asked for in a message, change a quantity.
+
+- **Where.** `ADMIN_EDITABLE_STATUSES` — `PENDING`, `AWAITING_PAYMENT` and `CONFIRMED`,
+  whatever the cycle is doing. From `READY` the goods are on the shelf or handed over, and a
+  cancelled order is the record of one that is off; those refuse with `409 order_not_editable`.
+  The website mirrors the set (`isAdminEditable`) to grey the button out.
+- **The status never moves, and nothing is asked of the customer.** An unpaid bill is not
+  re-issued (`confirmed_at` stays), a paid order stays paid, no new receipt is expected. Any
+  difference in money is settled by the owner in person. The customer is only told — one
+  bot message with the new lines and sum (`messages.order_edited`) — and only when
+  something actually changed.
+- **The whole composition at once.** The request names the order's lines to keep with their
+  quantities (left out — removed) and the volumes to add, so the order is never left
+  half-edited and the customer hears about it once. Leaving nothing is a cancellation, not
+  an edit: `409 last_order_item`.
+- **Prices.** A kept line keeps its snapshot — the price the order was taken or paid at —
+  even if its product has since left the catalogue. An added line is taken at today's
+  price, under the same rule as placing an order: a discontinued or sold-out volume refuses
+  the whole edit (`404 product_not_found`). A volume already on a kept line joins it. A
+  `PENDING` order is then repriced as usual.
+- **`orders.revision`** moves with every change to the lines (`_recalculate_total`). The
+  panel sends back the one it opened with, and a draft built on lines the customer, a
+  catalogue edit or another admin has since changed is `409 order_changed` instead of a
+  silent overwrite. `updated_at` would not do: a change that keeps the total untouched never
+  updates the order row. A catalogue edit running at the same moment as the save waits for
+  the order's lock and moves the revision after it, like every other path that rewrites lines.
+- **The purchase list follows.** It is computed live from the cycle's orders, so an edit
+  after the cycle closed changes it — the point, when the edit is "не смогла достать".
+
 ### Statuses
 
 ```
-PENDING ──▶ CONFIRMED ──▶ READY ──▶ COMPLETED
-   │            │            │
-   └────────────┴────────────┴──▶ CANCELLED_BY_OWNER ──▶ PENDING   (owner's own undo)
+PENDING ──▶ AWAITING_PAYMENT ──▶ CONFIRMED ──▶ READY ──▶ COMPLETED
+   │              │                 │            │
+   └──────────────┴─────────────────┴────────────┴──▶ CANCELLED_BY_OWNER ──▶ PENDING   (owner's own undo)
 
-PENDING ◀──────────────────────▶ CANCELLED_BY_CUSTOMER   (customer's cancel / restore)
+PENDING, AWAITING_PAYMENT ──▶ CANCELLED_BY_CUSTOMER ──▶ PENDING   (customer's cancel / restore)
 ```
+
+| Status             | Russian label           | Means                                                       |
+| ------------------ | ----------------------- | ----------------------------------------------------------- |
+| `PENDING`          | «Ожидает подтверждения» | Submitted; prices still follow the catalog                  |
+| `AWAITING_PAYMENT` | «Ожидает оплаты»        | The owner took it and the bill went out; not paid yet       |
+| `CONFIRMED`        | «Подтверждена»          | Paid for — a receipt accepted in the bot, or marked by hand |
+| `READY`            | «Готова к выдаче»       | Goods in hand; only reachable from a paid order             |
+| `COMPLETED`        | «Выдана»                | Handed over                                                 |
 
 `ALLOWED_TRANSITIONS` in `app/orders/models.py` is authoritative for what the _owner_ may
 set; `COMPLETED` and `CANCELLED_BY_CUSTOMER` lead nowhere. Two distinct cancellations exist
@@ -556,7 +602,7 @@ and the purchase sheet with nobody told. Both of the customer's own presses are 
 to the owner (`notify_order_cancelled_by_customer`) — they change what gets bought, and
 the admin table is not something anyone watches.
 
-`CANCELLED_STATUSES` and `OPEN_STATUSES` (PENDING/CONFIRMED/READY) are the sets to test
+`CANCELLED_STATUSES` and `OPEN_STATUSES` (PENDING/AWAITING_PAYMENT/CONFIRMED/READY) are the sets to test
 membership against — never compare to a single status.
 
 ### What the customer may still do
@@ -567,7 +613,11 @@ Two different windows, and conflating them was a bug:
   `PENDING` **and** its cycle open. Past that: `order_not_editable` ("сбор закрылся или
   владелец взял её в работу"). Removing the last line is refused (`last_order_item`) — that
   action is a cancellation, and the message says so.
-- **Cancelling** needs `PENDING` and outlives the deadline. Nothing is bought against an order
+- **Cancelling** needs `PENDING` or `AWAITING_PAYMENT` and outlives the deadline. An unpaid
+  bill is a customer who has committed no money yet, so backing out of it stays theirs, and
+  the purchase window below does not apply to it — the owner has already answered. A
+  restore brings such an order back to `PENDING` unbilled (`confirmed_at` cleared): it is
+  repriced there, and taking it again sends a fresh bill. Nothing is bought against an order
   the owner has not confirmed, so withdrawing one costs the shop a notification; what froze on
   the deadline is the purchase list, which a withdrawal shortens and never rewrites. While
   both hung off one flag, a closed cycle took both, and an unanswered request sat under
@@ -594,7 +644,7 @@ All of it travels to the UI as `isEditable`/`isCancellable`/`isRestorable`
 
 `PENDING` says one thing — nothing has been bought against this order yet — and it says it for
 as long as the owner takes, which is by design: **the shopping happens after the cycle
-closes** (the owner's summary is what sends them out), so `PENDING → CONFIRMED` normally
+closes** (the owner's summary is what sends them out), so `PENDING → AWAITING_PAYMENT` normally
 happens in a closed cycle. Nothing expires an order, and no sweep touches one.
 
 What the customer sees is therefore derived, not stored: `PendingStage`
@@ -633,35 +683,49 @@ every PENDING order and cancels (as `CANCELLED_BY_OWNER`) any order left with no
 
 ### Payment
 
-Nothing is paid on the site. Confirming an order (`PENDING → CONFIRMED`) is what asks for
-the money: the customer's notification is the bill — every line, the total, the requisites
+Nothing is paid on the site. Taking an order (`PENDING → AWAITING_PAYMENT`, «✅ Принять»
+under the owner's notification or the panel) is what asks for the money: the customer's
+notification is the bill — every line, the total, the requisites
 (`messages.PAYMENT_DETAILS`) and a «📎 Отправить чек» button. The total is safe to quote
-there because confirmation is where repricing stops (above).
+there because leaving PENDING is where repricing stops (above). `orders.confirmed_at`
+records the last PENDING → AWAITING_PAYMENT, i.e. when the bill went out — named for the
+time that step was called confirmation.
+
+**Payment is a status.** `AWAITING_PAYMENT → CONFIRMED` is the payment, and nothing reaches
+READY unpaid. Two ways make it, and both stamp `orders.paid_at` and send the customer the
+same `messages.payment_accepted`:
+
+- the owner accepts a receipt in the bot (`PaymentsService.review`);
+- the owner sets «Подтверждена» in the panel when the money came some other way
+  (`OrdersService.update_status`).
 
 The customer sends a photo or a PDF back to the bot; it becomes a `PaymentReceipt`
-(`app/payments/`) on one of their **payable** orders — `PAYABLE_STATUSES` (CONFIRMED, READY)
-with `paid_at` still empty — and is handed to every owner with «✅ Оплата получена» /
-«❌ Чек не подходит». Accepting stamps `orders.paid_at`; rejecting marks only that receipt,
-so the order stays payable and the customer can send another — or the same one again,
-which reopens it for review. Either way the customer is told. An order the owner takes
-back to PENDING loses its payment (`paid_at` cleared in `update_status`): in PENDING it is
-repriced and loses lines like any other, so the old total no longer holds — confirming it
-again sends a fresh bill, the receipt accepted before can be sent again for review, and
-the owner settles the earlier money with the customer. A receipt sent before the order's last
-confirmation (`payment_receipts.submitted_at` < `orders.confirmed_at`) belongs to the old bill:
-its buttons in the owners' chats refuse it, the admin table does not count it as waiting, and
-the same file sent again goes back for review (`PaymentsService.for_current_bill`). A
-receipt can no longer be rejected once the order is paid
-(`PaymentAlreadyAcceptedError`), and a payment cannot be confirmed on an order that has
-left the payable statuses unpaid — a cancelled one, say. `review` re-reads the receipt under
-the order's lock, so two owners rejecting the same file tell the customer once.
+(`app/payments/`) on one of their **payable** orders — `PAYABLE_STATUSES`
+(AWAITING_PAYMENT) with `paid_at` still empty — and is handed to every owner with
+«✅ Оплата получена» / «❌ Чек не подходит». Accepting confirms the order; rejecting marks
+only that receipt, so the order stays payable and the customer can send another — or the
+same one again, which reopens it for review. Either way the customer is told. An order the
+owner takes back to PENDING loses its payment (`paid_at` cleared in `update_status`): in
+PENDING it is repriced and loses lines like any other, so the old total no longer holds —
+taking it again sends a fresh bill, the receipt accepted before can be sent again for
+review, and the owner settles the earlier money with the customer. A receipt sent before
+the order's last bill (`payment_receipts.submitted_at` < `orders.confirmed_at`) belongs to
+the old one: its buttons in the owners' chats refuse it, the admin table does not count it
+as waiting, and the same file sent again goes back for review
+(`PaymentsService.for_current_bill`). A receipt can no longer be rejected once the order is
+paid (`PaymentAlreadyAcceptedError`), and a payment cannot be confirmed on an order that
+has left AWAITING_PAYMENT unpaid — a cancelled one, say. `review` re-reads the receipt
+under the order's lock, so two owners rejecting the same file tell the customer once.
 
-**Payment is not a status.** It runs alongside CONFIRMED → READY → COMPLETED, not between
-them: `paid_at` is a stamp, and `ALLOWED_TRANSITIONS` knows nothing about it. The admin
-table shows it as a badge (`paidAt`, and `hasReceipt` for a receipt on the current bill of
-a payable order still waiting for the owner's verdict, on `AdminOrderResponse`). `orders.confirmed_at` records the last
-PENDING → CONFIRMED, i.e. when the bill went out. The file itself
-is never downloaded — only Telegram's `file_id` is stored, enough for the bot to send it on.
+The admin table has no «Оплачено» badge any more — the status says it — and keeps
+«Чек на проверке» (`hasReceipt` on `AdminOrderResponse`: a receipt on the current bill of
+an AWAITING_PAYMENT order still waiting for the owner's verdict). An AWAITING_PAYMENT order
+without one gets «Не оплачено» instead, in the same warning tone. The file itself is never
+downloaded — only Telegram's `file_id` is stored, enough for the bot to send it on.
+
+Orders from before this step existed (migration `b7d3e9a41c52`): unpaid CONFIRMED ones
+became AWAITING_PAYMENT, paid ones stayed CONFIRMED, and READY/COMPLETED were left as they
+were, paid or not — the goods were already on the shelf or handed over.
 
 ### Export
 
@@ -686,6 +750,17 @@ browser's `localStorage` (`useChecklistMarks`), keyed by cycle, and a row is ide
 name + volume + price (+ shade, appended only when there is one, so marks made before shades
 existed still match) — not quantity, so a cancellation after the purchase does not untick
 what was already bought.
+
+The owner can also add lines of their own — what no order asks for (bags, a tester,
+something for the shop): «Добавить пункт» on the page, a name, a quantity and a price per
+unit that defaults to 0. They are `checklist_extras` rows (`app/checklist/`), tied to the
+cycle the page is showing and deleted with it, appended after the order rows by
+`GET /admin/checklist` with an `extraId` and counted in the total. They live on the server,
+unlike the ticks: a line added on a laptop has to be on the phone in the shop. Added with
+`POST /admin/checklist/extras` (any cycle, closed ones included — the checklist shows the
+last closed one exactly when the owner is buying it) and removed with
+`DELETE /admin/checklist/extras/{id}`; there is no editing — delete and add again. They are
+not in the xlsx export, and nobody is notified. Their tick key is `extra|<id>`.
 
 `GET /admin/export/products` dumps the live catalogue, and exists for the round trip:
 export → edit prices and stock in Excel → upload the same file back through

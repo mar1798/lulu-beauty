@@ -9,9 +9,11 @@ import {
   IAdminOrder,
   IAdminOrderCycle,
   IAdminOrderDialogProps,
+  IAdminOrderEditDialogProps,
   ICustomerOption,
   ICustomerSelectProps,
   IAdminChecklistProps,
+  IAdminChecklistExtraDialogProps,
   IAdminOrdersTableProps,
   IAdminProductFormProps,
   IAdminProductGalleryProps,
@@ -1144,6 +1146,49 @@ export const feedAdminOrderDialog = (): IAdminOrderDialogProps => {
   }
 }
 
+export const feedAdminOrderEditDialog = (): IAdminOrderEditDialogProps => {
+  const order = feedAdminOrder({ status: 'AWAITING_PAYMENT', customerName: 'Айгуль' })
+
+  return {
+    isOpen: true,
+    onClose: noop,
+    order,
+    productSearch: { query: '', onQueryChange: noop, products: null },
+    lines: [
+      ...order.items.map(item => ({
+        key: item.id,
+        itemId: item.id,
+        variantId: item.variantId,
+        productName: item.productName,
+        productSlug: item.productSlug,
+        productImageUrl: item.productImageUrl,
+        productBrand: item.productBrand,
+        productVolumeMl: item.productVolumeMl,
+        priceCents: item.productPriceCents,
+        quantity: item.quantity,
+      })),
+      {
+        key: 'new-line',
+        itemId: null,
+        variantId: faker.string.uuid(),
+        productName: 'Сыворотка Centella',
+        productSlug: 'centella',
+        productImageUrl: null,
+        productBrand: 'Skin1004',
+        productVolumeMl: 50,
+        priceCents: 145_000,
+        quantity: 1,
+      },
+    ],
+    onAdd: noop,
+    onQuantityChange: noop,
+    onRemove: noop,
+    hasChanges: true,
+    buildProductHref: slug => `/catalog/${slug}`,
+    onSubmit: noop,
+  }
+}
+
 export const feedConfirmDialog = (): IConfirmDialogProps => ({
   isOpen: true,
   title: 'Удалить категорию?',
@@ -1384,6 +1429,7 @@ export const feedAdminOrder = (overrides: Partial<IAdminOrder> = {}): IAdminOrde
   canMessage: true,
   createdById: null,
   createdByName: null,
+  revision: 1,
   ...overrides,
 })
 
@@ -1407,60 +1453,79 @@ export const feedAdminUsersTable = (): IAdminUsersTableProps => ({
 
 export const feedAdminChecklist = (): IAdminChecklistProps => ({
   items: [
+    ...[
+      {
+        productName: 'Гидрофильное масло Pure Cleansing',
+        volumeMl: 200,
+        brand: 'Anua',
+        quantity: 4,
+        unitPriceCents: 145_000,
+      },
+      {
+        productName: 'Тонер Heartleaf 77',
+        volumeMl: 250,
+        brand: 'Anua',
+        quantity: 2,
+        unitPriceCents: 165_000,
+      },
+      {
+        productName: 'Сыворотка Centella Ampoule',
+        volumeMl: 55,
+        brand: 'Skin1004',
+        quantity: 7,
+        unitPriceCents: 120_000,
+      },
+      {
+        productName: 'Сыворотка Centella Ampoule',
+        volumeMl: 100,
+        brand: 'Skin1004',
+        quantity: 1,
+        unitPriceCents: 189_000,
+      },
+      {
+        productName: 'Патчи для глаз',
+        volumeMl: null,
+        brand: '-',
+        quantity: 3,
+        unitPriceCents: 60_050,
+      },
+    ].map((item, index) => ({
+      ...item,
+      // Последний товар из каталога удалён насовсем: название без ссылки.
+      productSlug: index === 4 ? null : `product-${index}`,
+      key: `${item.productName}|${item.volumeMl}|${item.unitPriceCents}`,
+    })),
+    // Пункт, добавленный владельцем вручную: без бренда, объёма и ссылки, цена 0.
     {
-      productName: 'Гидрофильное масло Pure Cleansing',
-      volumeMl: 200,
-      brand: 'Anua',
-      quantity: 4,
-      unitPriceCents: 145_000,
-    },
-    {
-      productName: 'Тонер Heartleaf 77',
-      volumeMl: 250,
-      brand: 'Anua',
-      quantity: 2,
-      unitPriceCents: 165_000,
-    },
-    {
-      productName: 'Сыворотка Centella Ampoule',
-      volumeMl: 55,
-      brand: 'Skin1004',
-      quantity: 7,
-      unitPriceCents: 120_000,
-    },
-    {
-      productName: 'Сыворотка Centella Ampoule',
-      volumeMl: 100,
-      brand: 'Skin1004',
-      quantity: 1,
-      unitPriceCents: 189_000,
-    },
-    {
-      productName: 'Патчи для глаз',
+      productName: 'Пакеты для выдачи',
       volumeMl: null,
       brand: '-',
-      quantity: 3,
-      unitPriceCents: 60_050,
+      quantity: 20,
+      unitPriceCents: 0,
+      productSlug: null,
+      extraId: 'extra-1',
+      key: 'extra|extra-1',
     },
-  ].map((item, index) => ({
-    ...item,
-    // Последний товар из каталога удалён насовсем: название без ссылки.
-    productSlug: index === 4 ? null : `product-${index}`,
-    key: `${item.productName}|${item.volumeMl}|${item.unitPriceCents}`,
-  })),
+  ],
   checkedKeys: ['Тонер Heartleaf 77|250|165000'],
   onToggle: noop,
+  onRemoveExtra: noop,
   buildProductHref: slug => `/catalog/${slug}`,
+})
+
+export const feedAdminChecklistExtraDialog = (): IAdminChecklistExtraDialogProps => ({
+  isOpen: true,
+  onSubmit: noop,
+  onClose: noop,
 })
 
 export const feedAdminOrdersTable = (): IAdminOrdersTableProps => ({
   orders: [
     feedAdminOrder({ note: 'Позвоните после 18:00.' }),
-    feedAdminOrder({ status: 'CONFIRMED', hasReceipt: true }),
+    feedAdminOrder({ status: 'AWAITING_PAYMENT', hasReceipt: true }),
     feedAdminOrder({ createdById: faker.string.uuid(), createdByName: 'Мария' }),
     feedAdminOrder({
       status: 'COMPLETED',
-      hasReceipt: true,
       paidAt: new Date(Date.now() - DAY_MS).toISOString(),
     }),
   ],

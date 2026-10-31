@@ -8,12 +8,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth.models import Role
 from app.cart.models import CartItem
 from app.cart.service import CartService
+from app.catalog.models import Product
 from app.cycles.models import CycleStatus, OrderCycle
 from app.orders.models import ADMIN_ORDER_WINDOW, PURCHASE_WINDOW, Order, OrderStatus
 from app.orders.service import (
     CustomerNotFoundError,
+    LastOrderItemError,
     NoCycleForOrderError,
+    OrderChangedError,
     OrderCycleUnavailableError,
+    OrderItemNotFoundError,
+    OrderNotEditableError,
     OrdersService,
     ProductNotFoundError,
 )
@@ -259,3 +264,173 @@ async def test_a_repeated_request_returns_the_order_it_already_made(
     assert (created, created_again) == (True, False)
     assert again.id == first.id
     assert len((await db_session.execute(select(Order))).scalars().all()) == 1
+
+
+async def _placed(session: AsyncSession, status: OrderStatus = OrderStatus.PENDING) -> Order:
+    """An order of two lines — «Balm» ×1 at 1000 and «Serum» ×2 at 2000 — in `status`."""
+    user = await make_user(session)
+    await make_cycle(session)
+    balm = await make_product(session, name="Balm", price_cents=1000)
+    serum = await make_product(session, name="Serum", price_cents=2000)
+    order, _ = await OrdersService(session).create_for_customer(
+        user.id,
+        uuid.uuid4(),
+        user.id,
+        None,
+        [(variant_id(balm), 1), (variant_id(serum), 2)],
+        None,
+    )
+    order.status = status
+    await session.flush()
+    return order
+
+
+def _quantities(order: Order) -> dict[str, int]:
+    return {item.product_name: item.quantity for item in order.items}
+
+
+@pytest.mark.parametrize(
+    "status", [OrderStatus.PENDING, OrderStatus.AWAITING_PAYMENT, OrderStatus.CONFIRMED]
+)
+async def test_edit_rewrites_the_lines_and_leaves_the_status(
+    db_session: AsyncSession, status: OrderStatus
+) -> None:
+    order = await _placed(db_session, status)
+    balm, serum = order.items
+    cream = await make_product(db_session, name="Cream", price_cents=500)
+    revision = order.revision
+
+    edited, changed = await OrdersService(db_session).edit_by_admin(
+        order.id, revision, {balm.id: 3}, [(variant_id(cream), 2)]
+    )
+
+    assert changed is True
+    assert _quantities(edited) == {"Balm": 3, "Cream": 2}
+    assert edited.total_cents == 3 * 1000 + 2 * 500
+    assert edited.status is status
+    assert edited.revision == revision + 1
+    assert serum not in edited.items
+
+
+async def test_edit_keeps_the_snapshot_price_of_a_kept_line(db_session: AsyncSession) -> None:
+    """The price the order was taken at stays; only an added line is at today's price."""
+    order = await _placed(db_session, OrderStatus.CONFIRMED)
+    balm = order.items[0]
+    product = await db_session.get(Product, balm.product_id)
+    assert product is not None
+    product.variants[0].price_cents = 9999
+    await db_session.flush()
+
+    edited, _ = await OrdersService(db_session).edit_by_admin(
+        order.id, order.revision, {balm.id: 2}, []
+    )
+
+    assert edited.items[0].product_price_cents == 1000
+    assert edited.total_cents == 2000
+
+
+async def test_edit_keeps_a_line_whose_product_left_the_catalogue(
+    db_session: AsyncSession,
+) -> None:
+    order = await _placed(db_session, OrderStatus.CONFIRMED)
+    balm, serum = order.items
+    product = await db_session.get(Product, balm.product_id)
+    assert product is not None
+    product.deleted_at = datetime.now(UTC)
+    await db_session.flush()
+
+    edited, _ = await OrdersService(db_session).edit_by_admin(
+        order.id, order.revision, {balm.id: 2, serum.id: 2}, []
+    )
+
+    assert _quantities(edited) == {"Balm": 2, "Serum": 2}
+
+
+async def test_edit_merges_an_added_volume_into_its_kept_line(db_session: AsyncSession) -> None:
+    order = await _placed(db_session)
+    balm, serum = order.items
+    assert balm.variant_id is not None
+
+    edited, _ = await OrdersService(db_session).edit_by_admin(
+        order.id, order.revision, {balm.id: 1, serum.id: 2}, [(balm.variant_id, 2)]
+    )
+
+    assert _quantities(edited) == {"Balm": 3, "Serum": 2}
+    assert len(edited.items) == 2
+
+
+async def test_edit_that_changes_nothing_reports_no_change(db_session: AsyncSession) -> None:
+    order = await _placed(db_session)
+    balm, serum = order.items
+    revision = order.revision
+
+    edited, changed = await OrdersService(db_session).edit_by_admin(
+        order.id, revision, {balm.id: 1, serum.id: 2}, []
+    )
+
+    assert changed is False
+    assert edited.revision == revision
+
+
+@pytest.mark.parametrize(
+    "status",
+    [
+        OrderStatus.READY,
+        OrderStatus.COMPLETED,
+        OrderStatus.CANCELLED_BY_CUSTOMER,
+        OrderStatus.CANCELLED_BY_OWNER,
+    ],
+)
+async def test_edit_refuses_an_order_past_payment_or_cancelled(
+    db_session: AsyncSession, status: OrderStatus
+) -> None:
+    order = await _placed(db_session, status)
+
+    with pytest.raises(OrderNotEditableError):
+        await OrdersService(db_session).edit_by_admin(
+            order.id, order.revision, {order.items[0].id: 5}, []
+        )
+
+
+async def test_edit_refuses_a_draft_built_on_lines_that_moved(db_session: AsyncSession) -> None:
+    """The customer changed a quantity while the owner's window was open."""
+    order = await _placed(db_session)
+    balm, serum = order.items
+    stale = order.revision
+    await OrdersService(db_session).set_item_quantity(order.user_id, order.id, serum.id, 5)
+
+    with pytest.raises(OrderChangedError):
+        await OrdersService(db_session).edit_by_admin(order.id, stale, {balm.id: 1}, [])
+
+    assert _quantities(order) == {"Balm": 1, "Serum": 5}
+
+
+async def test_edit_refuses_a_line_of_another_order(db_session: AsyncSession) -> None:
+    order = await _placed(db_session)
+
+    with pytest.raises(OrderItemNotFoundError):
+        await OrdersService(db_session).edit_by_admin(
+            order.id, order.revision, {uuid.uuid4(): 1}, []
+        )
+
+
+async def test_edit_refuses_to_leave_the_order_empty(db_session: AsyncSession) -> None:
+    order = await _placed(db_session)
+
+    with pytest.raises(LastOrderItemError):
+        await OrdersService(db_session).edit_by_admin(order.id, order.revision, {}, [])
+
+
+async def test_edit_refuses_an_unavailable_volume_and_changes_nothing(
+    db_session: AsyncSession,
+) -> None:
+    order = await _placed(db_session)
+    balm, serum = order.items
+    sold_out = await make_product(db_session, name="Gone", in_stock=False)
+
+    with pytest.raises(ProductNotFoundError):
+        await OrdersService(db_session).edit_by_admin(
+            order.id, order.revision, {balm.id: 1}, [(variant_id(sold_out), 1)]
+        )
+
+    assert _quantities(order) == {"Balm": 1, "Serum": 2}

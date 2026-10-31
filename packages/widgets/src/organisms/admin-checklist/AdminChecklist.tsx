@@ -3,9 +3,11 @@ import { type FC } from 'react'
 import type { IAdminChecklistProps, IBasicStyling } from '../../types'
 import { AppLink } from '../../atoms/app-link'
 import { Checkbox } from '../../atoms/checkbox'
+import { IconButton } from '../../atoms/icon-button'
 import { formatAmount, formatPrice } from '../../atoms/price'
 import { Skeleton } from '../../atoms/skeleton'
 import { VisuallyHidden } from '../../atoms/visually-hidden'
+import { IconTrash } from '../../svg/icons'
 import { formatVariant } from '../../utils/variants'
 import { formatVolume } from '../../utils/volume'
 import * as styles from './AdminChecklist.css'
@@ -21,6 +23,10 @@ import * as styles from './AdminChecklist.css'
  *
  * Где хранятся отметки, виджет не знает: `checkedKeys` и `onToggle` приходят
  * сверху.
+ *
+ * Пункты, добавленные владельцем вручную (`extraId`), стоят в конце списка с
+ * пометкой «добавлено вручную» и корзиной для удаления — строки из заявок
+ * удалить отсюда нельзя.
  */
 
 const DEFAULT_SKELETON_ROWS = 6
@@ -42,6 +48,7 @@ export const AdminChecklist: FC<IAdminChecklistProps & IBasicStyling> = ({
   checkedKeys,
   onToggle,
   buildProductHref,
+  onRemoveExtra,
   isLoading = false,
   skeletonRows = DEFAULT_SKELETON_ROWS,
   emptyState,
@@ -114,7 +121,13 @@ export const AdminChecklist: FC<IAdminChecklistProps & IBasicStyling> = ({
                 // «100 мл» не разрывается по строкам, как бы ни сжалась колонка.
                 const volumeLabel = volume?.replace(' ', '\u00a0') ?? null
                 // Тон — то, что снимают с полки: «05 Rose», а не просто «помада».
-                const meta = [item.brand === '-' ? null : item.brand, volumeLabel, item.shade]
+                const isExtra = item.extraId !== undefined && item.extraId !== null
+                const meta = [
+                  item.brand === '-' ? null : item.brand,
+                  volumeLabel,
+                  item.shade,
+                  isExtra ? 'добавлено вручную' : null,
+                ]
                   .filter(Boolean)
                   .join(' · ')
 
@@ -145,7 +158,9 @@ export const AdminChecklist: FC<IAdminChecklistProps & IBasicStyling> = ({
                               С тоном: две строки одной помады в одном объёме
                               иначе объявлялись бы скринридером одинаково.
                             */}
-                            {variant === null ? item.productName : `${item.productName}, ${variant}`}
+                            {variant === null
+                              ? item.productName
+                              : `${item.productName}, ${variant}`}
                           </VisuallyHidden>
                         }
                       />
@@ -174,7 +189,30 @@ export const AdminChecklist: FC<IAdminChecklistProps & IBasicStyling> = ({
                           </AppLink>
                         </span>
                       )}
-                      {meta !== '' && <span className={styles.meta}>{meta}</span>}
+                      {(meta !== '' || isExtra) && (
+                        <span className={styles.meta}>
+                          {meta}
+                          {isExtra && onRemoveExtra !== undefined && (
+                            // Удаление — не отметка: щелчок до строки не всплывает.
+                            <span
+                              className={styles.removeExtra}
+                              onClick={event => {
+                                event.stopPropagation()
+                              }}
+                            >
+                              <IconButton
+                                icon={<IconTrash />}
+                                label={`Удалить «${item.productName}»`}
+                                size="sm"
+                                variant="danger"
+                                onClick={() => {
+                                  onRemoveExtra(item)
+                                }}
+                              />
+                            </span>
+                          )}
+                        </span>
+                      )}
                     </td>
 
                     <td className={styles.numberCell}>

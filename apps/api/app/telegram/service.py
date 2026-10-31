@@ -194,6 +194,25 @@ class NotificationsService:
                 return
         logger.info("Told %s about order %s placed by the owner", user.phone, order.id)
 
+    async def send_order_edited(self, user: User, order: Order) -> None:
+        """The owner changed what the order holds. Every line is listed, so a long one
+        goes out in parts, the link to the orders under the last — like the bill."""
+        parts = split_message(messages.order_edited(order))
+        for index, part in enumerate(parts):
+            keyboard = keyboards.orders_link() if index == len(parts) - 1 else None
+            if not await self._try_send(
+                user.telegram_chat_id, part, reply_markup=keyboard, parse_mode="HTML"
+            ):
+                logger.warning(
+                    "%s; edit of order %s not announced (part %d of %d)",
+                    self._fallback_reason(user),
+                    order.id,
+                    index + 1,
+                    len(parts),
+                )
+                return
+        logger.info("Told %s about the edit of order %s", user.phone, order.id)
+
     async def send_customer_cancellation(
         self, owner: User, order: Order, customer: User | None, *, restored: bool
     ) -> None:
@@ -220,13 +239,36 @@ class NotificationsService:
             order.id,
         )
 
+    async def send_own_cancellation(self, user: User, order: Order) -> None:
+        """The customer's own cancellation, confirmed to them, with the way back.
+
+        With the orders link: the text says the order can be restored from that page, and
+        the button is the page.
+        """
+        message = messages.order_cancelled_by_customer(order)
+        if await self._try_send(
+            user.telegram_chat_id, message, reply_markup=keyboards.orders_link()
+        ):
+            logger.info("Told %s their cancellation of order %s went through", user.phone, order.id)
+            return
+        logger.warning(
+            "%s; the customer's own cancellation of order %s not confirmed to them",
+            self._fallback_reason(user),
+            order.id,
+        )
+
     async def send_order_status(
         self, user: User, order: Order, *, first_cycle: bool = False
     ) -> None:
         # Always unpaid here: going back to PENDING clears `paid_at`, and only PENDING
-        # leads to CONFIRMED.
-        if order.status is OrderStatus.CONFIRMED:
+        # leads to AWAITING_PAYMENT.
+        if order.status is OrderStatus.AWAITING_PAYMENT:
             await self._send_bill(user, order, first_cycle=first_cycle)
+            return
+        # The owner marked the payment by hand. The same words as for an accepted receipt
+        # (`send_payment_reviewed`): to the customer it is the same news.
+        if order.status is OrderStatus.CONFIRMED:
+            await self.send_payment_reviewed(user, order, accepted=True)
             return
 
         message = messages.order_status_changed(order)
@@ -255,8 +297,8 @@ class NotificationsService:
         )
 
     async def _send_bill(self, user: User, order: Order, *, first_cycle: bool) -> None:
-        """Confirmation is where the customer is asked to pay, so it carries the bill and
-        the button that sends the receipt back.
+        """Taking the order is where the customer is asked to pay, so it carries the bill
+        and the button that sends the receipt back.
 
         Every line is listed, so a big order outgrows one message: the bill then goes out
         in parts, with the button under the last — next to the total and the requisites.

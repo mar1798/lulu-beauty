@@ -31,18 +31,19 @@ describe('AdminOrdersTable', () => {
     expect(container.querySelector('tfoot')).toBeNull()
   })
 
-  it('метит оплату: оплаченная важнее присланного чека, без чека метки нет', () => {
+  it('метит чек на проверке и неоплаченные, а оплату показывает статусом', () => {
     const orders = [
-      feedAdminOrder({ status: 'CONFIRMED', hasReceipt: true }),
-      feedAdminOrder({ status: 'READY', hasReceipt: true, paidAt: new Date().toISOString() }),
-      feedAdminOrder({ status: 'CONFIRMED' }),
+      feedAdminOrder({ status: 'AWAITING_PAYMENT', hasReceipt: true }),
+      feedAdminOrder({ status: 'CONFIRMED', paidAt: new Date().toISOString() }),
+      feedAdminOrder({ status: 'AWAITING_PAYMENT' }),
     ]
-    const { getAllByText } = renderWidget(
+    const { getAllByText, queryByText } = renderWidget(
       <AdminOrdersTable {...feedAdminOrdersTable()} orders={orders} />
     )
 
     expect(getAllByText('Чек на проверке')).toHaveLength(1)
-    expect(getAllByText('Оплачено')).toHaveLength(1)
+    expect(getAllByText('Не оплачено')).toHaveLength(1)
+    expect(queryByText('Оплачено')).toBeNull()
   })
 
   it('«Написать через бота» зовёт обработчик, а без привязки к боту недоступна', () => {
@@ -57,12 +58,43 @@ describe('AdminOrdersTable', () => {
       />
     )
 
-    const [first, second] = getAllByRole('button', { name: /Написать покупателю заявки № .* через бота/ })
+    const [first, second] = getAllByRole('button', {
+      name: /Написать покупателю заявки № .* через бота/,
+    })
     fireEvent.click(first)
     fireEvent.click(second)
 
     expect(onMessage).toHaveBeenCalledTimes(1)
     expect(onMessage).toHaveBeenCalledWith(linked)
     expect(second.getAttribute('aria-disabled')).toBe('true')
+  })
+
+  it('«Изменить состав» доступна до оплаты включительно', () => {
+    const onEdit = vi.fn()
+    const statuses = [
+      'PENDING',
+      'AWAITING_PAYMENT',
+      'CONFIRMED',
+      'READY',
+      'CANCELLED_BY_OWNER',
+    ] as const
+    const orders = statuses.map(status => feedAdminOrder({ status }))
+    const { getAllByRole } = renderWidget(
+      <AdminOrdersTable {...feedAdminOrdersTable()} orders={orders} onEdit={onEdit} />
+    )
+
+    const buttons = getAllByRole('button', { name: /Изменить состав заявки № / })
+    buttons.forEach(button => {
+      fireEvent.click(button)
+    })
+
+    expect(onEdit.mock.calls.map(([order]) => order)).toEqual(orders.slice(0, 3))
+    expect(buttons.map(button => button.getAttribute('aria-disabled'))).toEqual([
+      null,
+      null,
+      null,
+      'true',
+      'true',
+    ])
   })
 })

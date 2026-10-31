@@ -9,6 +9,7 @@ from app import scheduler
 from app.auth.router import router as auth_router
 from app.cart.router import router as cart_router
 from app.catalog.router import router as catalog_router
+from app.checklist.router import router as checklist_router
 from app.common.body_limit import BodySizeLimitMiddleware
 from app.common.rate_limit import RateLimitMiddleware
 from app.common.static import ImmutableStaticFiles
@@ -68,6 +69,7 @@ def create_app() -> FastAPI:
     app.include_router(wishlist_router)
     app.include_router(orders_router)
     app.include_router(export_router)
+    app.include_router(checklist_router)
     # Mounted whether or not the webhook mode is on — it answers 404 while it is off, so
     # the app has one shape in both configurations (see app/telegram/webhook.py).
     app.include_router(telegram_webhook_router)

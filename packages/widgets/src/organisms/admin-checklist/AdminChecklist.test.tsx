@@ -48,7 +48,7 @@ describe('AdminChecklist', () => {
       />
     )
 
-    expect(screen.getByText('Отмечено 1 из 5')).toBeTruthy()
+    expect(screen.getByText('Отмечено 1 из 6')).toBeTruthy()
   })
 
   it('ведёт названием на страницу товара, не отмечая строку', async () => {
@@ -87,5 +87,20 @@ describe('AdminChecklist', () => {
 
     expect(screen.getByRole('checkbox', { name: 'Помада Velvet, 4 мл, 01 Nude' })).toBeTruthy()
     expect(screen.getByRole('checkbox', { name: 'Помада Velvet, 4 мл, 05 Rose' })).toBeTruthy()
+  })
+
+  it('удаляет только пункт, добавленный вручную, и не отмечает его при этом', async () => {
+    const props = feedAdminChecklist()
+    const onToggle = vi.fn()
+    const onRemoveExtra = vi.fn()
+    const extra = props.items[props.items.length - 1]
+
+    renderWidget(<AdminChecklist {...props} onToggle={onToggle} onRemoveExtra={onRemoveExtra} />)
+    const removeButtons = screen.getAllByRole('button', { name: /^Удалить/ })
+    await userEvent.click(removeButtons[0])
+
+    expect(removeButtons).toHaveLength(1)
+    expect(onRemoveExtra).toHaveBeenCalledWith(extra)
+    expect(onToggle).not.toHaveBeenCalled()
   })
 })

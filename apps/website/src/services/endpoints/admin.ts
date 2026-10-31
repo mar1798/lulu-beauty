@@ -7,6 +7,8 @@ import type {
   IAdminProductSortField,
   IAdminUser,
   ICategory,
+  IChecklistExtraInput,
+  IChecklistItem,
   IImportSummary,
   IOrderCycle,
   IPage,
@@ -374,6 +376,26 @@ export interface IAdminOrderInput {
 export const createAdminOrder = (input: IAdminOrderInput): Promise<IAdminOrder> =>
   api.post('/admin/orders', { body: input })
 
+export interface IAdminOrderEditInput {
+  /** `revision` заявки, с которой открыли окно: состав успели поменять — `order_changed`. */
+  revision: number
+  /** Строки заявки, которые остаются; не названные здесь убираются. */
+  items: { itemId: string; quantity: number }[]
+  /** Объёмы из каталога, которых в заявке не было. */
+  added: { variantId: string; quantity: number }[]
+}
+
+/**
+ * Новый состав заявки целиком — в «Ожидает подтверждения», «Ожидает оплаты»
+ * и «Подтверждена». Статус не меняется; бот присылает покупателю новый состав
+ * и сумму. Бывшие строки держат цену снимка, новые встают по цене каталога.
+ */
+export const editAdminOrder = (
+  orderId: string,
+  input: IAdminOrderEditInput
+): Promise<IAdminOrder> =>
+  api.put(`/admin/orders/${encodeURIComponent(orderId)}/items`, { body: input })
+
 export const updateOrderStatus = (orderId: string, status: OrderStatus): Promise<IAdminOrder> =>
   api.patch(`/admin/orders/${encodeURIComponent(orderId)}/status`, { body: { status } })
 
@@ -407,3 +429,17 @@ export const deleteOrder = (orderId: string): Promise<void> =>
  * ценами, без отменённых заявок.
  */
 export const getAdminChecklist = (): Promise<IAdminChecklist> => api.get('/admin/checklist')
+
+/**
+ * Пункт, который владелец добавляет в чек-лист сам, — то, чего нет в заявках.
+ * Привязан к сбору, который сейчас на экране. Отвечает готовой строкой списка
+ * (с `extraId`), но страница всё равно перечитывает список целиком.
+ */
+export const addChecklistExtra = (
+  cycleId: string,
+  input: IChecklistExtraInput
+): Promise<Omit<IChecklistItem, 'key'>> =>
+  api.post('/admin/checklist/extras', { body: { cycleId, ...input } })
+
+export const deleteChecklistExtra = (extraId: string): Promise<void> =>
+  api.remove(`/admin/checklist/extras/${encodeURIComponent(extraId)}`)

@@ -4,10 +4,12 @@
 
 export * from './admin-categories-panel/index'
 export * from './admin-checklist/index'
+export * from './admin-checklist-extra-dialog/index'
 export * from './admin-cycle-calendar/index'
 export * from './admin-import-panel/index'
 export * from './admin-message-dialog/index'
 export * from './admin-order-dialog/index'
+export * from './admin-order-edit-dialog/index'
 export * from './admin-orders-table/index'
 export * from './admin-product-form/index'
 export * from './admin-product-gallery/index'

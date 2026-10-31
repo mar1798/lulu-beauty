@@ -491,11 +491,12 @@ async def test_owner_confirms_an_order_from_the_notification(
     await handle_order_action(query, OrderAction(action="confirm", order_id=order.id))
 
     await bot_session.refresh(order)
-    assert order.status is OrderStatus.CONFIRMED
+    # «Принять» bills the order; the payment is what confirms it.
+    assert order.status is OrderStatus.AWAITING_PAYMENT
     query.answer.assert_awaited_once()
     # The buttons go with the edit; leaving them would invite a second press.
     query.message.edit_text.assert_awaited_once()
-    assert "Подтверждена" in query.message.edit_text.await_args.args[0]
+    assert "Ожидает оплаты" in query.message.edit_text.await_args.args[0]
     sent_status_notifications.assert_awaited_once_with(order.id)
 
 

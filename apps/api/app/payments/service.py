@@ -11,13 +11,13 @@ from app.orders.models import PAYABLE_STATUSES, Order, OrderStatus
 from app.payments.models import PaymentReceipt, ReceiptKind, ReceiptVerdict
 
 # How far back the bot looks when it has to guess which order a receipt pays for. A
-# receipt comes within days of the bill; an order confirmed in a cycle long gone and
+# receipt comes within days of the bill; an order billed in a cycle long gone and
 # never paid is the owner's to chase, not a button under every new receipt.
 RECEIPT_GUESS_WINDOW = timedelta(weeks=1)
 
 # How many receipts one bill may have waiting for the owner at once. Every new file is a
 # row and a message to each owner, and the bot's own throttle still lets through one a
-# second — so without a ceiling a customer with a confirmed order could fill the owners'
+# second — so without a ceiling a customer with a billed order could fill the owners'
 # chats with photos for as long as they liked. Counted against what is still undecided,
 # so the owner's verdict is what frees room: a real payment is a screenshot or two, a
 # long PDF statement maybe a few pages more.
@@ -95,7 +95,7 @@ class PaymentsService:
     async def awaiting_payment(self, user_id: uuid.UUID) -> list[Order]:
         """The orders a receipt sent with no order named may be for, newest first.
 
-        Narrower than what `add_receipt` accepts: CONFIRMED and confirmed within
+        Narrower than what `add_receipt` accepts: billed within
         `RECEIPT_GUESS_WINDOW`. A receipt that names its order — a reply to the bill or
         the prompt — is not limited by this.
         """
@@ -103,8 +103,7 @@ class PaymentsService:
             select(Order)
             .where(
                 Order.user_id == user_id,
-                Order.status == OrderStatus.CONFIRMED,
-                Order.paid_at.is_(None),
+                Order.status == OrderStatus.AWAITING_PAYMENT,
                 Order.confirmed_at >= datetime.now(UTC) - RECEIPT_GUESS_WINDOW,
             )
             .order_by(Order.confirmed_at.desc())
@@ -199,10 +198,10 @@ class PaymentsService:
     async def review(self, receipt_id: uuid.UUID, *, accept: bool) -> ReviewedReceipt:
         """The owner's «Оплата получена» or «Чек не подходит».
 
-        Accepting marks the order paid; rejecting only marks the receipt, so the customer
-        can send another one. Either way the order has to still be one that takes money:
-        a payment confirmed on an order the owner has since cancelled would promise goods
-        nobody is going to hand over.
+        Accepting marks the order paid and moves it AWAITING_PAYMENT → CONFIRMED; rejecting
+        only marks the receipt, so the customer can send another one. Either way the order
+        has to still be one that takes money: a payment confirmed on an order the owner has
+        since cancelled would promise goods nobody is going to hand over.
         """
         receipt = await self._session.get(PaymentReceipt, receipt_id)
         if receipt is None:
@@ -232,6 +231,7 @@ class PaymentsService:
             if order.paid_at is not None:
                 return ReviewedReceipt(receipt=receipt, order=order, changed=False)
             order.paid_at = now
+            order.status = OrderStatus.CONFIRMED
             receipt.verdict = ReceiptVerdict.ACCEPTED
         else:
             if order.paid_at is not None:

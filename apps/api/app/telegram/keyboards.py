@@ -91,11 +91,15 @@ class OrderAction(CallbackData, prefix="order"):
     order_id: uuid.UUID
 
 
-# The only two moves worth making without opening the admin panel: everything past
-# CONFIRMED (READY, COMPLETED) happens when the goods are physically in hand, which is
-# not a moment anyone spends looking at a week-old notification.
+# The only two moves worth making without opening the admin panel: the payment comes
+# through the receipt's own buttons, and everything after it (READY, COMPLETED) happens
+# when the goods are physically in hand, which is not a moment anyone spends looking at a
+# week-old notification.
+#
+# "confirm" keeps its name though it now takes the order to AWAITING_PAYMENT: it is
+# packed into the buttons of notifications already sitting in the owners' chats.
 ACTION_STATUS: dict[OrderActionName, OrderStatus] = {
-    "confirm": OrderStatus.CONFIRMED,
+    "confirm": OrderStatus.AWAITING_PAYMENT,
     "cancel": OrderStatus.CANCELLED_BY_OWNER,
 }
 

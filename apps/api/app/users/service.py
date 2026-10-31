@@ -17,17 +17,18 @@ from app.wishlist.models import WishlistItem
 DELETED_NAME = "Удалённый аккаунт"
 
 #: Statuses that stop an erasure until they resolve. The owner has already spent money
-#: against these — CONFIRMED means the goods were bought, READY means they are lying on
+#: against these — CONFIRMED means the goods were bought and paid for, READY means they are lying on
 #: the shelf waiting — and the person still has something of theirs to collect. Erasing
 #: here would cancel a purchase that was already made and leave the owner without a name
 #: or a number to ask about it, which is a loss the erasure has no right to cause.
-#: PENDING is not among them: nothing is bought against it yet.
+#: PENDING and AWAITING_PAYMENT are not among them: the customer may cancel either one
+#: themselves, so the erasure does no more than they could.
 DELETION_BLOCKING_STATUSES = frozenset({OrderStatus.CONFIRMED, OrderStatus.READY})
 
-#: What an erasure withdraws on the way out. Only PENDING can be here at all — the two
-#: statuses above refuse the erasure outright — and it is named rather than derived so
-#: the two lists are read side by side.
-DELETION_WITHDRAWN_STATUSES = frozenset({OrderStatus.PENDING})
+#: What an erasure withdraws on the way out: exactly what the customer could cancel
+#: (`OrdersService.cancel`) — the two statuses above refuse the erasure outright — named
+#: rather than derived so the two lists are read side by side.
+DELETION_WITHDRAWN_STATUSES = frozenset({OrderStatus.PENDING, OrderStatus.AWAITING_PAYMENT})
 
 
 def _erased_phone(user_id: uuid.UUID) -> str:
@@ -219,12 +220,13 @@ class UsersService:
         paid for, and they are still this person's to collect. The site says so and keeps
         the button disabled until those orders leave those statuses, so this is the same
         rule stated twice rather than a surprise at the end. Only the owner can move them
-        — a customer may cancel a PENDING order and nothing later (`customer_flags`) — so
-        what the site tells the person to do is collect the goods, or ask.
+        — a customer may cancel a PENDING or an unpaid AWAITING_PAYMENT order and nothing
+        later (`customer_flags`) — so what the site tells the person to do is collect the
+        goods, or ask.
 
-        What is left after that guard is PENDING and nothing else, and it is withdrawn on
-        the way out, exactly as if the person had cancelled each one themselves: nothing
-        is bought against it yet, and leaving it in the purchase list with nobody to hand
+        What is left after that guard is PENDING and AWAITING_PAYMENT, and it is withdrawn
+        on the way out, exactly as if the person had cancelled each one themselves: none of
+        it is paid for, and leaving it in the purchase list with nobody to hand
         it to is worse for the owner than the cancellation. The ids come back so the
         router can tell the owner after the commit; an empty list means there was nothing
         live to withdraw.

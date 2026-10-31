@@ -55,22 +55,23 @@ placeholders. Full list: [environment.md](environment.md).
 Each domain module under `app/` is roughly `router.py` / `service.py` / `schemas.py` /
 `models.py`:
 
-| Module      | Contents                                                                                                                                     |
-| ----------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| `auth/`     | Telegram sign-in (session/claim/widget/mini-app), refresh, logout, JWT issuing, `telegram_identity.py` HMAC verification, role dependencies. |
-| `users/`    | `/users/me`, admin user list and role changes.                                                                                               |
-| `catalog/`  | Categories, products and their variants (volumes), images, xlsx/csv import, serializers, `rich_text.py` (description HTML cleaning).         |
-| `cart/`     | Cart and lines — one per variant. Every mutation needs an open cycle.                                                                        |
-| `orders/`   | Checkout, customer edit/cancel/restore, admin status changes, repricing.                                                                     |
-| `cycles/`   | Cycle CRUD, `reminders.py` (stage definitions), `scheduler_service.py` (sweeps).                                                             |
-| `wishlist/` | Saved products, cycle-independent.                                                                                                           |
-| `wanted/`   | Wishes for products the catalog does not stock, written under an empty search. Write-only.                                                   |
-| `payments/` | Payment receipts sent to the bot and the owner's verdict on them; marks `orders.paid_at`. No router — the bot is its only door.              |
-| `export/`   | xlsx purchase list (`service.py`) and the catalogue export (`products.py`).                                                                  |
-| `telegram/` | Bot, handlers, keyboards, Russian messages, notifications, throttling, webhook.                                                              |
-| `storage/`  | Local disk file storage for images.                                                                                                          |
-| `common/`   | `CamelModel`, `PageResponse`, phone normalization, model mixins, limits, rate limit, body limit.                                             |
-| `health/`   | `GET /health` with a real `SELECT 1`; `503` when the DB is unreachable.                                                                      |
+| Module       | Contents                                                                                                                                                                        |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `auth/`      | Telegram sign-in (session/claim/widget/mini-app), refresh, logout, JWT issuing, `telegram_identity.py` HMAC verification, role dependencies.                                    |
+| `users/`     | `/users/me`, admin user list and role changes.                                                                                                                                  |
+| `catalog/`   | Categories, products and their variants (volumes), images, xlsx/csv import, serializers, `rich_text.py` (description HTML cleaning).                                            |
+| `cart/`      | Cart and lines — one per variant. Every mutation needs an open cycle.                                                                                                           |
+| `orders/`    | Checkout, customer edit/cancel/restore, admin status changes, repricing.                                                                                                        |
+| `cycles/`    | Cycle CRUD, `reminders.py` (stage definitions), `scheduler_service.py` (sweeps).                                                                                                |
+| `wishlist/`  | Saved products, cycle-independent.                                                                                                                                              |
+| `wanted/`    | Wishes for products the catalog does not stock, written under an empty search. Write-only.                                                                                      |
+| `payments/`  | Payment receipts sent to the bot and the owner's verdict on them; accepting one moves the order to CONFIRMED and stamps `orders.paid_at`. No router — the bot is its only door. |
+| `checklist/` | Lines the owner adds to a cycle's purchase list by hand (`checklist_extras`); `GET /admin/checklist` itself is in `export/`.                                                    |
+| `export/`    | xlsx purchase list (`service.py`) and the catalogue export (`products.py`).                                                                                                     |
+| `telegram/`  | Bot, handlers, keyboards, Russian messages, notifications, throttling, webhook.                                                                                                 |
+| `storage/`   | Local disk file storage for images.                                                                                                                                             |
+| `common/`    | `CamelModel`, `PageResponse`, phone normalization, model mixins, limits, rate limit, body limit.                                                                                |
+| `health/`    | `GET /health` with a real `SELECT 1`; `503` when the DB is unreachable.                                                                                                         |
 
 Two files that are easy to forget:
 
@@ -110,13 +111,13 @@ Public and customer-facing:
 Owner-only (`ADMIN` or `SUPER_ADMIN`, checked on the API — the frontend gate is UX only).
 `PATCH /admin/users/{id}/role` is the one exception: **SUPER_ADMIN only**.
 
-| Method   | Path                                                                                                                                                                                                                                              |
-| -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GET`    | `/admin/users`, `/admin/brands`, `/admin/products`, `/admin/products/{id}`, `/admin/orders`, `/admin/orders/cycles`, `/admin/cycles`, `/admin/cycles/{id}/deletion`, `/admin/checklist`, `/admin/export/orders`, `/admin/export/products`         |
-| `PATCH`  | `/admin/users/{id}/role`, `/admin/categories/{id}`, `/admin/products/{id}`, `/admin/cycles/{id}`, `/admin/orders/{id}/status`                                                                                                                     |
-| `PUT`    | `/admin/products/{id}/images` (the gallery's order and photo tags, whole)                                                                                                                                                                         |
-| `POST`   | `/admin/categories`, `/admin/products`, `/admin/products/{id}/restore`, `/admin/products/{id}/images`, `/admin/catalog/import`, `/admin/cycles`, `/admin/cycles/{id}/close`, `/admin/export/links`, `/admin/orders`, `/admin/orders/{id}/message` |
-| `DELETE` | `/admin/categories/{id}`, `/admin/products/{id}` (soft), `/admin/products/{id}/images/{image_id}`, `/admin/cycles/{id}`, `/admin/orders/{id}`                                                                                                     |
+| Method   | Path                                                                                                                                                                                                                                                                         |
+| -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET`    | `/admin/users`, `/admin/brands`, `/admin/products`, `/admin/products/{id}`, `/admin/orders`, `/admin/orders/cycles`, `/admin/cycles`, `/admin/cycles/{id}/deletion`, `/admin/checklist`, `/admin/export/orders`, `/admin/export/products`                                    |
+| `PATCH`  | `/admin/users/{id}/role`, `/admin/categories/{id}`, `/admin/products/{id}`, `/admin/cycles/{id}`, `/admin/orders/{id}/status`                                                                                                                                                |
+| `PUT`    | `/admin/products/{id}/images` (the gallery's order and photo tags, whole), `/admin/orders/{id}/items` (an order's composition, whole)                                                                                                                                        |
+| `POST`   | `/admin/categories`, `/admin/products`, `/admin/products/{id}/restore`, `/admin/products/{id}/images`, `/admin/catalog/import`, `/admin/cycles`, `/admin/cycles/{id}/close`, `/admin/export/links`, `/admin/orders`, `/admin/orders/{id}/message`, `/admin/checklist/extras` |
+| `DELETE` | `/admin/categories/{id}`, `/admin/products/{id}` (soft), `/admin/products/{id}/images/{image_id}`, `/admin/cycles/{id}`, `/admin/orders/{id}`, `/admin/checklist/extras/{id}`                                                                                                |
 
 `GET /export/download/{token}` takes no session: the token from `POST /admin/export/links`
 is the authorisation — see "Export" in [domain.md](domain.md#export).
@@ -229,12 +230,13 @@ Codes currently raised:
 active_cycle_exists       admin_only                auth_session_expired
 auth_session_not_found    cart_is_empty             cart_item_not_found
 category_nesting_too_deep category_not_found        category_parent_not_found
+checklist_extra_not_found
 cycle_already_closed      cycle_closed_recently     cycle_has_orders
 cycle_not_closed          cycle_not_found           cycle_orders_changed
 export_link_invalid       invalid_refresh_token     invalid_token
 last_order_item           no_active_cycle           not_authenticated
-order_item_not_found      order_not_editable        order_not_found
-order_not_restorable      order_status_not_assignable
+order_changed             order_item_not_found      order_not_editable
+order_not_found           order_not_restorable      order_status_not_assignable
 order_status_transition_invalid                     super_admin_immutable
 super_admin_not_assignable                          super_admin_only
 featured_limit_reached

@@ -25,6 +25,7 @@ import { Text } from '../../atoms/text'
 import { RichTextEditor } from '../../molecules/rich-text-editor'
 import { AdminProductGallery } from '../admin-product-gallery'
 import { categoryOptions } from '../../utils/categories'
+import { MAX_PRICE_CENTS, parsePrice, priceOnly, priceToInput } from '../../utils/priceInput'
 import { plainTextToHtml, richTextLength } from '../../utils/richText'
 import { SHADE_LABEL_FORMS, SHADE_LABELS, shadeLabelForms } from '../../utils/shadeLabel'
 import { slugify } from '../../utils/slug'
@@ -93,9 +94,6 @@ const MAX_VOLUME_ML = 10_000
 /** Длина ввода объёма — ровно под потолок: «10000» это пять знаков. */
 const VOLUME_MAX_LENGTH = String(MAX_VOLUME_ML).length
 
-/** `MAX_PRICE_CENTS` бэкенда, в сомах: дальше не проходит 32-битная колонка. */
-const MAX_PRICE = 20_000_000
-
 /** `MAX_PRODUCT_VARIANTS` бэкенда: все объёмы на все тона. */
 const MAX_VARIANTS = 100
 
@@ -149,11 +147,6 @@ interface IPendingImage {
 
 let nextPendingId = 0
 
-const CENTS = 100
-
-const priceToInput = (priceCents: number): string =>
-  priceCents % CENTS === 0 ? String(priceCents / CENTS) : (priceCents / CENTS).toFixed(2)
-
 /**
  * Объём в миллилитрах: пусто — «не указан», а не ноль. `undefined` — набрано что-то,
  * что объёмом быть не может, и сохранять это нельзя.
@@ -172,9 +165,6 @@ const parseVolume = (value: string): number | null | undefined => {
   return /^\d+$/.test(normalized) && Number(normalized) > 0 ? Number(normalized) : undefined
 }
 
-/** Знаков после разделителя в цене: копейки, и только они. */
-const PRICE_FRACTION_DIGITS = 2
-
 /**
  * Что вообще способно попасть в поле объёма — только цифры.
  *
@@ -184,38 +174,6 @@ const PRICE_FRACTION_DIGITS = 2
  * буква просто не появляется.
  */
 const digitsOnly = (value: string): string => value.replace(/\D/g, '')
-
-/**
- * То же для цены, но с дробной частью: один разделитель и не больше двух
- * знаков после него — ровно то, что принимает `parsePrice`. Запятая остаётся
- * запятой: на русской раскладке набирают именно её.
- */
-const priceOnly = (value: string): string => {
-  const cleaned = value.replace(/[^\d.,]/g, '')
-  const separator = cleaned.search(/[.,]/)
-
-  if (separator === -1) {
-    return cleaned
-  }
-
-  const fraction = cleaned
-    .slice(separator + 1)
-    .replace(/\D/g, '')
-    .slice(0, PRICE_FRACTION_DIGITS)
-
-  return `${cleaned.slice(0, separator)}${cleaned[separator]}${fraction}`
-}
-
-/** «1 250,50» и «1250.5» — одно и то же; `null`, если это не число. */
-const parsePrice = (value: string): number | null => {
-  const normalized = value.replace(/\s/g, '').replace(',', '.')
-
-  if (normalized === '' || !/^\d+(\.\d{1,2})?$/.test(normalized)) {
-    return null
-  }
-
-  return Math.round(Number(normalized) * CENTS)
-}
 
 /**
  * Строка таблицы вариантов как её держит форма — строками, а не числами.
@@ -419,7 +377,7 @@ export const AdminProductForm: FC<IAdminProductFormProps & IBasicStyling> = ({
       return 'Цена в сомах, например 1250 или 1250.50'
     }
 
-    if (priceCents > MAX_PRICE * CENTS) {
+    if (priceCents > MAX_PRICE_CENTS) {
       return 'Цена не больше 20 000 000 сом'
     }
 

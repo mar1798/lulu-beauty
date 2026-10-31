@@ -16,8 +16,13 @@ from app.orders.service import (
     AdminOrderCycle,
     CustomerNotFoundError,
     DeletedOrder,
+    LastOrderItemError,
     NoCycleForOrderError,
+    OrderChangedError,
     OrderCycleUnavailableError,
+    OrderItemNotFoundError,
+    OrderNotEditableError,
+    OrderNotFoundError,
     ProductNotFoundError,
 )
 from app.telegram.service import Delivery
@@ -125,6 +130,7 @@ def _order(status: OrderStatus) -> Order:
         status=status,
         total_cents=1000,
         note=None,
+        revision=0,
     )
     order.created_at = datetime.now(UTC)
     order.items = []
@@ -456,6 +462,98 @@ async def test_create_order_admin_maps_errors_to_codes(
     assert (code, body["detail"]) == expected  # type: ignore[index]
     notify_owner.assert_not_awaited()
     notify_customer.assert_not_awaited()
+
+
+async def _edit(
+    client: AsyncClient,
+    body: dict[str, object],
+    *,
+    error: Exception | None = None,
+    changed: bool = True,
+) -> tuple[int, object, MagicMock, AsyncMock]:
+    order = _order(OrderStatus.CONFIRMED)
+    with (
+        patch("app.orders.router.OrdersService") as mock_service_cls,
+        patch("app.orders.router.PaymentsService") as payments_cls,
+        patch("app.orders.router.notify_order_edited", new_callable=AsyncMock) as notify,
+    ):
+        payments_cls.return_value.orders_with_receipts = AsyncMock(return_value=set())
+        service = _mock_service(mock_service_cls)
+        service.edit_by_admin = AsyncMock(return_value=(order, changed), side_effect=error)
+        async with client as c:
+            response = await c.put(f"/admin/orders/{order.id}/items", json=body)
+    return response.status_code, response.json(), service, notify
+
+
+async def test_edit_order_admin_passes_the_composition_and_tells_the_customer(
+    committing_client: AsyncClient,
+) -> None:
+    item, variant = uuid.uuid4(), uuid.uuid4()
+    code, body, service, notify = await _edit(
+        committing_client,
+        {
+            "revision": 3,
+            "items": [{"itemId": str(item), "quantity": 2}],
+            "added": [{"variantId": str(variant), "quantity": 1}],
+        },
+    )
+
+    assert code == 200
+    assert body["revision"] == 0  # type: ignore[index]
+    args = service.edit_by_admin.await_args.args
+    assert args[1:] == (3, {item: 2}, [(variant, 1)])
+    notify.assert_awaited_once()
+
+
+async def test_edit_order_admin_that_changed_nothing_tells_nobody(
+    committing_client: AsyncClient,
+) -> None:
+    code, _, _, notify = await _edit(
+        committing_client,
+        {"revision": 0, "items": [{"itemId": str(uuid.uuid4()), "quantity": 1}]},
+        changed=False,
+    )
+
+    assert code == 200
+    notify.assert_not_awaited()
+
+
+async def test_edit_order_admin_refuses_a_line_listed_twice(
+    committing_client: AsyncClient,
+) -> None:
+    item = str(uuid.uuid4())
+    code, _, service, _ = await _edit(
+        committing_client,
+        {
+            "revision": 0,
+            "items": [{"itemId": item, "quantity": 1}, {"itemId": item, "quantity": 2}],
+        },
+    )
+
+    assert code == 422
+    service.edit_by_admin.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
+    ("error", "expected"),
+    [
+        (OrderNotFoundError(), (404, "order_not_found")),
+        (OrderNotEditableError(), (409, "order_not_editable")),
+        (OrderChangedError(), (409, "order_changed")),
+        (OrderItemNotFoundError(), (404, "order_item_not_found")),
+        (LastOrderItemError(), (409, "last_order_item")),
+        (ProductNotFoundError(), (404, "product_not_found")),
+    ],
+)
+async def test_edit_order_admin_maps_errors_to_codes(
+    committing_client: AsyncClient, error: Exception, expected: tuple[int, str]
+) -> None:
+    code, body, _, notify = await _edit(
+        committing_client, {"revision": 0, "items": [], "added": []}, error=error
+    )
+
+    assert (code, body["detail"]) == expected  # type: ignore[index]
+    notify.assert_not_awaited()
 
 
 async def test_admin_order_cycles_maps_user_id_and_shape(client: AsyncClient) -> None:

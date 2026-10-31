@@ -25,6 +25,9 @@ from app.db import Base
 
 class OrderStatus(enum.StrEnum):
     PENDING = "PENDING"
+    # The owner took the order and the bill went out; the money hasn't come in yet.
+    AWAITING_PAYMENT = "AWAITING_PAYMENT"
+    # Paid for: the owner accepted a receipt, or marked the payment in the panel.
     CONFIRMED = "CONFIRMED"
     READY = "READY"
     COMPLETED = "COMPLETED"
@@ -43,12 +46,30 @@ CANCELLED_STATUSES = frozenset({OrderStatus.CANCELLED_BY_CUSTOMER, OrderStatus.C
 # a handed-over order is as finished as a cancelled one, it just ended well. Used where
 # a short list has room only for what still needs the person's attention (the bot's
 # "Мои заявки"), never on the site — there the full history is the point.
-OPEN_STATUSES = frozenset({OrderStatus.PENDING, OrderStatus.CONFIRMED, OrderStatus.READY})
+OPEN_STATUSES = frozenset(
+    {
+        OrderStatus.PENDING,
+        OrderStatus.AWAITING_PAYMENT,
+        OrderStatus.CONFIRMED,
+        OrderStatus.READY,
+    }
+)
 
-# Where the customer is asked to pay and may send a receipt: confirmation is the message
-# that carries the amount and the requisites, and READY can come before the money does.
-# PENDING has nothing to pay for yet — its total still moves with the catalog price.
-PAYABLE_STATUSES = frozenset({OrderStatus.CONFIRMED, OrderStatus.READY})
+# Where the customer is asked to pay and may send a receipt: taking the order is the
+# message that carries the amount and the requisites, and the money moves it on to
+# CONFIRMED. PENDING has nothing to pay for yet — its total still moves with the catalog
+# price — and from CONFIRMED on the order is paid for.
+PAYABLE_STATUSES = frozenset({OrderStatus.AWAITING_PAYMENT})
+
+# Where the owner may still change what an order holds (`OrdersService.edit_by_admin`).
+# Up to and including the payment: the goods are bought against these, and a line the
+# shop could not get, or one the customer asked to add, is corrected here. From READY on
+# the goods are on the shelf or handed over, and a cancelled order is the record of one
+# that is off — those stay as they are. The status itself never moves on an edit, and
+# nothing is asked of the customer: they are told the new composition and that is all.
+ADMIN_EDITABLE_STATUSES = frozenset(
+    {OrderStatus.PENDING, OrderStatus.AWAITING_PAYMENT, OrderStatus.CONFIRMED}
+)
 
 # Where an order may go from where it is. The owner's panel used to accept any target at
 # all, so a promise about an order — "подтверждена", "готова к выдаче" — could be made
@@ -58,13 +79,20 @@ PAYABLE_STATUSES = frozenset({OrderStatus.CONFIRMED, OrderStatus.READY})
 # Cancelling stays available from every live status: it is the answer to "не смогла
 # достать", which can happen at any point up to handover.
 #
+# AWAITING_PAYMENT → CONFIRMED is the payment. Accepting a receipt in the bot makes it
+# (`PaymentsService.review`); the owner makes it by hand from the panel when the money
+# came some other way. Nothing reaches READY unpaid.
+#
 # A cancellation is undone by whoever made it, and by nobody else. The owner's own goes
 # back to PENDING from here; the customer's is theirs to take back, through
 # `OrdersService.restore`, and never appears in this table — the owner reviving an order
 # the customer withdrew would put them back in a queue they chose to leave. COMPLETED
 # leads nowhere either way: it is a statement about goods already handed over.
 ALLOWED_TRANSITIONS: dict[OrderStatus, frozenset[OrderStatus]] = {
-    OrderStatus.PENDING: frozenset({OrderStatus.CONFIRMED, OrderStatus.CANCELLED_BY_OWNER}),
+    OrderStatus.PENDING: frozenset({OrderStatus.AWAITING_PAYMENT, OrderStatus.CANCELLED_BY_OWNER}),
+    OrderStatus.AWAITING_PAYMENT: frozenset(
+        {OrderStatus.CONFIRMED, OrderStatus.CANCELLED_BY_OWNER}
+    ),
     OrderStatus.CONFIRMED: frozenset({OrderStatus.READY, OrderStatus.CANCELLED_BY_OWNER}),
     OrderStatus.READY: frozenset({OrderStatus.COMPLETED, OrderStatus.CANCELLED_BY_OWNER}),
     OrderStatus.COMPLETED: frozenset(),
@@ -144,14 +172,15 @@ class Order(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     # on checkout, with no way for the customer to get past it.
     total_cents: Mapped[int] = mapped_column(BigInteger)
     note: Mapped[str | None] = mapped_column(Text)
-    # When the owner pressed «Оплата получена» under a receipt. Not a status: payment runs
-    # alongside CONFIRMED → READY → COMPLETED rather than between them, and a status of its
-    # own would have to be threaded through every `OPEN_STATUSES` check in the codebase.
+    # When the order went AWAITING_PAYMENT → CONFIRMED: the owner pressed «Оплата
+    # получена» under a receipt, or marked the payment in the panel. The status says
+    # whether the order is paid; this says when, and survives READY and COMPLETED.
     paid_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    # The last time the order went PENDING → CONFIRMED, i.e. when its bill went out. The
-    # bot offers only recently confirmed orders when it has to ask which one a receipt
-    # pays for; `created_at` would not do, since a cycle collects for weeks before any
-    # of its orders is confirmed.
+    # The last time the order went PENDING → AWAITING_PAYMENT, i.e. when its bill went
+    # out. Named for the time that step was itself called confirmation. The bot offers
+    # only recently billed orders when it has to ask which one a receipt pays for;
+    # `created_at` would not do, since a cycle collects for weeks before any of its
+    # orders is taken.
     confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     # The admin who placed this order for its customer (`OrdersService.create_for_customer`);
     # NULL for the customer's own checkout. With several admins, "where did this заявка
@@ -165,6 +194,12 @@ class Order(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     # already made instead of making a second one. Checkout needs none: the cart row is
     # its key. NULL for every checkout, and Postgres lets NULLs repeat under UNIQUE.
     request_id: Mapped[uuid.UUID | None] = mapped_column()
+    # Moves on every change to the lines (`OrdersService._recalculate_total`). The admin
+    # panel sends back the one it opened its edit with, so a draft built on lines the
+    # customer, a catalogue edit or another admin has since changed is refused instead of
+    # quietly writing over them. `updated_at` would not do: a change that leaves the total
+    # where it was never touches the order row.
+    revision: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"))
 
     items: Mapped[list["OrderItem"]] = relationship(
         back_populates="order", cascade="all, delete-orphan", order_by=lambda: _item_order()

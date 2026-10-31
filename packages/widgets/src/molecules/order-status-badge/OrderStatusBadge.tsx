@@ -29,6 +29,7 @@ interface IStatusView {
 
 const VIEWS: Record<OrderStatus, IStatusView> = {
   PENDING: { label: 'Ожидает подтверждения', tone: 'warning' },
+  AWAITING_PAYMENT: { label: 'Ожидает оплаты', tone: 'accent' },
   CONFIRMED: { label: 'Подтверждена', tone: 'info' },
   READY: { label: 'Готова к выдаче', tone: 'brand' },
   COMPLETED: { label: 'Выдана', tone: 'success' },
@@ -60,6 +61,7 @@ export const pendingStageHint = (stage: PendingStage): string => PENDING_STAGE_H
 /** Все статусы в порядке жизненного цикла — для фильтров и сводок. */
 export const ORDER_STATUSES: OrderStatus[] = [
   'PENDING',
+  'AWAITING_PAYMENT',
   'CONFIRMED',
   'READY',
   'COMPLETED',
@@ -76,6 +78,10 @@ export const ORDER_STATUSES: OrderStatus[] = [
  * подряд, и промах мышью на строку «Подтверждена» у отменённой заявки отправлял
  * покупателю уведомление о заявке, которую тот отозвал.
  *
+ * «Ожидает оплаты» → «Подтверждена» — это и есть оплата: обычно её ставит
+ * принятый в боте чек, а здесь владелец отмечает деньги, пришедшие мимо бота.
+ * Без оплаты к выдаче не перейти.
+ *
  * Отмена доступна из любого живого статуса — «не смогла достать» случается
  * вплоть до выдачи. Отменённое возвращает тот, кто отменил, и только он:
  * свою отмену владелец снимает здесь («Отменена магазином» → «Ожидает»), а
@@ -83,13 +89,30 @@ export const ORDER_STATUSES: OrderStatus[] = [
  * кнопкой «Вернуть заявку» на своей странице. «Выдана» не ведёт никуда.
  */
 export const ORDER_STATUS_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
-  PENDING: ['CONFIRMED', 'CANCELLED_BY_OWNER'],
+  PENDING: ['AWAITING_PAYMENT', 'CANCELLED_BY_OWNER'],
+  AWAITING_PAYMENT: ['CONFIRMED', 'CANCELLED_BY_OWNER'],
   CONFIRMED: ['READY', 'CANCELLED_BY_OWNER'],
   READY: ['COMPLETED', 'CANCELLED_BY_OWNER'],
   COMPLETED: [],
   CANCELLED_BY_CUSTOMER: [],
   CANCELLED_BY_OWNER: ['PENDING'],
 }
+
+/**
+ * Где админ ещё может менять состав заявки — зеркало `ADMIN_EDITABLE_STATUSES`
+ * в `apps/api/app/orders/models.py`. Вплоть до оплаты включительно: закупают
+ * под эти заявки, и то, чего не удалось достать, или то, что покупатель
+ * попросил добавить, правится здесь. С «Готова к выдаче» товар на полке или
+ * уже выдан, а отменённая заявка — запись о том, что её нет.
+ */
+export const ADMIN_EDITABLE_STATUSES: readonly OrderStatus[] = [
+  'PENDING',
+  'AWAITING_PAYMENT',
+  'CONFIRMED',
+]
+
+export const isAdminEditable = (status: OrderStatus): boolean =>
+  ADMIN_EDITABLE_STATUSES.includes(status)
 
 export const orderStatusLabel = (status: OrderStatus): string => VIEWS[status].label
 

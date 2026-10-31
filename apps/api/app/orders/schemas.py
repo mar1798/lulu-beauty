@@ -20,6 +20,8 @@ __all__ = [
     "MAX_OWNER_MESSAGE_LENGTH",
     "AdminOrderCreateRequest",
     "AdminOrderCycleResponse",
+    "AdminOrderEditRequest",
+    "AdminOrderItemQuantity",
     "AdminOrderLine",
     "AdminOrderMessageRequest",
     "AdminOrderPageResponse",
@@ -86,6 +88,36 @@ class AdminOrderCreateRequest(CamelModel):
     cycle_id: uuid.UUID | None = None
     items: list[AdminOrderLine] = Field(min_length=1, max_length=MAX_ADMIN_ORDER_LINES)
     note: str | None = Field(default=None, max_length=2000)
+
+
+class AdminOrderItemQuantity(CamelModel):
+    """One of the order's own lines, kept, at the quantity the owner left it at."""
+
+    item_id: uuid.UUID
+    quantity: int = Field(ge=1, le=MAX_ITEM_QUANTITY)
+
+
+class AdminOrderEditRequest(CamelModel):
+    """The composition the owner wants the order to hold, whole.
+
+    `items` are the order's lines to keep — any left out are removed; `added` are volumes
+    from the catalogue. `revision` is the order's as the panel read it
+    (`AdminOrderResponse.revision`), so a draft built on lines that have since moved is
+    refused rather than saved over them. Leaving nothing at all is a cancellation, not an
+    edit, and is refused by the service.
+    """
+
+    revision: int = Field(ge=0)
+    items: list[AdminOrderItemQuantity] = Field(max_length=MAX_ADMIN_ORDER_LINES)
+    added: list[AdminOrderLine] = Field(default_factory=list, max_length=MAX_ADMIN_ORDER_LINES)
+
+    @field_validator("items")
+    @classmethod
+    def _distinct_items(cls, value: list[AdminOrderItemQuantity]) -> list[AdminOrderItemQuantity]:
+        # Two quantities for one line leave no way to tell which one the owner meant.
+        if len({line.item_id for line in value}) != len(value):
+            raise ValueError("an order line is listed twice")
+        return value
 
 
 class AdminOrderCycleResponse(CamelModel):
@@ -173,6 +205,8 @@ class AdminOrderResponse(OrderResponse):
     # customer's own checkout. The name is null too when that admin's account is gone.
     created_by_id: uuid.UUID | None = None
     created_by_name: str | None = None
+    # What the panel sends back with an edit (`AdminOrderEditRequest.revision`).
+    revision: int = 0
 
 
 class AdminOrderMessageRequest(CamelModel):

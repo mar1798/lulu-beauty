@@ -7,6 +7,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import token_service
 from app.auth.dependencies import CurrentUser, load_admin, require_admin
+from app.checklist.schemas import ChecklistItem, extra_item
+from app.checklist.service import ChecklistExtrasService
 from app.common.schemas import CamelModel
 from app.cycles.service import CyclesService
 from app.db import get_session
@@ -46,17 +48,6 @@ class ChecklistCycle(CamelModel):
     deadline_at: datetime
     # False when no cycle is collecting and the list is the last finished one's.
     is_active: bool
-
-
-class ChecklistItem(CamelModel):
-    product_name: str
-    # None when the product row is gone: the name stays, the link does not.
-    product_slug: str | None
-    volume_ml: int | None
-    shade: str | None = None
-    brand: str
-    quantity: int
-    unit_price_cents: int
 
 
 class ChecklistResponse(CamelModel):
@@ -129,6 +120,8 @@ async def get_checklist(
         return ChecklistResponse(cycle=None, items=[])
 
     rows = await ExportService(session).checklist_rows(cycle.id)
+    # The owner's own lines go last, after everything the orders ask for.
+    extras = await ChecklistExtrasService(session).list(cycle.id)
     return ChecklistResponse(
         cycle=ChecklistCycle(
             id=cycle.id, label=cycle.label, deadline_at=cycle.deadline_at, is_active=is_active
@@ -144,7 +137,8 @@ async def get_checklist(
                 unit_price_cents=row.unit_price_cents,
             )
             for row in rows
-        ],
+        ]
+        + [extra_item(extra) for extra in extras],
     )
 
 

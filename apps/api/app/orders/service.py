@@ -14,6 +14,7 @@ from app.catalog.models import Category, Product, ProductVariant
 from app.cycles.models import CycleStatus, OrderCycle
 from app.cycles.service import CyclesService
 from app.orders.models import (
+    ADMIN_EDITABLE_STATUSES,
     ADMIN_ORDER_WINDOW,
     ALLOWED_TRANSITIONS,
     OPEN_STATUSES,
@@ -53,6 +54,15 @@ class OrderNotEditableError(Exception):
 
 class OrderItemNotFoundError(Exception):
     pass
+
+
+class OrderChangedError(Exception):
+    """The order's lines moved since the admin panel read them (`Order.revision`).
+
+    The customer edited it, a catalogue change repriced or trimmed it, or another admin
+    saved first. The draft was built on lines that are no longer there, and saving it
+    would write over a change nobody in the panel has seen.
+    """
 
 
 class LastOrderItemError(Exception):
@@ -476,6 +486,100 @@ class OrdersService:
         await self._session.flush()
         return order, True
 
+    async def edit_by_admin(
+        self,
+        order_id: uuid.UUID,
+        revision: int,
+        kept: Mapping[uuid.UUID, int],
+        added: Sequence[tuple[uuid.UUID, int]],
+    ) -> tuple[Order, bool]:
+        """The owner rewrites what an order holds, whoever placed it.
+
+        The whole composition arrives at once, as the panel's draft has it: `kept` maps the
+        order's own lines to their new quantities, a line left out of it is removed, and
+        `added` are volumes from the catalogue. One request rather than the customer's
+        call per change, so the order is never left half-edited and the customer hears
+        about it once.
+
+        A kept line keeps its snapshot — the price is the one the order was taken or paid
+        at, and a line whose product has since left the catalogue may stay. An added one is
+        taken at today's price under the same rule as `create_for_customer`: a
+        discontinued or sold-out volume refuses the whole edit. A volume already on a kept
+        line joins that line, as it does in `add_item`.
+
+        `ADMIN_EDITABLE_STATUSES` only, and the status does not move: a paid order stays
+        paid, and the customer is only told. `revision` is the one the panel read the
+        order at — anything else is `OrderChangedError`.
+
+        Returns the order and whether anything changed: a save that left the lines as they
+        were is not news to send.
+        """
+        result = await self._session.execute(
+            select(Order)
+            .options(selectinload(Order.items))
+            .where(Order.id == order_id)
+            .with_for_update(of=Order)
+            .execution_options(populate_existing=True)
+        )
+        order = result.scalar_one_or_none()
+        if order is None:
+            raise OrderNotFoundError
+        if order.status not in ADMIN_EDITABLE_STATUSES:
+            raise OrderNotEditableError
+        if order.revision != revision:
+            raise OrderChangedError
+        if not kept.keys() <= {item.id for item in order.items}:
+            raise OrderItemNotFoundError
+
+        quantities: dict[uuid.UUID, int] = {}
+        for variant_id, quantity in added:
+            quantities[variant_id] = min(
+                quantities.get(variant_id, 0) + quantity, MAX_ITEM_QUANTITY
+            )
+        if not kept and not quantities:
+            raise LastOrderItemError
+
+        found: dict[uuid.UUID, tuple[ProductVariant, Product]] = {}
+        if quantities:
+            variants = await self._session.execute(
+                select(ProductVariant, Product)
+                .join(Product, Product.id == ProductVariant.product_id)
+                .where(
+                    ProductVariant.id.in_(quantities),
+                    ProductVariant.deleted_at.is_(None),
+                    ProductVariant.in_stock.is_(True),
+                    Product.deleted_at.is_(None),
+                )
+                .options(selectinload(Product.images))
+            )
+            found = {variant.id: (variant, product) for variant, product in variants.all()}
+            if found.keys() != quantities.keys():
+                raise ProductNotFoundError
+
+        if not quantities and kept == {item.id: item.quantity for item in order.items}:
+            return order, False
+
+        for item in list(order.items):
+            if item.id in kept:
+                item.quantity = kept[item.id]
+            else:
+                order.items.remove(item)
+
+        lines = {item.variant_id: item for item in order.items if item.variant_id is not None}
+        for variant_id, quantity in quantities.items():
+            existing = lines.get(variant_id)
+            if existing is not None:
+                existing.quantity = min(existing.quantity + quantity, MAX_ITEM_QUANTITY)
+            else:
+                variant, product = found[variant_id]
+                order.items.append(_snapshot_line(product, variant, quantity))
+
+        self._recalculate_total(order)
+        await self._session.flush()
+        # New lines went in last; read them back in `Order.items` order, as `add_item` does.
+        await self._session.refresh(order, attribute_names=["items"])
+        return order, True
+
     async def list_for_user(
         self,
         user_id: uuid.UUID,
@@ -602,6 +706,10 @@ class OrdersService:
         for order in orders:
             stage = clocks.get(order.cycle_id, _LOST_CYCLE).stage(now)
             is_pending = order.status == OrderStatus.PENDING
+            # Billed but unpaid: nothing of the customer's is spent yet, so backing out
+            # stays theirs to do — and the purchase window says nothing about it, since
+            # the owner has already answered this order with the bill.
+            is_billed = order.status == OrderStatus.AWAITING_PAYMENT
 
             flags[order.id] = OrderFlags(
                 is_editable=is_pending and stage is PendingStage.COLLECTING,
@@ -627,7 +735,7 @@ class OrdersService:
                 # as if it were new. What the order needs there is the shop's answer —
                 # the owner is nudged for one (`stale_order_sweep`), and the page says
                 # where to write meanwhile.
-                is_cancellable=is_pending and stage is not PendingStage.UNFULFILLED,
+                is_cancellable=(is_pending and stage is not PendingStage.UNFULFILLED) or is_billed,
                 pending_stage=stage if is_pending else None,
             )
 
@@ -643,7 +751,8 @@ class OrdersService:
         return order
 
     async def _get_cancellable(self, user_id: uuid.UUID, order_id: uuid.UUID) -> Order:
-        """The wider gate: PENDING whatever the cycle is doing, up to `UNFULFILLED`.
+        """The wider gate: PENDING whatever the cycle is doing, up to `UNFULFILLED`, and
+        AWAITING_PAYMENT whenever.
 
         Same error as editing when it refuses — from the customer's side both are "this
         request is already past the point where you decide", and the site picks the
@@ -656,7 +765,9 @@ class OrdersService:
 
     @staticmethod
     def _recalculate_total(order: Order) -> None:
+        """Every change to the lines comes through here, so the revision moves with it."""
         order.total_cents = sum(item.product_price_cents * item.quantity for item in order.items)
+        order.revision = (order.revision or 0) + 1
 
     @staticmethod
     def _find_item(order: Order, item_id: uuid.UUID) -> OrderItem:
@@ -743,8 +854,10 @@ class OrdersService:
         """Customer-side "delete": the owner keeps seeing the order, marked as cancelled
         *by the customer* — which is the whole difference from the owner dropping it.
 
-        Available while the order is PENDING, and deliberately not tied to the cycle the
-        way editing is. Nothing is bought against a PENDING order, so letting it go costs
+        Available while the order is PENDING or AWAITING_PAYMENT, and deliberately not tied
+        to the cycle the way editing is. A bill unpaid is a customer who has not committed
+        any money yet, and refusing them the button would only move "я передумал" into a
+        message to the owner. Nothing is bought against a PENDING order, so letting it go costs
         the owner a notification; the deadline it used to be tied to guards the purchase
         list, which a withdrawal shortens and never rewrites. Before that, an order left
         unanswered in a closed cycle had no action on it at all — the customer sat in
@@ -789,6 +902,10 @@ class OrdersService:
             raise OrderNotRestorableError
 
         order.status = OrderStatus.PENDING
+        # Cancelled from AWAITING_PAYMENT, it comes back unbilled: in PENDING it is
+        # repriced again, so the bill it had no longer holds, and the owner taking it
+        # again sends a fresh one.
+        order.confirmed_at = None
         await self._session.flush()
         return order
 
@@ -830,6 +947,9 @@ class OrdersService:
                     Order.status == OrderStatus.PENDING,
                     Order.id.in_(select(OrderItem.order_id).where(OrderItem.variant_id.in_(chunk))),
                 )
+                .order_by(Order.id)
+                .with_for_update(of=Order)
+                .execution_options(populate_existing=True)
             )
             for order in result.scalars().all():
                 found.setdefault(order.id, order)
@@ -848,6 +968,16 @@ class OrdersService:
         product turned one import into a query per changed row, on the event loop this
         process shares with the bot and the scheduler. Chunked, since the same file may
         carry thousands of them and one enormous `IN` is its own kind of problem.
+
+        Locks the orders it returns, like every other path that rewrites an order's lines
+        (`get_for_user(for_update=True)`, `edit_by_admin`). Without it a customer's or the
+        owner's edit committed between this read and the flush is overwritten: the total
+        is summed from the stale lines and `revision` lands where the edit already put it,
+        so the panel's next draft passes a check it should fail. Same query, no extra round
+        trip — the cost is that an edit of one of these orders waits for the catalogue
+        change to commit. Postgres re-checks the PENDING filter on a row it waited for, so
+        an order confirmed or cancelled meanwhile drops out instead of being repriced.
+        Locked in id order within a chunk, so two bulk changes take shared rows in one order.
         """
         found: dict[uuid.UUID, Order] = {}
 
@@ -860,6 +990,9 @@ class OrdersService:
                     Order.status == OrderStatus.PENDING,
                     Order.id.in_(select(OrderItem.order_id).where(OrderItem.product_id.in_(chunk))),
                 )
+                .order_by(Order.id)
+                .with_for_update(of=Order)
+                .execution_options(populate_existing=True)
             )
             for order in result.scalars().all():
                 found.setdefault(order.id, order)
@@ -1190,11 +1323,14 @@ class OrdersService:
 
         changed = order.status != new_status
         order.status = new_status
-        if changed and new_status is OrderStatus.CONFIRMED:
+        if changed and new_status is OrderStatus.AWAITING_PAYMENT:
             order.confirmed_at = datetime.now(UTC)
+        if changed and new_status is OrderStatus.CONFIRMED and order.paid_at is None:
+            # Marked paid by hand: the money came some other way than a receipt in the bot.
+            order.paid_at = datetime.now(UTC)
         if new_status is OrderStatus.PENDING:
             # Back in PENDING the order is repriced and loses lines like any other, so a
-            # payment taken against its old total no longer covers it. Confirming it again
+            # payment taken against its old total no longer covers it. Taking it again
             # sends a fresh bill, and the owner settles the earlier money with the customer.
             order.paid_at = None
             order.confirmed_at = None

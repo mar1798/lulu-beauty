@@ -82,6 +82,9 @@ export interface IImageComponentProps {
 
 export type OrderStatus =
   | 'PENDING'
+  /** Владелец принял заявку и выставил счёт, оплаты ещё нет. */
+  | 'AWAITING_PAYMENT'
+  /** Оплачена: владелец принял чек в боте или отметил оплату в админке. */
   | 'CONFIRMED'
   | 'READY'
   | 'COMPLETED'
@@ -365,8 +368,9 @@ export interface IOrder {
   /** Стадия ожидания — только для `PENDING`, только ради текста. */
   pendingStage: PendingStage | null
   /**
-   * Когда владелец нажал «Оплата получена» под чеком, присланным в бот.
-   * Не статус: оплата идёт рядом с `CONFIRMED → READY → COMPLETED`, а не между ними.
+   * Когда заявка перешла из «Ожидает оплаты» в «Подтверждена»: владелец принял
+   * чек в боте или отметил оплату в админке. Оплачена ли заявка, говорит статус;
+   * здесь — только когда.
    */
   paidAt: string | null
 }
@@ -390,6 +394,11 @@ export interface IAdminOrder extends IOrder {
   createdById: string | null
   /** Имя того админа. `null` и при заявке из админки, если его аккаунта больше нет. */
   createdByName: string | null
+  /**
+   * Версия состава: растёт с каждой его правкой. Уходит обратно с правкой из
+   * админки — бэкенд откажет (`order_changed`), если состав успели поменять.
+   */
+  revision: number
 }
 
 /**
@@ -2026,6 +2035,52 @@ export interface IAdminOrderDialogProps {
 }
 
 /**
+ * Строка состава в окне «Изменить заявку». Бывшая в заявке — со своим
+ * `itemId` и ценой снимка: та цена, по которой заявку взяли или оплатили, при
+ * правке не меняется. Добавленная сейчас — без `itemId`, по цене каталога.
+ */
+export interface IAdminOrderEditLine extends Omit<IAdminOrderDraftLine, 'variantId'> {
+  /** Ключ строки в окне: `itemId` у бывшей в заявке, `variantId` у новой. */
+  key: string
+  itemId: string | null
+  /** `null` — объём с тех пор удалён из каталога насовсем; строка остаётся. */
+  variantId: string | null
+}
+
+/**
+ * Окно, где админ меняет состав чужой заявки: «Ожидает подтверждения»,
+ * «Ожидает оплаты» и «Подтверждена». Статус от правки не меняется, покупатель
+ * только получает новый состав в боте.
+ */
+export interface IAdminOrderEditDialogProps {
+  isOpen: boolean
+  /** Отмена, крестик, Escape. Спросить ли подтверждение — решает страница. */
+  onClose: () => void
+  /**
+   * Заявка, как её прочитали при открытии окна. Держится и после закрытия —
+   * окно уезжает с анимацией, и пустая шапка мигнула бы на выходе.
+   */
+  order: IAdminOrder | null
+  /** Поиск товара — те же пропсы, что у `ProductPicker`, без добавленных. */
+  productSearch: Pick<
+    IProductPickerProps,
+    'query' | 'onQueryChange' | 'products' | 'isSearching' | 'error'
+  >
+  lines: IAdminOrderEditLine[]
+  onAdd: (variantId: string) => void
+  onQuantityChange: (key: string, quantity: number) => void
+  onRemove: (key: string) => void
+  /** Состав отличается от того, что в заявке, — без этого сохранять нечего. */
+  hasChanges: boolean
+  /** Для ссылки с позиции на страницу товара. */
+  buildProductHref: (productSlug: string) => string
+  isBusy?: boolean
+  /** Почему не сохранилось — остаётся в окне вместе с правкой. */
+  error?: string | null
+  onSubmit: () => void
+}
+
+/**
  * Окно сообщения покупателю через бота. Текст — снаружи (`value`/`onChange`):
  * страница очищает его после отправки и держит, если отправка не удалась.
  */
@@ -2440,6 +2495,11 @@ export interface IChecklistItem {
   brand: string
   quantity: number
   unitPriceCents: number
+  /**
+   * Есть только у пункта, который владелец добавил в список сам, а не пришёл
+   * из заявок: по нему пункт и удаляется.
+   */
+  extraId?: string | null
 }
 
 /** Ответ `GET /admin/checklist`: сбор, по которому собран список, и сами строки. */
@@ -2461,9 +2521,30 @@ export interface IAdminChecklistProps {
   checkedKeys: string[]
   onToggle: (key: string, checked: boolean) => void
   buildProductHref: (productSlug: string) => string
+  /**
+   * Удалить пункт, добавленный вручную (`extraId`). Без обработчика кнопки
+   * удаления нет. Строки из заявок не удаляются никогда — их меняют сами заявки.
+   */
+  onRemoveExtra?: (item: IChecklistItem) => void
   isLoading?: boolean
   skeletonRows?: number
   emptyState?: ReactNode
+}
+
+/** Значения формы «Добавить пункт» — уже разобранные, цена в копейках. */
+export interface IChecklistExtraInput {
+  name: string
+  quantity: number
+  unitPriceCents: number
+}
+
+export interface IAdminChecklistExtraDialogProps {
+  isOpen: boolean
+  isBusy?: boolean
+  /** Почему не сохранилось — остаётся в окне, чтобы набранное не пропало. */
+  error?: string | null
+  onSubmit: (input: IChecklistExtraInput) => void
+  onClose: () => void
 }
 
 export interface IAdminOrdersTableProps {
@@ -2480,6 +2561,12 @@ export interface IAdminOrdersTableProps {
    * найти. Кнопка стоит в колонке действий рядом с удалением.
    */
   onMessage?: (order: IAdminOrder) => void
+  /**
+   * «Изменить состав». Кнопка есть у каждой заявки, но доступна только в
+   * `ADMIN_EDITABLE_STATUSES`: дальше товар на полке или выдан, а отменённая
+   * заявка — запись о том, что её нет.
+   */
+  onEdit?: (order: IAdminOrder) => void
   buildProductHref: (productSlug: string) => string
   isLoading?: boolean
   skeletonRows?: number
