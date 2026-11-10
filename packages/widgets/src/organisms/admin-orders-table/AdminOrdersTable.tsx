@@ -30,7 +30,9 @@ const UNIT_FORMS: IPluralForms = ['товар', 'товара', 'товаров'
  * «Не оплачено». Сама оплата — уже статус («Подтверждена»), отдельной метки ей не нужно.
  *
  * Телефон — ссылка `tel:`: заявку владелец подтверждает в чате бота, но о выдаче
- * договаривается лично, и копировать номер для этого руками незачем.
+ * договаривается лично, и копировать номер для этого руками незачем. Адрес
+ * доставки и комментарий к получению из профиля покупателя — в раскрытом
+ * составе, под комментарием к заявке: в строке им не хватило бы места.
  *
  * Ниже `md` та же разметка раскладывается в карточки (см. миксин
  * `styling/mixin/table.ts`): название колонки берётся из `data-label`, а роли
@@ -311,6 +313,21 @@ export const AdminOrdersTable: FC<IAdminOrdersTableProps & IBasicStyling> = ({
 
                           {order.note !== null && order.note !== '' && (
                             <p className={styles.note}>Комментарий: {order.note}</p>
+                          )}
+
+                          {/*
+                            Из профиля покупателя, а не из заявки: адрес у человека
+                            один на все заявки, и о выдаче договариваются по нему.
+                          */}
+                          {order.customerDeliveryAddress !== null && (
+                            <p className={styles.delivery}>
+                              Адрес доставки: {order.customerDeliveryAddress}
+                            </p>
+                          )}
+                          {order.customerDeliveryNote !== null && (
+                            <p className={styles.delivery}>
+                              Получение: {order.customerDeliveryNote}
+                            </p>
                           )}
                         </td>
                       </tr>

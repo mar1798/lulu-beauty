@@ -40,6 +40,23 @@ registration endpoint, no password column and no OTP — see [telegram.md](teleg
 - Anything addressed to "the owner" goes to **every** admin of either role
   (`telegram/recipients.get_owners`).
 
+### Delivery details on the profile
+
+A profile carries two optional free-text fields the customer fills in on `/account`:
+`delivery_address` and `delivery_note` («Как удобнее получить» — pick-up, a courier, a
+parcel to another town, a convenient time). Both are `String(500)`, edited through
+`PATCH /users/me`; `""` and blank text are stored as `NULL`, so "not filled in" has one
+spelling. Line breaks survive (`common/text.multi_line`) — an address reads better with the
+flat on its own line — while tabs, padding and empty lines do not.
+
+They are deliberately unstructured and there is no delivery-method enum: nothing in the
+shop delivers anything, the hand-over is arranged in person after payment, and the owner
+reads these as text. The admin order list shows them in an expanded order
+(`customerDeliveryAddress`/`customerDeliveryNote` on `AdminOrderResponse`), taken from the
+profile **as it is now**, not copied onto the order at checkout — the address that matters
+is the one on the day of the hand-over. Erasure clears both. The privacy policy lists them
+(`pages/privacy.tsx`, section 3); a new profile field means a new line there.
+
 ### Erasing an account
 
 A customer may erase their own account from `/account` (`DELETE /users/me`,
@@ -52,8 +69,8 @@ with it — including cycles that closed months ago. What goes is the data about
 person; what stays is a nameless row and the order history hanging off it:
 
 - `phone` is overwritten with a per-row placeholder (the column is UNIQUE and NOT NULL, so
-  erasing it means filling it), `name` becomes "Удалённый аккаунт", `telegram_chat_id` is
-  cleared and `deleted_at` is stamped.
+  erasing it means filling it), `name` becomes "Удалённый аккаунт", `telegram_chat_id` and
+  both delivery fields are cleared and `deleted_at` is stamped.
 - Cart, wishlist, refresh tokens and any waiting login session are deleted outright, and
   so are the account's wanted-product wishes: those carry their own copy of the name and
   the number, which is the one thing this erasure is about.

@@ -383,6 +383,13 @@ export interface IOrder {
 export interface IAdminOrder extends IOrder {
   customerName: string
   customerPhone: string
+  /**
+   * Адрес и комментарий к получению из профиля покупателя — текущие, а не на
+   * момент заявки: о выдаче договариваются после оплаты, и важен адрес на тот
+   * день. `null` — не заполнено или аккаунт стёрт.
+   */
+  customerDeliveryAddress: string | null
+  customerDeliveryNote: string | null
   /** Покупатель прислал чек, и он ещё не отклонён. */
   hasReceipt: boolean
   /**
@@ -483,6 +490,17 @@ export interface IAuthUser {
   telegramLinked: boolean
   /** Telegram-id привязанного аккаунта — Mini App сверяет с ним того, кто открыл окно. */
   telegramUserId: number | null
+  /** Адрес доставки из профиля, свободным текстом. `null` — не заполнен. */
+  deliveryAddress: string | null
+  /** Как удобнее получить: самовывоз, доставка, время. `null` — не заполнен. */
+  deliveryNote: string | null
+}
+
+/** То, что правится в профиле. Пустая строка — «очистить поле», бэкенд хранит её как `null`. */
+export interface IProfileValues {
+  name: string
+  deliveryAddress: string
+  deliveryNote: string
 }
 
 /** Строка импорта xlsx/csv, которую бэк не смог разобрать. */
@@ -621,6 +639,8 @@ export interface ITextareaProps {
   hint?: string
   error?: string | null
   placeholder?: string
+  /** Подсказка браузеру, чем заполнить поле: `street-address` у адреса доставки. */
+  autoComplete?: string
   rows?: number
   /** Включает счётчик символов под полем. */
   maxLength?: number
@@ -1907,8 +1927,8 @@ export interface IProfileFormProps {
   user: IAuthUser | null
   /** Первая загрузка профиля: скелетон в раскладке формы. */
   isLoading?: boolean
-  /** Телефон менять нельзя: он же логин и цель OTP. Наружу уходит только имя. */
-  onSubmit: (name: string) => void
+  /** Телефон менять нельзя: он же логин. Наружу уходят имя и поля доставки, без крайних пробелов. */
+  onSubmit: (values: IProfileValues) => void
   isSubmitting?: boolean
   error?: string | null
   isSaved?: boolean

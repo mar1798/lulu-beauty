@@ -97,4 +97,26 @@ describe('AdminOrdersTable', () => {
       'true',
     ])
   })
+
+  it('в раскрытой заявке показывает адрес и получение из профиля, пустые — пропускает', () => {
+    const withDelivery = feedAdminOrder({
+      customerDeliveryAddress: 'Бишкек, Киевская 10\nкв. 5',
+      customerDeliveryNote: 'Самовывоз',
+    })
+    const without = feedAdminOrder({ customerDeliveryAddress: null, customerDeliveryNote: null })
+    const { getAllByRole, getByText, queryAllByText } = renderWidget(
+      <AdminOrdersTable {...feedAdminOrdersTable()} orders={[withDelivery, without]} />
+    )
+
+    // До раскрытия адреса не видно: он в составе, а не в строке.
+    expect(queryAllByText(/Адрес доставки:/)).toHaveLength(0)
+
+    for (const toggle of getAllByRole('button', { expanded: false })) {
+      fireEvent.click(toggle)
+    }
+
+    expect(queryAllByText(/Адрес доставки:/)).toHaveLength(1)
+    expect(getByText(/Адрес доставки: Бишкек, Киевская 10/)).toBeInTheDocument()
+    expect(getByText('Получение: Самовывоз')).toBeInTheDocument()
+  })
 })

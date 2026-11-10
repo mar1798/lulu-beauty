@@ -4,7 +4,8 @@ import type { IBasicStyling, ITextareaProps } from '../../types'
 import * as styles from './Textarea.css'
 
 /**
- * Многострочное поле: комментарий к заявке и описание товара в админке.
+ * Многострочное поле: комментарий к заявке, адрес доставки в профиле и
+ * описание товара в админке.
  *
  * Со счётчиком символов, когда задан `maxLength` — у `note` на бэке жёсткий
  * лимит 2000, и упереться в него молча (браузер просто перестаёт печатать)
@@ -24,6 +25,7 @@ export const Textarea: FC<ITextareaProps & IBasicStyling> = ({
   hint,
   error,
   placeholder,
+  autoComplete,
   rows = 4,
   maxLength,
   disabled = false,
@@ -56,6 +58,7 @@ export const Textarea: FC<ITextareaProps & IBasicStyling> = ({
         value={value}
         rows={rows}
         placeholder={placeholder}
+        autoComplete={autoComplete}
         maxLength={maxLength}
         disabled={disabled}
         required={required}

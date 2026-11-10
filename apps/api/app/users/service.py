@@ -211,9 +211,9 @@ class UsersService:
         CASCADE`, so removing it would take the shop's record of goods it actually bought
         and handed over with it — including orders from cycles that closed months ago.
         What the person is entitled to have erased is the data *about them*, and that is
-        what this removes: the phone, the name, the Telegram binding. What stays is a
-        nameless row and the order history hanging off it, which is about the shop's
-        purchases rather than about a person.
+        what this removes: the phone, the name, the delivery address and note, the
+        Telegram binding. What stays is a nameless row and the order history hanging off
+        it, which is about the shop's purchases rather than about a person.
 
         An order the owner has already bought against (`DELETION_BLOCKING_STATUSES`)
         refuses the erasure instead of being cancelled by it: the goods exist, they were
@@ -269,6 +269,9 @@ class UsersService:
 
         user.phone = _erased_phone(user.id)
         user.name = DELETED_NAME
+        # Where the person lives is as much about them as their number is.
+        user.delivery_address = None
+        user.delivery_note = None
         # The binding goes last of the three, and it is the one that matters most: it is
         # what the bot looks up (`find_user_by_chat_id`), so from here the chat is simply
         # not attached to anything. The same number can start over from /start later, and

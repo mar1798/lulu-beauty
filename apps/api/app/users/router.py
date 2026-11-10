@@ -40,6 +40,8 @@ def _user_response(user: User) -> UserResponse:
         role=user.role,
         telegram_linked=user.telegram_chat_id is not None,
         telegram_user_id=user.telegram_chat_id,
+        delivery_address=user.delivery_address,
+        delivery_note=user.delivery_note,
     )
 
 
@@ -51,6 +53,8 @@ def _admin_user_response(user: User) -> AdminUserResponse:
         role=user.role,
         telegram_linked=user.telegram_chat_id is not None,
         telegram_user_id=user.telegram_chat_id,
+        delivery_address=user.delivery_address,
+        delivery_note=user.delivery_note,
         created_at=user.created_at,
     )
 

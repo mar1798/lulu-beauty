@@ -195,6 +195,11 @@ class AdminOrderResponse(OrderResponse):
 
     customer_name: str
     customer_phone: str
+    # The customer's profile as it is now, not a copy taken at checkout: the hand-over
+    # is arranged in person after the order is paid, and the address that matters then
+    # is the current one. Null when the customer left it empty, and for an erased account.
+    customer_delivery_address: str | None = None
+    customer_delivery_note: str | None = None
     # A receipt is waiting for the owner's verdict. `paid_at` says whether one was
     # accepted, and the admin table shows that instead.
     has_receipt: bool = False

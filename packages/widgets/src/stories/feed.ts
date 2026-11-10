@@ -993,6 +993,8 @@ export const feedAuthUser = (overrides: Partial<IAuthUser> = {}): IAuthUser => (
   role: 'CUSTOMER',
   telegramLinked: false,
   telegramUserId: null,
+  deliveryAddress: 'Бишкек, ул. Киевская 10, кв. 5',
+  deliveryNote: 'Доставка по городу, после 18:00',
   ...overrides,
 })
 
@@ -1425,6 +1427,8 @@ export const feedAdminOrder = (overrides: Partial<IAdminOrder> = {}): IAdminOrde
   ...feedOrder(),
   customerName: faker.person.fullName(),
   customerPhone: '+996555123456',
+  customerDeliveryAddress: 'Бишкек, ул. Киевская 10, кв. 5',
+  customerDeliveryNote: 'Самовывоз',
   hasReceipt: false,
   canMessage: true,
   createdById: null,

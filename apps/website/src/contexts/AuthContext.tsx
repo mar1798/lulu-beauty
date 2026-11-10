@@ -1,7 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo } from 'react'
 import { useRouter } from 'next/router'
 import useSWR from 'swr'
-import type { IAuthUser } from 'widgets/types'
+import type { IAuthUser, IProfileValues } from 'widgets/types'
 import { isApiError } from '@/services/apiErrors'
 import { onSessionExpired } from '@/services/session'
 import { meKey } from '@/services/swrKeys'
@@ -49,7 +49,7 @@ export interface IAuthContextValue {
    */
   signInWithMiniApp: (initData: string) => Promise<IAuthUser | null>
   signInWithTelegramWidget: (payload: Record<string, unknown>) => Promise<IAuthUser | null>
-  updateProfile: (name: string) => Promise<IAuthUser>
+  updateProfile: (values: IProfileValues) => Promise<IAuthUser>
   logout: () => Promise<void>
   /**
    * Удаляет аккаунт и тут же завершает сессию: ручка бэка снять cookie не может,
@@ -178,8 +178,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   )
 
   const updateProfile = useCallback(
-    async (name: string): Promise<IAuthUser> => {
-      const updated = await updateProfileRequest(name)
+    async (values: IProfileValues): Promise<IAuthUser> => {
+      const updated = await updateProfileRequest(values)
 
       await mutate(updated, { revalidate: false })
 

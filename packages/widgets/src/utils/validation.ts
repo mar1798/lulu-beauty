@@ -12,6 +12,9 @@ const PHONE_PATTERN = /^\+[1-9]\d{7,14}$/
 
 export const NAME_MAX_LENGTH = 255
 
+/** `DELIVERY_TEXT_MAX_LENGTH` бэкенда: адрес доставки и комментарий к получению. */
+export const DELIVERY_TEXT_MAX_LENGTH = 500
+
 export const validatePhone = (phone: string): string | null => {
   if (phone === '') {
     return 'Укажите номер телефона'

@@ -162,6 +162,8 @@ async def test_delete_account_removes_everything_that_is_not_an_order(
     """Cart, wishlist, sessions and tokens go for real — none of them is history the shop
     needs, and a revoked token row still records that this account existed."""
     user = await make_user(db_session, telegram_chat_id=4242)
+    user.delivery_address = "Бишкек, Киевская 10, кв. 5"
+    user.delivery_note = "После шести вечера"
     await make_cycle(db_session)
     product = await make_product(db_session)
     await CartService(db_session).add_item(user.id, variant_id(product), 1)
@@ -196,6 +198,9 @@ async def test_delete_account_removes_everything_that_is_not_an_order(
     # The binding above all: this is what the bot looks the account up by, so clearing it
     # is what actually detaches the chat.
     assert user.telegram_chat_id is None
+    # Where the person lives is about them as much as the number is.
+    assert user.delivery_address is None
+    assert user.delivery_note is None
 
 
 async def test_deleted_account_is_gone_to_every_reader(db_session: AsyncSession) -> None:

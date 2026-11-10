@@ -84,29 +84,29 @@ Two files that are easy to forget:
 
 Public and customer-facing:
 
-| Method                        | Path                                          | Notes                                                                                                                            |
-| ----------------------------- | --------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| `GET`                         | `/health`                                     | Real DB check; `503` if unreachable. Rate-limit exempt.                                                                          |
-| `POST`                        | `/auth/telegram/session`                      | Opens a sign-in session, returns the bot link + poll secret.                                                                     |
-| `POST`                        | `/auth/telegram/claim`                        | Claims a session the bot confirmed.                                                                                              |
-| `POST`                        | `/auth/telegram/widget`                       | Trades a Telegram Login Widget signature for tokens.                                                                             |
-| `POST`                        | `/auth/telegram/mini-app`                     | Same, for Mini App `initData`.                                                                                                   |
-| `POST`                        | `/auth/refresh`, `/auth/logout`               |                                                                                                                                  |
-| `GET`                         | `/categories`, `/brands`                      |                                                                                                                                  |
-| `GET`                         | `/products`                                   | Paged. Query params **snake_case**: `in_stock`, `page_size`. `sort`: `new` (default), `price_asc`, `price_desc`.                 |
-| `GET`                         | `/products/{slug}`                            |                                                                                                                                  |
-| `GET`                         | `/search/suggest`                             | Header search: categories + brands + 5 products. `q` 1–255.                                                                      |
-| `GET`                         | `/cycles/active`                              |                                                                                                                                  |
-| `GET`/`PATCH`/`DELETE`        | `/users/me`                                   | `DELETE` erases the account — see "Erasing an account".                                                                          |
-| `GET`                         | `/users/me/deletion`                          | Whether the caller may erase, and what blocks it.                                                                                |
-| `GET`/`POST`/`PATCH`/`DELETE` | `/cart`, `/cart/items[/{variant_id}]`         | 409 `no_active_cycle` without an open cycle. A line is a **volume**: `POST` takes `variantId`, and `PATCH`/`DELETE` address one. |
-| `GET`/`POST`/`DELETE`         | `/wishlist`, `/wishlist/items[/{product_id}]` | Cycle-independent.                                                                                                               |
-| `POST`                        | `/wanted-products`                            | A wish for something the catalog lacks. Signed-in (live account); strict rate-limit budget.                                      |
-| `POST`                        | `/orders/checkout`                            |                                                                                                                                  |
-| `GET`                         | `/orders`, `/orders/{id}`                     |                                                                                                                                  |
-| `PATCH`                       | `/orders/{id}`                                | Note only.                                                                                                                       |
-| `POST`/`PATCH`/`DELETE`       | `/orders/{id}/items[/{item_id}]`              | Add / change quantity / remove. `POST` takes `variantId`.                                                                        |
-| `POST`                        | `/orders/{id}/cancel`, `/orders/{id}/restore` |                                                                                                                                  |
+| Method                        | Path                                          | Notes                                                                                                                               |
+| ----------------------------- | --------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `GET`                         | `/health`                                     | Real DB check; `503` if unreachable. Rate-limit exempt.                                                                             |
+| `POST`                        | `/auth/telegram/session`                      | Opens a sign-in session, returns the bot link + poll secret.                                                                        |
+| `POST`                        | `/auth/telegram/claim`                        | Claims a session the bot confirmed.                                                                                                 |
+| `POST`                        | `/auth/telegram/widget`                       | Trades a Telegram Login Widget signature for tokens.                                                                                |
+| `POST`                        | `/auth/telegram/mini-app`                     | Same, for Mini App `initData`.                                                                                                      |
+| `POST`                        | `/auth/refresh`, `/auth/logout`               |                                                                                                                                     |
+| `GET`                         | `/categories`, `/brands`                      |                                                                                                                                     |
+| `GET`                         | `/products`                                   | Paged. Query params **snake_case**: `in_stock`, `page_size`. `sort`: `new` (default), `price_asc`, `price_desc`.                    |
+| `GET`                         | `/products/{slug}`                            |                                                                                                                                     |
+| `GET`                         | `/search/suggest`                             | Header search: categories + brands + 5 products. `q` 1–255.                                                                         |
+| `GET`                         | `/cycles/active`                              |                                                                                                                                     |
+| `GET`/`PATCH`/`DELETE`        | `/users/me`                                   | `PATCH`: `name`, `deliveryAddress`, `deliveryNote` (the last two nullable). `DELETE` erases the account — see "Erasing an account". |
+| `GET`                         | `/users/me/deletion`                          | Whether the caller may erase, and what blocks it.                                                                                   |
+| `GET`/`POST`/`PATCH`/`DELETE` | `/cart`, `/cart/items[/{variant_id}]`         | 409 `no_active_cycle` without an open cycle. A line is a **volume**: `POST` takes `variantId`, and `PATCH`/`DELETE` address one.    |
+| `GET`/`POST`/`DELETE`         | `/wishlist`, `/wishlist/items[/{product_id}]` | Cycle-independent.                                                                                                                  |
+| `POST`                        | `/wanted-products`                            | A wish for something the catalog lacks. Signed-in (live account); strict rate-limit budget.                                         |
+| `POST`                        | `/orders/checkout`                            |                                                                                                                                     |
+| `GET`                         | `/orders`, `/orders/{id}`                     |                                                                                                                                     |
+| `PATCH`                       | `/orders/{id}`                                | Note only.                                                                                                                          |
+| `POST`/`PATCH`/`DELETE`       | `/orders/{id}/items[/{item_id}]`              | Add / change quantity / remove. `POST` takes `variantId`.                                                                           |
+| `POST`                        | `/orders/{id}/cancel`, `/orders/{id}/restore` |                                                                                                                                     |
 
 Owner-only (`ADMIN` or `SUPER_ADMIN`, checked on the API — the frontend gate is UX only).
 `PATCH /admin/users/{id}/role` is the one exception: **SUPER_ADMIN only**.

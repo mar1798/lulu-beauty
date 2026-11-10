@@ -26,9 +26,12 @@ share-contact reply keyboard, then `messages.CONSENT` carrying a «Полити�
 `reply_markup` and the greeting spends it on the keyboard — and the consent goes second so
 it sits directly above the button it is about, still before the tap. It names what will be
 stored (number, Telegram profile name, this chat) and why; that list must keep matching
-what the `users` table actually holds. The address is never written into the text: it is a
-button, so on a host Telegram won't link to it simply drops (`_site_button`) rather than
-leaving `http://localhost:3000/privacy` in the first thing a customer reads.
+what the `users` table holds **at sign-up**. Fields the customer may fill in later on
+`/account` (the delivery address and note) are not stored at that tap, so the consent does
+not name them — the privacy policy does, in section 3. The address is never written into
+the text: it is a button, so on a host Telegram won't link to it simply drops
+(`_site_button`) rather than leaving `http://localhost:3000/privacy` in the first thing a
+customer reads.
 
 The same promise is made on the site's `/login` page, and both are the consent the shop
 relies on. Erasing an account is how it is withdrawn

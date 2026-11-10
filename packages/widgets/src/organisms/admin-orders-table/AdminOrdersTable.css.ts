@@ -235,3 +235,13 @@ export const note = style({
   font: font('13/20'),
   color: color.text('secondary'),
 })
+
+/**
+ * Адрес и комментарий к получению — тот же тон, что у комментария к заявке,
+ * но с переносами строк: адрес пишут и в несколько строк (квартира, ориентир).
+ */
+export const delivery = style({
+  font: font('13/20'),
+  color: color.text('secondary'),
+  whiteSpace: 'pre-line',
+})

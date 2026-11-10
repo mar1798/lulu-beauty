@@ -149,6 +149,8 @@ def _admin_order_response(
         items=_order_items(order, tags),
         customer_name=customer.name if customer is not None else "-",
         customer_phone=customer.phone if customer is not None else "-",
+        customer_delivery_address=customer.delivery_address if customer is not None else None,
+        customer_delivery_note=customer.delivery_note if customer is not None else None,
         paid_at=order.paid_at,
         has_receipt=order.id in with_receipts,
         can_message=customer is not None and customer.telegram_chat_id is not None,

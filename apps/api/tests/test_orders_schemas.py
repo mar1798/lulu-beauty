@@ -108,3 +108,6 @@ def test_admin_order_response_adds_customer_and_keeps_camel_case() -> None:
     dumped = response.model_dump(by_alias=True)
     assert dumped["customerName"] == "Aigul"
     assert dumped["customerPhone"] == "+996700123456"
+    # Left empty on the profile, so null rather than a placeholder.
+    assert dumped["customerDeliveryAddress"] is None
+    assert dumped["customerDeliveryNote"] is None
