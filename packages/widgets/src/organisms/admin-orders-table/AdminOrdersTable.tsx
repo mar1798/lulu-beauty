@@ -12,8 +12,11 @@ import { isAdminEditable } from '../../molecules/order-status-badge'
 import { StatusSelect } from '../../molecules/status-select'
 import { formatDateTime } from '../../utils/datetime'
 import { formatVariant } from '../../utils/variants'
-import { pluralize } from '../../utils/plural'
+import { type IPluralForms, pluralize } from '../../utils/plural'
 import * as styles from './AdminOrdersTable.css'
+
+/** Состав считается в штуках: «Крем ×2» — это два товара, а не один. */
+const UNIT_FORMS: IPluralForms = ['товар', 'товара', 'товаров']
 
 /**
  * Заявки покупателей с возможностью сменить статус.
@@ -176,7 +179,10 @@ export const AdminOrdersTable: FC<IAdminOrdersTableProps & IBasicStyling> = ({
                             toggle(order.id)
                           }}
                         >
-                          {pluralize(order.items.length, ['позиция', 'позиции', 'позиций'])}
+                          {pluralize(
+                            order.items.reduce((sum, item) => sum + item.quantity, 0),
+                            UNIT_FORMS
+                          )}
                         </button>
                       </td>
 
@@ -321,7 +327,7 @@ export const AdminOrdersTable: FC<IAdminOrdersTableProps & IBasicStyling> = ({
                 Итого: {pluralize(summary.orderCount, ['заявка', 'заявки', 'заявок'])}
               </td>
               <td className={styles.footCell} role="cell" data-label="Состав">
-                {pluralize(summary.itemCount, ['позиция', 'позиции', 'позиций'])}
+                {pluralize(summary.itemCount, UNIT_FORMS)}
               </td>
               <td className={styles.footCell} role="cell" data-label="Сумма">
                 <Price priceCents={summary.totalCents} size="sm" />

@@ -238,7 +238,7 @@ class AdminOrdersSummary(CamelModel):
     """Totals across every order the filters match, not just the page on screen.
 
     The order count is the envelope's `total`; these are the two numbers it can't give.
-    `item_count` counts lines, the way each row of the table does ("3 позиции"), not units.
+    `item_count` counts units, the way each row of the table does ("3 товара"), not lines.
     """
 
     item_count: int

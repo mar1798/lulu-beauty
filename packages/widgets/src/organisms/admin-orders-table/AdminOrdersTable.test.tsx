@@ -20,7 +20,7 @@ describe('AdminOrdersTable', () => {
     const { getByText } = renderWidget(<AdminOrdersTable {...feedAdminOrdersTable()} />)
 
     expect(getByText('Итого: 42 заявки')).toBeTruthy()
-    expect(getByText('118 позиций')).toBeTruthy()
+    expect(getByText('118 товаров')).toBeTruthy()
   })
 
   it('без `summary` строки итогов нет', () => {

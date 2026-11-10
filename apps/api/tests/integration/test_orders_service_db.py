@@ -264,7 +264,7 @@ async def test_list_admin_page_filters_by_status_and_paginates(
     assert len(second_page) == 1
 
 
-async def test_admin_summary_counts_lines_and_money_across_every_page(
+async def test_admin_summary_counts_units_and_money_across_every_page(
     db_session: AsyncSession,
 ) -> None:
     user = await make_user(db_session)
@@ -282,9 +282,9 @@ async def test_admin_summary_counts_lines_and_money_across_every_page(
 
     await service.update_status(two_lines.id, OrderStatus.AWAITING_PAYMENT)
 
-    # Lines, not units: the first order is two lines however many of each it holds.
-    assert await service.admin_summary(None, None) == (3, 2 * 1000 + 2500 + 1000)
-    assert await service.admin_summary(None, OrderStatus.AWAITING_PAYMENT) == (2, 2 * 1000 + 2500)
+    # Units, not lines: the first order is two lines but three pieces.
+    assert await service.admin_summary(None, None) == (4, 2 * 1000 + 2500 + 1000)
+    assert await service.admin_summary(None, OrderStatus.AWAITING_PAYMENT) == (3, 2 * 1000 + 2500)
     assert await service.admin_summary(uuid.uuid4(), None) == (0, 0)
 
 

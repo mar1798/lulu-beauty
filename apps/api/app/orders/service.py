@@ -1205,7 +1205,7 @@ class OrdersService:
     async def admin_summary(
         self, cycle_id: uuid.UUID | None, status: OrderStatus | None
     ) -> tuple[int, int]:
-        """Line count and money total across every order the admin filters match.
+        """Unit count and money total across every order the admin filters match.
 
         Same scope as the listing and the export, cancelled orders included when the
         status filter lets them in — the footer has to add up to what the table and the
@@ -1222,7 +1222,7 @@ class OrdersService:
             select(func.coalesce(func.sum(Order.total_cents), 0)).where(*filters)
         )
         item_count = await self._session.scalar(
-            select(func.count(OrderItem.id))
+            select(func.coalesce(func.sum(OrderItem.quantity), 0))
             .join(Order, Order.id == OrderItem.order_id)
             .where(*filters)
         )
