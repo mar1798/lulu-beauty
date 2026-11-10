@@ -586,6 +586,80 @@ bought, add what the customer asked for in a message, change a quantity.
 - **The purchase list follows.** It is computed live from the cycle's orders, so an edit
   after the cycle closed changes it — the point, when the edit is "не смогла достать".
 
+### Discounts
+
+An admin can give a discount on one line of a customer's order or on the whole order, as a
+percent or as an amount, with a note on why (`PUT /admin/orders/{id}/discount`,
+`OrdersService.set_discount`). The panel opens it from the percent sign in the order's row
+and asks for confirmation — with the sum before and after — before anything is sent.
+
+- **Where.** `DISCOUNTABLE_STATUSES` — `PENDING` and `AWAITING_PAYMENT`, i.e. up to the
+  payment. A discount changes nothing but the money, and once the order is paid the money
+  has already moved: a discount there would be a refund promised in a bot message. Past it,
+  `409 order_not_discountable`. The website mirrors the set (`isDiscountable`).
+- **Not while a receipt waits.** On `AWAITING_PAYMENT` with a receipt for the current bill
+  still undecided (`hasReceipt`), the money has moved even though the status has not — a
+  new sum to pay could not be met, and taking a discount back would leave the receipt short.
+  `409 order_has_receipt`; the dialog says so and keeps both buttons off. Settle the receipt
+  first.
+- **Stored as set, anchored, counted every time.** Each line and the order carry
+  `discount_kind` (`PERCENT`/`AMOUNT`), `discount_value` (whole percent 1–100, or cents),
+  `discount_note`, and `discount_base_cents` — the _anchor_, the sum the discount was taken
+  from when an admin last looked at it. All NULL without a discount. Only `total_cents`
+  stores money; it is computed in `app/orders/discounts.py` from `_recalculate_total`, so
+  every path that rewrites lines re-counts the discounts with it.
+- **Only an admin can make a discount bigger.** The anchor moves on an admin's action only —
+  setting a discount and rewriting the composition (`anchor_discounts` in `set_discount` and
+  `edit_by_admin`): the admin is looking at the order, so a percent they leave in place is a
+  percent of what it holds now. Everything else — the customer's own edit, a reprice, a
+  dropped product — counts against the anchor, and there a discount can only shrink: with
+  the sum as large as at the anchor or larger it stays what it was in money (50% given on one
+  item does not become 50% of the ten the customer adds next), and with the sum smaller it
+  shrinks in the same proportion (2000 off 3000 is two thirds, and stays two thirds of the
+  500 left, rather than making it free). The two migrations behind this are `a3d8f1c6b274`
+  and `c6e2a9d4f1b8`; a discount saved between them has no anchor and is counted against the
+  current sum.
+- **The arithmetic.** A line's discount comes off its price × quantity; the order's comes
+  off what the lines add up to after theirs. Percent discounts, and discounts scaled down
+  with the sum, are rounded to whole сом, half up (10% of 1 255 is 126, not 125,50).
+  Neither ever goes below zero; 100%, a total of 0, is allowed. The website repeats the same
+  arithmetic as it stands right after an admin's action (`widgets/utils/discount.ts`) to
+  preview the sum in the discount dialog, its confirmation and the edit dialog; the number
+  the customer pays is always the API's.
+- **One per target, replaced not stacked.** Setting a discount where one already is
+  replaces it; `discount: null` takes it off. Refused when it is set, with nothing changed,
+  rather than silently adjusted — the admin confirmed the number they typed:
+  - an amount larger than what it comes off, and that includes the order's own amount,
+    which a new line discount leaves less to come off (`409 discount_exceeds_total`);
+  - a discount that rounds to nothing, 1% of 40 сом (`409 discount_rounds_to_zero`).
+
+  The dialog knows both in advance (`discountProblem`) and shows them under the field. The
+  same discount with the same note is not a change: the dialog keeps the button off, and
+  the API returns without telling anyone.
+
+- **Revision.** The request carries `revision` like an edit does: the confirmation showed a
+  sum computed from the lines the panel read, and lines that have moved since make it a
+  different sum — `409 order_changed`. A discount moves the revision too. The table is
+  re-read on that refusal and the open dialog takes the fresh order, so the next
+  confirmation shows the right sum.
+- **The customer is told and sees why.** After the commit, one bot message
+  (`messages.order_discount`) — the discount travels to it by value (`DiscountChange`), so a
+  second change in between cannot turn it into a message about the wrong one. It says what
+  the discount is on, its size, the note, and the sum with the old one struck through,
+  labelled «К оплате» on `AWAITING_PAYMENT`, since the bill already went out with the old
+  one. A change of the note alone says «Обновлена скидка» instead of announcing it as new.
+  The bill, the edit message and the order page show discounted lines struck through with
+  the new price, the size and the note, and the order discount as its own line with its
+  note. The note is written to the customer: it is shown to them, not kept for the admins.
+- **Edits keep it.** A line kept in an admin's edit keeps its discount; a volume removed
+  and added back in the same draft brings back its own line — snapshot price and discount —
+  rather than a new one at the catalogue's price.
+- **What it does not touch.** The purchase list and the checklist are what the shop buys,
+  at the price per unit, so a discount changes neither. `orders.total_cents` — and with it
+  the admin table's sum and the cycle's summary — is after discounts.
+- **No discount at checkout.** A discount is the admin's act on a placed order; the cart
+  and checkout know nothing of it.
+
 ### Statuses
 
 ```
@@ -818,7 +892,9 @@ Client side: `apps/website/src/utils/exportDownload.ts`.
 
 ## Money
 
-Integer `*_cents` everywhere, never floats. `MAX_PRICE_CENTS = 2 000 000 000` because
+Integer `*_cents` everywhere, never floats. `orders.total_cents` is what the customer pays,
+after any discount; `discount_value` of an `AMOUNT` discount is cents too, and of a
+`PERCENT` one whole percent (see [Discounts](#discounts)). `MAX_PRICE_CENTS = 2 000 000 000` because
 `products.price_cents` is a 32-bit `INTEGER`; `orders.total_cents` was widened to `BIGINT`.
 Currency is a setting (`CURRENCY`, default `KGS`) and appears in export headers.
 

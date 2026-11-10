@@ -10,18 +10,29 @@ from app.cart.models import CartItem
 from app.cart.service import CartService
 from app.catalog.models import Product
 from app.cycles.models import CycleStatus, OrderCycle
-from app.orders.models import ADMIN_ORDER_WINDOW, PURCHASE_WINDOW, Order, OrderStatus
+from app.orders.models import (
+    ADMIN_ORDER_WINDOW,
+    PURCHASE_WINDOW,
+    DiscountKind,
+    Order,
+    OrderStatus,
+)
 from app.orders.service import (
     CustomerNotFoundError,
+    DiscountExceedsTotalError,
+    DiscountRoundsToZeroError,
     LastOrderItemError,
     NoCycleForOrderError,
     OrderChangedError,
     OrderCycleUnavailableError,
+    OrderHasReceiptError,
     OrderItemNotFoundError,
+    OrderNotDiscountableError,
     OrderNotEditableError,
     OrdersService,
     ProductNotFoundError,
 )
+from app.payments.models import PaymentReceipt, ReceiptKind
 from app.users.service import UsersService
 from tests.integration.factories import make_cycle, make_product, make_user, variant_id
 
@@ -434,3 +445,304 @@ async def test_edit_refuses_an_unavailable_volume_and_changes_nothing(
         )
 
     assert _quantities(order) == {"Balm": 1, "Serum": 2}
+
+
+# --- Discounts ------------------------------------------------------------------------
+# `_placed` is «Balm» ×1 at 1000 and «Serum» ×2 at 2000: 5000 in all.
+
+
+@pytest.mark.parametrize("status", [OrderStatus.PENDING, OrderStatus.AWAITING_PAYMENT])
+async def test_discount_on_a_line_lowers_the_total_and_leaves_the_status(
+    db_session: AsyncSession, status: OrderStatus
+) -> None:
+    order = await _placed(db_session, status)
+    serum = order.items[1]
+    revision = order.revision
+
+    discounted, change = await OrdersService(db_session).set_discount(
+        order.id, revision, serum.id, (DiscountKind.PERCENT, 10), "Помятая коробка"
+    )
+
+    assert change is not None and change.previous_total_cents == 5000
+    assert discounted.total_cents == 5000 - 400
+    assert discounted.status is status
+    assert discounted.revision == revision + 1
+    assert serum.discount_note == "Помятая коробка"
+
+
+async def test_discount_on_the_order_comes_after_the_lines(db_session: AsyncSession) -> None:
+    order = await _placed(db_session)
+    service = OrdersService(db_session)
+    order, _ = await service.set_discount(
+        order.id, order.revision, order.items[0].id, (DiscountKind.AMOUNT, 1000), None
+    )
+
+    order, change = await service.set_discount(
+        order.id, order.revision, None, (DiscountKind.PERCENT, 50), "Акция"
+    )
+
+    assert change is not None and change.previous_total_cents == 4000
+    assert order.total_cents == 2000
+    assert order.discount_note == "Акция"
+
+
+async def test_setting_the_same_discount_again_is_no_change(db_session: AsyncSession) -> None:
+    order = await _placed(db_session)
+    service = OrdersService(db_session)
+    order, _ = await service.set_discount(
+        order.id, order.revision, None, (DiscountKind.AMOUNT, 500), "Акция"
+    )
+    revision = order.revision
+
+    order, change = await service.set_discount(
+        order.id, revision, None, (DiscountKind.AMOUNT, 500), "Акция"
+    )
+
+    assert change is None
+    assert order.revision == revision
+
+
+async def test_removing_a_discount_restores_the_total(db_session: AsyncSession) -> None:
+    order = await _placed(db_session)
+    service = OrdersService(db_session)
+    order, _ = await service.set_discount(
+        order.id, order.revision, None, (DiscountKind.AMOUNT, 500), "Акция"
+    )
+
+    order, change = await service.set_discount(order.id, order.revision, None, None, None)
+
+    assert change is not None and change.previous_total_cents == 4500 and change.kind is None
+    assert order.total_cents == 5000
+    assert (order.discount_kind, order.discount_value, order.discount_note) == (None, None, None)
+
+
+async def test_removing_a_discount_that_is_not_there_is_no_change(
+    db_session: AsyncSession,
+) -> None:
+    order = await _placed(db_session)
+
+    _, change = await OrdersService(db_session).set_discount(
+        order.id, order.revision, None, None, None
+    )
+
+    assert change is None
+
+
+@pytest.mark.parametrize(
+    "status",
+    [
+        OrderStatus.CONFIRMED,
+        OrderStatus.READY,
+        OrderStatus.COMPLETED,
+        OrderStatus.CANCELLED_BY_OWNER,
+        OrderStatus.CANCELLED_BY_CUSTOMER,
+    ],
+)
+async def test_discount_refuses_an_order_past_payment_or_cancelled(
+    db_session: AsyncSession, status: OrderStatus
+) -> None:
+    order = await _placed(db_session, status)
+
+    with pytest.raises(OrderNotDiscountableError):
+        await OrdersService(db_session).set_discount(
+            order.id, order.revision, None, (DiscountKind.PERCENT, 10), None
+        )
+
+
+async def test_discount_refuses_a_stale_revision(db_session: AsyncSession) -> None:
+    order = await _placed(db_session)
+
+    with pytest.raises(OrderChangedError):
+        await OrdersService(db_session).set_discount(
+            order.id, order.revision - 1, None, (DiscountKind.PERCENT, 10), None
+        )
+
+
+async def test_discount_refuses_a_line_of_another_order(db_session: AsyncSession) -> None:
+    order = await _placed(db_session)
+
+    with pytest.raises(OrderItemNotFoundError):
+        await OrdersService(db_session).set_discount(
+            order.id, order.revision, uuid.uuid4(), (DiscountKind.PERCENT, 10), None
+        )
+
+
+async def test_discount_refuses_an_amount_over_the_line(db_session: AsyncSession) -> None:
+    order = await _placed(db_session)
+    balm = order.items[0]
+
+    with pytest.raises(DiscountExceedsTotalError):
+        await OrdersService(db_session).set_discount(
+            order.id, order.revision, balm.id, (DiscountKind.AMOUNT, 1001), None
+        )
+    assert order.total_cents == 5000
+
+
+async def test_discount_refuses_an_amount_over_what_the_lines_leave(
+    db_session: AsyncSession,
+) -> None:
+    order = await _placed(db_session)
+    service = OrdersService(db_session)
+    order, _ = await service.set_discount(
+        order.id, order.revision, order.items[1].id, (DiscountKind.PERCENT, 100), None
+    )
+
+    with pytest.raises(DiscountExceedsTotalError):
+        await service.set_discount(
+            order.id, order.revision, None, (DiscountKind.AMOUNT, 1001), None
+        )
+
+
+async def test_a_line_discount_survives_an_edit_and_follows_the_quantity(
+    db_session: AsyncSession,
+) -> None:
+    order = await _placed(db_session)
+    balm, serum = order.items
+    service = OrdersService(db_session)
+    order, _ = await service.set_discount(
+        order.id, order.revision, serum.id, (DiscountKind.PERCENT, 50), None
+    )
+
+    edited, _ = await service.edit_by_admin(order.id, order.revision, {balm.id: 1, serum.id: 4}, [])
+
+    # Serum ×4 at 2000 is 8000, half of it off.
+    assert edited.total_cents == 1000 + 4000
+
+
+async def test_a_reprice_upwards_does_not_grow_a_discount(db_session: AsyncSession) -> None:
+    order = await _placed(db_session)
+    balm = order.items[0]
+    service = OrdersService(db_session)
+    await service.set_discount(order.id, order.revision, None, (DiscountKind.PERCENT, 10), None)
+    assert balm.variant_id is not None
+
+    await service.reprice_variant(balm.variant_id, 2000)
+
+    # 2000 + 4000 = 6000; the 500 given against 5000 stays 500.
+    assert order.total_cents == 5500
+
+
+async def test_a_customer_adding_lines_does_not_grow_the_discount(
+    db_session: AsyncSession,
+) -> None:
+    """50% given on what the order held is not 50% of whatever the customer adds next."""
+    order = await _placed(db_session)
+    service = OrdersService(db_session)
+    order, _ = await service.set_discount(
+        order.id, order.revision, None, (DiscountKind.PERCENT, 50), None
+    )
+    cream = await make_product(db_session, name="Cream", price_cents=10_000)
+
+    order = await service.add_item(order.user_id, order.id, variant_id(cream), 1)
+
+    assert order.total_cents == 15_000 - 2500
+
+
+async def test_a_customer_removing_lines_shrinks_the_discount_in_proportion(
+    db_session: AsyncSession,
+) -> None:
+    """An amount of 4000 on 5000 is four fifths, and stays four fifths of what is left."""
+    order = await _placed(db_session)
+    balm, serum = order.items
+    service = OrdersService(db_session)
+    order, _ = await service.set_discount(
+        order.id, order.revision, None, (DiscountKind.AMOUNT, 4000), None
+    )
+
+    order = await service.remove_item(order.user_id, order.id, serum.id)
+
+    # 1000 left, 800 of it off — not the whole 1000.
+    assert order.total_cents == 200
+
+
+async def test_a_customer_lowering_a_quantity_shrinks_a_line_amount(
+    db_session: AsyncSession,
+) -> None:
+    order = await _placed(db_session)
+    serum = order.items[1]
+    service = OrdersService(db_session)
+    order, _ = await service.set_discount(
+        order.id, order.revision, serum.id, (DiscountKind.AMOUNT, 3000), None
+    )
+
+    order = await service.set_item_quantity(order.user_id, order.id, serum.id, 1)
+
+    # Serum ×1 is 2000; 3000 of 4000 scaled to it is 1500.
+    assert order.total_cents == 1000 + 500
+
+
+async def test_an_admin_edit_re_anchors_a_percent_to_the_new_composition(
+    db_session: AsyncSession,
+) -> None:
+    order = await _placed(db_session)
+    balm, serum = order.items
+    service = OrdersService(db_session)
+    order, _ = await service.set_discount(
+        order.id, order.revision, None, (DiscountKind.PERCENT, 10), None
+    )
+
+    edited, _ = await service.edit_by_admin(order.id, order.revision, {balm.id: 1, serum.id: 4}, [])
+
+    # 1000 + 8000 = 9000: the admin left 10% in place looking at it.
+    assert edited.total_cents == 8100
+
+
+async def test_discount_refuses_one_that_rounds_to_nothing(db_session: AsyncSession) -> None:
+    order = await _placed(db_session)
+    balm = order.items[0]
+
+    with pytest.raises(DiscountRoundsToZeroError):
+        # 1% of 10 сом is 0,1 — rounded to whole сом, nothing.
+        await OrdersService(db_session).set_discount(
+            order.id, order.revision, balm.id, (DiscountKind.PERCENT, 1), None
+        )
+    assert balm.discount_kind is None
+    assert order.total_cents == 5000
+
+
+async def test_a_line_discount_may_not_leave_the_order_amount_without_room(
+    db_session: AsyncSession,
+) -> None:
+    order = await _placed(db_session)
+    serum = order.items[1]
+    service = OrdersService(db_session)
+    order, _ = await service.set_discount(
+        order.id, order.revision, None, (DiscountKind.AMOUNT, 4000), None
+    )
+
+    with pytest.raises(DiscountExceedsTotalError):
+        # Serum −2000 leaves 3000 for an order amount of 4000.
+        await service.set_discount(
+            order.id, order.revision, serum.id, (DiscountKind.AMOUNT, 2000), None
+        )
+    assert serum.discount_kind is None
+    assert order.discount_base_cents == 5000
+    assert order.total_cents == 1000
+
+
+async def test_a_full_discount_is_allowed(db_session: AsyncSession) -> None:
+    order = await _placed(db_session)
+
+    order, _ = await OrdersService(db_session).set_discount(
+        order.id, order.revision, None, (DiscountKind.PERCENT, 100), "Подарок"
+    )
+
+    assert order.total_cents == 0
+
+
+async def test_discount_refuses_while_a_receipt_waits_for_a_verdict(
+    db_session: AsyncSession,
+) -> None:
+    order = await _placed(db_session, OrderStatus.AWAITING_PAYMENT)
+    order.confirmed_at = datetime.now(UTC) - timedelta(hours=1)
+    db_session.add(
+        PaymentReceipt(
+            order_id=order.id, kind=ReceiptKind.PHOTO, file_id="file", file_unique_id="unique"
+        )
+    )
+    await db_session.flush()
+
+    with pytest.raises(OrderHasReceiptError):
+        await OrdersService(db_session).set_discount(
+            order.id, order.revision, None, (DiscountKind.PERCENT, 10), None
+        )

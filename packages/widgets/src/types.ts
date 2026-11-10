@@ -316,11 +316,30 @@ export interface IWishlist {
   items: IWishlistItem[]
 }
 
+/** Как читается значение скидки: процент (1–100) или сумма в тыйынах. */
+export type DiscountKind = 'PERCENT' | 'AMOUNT'
+
+/**
+ * Скидка, которую дал админ, — на строку заявки или на всю заявку. Хранится так,
+ * как её задали (вид и значение), а в деньгах считается бэкендом заново при
+ * каждом пересчёте: правки покупателя и каталога её только уменьшают, а
+ * действие админа заново привязывает к текущему составу. Причину видит и
+ * покупатель. Без скидки первые три — `null`, а `discountCents` — 0.
+ */
+export interface IDiscountFields {
+  discountKind: DiscountKind | null
+  discountValue: number | null
+  discountNote: string | null
+  /** Во что скидка обходится сейчас, в тыйынах. */
+  discountCents: number
+}
+
 /**
  * Позиция заявки — снапшот на момент чекаута, а не текущее состояние товара.
- * `productId` — `null`, если товар с тех пор удалён.
+ * `productId` — `null`, если товар с тех пор удалён. `lineTotalCents` — цена ×
+ * количество без скидки; строка со скидкой стоит `lineTotalCents - discountCents`.
  */
-export interface IOrderItem extends IItemRowItem {
+export interface IOrderItem extends IItemRowItem, IDiscountFields {
   /** Идентификатор строки заявки: правка и удаление адресуются им, а не товаром. */
   id: string
   productId: string | null
@@ -329,11 +348,18 @@ export interface IOrderItem extends IItemRowItem {
   productSlug: string
 }
 
-export interface IOrder {
+/**
+ * Поля скидки здесь — скидка на всю заявку (не сумма скидок строк): она
+ * вычитается из того, что осталось после скидок строк.
+ */
+export interface IOrder extends IDiscountFields {
   id: string
   cycleId: string
   status: OrderStatus
+  /** Сколько платит покупатель — все скидки уже вычтены. */
   totalCents: number
+  /** Цена × количество по всем строкам, до скидок. Без скидок равна `totalCents`. */
+  subtotalCents: number
   note: string | null
   createdAt: string
   items: IOrderItem[]
@@ -1780,6 +1806,15 @@ export interface IOrderStatusBadgeProps {
   status: OrderStatus
 }
 
+/** Скидка строки, как её показывает `ItemRow`: сколько, как задана и почему. */
+export interface IItemRowDiscount {
+  /** Во что обошлась, в тыйынах: строка стоит `lineTotalCents - cents`. */
+  cents: number
+  /** «10%» или «500 сом» — как задал админ. */
+  label: string
+  note: string | null
+}
+
 /**
  * Одна карточка позиции — общая у корзины, оформления и заявки.
  *
@@ -1788,6 +1823,11 @@ export interface IOrderStatusBadgeProps {
  */
 export interface IItemRowProps {
   item: IItemRowItem
+  /**
+   * Скидка, которую дал админ. Есть только у строк заявки: в корзине и при
+   * оформлении скидок не бывает. Итог строки тогда — зачёркнутая цена и новая.
+   */
+  discount?: IItemRowDiscount | null
   /**
    * `null` — товара больше нет в каталоге (`productId === null` в снапшоте
    * заявки), вести ссылке некуда, а название остаётся видно.
@@ -2098,6 +2138,34 @@ export interface IAdminOrderEditDialogProps {
   /** Почему не сохранилось — остаётся в окне вместе с правкой. */
   error?: string | null
   onSubmit: () => void
+}
+
+/** Что админ подтверждает в окне скидки. `itemId: null` — скидка на всю заявку. */
+export interface IAdminOrderDiscountInput {
+  itemId: string | null
+  kind: DiscountKind
+  /** Целые проценты (1–100) или тыйыны. */
+  value: number
+  /** Причина. Её видит и покупатель — в боте и в заявке на сайте. */
+  note: string | null
+}
+
+/**
+ * Окно «Скидка»: на строку заявки или на всю заявку, процентом или суммой, с
+ * причиной. Только до оплаты — «Ожидает подтверждения» и «Ожидает оплаты».
+ * Подтверждение перед отправкой спрашивает страница, а не окно.
+ */
+export interface IAdminOrderDiscountDialogProps {
+  isOpen: boolean
+  onClose: () => void
+  /** Заявка, как её прочитали при открытии. Держится и после закрытия — ради анимации. */
+  order: IAdminOrder | null
+  isBusy?: boolean
+  /** Почему не сохранилось — остаётся в окне вместе с набранным. */
+  error?: string | null
+  onSubmit: (input: IAdminOrderDiscountInput) => void
+  /** Снять скидку, которая уже стоит у цели: у строки (`itemId`) или у заявки (`null`). */
+  onRemove: (itemId: string | null) => void
 }
 
 /**
@@ -2598,6 +2666,11 @@ export interface IAdminOrdersTableProps {
    * заявка — запись о том, что её нет.
    */
   onEdit?: (order: IAdminOrder) => void
+  /**
+   * «Скидка» на строку или на всю заявку. Кнопка есть у каждой заявки, но
+   * доступна только до оплаты (`DISCOUNTABLE_STATUSES`).
+   */
+  onDiscount?: (order: IAdminOrder) => void
   buildProductHref: (productSlug: string) => string
   isLoading?: boolean
   skeletonRows?: number

@@ -23,8 +23,9 @@ from app.catalog.labels import product_label
 from app.common.limits import MAX_WISHLIST_ITEMS
 from app.config import settings
 from app.cycles.models import OrderCycle
-from app.orders.models import CANCELLED_STATUSES, Order, OrderItem, OrderStatus
-from app.orders.service import OrderItemDrop, OrderPriceChange
+from app.orders.discounts import line_discount_cents, line_subtotal_cents, order_totals
+from app.orders.models import CANCELLED_STATUSES, DiscountKind, Order, OrderItem, OrderStatus
+from app.orders.service import DiscountChange, OrderItemDrop, OrderPriceChange
 from app.wanted.models import WantedProduct
 from app.wishlist.schemas import WishlistResponse
 
@@ -365,6 +366,7 @@ def order_created_for_customer(order: Order, cycle: OrderCycle | None, *, is_ope
             f"🛍{_items_count(order)}",
             *(_bill_line(item) for item in order.items),
             "",
+            *_order_discount_lines(order),
             f"Сумма: <b>{format_price(order.total_cents, grouped=False)}</b>",
             "",
             "Ваша заявка принята и ожидает подтверждения 💜",
@@ -391,6 +393,7 @@ def order_edited(order: Order) -> str:
             f"🛍{_items_count(order)}",
             *(_bill_line(item) for item in order.items),
             "",
+            *_order_discount_lines(order),
             f"Сумма: <b>{format_price(order.total_cents, grouped=False)}</b>",
         ]
     )
@@ -404,13 +407,107 @@ PAYMENT_DETAILS = (
 
 
 def _bill_line(item: OrderItem) -> str:
-    """A line of the bill — HTML, so the product name is escaped."""
+    """A line of the bill — HTML, so the product name is escaped.
+
+    A discounted line shows the price it had struck through next to the one it has, with the
+    size and the reason: the customer compares the bill with the catalogue, and a lower
+    number with no word on why reads as a mistake. The reason is the admin's text, escaped.
+    """
     label = html.escape(
         product_label(item.product_name, item.product_volume_ml, item.product_shade)
     )
     quantity = f" × {item.quantity}" if item.quantity > 1 else ""
-    price = format_price(item.product_price_cents * item.quantity, grouped=False)
+    subtotal = line_subtotal_cents(item)
+    discount = line_discount_cents(item)
+    price = format_price(subtotal - discount, grouped=False)
+    if discount:
+        before = format_price(subtotal, grouped=False)
+        tag = discount_label(item.discount_kind, item.discount_value)
+        why = f" - {html.escape(item.discount_note)}" if item.discount_note else ""
+        price = f"<s>{before}</s> {price} (скидка {tag}{why})"
     return f"• {label}{quantity} - {price}"
+
+
+def discount_label(kind: DiscountKind | None, value: int | None) -> str:
+    """The discount as the admin set it ("10%", "500 сом"), not what it came to."""
+    if kind is None or value is None:
+        return ""
+    if kind is DiscountKind.PERCENT:
+        return f"{value}%"
+    return format_price(value, grouped=False)
+
+
+def _order_discount_lines(order: Order) -> list[str]:
+    """The order's own discount above the sum, with its reason — empty without one.
+
+    HTML: the reason is the admin's text and is escaped.
+    """
+    totals = order_totals(order)
+    if not totals.order_discount_cents:
+        return []
+    lines = [
+        f"Скидка на заказ ({discount_label(order.discount_kind, order.discount_value)}): "
+        f"-{format_price(totals.order_discount_cents, grouped=False)}"
+    ]
+    if order.discount_note:
+        lines.append(f"Причина: {html.escape(order.discount_note)}")
+    return lines
+
+
+def order_discount(order: Order, item_id: uuid.UUID | None, change: DiscountChange) -> str:
+    """An admin gave a discount on the order or one of its lines, or took it back.
+
+    Says what it is on, how much, why (the admin's own words) and the new sum, with the
+    old one struck through. On an unpaid bill (`AWAITING_PAYMENT`) the sum is named as what
+    to pay — the bill already went out with the old one, and this message replaces it. A
+    change of the reason alone keeps the sum and says the discount was updated rather than
+    given again. The whole composition is on the site, behind the button under the message.
+
+    The discount comes from `change`, not from the row: the row may already hold the next
+    one by the time this is sent.
+
+    HTML: product names and the reason are escaped.
+    """
+    reference = order_reference(order.id)
+    item = next((line for line in order.items if line.id == item_id), None)
+    # "по заявке №…" for the whole order, "на <товар> в заявке №…" for one line.
+    target = (
+        f"по заявке {reference}"
+        if item_id is None
+        else "на "
+        + html.escape(
+            product_label(item.product_name, item.product_volume_ml, item.product_shade)
+            if item is not None
+            else "товар"
+        )
+        + f" в заявке {reference}"
+    )
+    total = format_price(order.total_cents, grouped=False)
+    before = format_price(change.previous_total_cents, grouped=False)
+    label = "К оплате" if order.status is OrderStatus.AWAITING_PAYMENT else "Сумма"
+    sum_line = (
+        f"{label}: <s>{before}</s> <b>{total}</b>"
+        if change.previous_total_cents != order.total_cents
+        else f"{label}: <b>{total}</b>"
+    )
+
+    if change.kind is None:
+        return "\n".join([f"Скидка {target} отменена", "", sum_line])
+
+    tag = discount_label(change.kind, change.value)
+    heading = (
+        f"Обновлена скидка {tag} {target}"
+        if change.previous_total_cents == order.total_cents
+        else f"🎁 Вам скидка {tag} {target}"
+    )
+    return "\n".join(
+        [
+            heading,
+            *([f"Причина: {html.escape(change.note)}"] if change.note else []),
+            "",
+            sum_line,
+        ]
+    )
 
 
 def order_confirmed(order: Order, *, first_cycle: bool) -> str:
@@ -443,6 +540,7 @@ def order_confirmed(order: Order, *, first_cycle: bool) -> str:
             f"🛍{_items_count(order)}",
             *(_bill_line(item) for item in order.items),
             "",
+            *_order_discount_lines(order),
             f"Итого к оплате: <b>{format_price(order.total_cents, grouped=False)}</b>",
             "Если всё верно, можете произвести оплату по реквизитам:",
             "",

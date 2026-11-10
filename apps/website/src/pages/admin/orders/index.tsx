@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import useSWR, { mutate as globalMutate } from 'swr'
 import type { IAdminOrder, IOrderCycle, ISelectOption, OrderStatus } from 'widgets/types'
 import { Alert, Button, Select, Switch } from 'widgets/atoms'
@@ -6,6 +6,7 @@ import { EmptyState, ORDER_STATUSES, Pagination, orderStatusLabel } from 'widget
 import {
   AdminMessageDialog,
   AdminOrderDialog,
+  AdminOrderDiscountDialog,
   AdminOrderEditDialog,
   AdminOrdersTable,
   adminOrderNumber,
@@ -16,6 +17,7 @@ import { IconDownload, IconPlus } from 'widgets/svg'
 import { AdminShell } from '@/layouts/AdminShell'
 import { useActiveCycle } from '@/hooks/useActiveCycle'
 import { useAdminOrderDraft } from '@/hooks/useAdminOrderDraft'
+import { useAdminOrderDiscount } from '@/hooks/useAdminOrderDiscount'
 import { useAdminOrderEdit } from '@/hooks/useAdminOrderEdit'
 import { saveBlob } from '@/services/api'
 import { isApiError, messageForError } from '@/services/apiErrors'
@@ -59,6 +61,10 @@ import { useClampedPage } from '@/hooks/useClampedPage'
  * неё не меняется, покупатель получает новый состав в боте. Всё состояние
  * окна — в `useAdminOrderEdit`.
  *
+ * Знак процента в строке — окно скидки: на позицию или на всю заявку, до
+ * оплаты. Перед отправкой — подтверждение с новой суммой; покупатель получает
+ * скидку и её причину в боте. Всё состояние — в `useAdminOrderDiscount`.
+ *
  * Качается через `fetch`, а не обычной ссылкой: ручка админская,
  * и отказ (403, 500) на ссылке превратился бы в скачанный файл с текстом
  * ошибки внутри. Имя файла берётся из `Content-Disposition` — там RFC 5987,
@@ -100,6 +106,7 @@ const AdminOrdersPage: React.FC = () => {
   const { confirm } = useConfirm()
   const draft = useAdminOrderDraft()
   const edit = useAdminOrderEdit()
+  const discount = useAdminOrderDiscount()
 
   /*
     Выбор владельца, а не действующий фильтр: пока он ничего не выбрал (`null`),
@@ -181,6 +188,18 @@ const AdminOrdersPage: React.FC = () => {
 
   // Опустевшая страница (последнюю заявку удалили или увели из фильтра) — назад.
   useClampedPage(data, page, setPage)
+
+  /*
+    Окно скидки держит заявку, с которой его открыли. Таблица перечитывается
+    (после `order_changed` — сразу) — окно берёт свежую версию.
+  */
+  const { sync: syncDiscount } = discount
+
+  useEffect(() => {
+    if (data !== undefined) {
+      syncDiscount(data.items)
+    }
+  }, [data, syncDiscount])
 
   /*
     Скелетон — только пока показывать нечего. `isLoading` из SWR считается по
@@ -409,6 +428,7 @@ const AdminOrdersPage: React.FC = () => {
         }}
         onMessage={openMessage}
         onEdit={edit.open}
+        onDiscount={discount.open}
         emptyState={
           <EmptyState
             title="Заявок нет"
@@ -435,6 +455,8 @@ const AdminOrdersPage: React.FC = () => {
       <AdminOrderDialog {...draft.dialog} />
 
       <AdminOrderEditDialog {...edit.dialog} />
+
+      <AdminOrderDiscountDialog {...discount.dialog} />
 
       {data !== undefined && data.total > PAGE_SIZE && (
         <Pagination

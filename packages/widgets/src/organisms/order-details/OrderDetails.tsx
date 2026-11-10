@@ -2,13 +2,14 @@ import clsx from 'clsx'
 import { type FC, type ReactNode, useState } from 'react'
 import type { IBasicStyling, IOrderDetailsProps } from '../../types'
 import { formatDateTime } from '../../utils/datetime'
+import { formatDiscount } from '../../utils/discount'
 import { pluralize } from '../../utils/plural'
 import { Alert } from '../../atoms/alert'
 import { AppLink } from '../../atoms/app-link'
 import { Button } from '../../atoms/button'
 import { Divider } from '../../atoms/divider'
 import { Heading } from '../../atoms/heading'
-import { Price } from '../../atoms/price'
+import { Price, formatPrice } from '../../atoms/price'
 import { Skeleton } from '../../atoms/skeleton'
 import { Text } from '../../atoms/text'
 import { Textarea } from '../../atoms/textarea'
@@ -362,6 +363,15 @@ export const OrderDetails: FC<IOrderDetailsProps & IBasicStyling> = ({
             <ItemRow
               key={item.id}
               item={item}
+              discount={
+                item.discountKind === null || item.discountValue === null
+                  ? null
+                  : {
+                      cents: item.discountCents,
+                      label: formatDiscount(item.discountKind, item.discountValue),
+                      note: item.discountNote,
+                    }
+              }
               href={item.productId === null ? null : buildProductHref(item.productSlug)}
               onQuantityChange={
                 isEditable
@@ -398,9 +408,32 @@ export const OrderDetails: FC<IOrderDetailsProps & IBasicStyling> = ({
       */}
       {isEditable && addItem}
 
+      {/*
+        Скидка на всю заявку — своей строкой над итогом, с причиной: сумма ниже
+        каталожной без слова о том, откуда она, читалась бы как ошибка.
+      */}
+      {order.discountKind !== null && order.discountValue !== null && order.discountCents > 0 && (
+        <div className={styles.discountRow}>
+          <Text size="sm">
+            {`Скидка на заявку ${formatDiscount(order.discountKind, order.discountValue)}`}
+          </Text>
+          <Text size="sm">{`-${formatPrice(order.discountCents)}`}</Text>
+          {order.discountNote !== null && (
+            <Text className={styles.discountNote} size="sm" tone="muted">
+              {order.discountNote}
+            </Text>
+          )}
+        </div>
+      )}
+
       <div className={styles.totalRow}>
         <Text weight="medium">{`Итого · ${pluralize(order.items.length, ITEM_FORMS)}`}</Text>
-        <Price priceCents={order.totalCents} size="lg" />
+        <div className={styles.totals}>
+          {order.totalCents !== order.subtotalCents && (
+            <span className={styles.totalBefore}>{formatPrice(order.subtotalCents)}</span>
+          )}
+          <Price priceCents={order.totalCents} size="lg" />
+        </div>
       </div>
 
       {isCancellable && (

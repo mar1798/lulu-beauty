@@ -1,5 +1,5 @@
 import { style } from '@vanilla-extract/css'
-import { border, color } from '../../styling/lib'
+import { border, color, font } from '../../styling/lib'
 import { media } from '../../styling/lib/media'
 import { flexColumn, flexRow, focusVisibleRing, tagRow, tagSeparator } from '../../styling/mixin'
 import { vars } from '../../styling/themes/contract.css'
@@ -115,9 +115,19 @@ export const controls = style({
 })
 
 export const total = style({
+  ...flexColumn(2),
+  alignItems: 'flex-end',
   flexShrink: 0,
   textAlign: 'right',
   ...media({
     md: { minWidth: '120px' },
   }),
+})
+
+/** Цена строки до скидки — зачёркнутая, над ценой после. */
+export const totalBefore = style({
+  font: font('13/18'),
+  color: color.text('muted'),
+  textDecoration: 'line-through',
+  fontVariantNumeric: 'tabular-nums',
 })

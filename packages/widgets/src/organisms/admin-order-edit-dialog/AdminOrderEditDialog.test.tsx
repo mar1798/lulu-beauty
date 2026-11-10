@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { AdminOrderEditDialog } from '.'
+import { formatPrice } from '../../atoms/price'
 import { feedAdminOrder, feedAdminOrderEditDialog } from '../../stories/feed'
 import { renderWidget } from '../../testing/render'
 
@@ -81,5 +82,37 @@ describe('AdminOrderEditDialog', () => {
     )
 
     expect(screen.getByText(/сообщение об изменении ему не придёт/)).toBeTruthy()
+  })
+
+  it('считает итог со скидками и показывает скидку строки', () => {
+    const props = feedAdminOrderEditDialog()
+    const kept = props.lines.filter(line => line.itemId !== null)
+    const first = kept[0]
+    const order =
+      props.order === null || first === undefined
+        ? null
+        : {
+            ...props.order,
+            items: props.order.items.map(item =>
+              item.id === first.itemId
+                ? {
+                    ...item,
+                    discountKind: 'AMOUNT' as const,
+                    discountValue: 100,
+                    discountNote: 'Брак',
+                    discountCents: 100,
+                  }
+                : item
+            ),
+          }
+
+    renderWidget(<AdminOrderEditDialog {...props} order={order} lines={kept} />)
+
+    const full = kept.reduce((sum, line) => sum + line.priceCents * line.quantity, 0)
+
+    expect(screen.getByText(`Скидка ${formatPrice(100)} - Брак`)).toBeTruthy()
+    expect(
+      screen.getAllByText((_, element) => element?.textContent === formatPrice(full - 100))
+    ).not.toHaveLength(0)
   })
 })

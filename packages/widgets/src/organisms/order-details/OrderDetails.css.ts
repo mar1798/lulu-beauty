@@ -1,5 +1,5 @@
 import { style } from '@vanilla-extract/css'
-import { border, color, media, rem, transition } from '../../styling/lib'
+import { border, color, font, media, rem, transition } from '../../styling/lib'
 import { flexColumn, flexRow, focusVisibleRing } from '../../styling/mixin'
 import { vars } from '../../styling/themes/contract.css'
 
@@ -107,3 +107,25 @@ export const contactLink = style([
   },
   focusVisibleRing(),
 ])
+
+/** Скидка на всю заявку: подпись и сумма по краям, причина под ними во всю ширину. */
+export const discountRow = style({
+  ...flexRow(12),
+  justifyContent: 'space-between',
+  flexWrap: 'wrap',
+})
+
+export const discountNote = style({ flexBasis: '100%' })
+
+/** Сумма до скидок рядом с итогом, по базовой линии. */
+export const totals = style({
+  ...flexRow(12),
+  alignItems: 'baseline',
+})
+
+export const totalBefore = style({
+  font: font('14/20'),
+  color: color.text('muted'),
+  textDecoration: 'line-through',
+  fontVariantNumeric: 'tabular-nums',
+})

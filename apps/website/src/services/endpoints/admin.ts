@@ -6,6 +6,7 @@ import type {
   IAdminProductSort,
   IAdminProductSortField,
   IAdminUser,
+  DiscountKind,
   ICategory,
   IChecklistExtraInput,
   IChecklistItem,
@@ -395,6 +396,25 @@ export const editAdminOrder = (
   input: IAdminOrderEditInput
 ): Promise<IAdminOrder> =>
   api.put(`/admin/orders/${encodeURIComponent(orderId)}/items`, { body: input })
+
+export interface IAdminOrderDiscountRequest {
+  /** `revision` заявки, с которой открыли окно: состав успели поменять — `order_changed`. */
+  revision: number
+  /** Строка заявки; `null` — скидка на всю заявку. */
+  itemId: string | null
+  /** `null` снимает скидку, которая стоит у цели. */
+  discount: { kind: DiscountKind; value: number; note: string | null } | null
+}
+
+/**
+ * Скидка на строку или на всю заявку — или её снятие. Только до оплаты;
+ * статус не меняется, покупатель получает в боте скидку, причину и новую сумму.
+ */
+export const setAdminOrderDiscount = (
+  orderId: string,
+  input: IAdminOrderDiscountRequest
+): Promise<IAdminOrder> =>
+  api.put(`/admin/orders/${encodeURIComponent(orderId)}/discount`, { body: input })
 
 export const updateOrderStatus = (orderId: string, status: OrderStatus): Promise<IAdminOrder> =>
   api.patch(`/admin/orders/${encodeURIComponent(orderId)}/status`, { body: { status } })

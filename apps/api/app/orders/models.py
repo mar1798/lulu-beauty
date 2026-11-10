@@ -71,6 +71,23 @@ ADMIN_EDITABLE_STATUSES = frozenset(
     {OrderStatus.PENDING, OrderStatus.AWAITING_PAYMENT, OrderStatus.CONFIRMED}
 )
 
+# Where an admin may give or take back a discount (`OrdersService.set_discount`). Narrower
+# than the editable set on purpose: a discount changes nothing but the money, and once the
+# order is paid the money has already moved — a discount there would be a refund the
+# shop promises in a bot message and settles by hand. Up to the payment the customer
+# simply pays the new sum.
+DISCOUNTABLE_STATUSES = frozenset({OrderStatus.PENDING, OrderStatus.AWAITING_PAYMENT})
+
+
+class DiscountKind(enum.StrEnum):
+    """How a discount's value reads: a share of the price, or a sum off it."""
+
+    # `discount_value` is whole percent, 1–100.
+    PERCENT = "PERCENT"
+    # `discount_value` is cents off — never more than what it is taken from.
+    AMOUNT = "AMOUNT"
+
+
 # Where an order may go from where it is. The owner's panel used to accept any target at
 # all, so a promise about an order — "подтверждена", "готова к выдаче" — could be made
 # about one the customer had already withdrawn, and a finished order could be walked back
@@ -200,6 +217,24 @@ class Order(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     # quietly writing over them. `updated_at` would not do: a change that leaves the total
     # where it was never touches the order row.
     revision: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"))
+    # A discount on the whole order, given by an admin from the panel (`set_discount`).
+    # Stored as the admin set it — kind and value — with the sum it was taken from
+    # (`discount_base_cents`), rather than as cents: the cents are computed in
+    # `app/orders/discounts.py` each time the total is, and only the total is stored. A
+    # PENDING order still changes under the customer's hand and the catalogue's, and
+    # against that anchor the discount can shrink with it but never grow. Taken off what is
+    # left after the lines' own discounts. NULL together when there is no discount.
+    discount_kind: Mapped[DiscountKind | None] = mapped_column(
+        SAEnum(DiscountKind, name="discount_kind")
+    )
+    discount_value: Mapped[int | None] = mapped_column(BigInteger)
+    # What the discount was taken from when an admin last set it or edited the order —
+    # its anchor (`app/orders/discounts.py`). Against it a customer's edit or a catalogue
+    # change can only shrink the discount, never grow it. NULL with no discount.
+    discount_base_cents: Mapped[int | None] = mapped_column(BigInteger)
+    # Why the discount was given, in the admin's words. The customer is shown it too —
+    # in the bot message and on the order page — so it is written to them.
+    discount_note: Mapped[str | None] = mapped_column(Text)
 
     items: Mapped[list["OrderItem"]] = relationship(
         back_populates="order", cascade="all, delete-orphan", order_by=lambda: _item_order()
@@ -236,6 +271,16 @@ class OrderItem(UUIDPrimaryKeyMixin, Base):
     # what the customer chose, and "Помада Velvet" alone does not say which one to buy.
     product_shade: Mapped[str | None] = mapped_column(String(64))
     quantity: Mapped[int] = mapped_column(Integer)
+    # A discount on this line alone, like the order's own above: kind and value as the
+    # admin set them, computed against price × quantity every time the total is. An
+    # amount is off the whole line, not per unit. NULL together when there is none.
+    discount_kind: Mapped[DiscountKind | None] = mapped_column(
+        SAEnum(DiscountKind, name="discount_kind")
+    )
+    discount_value: Mapped[int | None] = mapped_column(BigInteger)
+    # The line's price × quantity when an admin last anchored the discount, as on `Order`.
+    discount_base_cents: Mapped[int | None] = mapped_column(BigInteger)
+    discount_note: Mapped[str | None] = mapped_column(Text)
 
     order: Mapped["Order"] = relationship(back_populates="items")
 

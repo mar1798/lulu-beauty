@@ -727,3 +727,74 @@ def test_a_wish_for_the_owner_opens_with_the_title_the_reply_is_matched_by() -> 
     wanted = WantedProduct(name="Айсулуу", phone="+996555000111", message="Крем с SPF")
 
     assert messages.wanted_product_for_owner(wanted).startswith(messages.WANTED_PRODUCT_TITLE)
+
+
+def test_bill_strikes_through_a_discounted_line_and_names_the_order_discount() -> None:
+    from app.orders.models import DiscountKind
+
+    order = _order(status=OrderStatus.AWAITING_PAYMENT, items=2, total_cents=1600)
+    order.items[0].discount_kind = DiscountKind.PERCENT
+    order.items[0].discount_value = 20
+    order.items[0].discount_note = "Брак"
+    order.discount_kind = DiscountKind.AMOUNT
+    order.discount_value = 200
+    order.discount_note = "Постоянный <клиент>"
+
+    text = messages.order_confirmed(order, first_cycle=False)
+
+    assert "<s>10 сом</s> 8 сом (скидка 20% - Брак)" in text
+    assert "Скидка на заказ (2 сом): -2 сом" in text
+    assert "Причина: Постоянный &lt;клиент&gt;" in text
+    assert "—" not in text
+
+
+def test_order_discount_names_the_line_the_reason_and_the_sum_to_pay() -> None:
+    from app.orders.models import DiscountKind
+    from app.orders.service import DiscountChange
+
+    order = _order(status=OrderStatus.AWAITING_PAYMENT, items=1, total_cents=900)
+    item = order.items[0]
+    item.id = uuid.uuid4()
+    item.product_name = "Крем"
+    change = DiscountChange(
+        previous_total_cents=1000, kind=DiscountKind.PERCENT, value=10, note="Помятая <коробка>"
+    )
+
+    text = messages.order_discount(order, item.id, change)
+
+    assert text.startswith("🎁 Вам скидка 10% на Крем в заявке #a1b2c3d4")
+    assert "Причина: Помятая &lt;коробка&gt;" in text
+    # One sum, named as what to pay: the bill already went out.
+    assert "К оплате: <s>10 сом</s> <b>9 сом</b>" in text
+    assert text.count("9 сом") == 1
+    assert "—" not in text
+
+
+def test_order_discount_reason_alone_is_an_update_not_a_new_gift() -> None:
+    from app.orders.models import DiscountKind
+    from app.orders.service import DiscountChange
+
+    order = _order(status=OrderStatus.PENDING, items=1, total_cents=900)
+    change = DiscountChange(
+        previous_total_cents=900, kind=DiscountKind.AMOUNT, value=100, note="Акция"
+    )
+
+    text = messages.order_discount(order, None, change)
+
+    assert text.startswith("Обновлена скидка 1 сом по заявке #a1b2c3d4")
+    assert "🎁" not in text
+    assert "Сумма: <b>9 сом</b>" in text
+
+
+def test_order_discount_removed_from_the_whole_order() -> None:
+    from app.orders.service import DiscountChange
+
+    order = _order(status=OrderStatus.PENDING, items=1, total_cents=1000)
+    change = DiscountChange(previous_total_cents=900, kind=None, value=None, note=None)
+
+    text = messages.order_discount(order, None, change)
+
+    assert text.startswith("Скидка по заявке #a1b2c3d4 отменена")
+    assert "Сумма: <s>9 сом</s> <b>10 сом</b>" in text
+    # Nothing to pay yet in PENDING.
+    assert "К оплате" not in text

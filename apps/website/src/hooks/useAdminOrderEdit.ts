@@ -1,6 +1,11 @@
 import { useState } from 'react'
 import { mutate as globalMutate } from 'swr'
-import type { IAdminOrder, IAdminOrderEditDialogProps, IAdminOrderEditLine } from 'widgets/types'
+import type {
+  IAdminOrder,
+  IAdminOrderEditDialogProps,
+  IAdminOrderEditLine,
+  IOrderItem,
+} from 'widgets/types'
 import { useConfirm, useToast } from 'widgets/contexts'
 import { adminOrderNumber } from 'widgets/organisms'
 import { useProductSearch } from '@/hooks/useProductSearch'
@@ -28,21 +33,22 @@ interface IAdminOrderEdit {
   open: (order: IAdminOrder) => void
 }
 
-/** Строки заявки, как они есть, — исходная точка правки. */
-const linesOf = (order: IAdminOrder): IAdminOrderEditLine[] =>
-  order.items.map(item => ({
-    key: item.id,
-    itemId: item.id,
-    variantId: item.variantId,
-    productName: item.productName,
-    productSlug: item.productSlug,
-    productImageUrl: item.productImageUrl,
-    productBrand: item.productBrand,
-    productVolumeMl: item.productVolumeMl,
-    productShade: item.productShade ?? null,
-    priceCents: item.productPriceCents,
-    quantity: item.quantity,
-  }))
+/** Строка заявки, как она есть, — исходная точка правки. */
+const lineOf = (item: IOrderItem): IAdminOrderEditLine => ({
+  key: item.id,
+  itemId: item.id,
+  variantId: item.variantId,
+  productName: item.productName,
+  productSlug: item.productSlug,
+  productImageUrl: item.productImageUrl,
+  productBrand: item.productBrand,
+  productVolumeMl: item.productVolumeMl,
+  productShade: item.productShade ?? null,
+  priceCents: item.productPriceCents,
+  quantity: item.quantity,
+})
+
+const linesOf = (order: IAdminOrder): IAdminOrderEditLine[] => order.items.map(lineOf)
 
 /** Отличается ли правка от заявки: новая строка, убранная или другое количество. */
 const differs = (order: IAdminOrder, lines: IAdminOrderEditLine[]): boolean =>
@@ -92,25 +98,31 @@ export const useAdminOrderEdit = (): IAdminOrderEdit => {
   /*
     Объём, который уже есть в заявке, прибавляется к своей строке — и к бывшей,
     и к добавленной сейчас: две строки одного объёма бэкенд всё равно слил бы.
-    Убранную строку повторное добавление не воскрешает: объём встаёт новой
-    строкой по цене каталога, как и на бэкенде.
+
+    Объём, чью строку в этой же правке убрали, возвращает ту самую строку, а не
+    новую: с ценой снимка и со скидкой, если она была. Иначе «убрал и добавил
+    обратно» молча снимало бы скидку и переписывало цену на каталожную.
   */
   const add = (variantId: string): void => {
-    const line = catalogLine(products.products, variantId)
+    const original = order?.items.find(item => item.variantId === variantId)
 
-    if (line === null) {
-      return
-    }
+    setLines(current => {
+      if (current.some(existing => existing.variantId === variantId)) {
+        return current.map(existing =>
+          existing.variantId === variantId
+            ? { ...existing, quantity: clampQuantity(existing.quantity + 1) }
+            : existing
+        )
+      }
 
-    setLines(current =>
-      current.some(existing => existing.variantId === variantId)
-        ? current.map(existing =>
-            existing.variantId === variantId
-              ? { ...existing, quantity: clampQuantity(existing.quantity + 1) }
-              : existing
-          )
-        : [...current, { ...line, key: variantId, itemId: null }]
-    )
+      if (original !== undefined) {
+        return [...current, { ...lineOf(original), quantity: 1 }]
+      }
+
+      const line = catalogLine(products.products, variantId)
+
+      return line === null ? current : [...current, { ...line, key: variantId, itemId: null }]
+    })
   }
 
   const setQuantity = (key: string, quantity: number): void => {

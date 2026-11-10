@@ -135,6 +135,15 @@ export const IconPencil: FC<IBasicStyling> = ({ className }) => (
   </svg>
 )
 
+/** Скидка: знак процента. */
+export const IconPercent: FC<IBasicStyling> = ({ className }) => (
+  <svg {...base} className={className}>
+    <path d="M19 5 5 19" />
+    <circle cx="7" cy="7" r="2.25" />
+    <circle cx="17" cy="17" r="2.25" />
+  </svg>
+)
+
 /** Восстановление мягко удалённого товара. */
 export const IconRestore: FC<IBasicStyling> = ({ className }) => (
   <svg {...base} className={className}>

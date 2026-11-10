@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { OrderDetails } from '.'
+import { formatPrice } from '../../atoms/price'
 import { feedOrder, feedOrderDetails, feedOrderItem } from '../../stories/feed'
 import { renderWidget } from '../../testing/render'
 
@@ -318,5 +319,32 @@ describe('OrderDetails', () => {
     await user.click(screen.getByRole('button', { name: 'Сохранить комментарий' }))
 
     expect(screen.getByRole('textbox')).toHaveValue('позвоните вечером')
+  })
+
+  it('показывает покупателю скидки, причины и сумму до них', () => {
+    const order = feedOrder({
+      items: [
+        feedOrderItem({
+          productName: 'Крем',
+          lineTotalCents: 20_000,
+          discountKind: 'PERCENT',
+          discountValue: 10,
+          discountNote: 'Помятая коробка',
+          discountCents: 2_000,
+        }),
+      ],
+      subtotalCents: 20_000,
+      discountKind: 'AMOUNT',
+      discountValue: 1_000,
+      discountNote: 'Постоянный клиент',
+      discountCents: 1_000,
+      totalCents: 17_000,
+    })
+
+    renderWidget(<OrderDetails {...feedOrderDetails()} order={order} />)
+
+    expect(screen.getByText('Скидка 10% - Помятая коробка')).toBeInTheDocument()
+    expect(screen.getByText(`Скидка на заявку ${formatPrice(1_000)}`)).toBeInTheDocument()
+    expect(screen.getByText('Постоянный клиент')).toBeInTheDocument()
   })
 })

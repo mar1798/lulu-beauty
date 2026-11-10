@@ -13,13 +13,16 @@ from app.catalog.images import variant_image_url
 from app.catalog.models import Category, Product, ProductVariant
 from app.cycles.models import CycleStatus, OrderCycle
 from app.cycles.service import CyclesService
+from app.orders.discounts import anchor_discounts, line_discount_cents, order_totals
 from app.orders.models import (
     ADMIN_EDITABLE_STATUSES,
     ADMIN_ORDER_WINDOW,
     ALLOWED_TRANSITIONS,
+    DISCOUNTABLE_STATUSES,
     OPEN_STATUSES,
     PURCHASE_WINDOW,
     UNFULFILLED_AFTER,
+    DiscountKind,
     Order,
     OrderItem,
     OrderStatus,
@@ -62,6 +65,35 @@ class OrderChangedError(Exception):
     The customer edited it, a catalogue change repriced or trimmed it, or another admin
     saved first. The draft was built on lines that are no longer there, and saving it
     would write over a change nobody in the panel has seen.
+    """
+
+
+class OrderNotDiscountableError(Exception):
+    """The order is past the payment, or off: a discount there changes no money that is due."""
+
+
+class DiscountExceedsTotalError(Exception):
+    """An amount bigger than what it is taken from — the line, or the order after its lines.
+
+    Refused when it is set rather than silently capped: the admin typed a number, and a
+    discount that quietly came out smaller than that is not the one they confirmed. Later
+    changes to the lines cap it instead (`app/orders/discounts.py`) — nobody is there to ask.
+    """
+
+
+class DiscountRoundsToZeroError(Exception):
+    """A percent so small of so little that, rounded to whole сом, it takes nothing off.
+
+    Saved, it would be a discount the customer is told about and does not get.
+    """
+
+
+class OrderHasReceiptError(Exception):
+    """The customer already sent a receipt for the bill, and it is waiting for a verdict.
+
+    The money has moved even though the status has not: a discount now would tell them
+    to pay a sum they no longer can, and taking one back would leave the receipt short.
+    Settle the receipt first.
     """
 
 
@@ -259,6 +291,21 @@ class OrderItemDrop:
     # The dropped line was the only one: an order with nothing in it is not an order, so
     # it is cancelled rather than left empty — and that is different news for the customer.
     is_cancelled: bool
+
+
+@dataclass(frozen=True)
+class DiscountChange:
+    """A discount set or taken back, for the message after the commit.
+
+    By value, like `OrderPriceChange`: by the time the notification runs another admin may
+    have changed the discount again, and the message must describe the change it is about.
+    `kind`, `value` and `note` are the new discount — all None when it was taken back.
+    """
+
+    previous_total_cents: int
+    kind: DiscountKind | None
+    value: int | None
+    note: str | None
 
 
 @dataclass(frozen=True)
@@ -574,6 +621,9 @@ class OrdersService:
                 variant, product = found[variant_id]
                 order.items.append(_snapshot_line(product, variant, quantity))
 
+        # The admin rewrote the order looking at it: what discounts it keeps now mean what
+        # they say against the new composition (`anchor_discounts`).
+        anchor_discounts(order)
         self._recalculate_total(order)
         await self._session.flush()
         # New lines went in last; read them back in `Order.items` order, as `add_item` does.
@@ -765,8 +815,12 @@ class OrdersService:
 
     @staticmethod
     def _recalculate_total(order: Order) -> None:
-        """Every change to the lines comes through here, so the revision moves with it."""
-        order.total_cents = sum(item.product_price_cents * item.quantity for item in order.items)
+        """Every change to the lines comes through here, so the revision moves with it.
+
+        Discounts are re-counted with the lines: a percent follows the price it is a share
+        of, and an amount is capped at what is left of the line or the order.
+        """
+        order.total_cents = order_totals(order).total_cents
         order.revision = (order.revision or 0) + 1
 
     @staticmethod
@@ -843,6 +897,125 @@ class OrdersService:
         self._recalculate_total(order)
         await self._session.flush()
         return order
+
+    async def set_discount(
+        self,
+        order_id: uuid.UUID,
+        revision: int,
+        item_id: uuid.UUID | None,
+        discount: tuple[DiscountKind, int] | None,
+        note: str | None,
+    ) -> tuple[Order, DiscountChange | None]:
+        """An admin gives a discount on one line (`item_id`) or the whole order, or takes it back.
+
+        `discount` None removes the one there is. Setting replaces whatever the target had —
+        one discount per line and one on the order, never stacked. Every discount on the
+        order is then re-anchored to the sums as they stand (`anchor_discounts`): the admin
+        is looking at the order now.
+
+        Refused, with nothing changed:
+        - outside `DISCOUNTABLE_STATUSES` (`OrderNotDiscountableError`), or with a receipt on
+          the current bill waiting for a verdict (`OrderHasReceiptError`);
+        - `revision` other than the order's (`OrderChangedError`): the admin confirmed a sum
+          computed from the lines they saw;
+        - an amount larger than what it is taken from — and that holds for the order's own
+          amount too, which a new line discount leaves less to come off
+          (`DiscountExceedsTotalError`);
+        - a discount that rounds to nothing (`DiscountRoundsToZeroError`).
+
+        Returns the order and the change, or None when nothing changed — the same discount
+        set again, or one removed that was not there, is not news to send.
+        """
+        result = await self._session.execute(
+            select(Order)
+            .options(selectinload(Order.items))
+            .where(Order.id == order_id)
+            .with_for_update(of=Order)
+            .execution_options(populate_existing=True)
+        )
+        order = result.scalar_one_or_none()
+        if order is None:
+            raise OrderNotFoundError
+        if order.status not in DISCOUNTABLE_STATUSES:
+            raise OrderNotDiscountableError
+        if order.revision != revision:
+            raise OrderChangedError
+        if order.status is OrderStatus.AWAITING_PAYMENT:
+            # Imported here: the payments service imports order models, and a module-level
+            # import would tie the two packages together for this one check.
+            from app.payments.service import PaymentsService
+
+            if await PaymentsService(self._session).orders_with_receipts([order.id]):
+                raise OrderHasReceiptError
+
+        target: Order | OrderItem = order
+        if item_id is not None:
+            target = self._find_item(order, item_id)
+
+        kind, value = discount if discount is not None else (None, None)
+        note = note if discount is not None else None
+        if (target.discount_kind, target.discount_value, target.discount_note) == (
+            kind,
+            value,
+            note,
+        ):
+            return order, None
+
+        # Tried on the rows and put back on refusal: the checks need the order counted
+        # with the new discount in place and every anchor moved, which is what saving does.
+        holders: list[Order | OrderItem] = [order, *order.items]
+        saved = [
+            (h.discount_kind, h.discount_value, h.discount_note, h.discount_base_cents)
+            for h in holders
+        ]
+        previous_total = order.total_cents
+        target.discount_kind = kind
+        target.discount_value = value
+        target.discount_note = note
+        anchor_discounts(order)
+        try:
+            self._check_discounts(order, target)
+        except (DiscountExceedsTotalError, DiscountRoundsToZeroError):
+            for holder, (k, v, n, b) in zip(holders, saved, strict=True):
+                holder.discount_kind = k
+                holder.discount_value = v
+                holder.discount_note = n
+                holder.discount_base_cents = b
+            raise
+
+        self._recalculate_total(order)
+        await self._session.flush()
+        return order, DiscountChange(
+            previous_total_cents=previous_total, kind=kind, value=value, note=note
+        )
+
+    @staticmethod
+    def _check_discounts(order: Order, target: Order | OrderItem) -> None:
+        """The order, freshly anchored, holds the discounts as the admin typed them."""
+        totals = order_totals(order)
+        if target.discount_kind is not None:
+            taken = (
+                line_discount_cents(target)
+                if isinstance(target, OrderItem)
+                else totals.order_discount_cents
+            )
+            if taken == 0:
+                raise DiscountRoundsToZeroError
+        # Every amount, not just the target's: a line discount leaves the order's own amount
+        # less to come off, and capping it silently would change a number nobody retyped.
+        for item in order.items:
+            if (
+                item.discount_kind is DiscountKind.AMOUNT
+                and item.discount_value is not None
+                and line_discount_cents(item) < item.discount_value
+            ):
+                raise DiscountExceedsTotalError
+        if (
+            order.discount_kind is DiscountKind.AMOUNT
+            and order.discount_value is not None
+            and totals.order_discount_cents < order.discount_value
+        ):
+            raise DiscountExceedsTotalError
 
     async def update_note(self, user_id: uuid.UUID, order_id: uuid.UUID, note: str | None) -> Order:
         order = await self._get_editable(user_id, order_id)

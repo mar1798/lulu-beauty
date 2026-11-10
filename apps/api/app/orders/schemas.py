@@ -1,14 +1,23 @@
 import uuid
 from datetime import datetime
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 
 from app.common.limits import MAX_ITEM_QUANTITY
 from app.common.schemas import CamelModel, PageResponse
-from app.orders.models import OrderStatus, PendingStage
+from app.orders.discounts import MAX_DISCOUNT_PERCENT
+from app.orders.models import DiscountKind, OrderStatus, PendingStage
 
 # Mirrored by `OWNER_MESSAGE_MAX_LENGTH` on the website, which counts down to it.
 MAX_OWNER_MESSAGE_LENGTH = 3500
+
+# Why a discount was given. Mirrored by `DISCOUNT_NOTE_MAX_LENGTH` on the website. Short
+# on purpose: it goes into the bot message under the new sum, not into a letter.
+MAX_DISCOUNT_NOTE_LENGTH = 500
+
+# The largest amount a discount may name, in cents — a sanity ceiling on the request, the
+# real one being the line or the order it is taken from (`DiscountExceedsTotalError`).
+MAX_DISCOUNT_AMOUNT_CENTS = 2_000_000_000
 
 # Lines in one order the owner builds by hand. A ceiling on the request, not a rule
 # about orders: a checkout is bounded by the cart, and this one by nothing else.
@@ -16,10 +25,13 @@ MAX_ADMIN_ORDER_LINES = 100
 
 __all__ = [
     "MAX_ADMIN_ORDER_LINES",
+    "MAX_DISCOUNT_NOTE_LENGTH",
     "MAX_ITEM_QUANTITY",
     "MAX_OWNER_MESSAGE_LENGTH",
     "AdminOrderCreateRequest",
     "AdminOrderCycleResponse",
+    "AdminOrderDiscount",
+    "AdminOrderDiscountRequest",
     "AdminOrderEditRequest",
     "AdminOrderItemQuantity",
     "AdminOrderLine",
@@ -120,6 +132,41 @@ class AdminOrderEditRequest(CamelModel):
         return value
 
 
+class AdminOrderDiscount(CamelModel):
+    """A discount as the admin sets it: whole percent (1–100), or an amount in cents."""
+
+    kind: DiscountKind
+    value: int = Field(ge=1, le=MAX_DISCOUNT_AMOUNT_CENTS)
+    note: str | None = Field(default=None, max_length=MAX_DISCOUNT_NOTE_LENGTH)
+
+    @field_validator("note")
+    @classmethod
+    def _blank_is_none(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        value = value.strip()
+        return value or None
+
+    @model_validator(mode="after")
+    def _percent_in_range(self) -> "AdminOrderDiscount":
+        if self.kind is DiscountKind.PERCENT and self.value > MAX_DISCOUNT_PERCENT:
+            raise ValueError("a percent discount is at most 100")
+        return self
+
+
+class AdminOrderDiscountRequest(CamelModel):
+    """Give a discount on one of the order's lines, or on the whole order — or take it back.
+
+    `item_id` names the line; omitted, the discount is on the whole order. `discount` null
+    removes the one the target has. `revision` is the order's as the panel read it, as in
+    `AdminOrderEditRequest`: the admin confirmed a sum computed from those lines.
+    """
+
+    revision: int = Field(ge=0)
+    item_id: uuid.UUID | None = None
+    discount: AdminOrderDiscount | None
+
+
 class AdminOrderCycleResponse(CamelModel):
     """A cycle an order may go into from the admin panel, as the form offers it."""
 
@@ -155,13 +202,29 @@ class OrderItemResponse(CamelModel):
     product_volume_ml: int | None = None
     # The shade, a snapshot for the same reason.
     product_shade: str | None = None
+    # The line's own discount, as the admin set it, and what it comes to now.
+    # `line_total_cents` stays price × quantity; what the line costs after the discount
+    # is `line_total_cents - discount_cents`.
+    discount_kind: DiscountKind | None = None
+    discount_value: int | None = None
+    discount_note: str | None = None
+    discount_cents: int = 0
 
 
 class OrderResponse(CamelModel):
     id: uuid.UUID
     cycle_id: uuid.UUID
     status: OrderStatus
+    # What the customer pays, every discount taken off.
     total_cents: int
+    # Price × quantity over every line, before any discount. Equal to `total_cents` on
+    # an order without discounts.
+    subtotal_cents: int = 0
+    # The order's own discount (not the lines'), as set, and what it comes to now.
+    discount_kind: DiscountKind | None = None
+    discount_value: int | None = None
+    discount_note: str | None = None
+    discount_cents: int = 0
     note: str | None
     created_at: datetime
     items: list[OrderItemResponse]

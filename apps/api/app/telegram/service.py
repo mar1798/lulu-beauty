@@ -13,6 +13,7 @@ from aiogram.types import InlineKeyboardMarkup, Message, MessageId, ReplyParamet
 from app.auth.models import User
 from app.cycles.models import OrderCycle
 from app.orders.models import Order, OrderStatus
+from app.orders.service import DiscountChange
 from app.payments.models import PaymentReceipt, ReceiptKind
 from app.telegram import keyboards, messages
 from app.wanted.models import WantedProduct
@@ -212,6 +213,23 @@ class NotificationsService:
                 )
                 return
         logger.info("Told %s about the edit of order %s", user.phone, order.id)
+
+    async def send_order_discount(
+        self, user: User, order: Order, item_id: uuid.UUID | None, change: DiscountChange
+    ) -> None:
+        """An admin gave or took back a discount: what, why and the new sum, in one message."""
+        message = messages.order_discount(order, item_id, change)
+        if not await self._try_send(
+            user.telegram_chat_id,
+            message,
+            reply_markup=keyboards.orders_link(),
+            parse_mode="HTML",
+        ):
+            logger.warning(
+                "%s; discount on order %s not announced", self._fallback_reason(user), order.id
+            )
+            return
+        logger.info("Told %s about a discount on order %s", user.phone, order.id)
 
     async def send_customer_cancellation(
         self, owner: User, order: Order, customer: User | None, *, restored: bool

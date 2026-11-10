@@ -27,7 +27,7 @@ from app.cycles.models import CycleStatus, OrderCycle
 from app.cycles.scheduler_service import CartRescue, CycleReminder
 from app.db import async_session
 from app.orders.models import Order, OrderStatus
-from app.orders.service import OrderItemDrop, OrderPriceChange
+from app.orders.service import DiscountChange, OrderItemDrop, OrderPriceChange
 from app.payments.models import PaymentReceipt
 from app.telegram import messages, recipients, relay
 from app.telegram.client import notifications_service
@@ -127,6 +127,29 @@ async def notify_order_edited(order_id: uuid.UUID) -> None:
             await notifications_service.send_order_edited(customer, order)
     except Exception:  # noqa: BLE001 - the edit is already committed; see module docstring
         logger.exception("Failed to tell the customer about the edit of order %s", order_id)
+
+
+async def notify_order_discount(
+    order_id: uuid.UUID, item_id: uuid.UUID | None, change: DiscountChange
+) -> None:
+    """Tells the customer an admin gave or took back a discount on their order.
+
+    The order is re-read for the sum and the line's name; the discount itself travels by
+    value (`DiscountChange`), so a second change committed in between cannot turn this
+    message into one about a discount that is no longer the one it announces.
+    """
+    try:
+        async with async_session() as session:
+            order = await _load_order(session, order_id)
+            if order is None:
+                return
+
+            customer = await _load_customer(session, order.user_id)
+            if customer is None:
+                return
+            await notifications_service.send_order_discount(customer, order, item_id, change)
+    except Exception:  # noqa: BLE001 - the discount is already committed; see module docstring
+        logger.exception("Failed to tell the customer about a discount on order %s", order_id)
 
 
 async def notify_order_status(order_id: uuid.UUID) -> None:

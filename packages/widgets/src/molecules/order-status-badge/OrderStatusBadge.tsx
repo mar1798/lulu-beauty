@@ -114,6 +114,16 @@ export const ADMIN_EDITABLE_STATUSES: readonly OrderStatus[] = [
 export const isAdminEditable = (status: OrderStatus): boolean =>
   ADMIN_EDITABLE_STATUSES.includes(status)
 
+/**
+ * Где админ может дать или снять скидку — зеркало `DISCOUNTABLE_STATUSES` в
+ * `apps/api/app/orders/models.py`. Только до оплаты: скидка меняет лишь
+ * деньги, а у оплаченной заявки они уже пришли.
+ */
+export const DISCOUNTABLE_STATUSES: readonly OrderStatus[] = ['PENDING', 'AWAITING_PAYMENT']
+
+export const isDiscountable = (status: OrderStatus): boolean =>
+  DISCOUNTABLE_STATUSES.includes(status)
+
 export const orderStatusLabel = (status: OrderStatus): string => VIEWS[status].label
 
 export const OrderStatusBadge: FC<IOrderStatusBadgeProps & IBasicStyling> = ({

@@ -4,6 +4,7 @@
 
 export * from './categories'
 export * from './datetime'
+export * from './discount'
 export * from './motion'
 export * from './plural'
 export * from './priceInput'

@@ -7,6 +7,7 @@ import {
   IAdminLayoutProps,
   IAdminMessageDialogProps,
   IAdminOrder,
+  IAdminOrderDiscountDialogProps,
   IAdminOrderCycle,
   IAdminOrderDialogProps,
   IAdminOrderEditDialogProps,
@@ -945,6 +946,13 @@ export const feedCartTemplate = (): ICartTemplateProps => ({
 
 const DAY_MS = 24 * HOUR_MS
 
+const NO_DISCOUNT = {
+  discountKind: null,
+  discountValue: null,
+  discountNote: null,
+  discountCents: 0,
+} as const
+
 export const feedOrderItem = (overrides: Partial<IOrderItem> = {}): IOrderItem => {
   const product = feedProduct()
   const quantity = faker.number.int({ min: 1, max: 3 })
@@ -962,18 +970,22 @@ export const feedOrderItem = (overrides: Partial<IOrderItem> = {}): IOrderItem =
     productBrand: product.brand,
     productCategoryName: 'Тонеры',
     productVolumeMl: product.volumeMl,
+    ...NO_DISCOUNT,
     ...overrides,
   }
 }
 
 export const feedOrder = (overrides: Partial<IOrder> = {}): IOrder => {
   const items = overrides.items ?? [feedOrderItem(), feedOrderItem()]
+  const subtotalCents = items.reduce((sum, item) => sum + item.lineTotalCents, 0)
 
   return {
     id: faker.string.uuid(),
     cycleId: faker.string.uuid(),
     status: 'PENDING',
-    totalCents: items.reduce((sum, item) => sum + item.lineTotalCents, 0),
+    totalCents: subtotalCents - items.reduce((sum, item) => sum + item.discountCents, 0),
+    subtotalCents,
+    ...NO_DISCOUNT,
     note: null,
     createdAt: new Date(Date.now() - DAY_MS).toISOString(),
     items,
@@ -1147,6 +1159,33 @@ export const feedAdminOrderDialog = (): IAdminOrderDialogProps => {
     onSubmit: noop,
   }
 }
+
+export const feedAdminOrderDiscountDialog = (): IAdminOrderDiscountDialogProps => ({
+  isOpen: true,
+  onClose: noop,
+  order: feedAdminOrder({
+    status: 'AWAITING_PAYMENT',
+    customerName: 'Айгуль',
+    items: [
+      feedOrderItem({
+        productName: 'Тонер Heartleaf',
+        productPriceCents: 150_000,
+        quantity: 2,
+        lineTotalCents: 300_000,
+      }),
+      feedOrderItem({
+        productName: 'Крем Centella',
+        productPriceCents: 120_000,
+        quantity: 1,
+        lineTotalCents: 120_000,
+      }),
+    ],
+    subtotalCents: 420_000,
+    totalCents: 420_000,
+  }),
+  onSubmit: noop,
+  onRemove: noop,
+})
 
 export const feedAdminOrderEditDialog = (): IAdminOrderEditDialogProps => {
   const order = feedAdminOrder({ status: 'AWAITING_PAYMENT', customerName: 'Айгуль' })
@@ -1532,9 +1571,20 @@ export const feedAdminOrdersTable = (): IAdminOrdersTableProps => ({
       status: 'COMPLETED',
       paidAt: new Date(Date.now() - DAY_MS).toISOString(),
     }),
+    feedAdminOrder({
+      status: 'AWAITING_PAYMENT',
+      subtotalCents: 300_000,
+      totalCents: 270_000,
+      items: [feedOrderItem({ productPriceCents: 150_000, quantity: 2, lineTotalCents: 300_000 })],
+      discountKind: 'PERCENT',
+      discountValue: 10,
+      discountNote: 'Постоянный клиент',
+      discountCents: 30_000,
+    }),
   ],
   onStatusChange: noop,
   onMessage: noop,
+  onDiscount: noop,
   buildProductHref: slug => `/catalog/${slug}`,
   summary: { orderCount: 42, itemCount: 118, totalCents: 18_450_000 },
 })
