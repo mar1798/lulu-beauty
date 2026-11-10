@@ -608,17 +608,30 @@ and asks for confirmation — with the sum before and after — before anything 
   from when an admin last looked at it. All NULL without a discount. Only `total_cents`
   stores money; it is computed in `app/orders/discounts.py` from `_recalculate_total`, so
   every path that rewrites lines re-counts the discounts with it.
+- **The customer's edit takes discounts off.** A discount is the admin's answer to the order
+  as it stood, so a customer who changes the order loses the discounts the change touches,
+  whole rather than scaled (`OrdersService._customer_changed`): the order's own on any
+  change — a line added, a quantity changed, a line removed — and a line's own when that
+  line is the one changed. Lines the change does not touch keep theirs. A quantity set to
+  what it already is changes nothing. The website warns before sending such a change
+  (`useDiscountLossConfirm` — the order page, the checkout success screen and the
+  "add to the open order" notice), naming each discount that will come off; the line's
+  delete dialog carries it in its own text rather than asking twice, and its «Вернуть»
+  brings the product back but not the discount.
 - **Only an admin can make a discount bigger.** The anchor moves on an admin's action only —
   setting a discount and rewriting the composition (`anchor_discounts` in `set_discount` and
   `edit_by_admin`): the admin is looking at the order, so a percent they leave in place is a
-  percent of what it holds now. Everything else — the customer's own edit, a reprice, a
-  dropped product — counts against the anchor, and there a discount can only shrink: with
-  the sum as large as at the anchor or larger it stays what it was in money (50% given on one
-  item does not become 50% of the ten the customer adds next), and with the sum smaller it
-  shrinks in the same proportion (2000 off 3000 is two thirds, and stays two thirds of the
-  500 left, rather than making it free). The two migrations behind this are `a3d8f1c6b274`
-  and `c6e2a9d4f1b8`; a discount saved between them has no anchor and is counted against the
-  current sum.
+  percent of what it holds now. A reprice or a dropped product counts against the anchor,
+  and there a discount can only shrink: with the sum as large as at the anchor or larger it
+  stays what it was in money, and with the sum smaller it shrinks in the same proportion
+  (2000 off 3000 is two thirds, and stays two thirds of the 500 left, rather than making it
+  free). An amount that shrank is written back as the money it now comes to, on every
+  recount (`settle_amounts`), and one that shrank to nothing is taken off. So the stored
+  value is always what the customer gets: the next admin action re-anchors that, rather
+  than growing the discount back to the number first typed, and the "exceeds" check on the
+  next discount never trips over a stale amount. The two migrations behind anchors are
+  `a3d8f1c6b274` and `c6e2a9d4f1b8`; a discount saved between them has no anchor and is
+  counted against the current sum.
 - **The arithmetic.** A line's discount comes off its price × quantity; the order's comes
   off what the lines add up to after theirs. Percent discounts, and discounts scaled down
   with the sum, are rounded to whole сом, half up (10% of 1 255 is 126, not 125,50).

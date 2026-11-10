@@ -8,15 +8,22 @@ is one pure function that every reader agrees on: the stored total, the API resp
 bot's messages all count the same way.
 
 The anchor is what keeps the discount the admin's. Only admin actions move it
-(`anchor_discounts`, called by `set_discount` and `edit_by_admin`); a customer's edit, a
-reprice or a dropped product do not. Against the anchor, a discount can shrink but never
-grow:
+(`anchor_discounts`, called by `set_discount` and `edit_by_admin`); a reprice or a dropped
+product do not. Against the anchor, a discount can shrink but never grow:
 
 - the sum it is taken from is as large as at the anchor or larger — the discount is what it
-  was at the anchor, not a share of the new sum (50% given on one item does not become 50%
-  of the ten the customer adds next);
+  was at the anchor, not a share of the new sum;
 - the sum is smaller — the discount shrinks in the same proportion (an amount of 2000 on
   3000 is two thirds, and stays two thirds of the 500 left, instead of swallowing it whole).
+
+An amount that has shrunk is written back as the money it now comes to (`settle_amounts`,
+on every recount), so the stored value is always what the customer gets. Without that, the
+next admin action would re-anchor the old, larger number against the smaller sum and hand
+the shrunk part back — up to making the line or the order free.
+
+A customer's own edit does not shrink anything: it takes the discounts it touches off
+altogether (`clear_discount` in the service) — the order's on any change, a line's when that
+line is changed — and the website warns before it does.
 
 The order of operations is fixed: each line's own discount comes off its price × quantity,
 and the order's discount comes off what the lines add up to after that. Neither ever takes
@@ -129,3 +136,39 @@ def anchor_discounts(order: Order) -> None:
         return
     after_items = sum(line_subtotal_cents(item) - line_discount_cents(item) for item in order.items)
     order.discount_base_cents = after_items
+
+
+def clear_discount(holder: Order | OrderItem) -> None:
+    """Take a line's or the order's discount off, note and anchor with it."""
+    holder.discount_kind = None
+    holder.discount_value = None
+    holder.discount_note = None
+    holder.discount_base_cents = None
+
+
+def settle_amounts(order: Order) -> None:
+    """Write every amount the sums have shrunk back as the money it now comes to.
+
+    Run on every recount, so an `AMOUNT` discount's stored value never exceeds what it takes
+    off: an admin action that re-anchors it then keeps it at that, instead of growing it back
+    to the number first typed. One that has shrunk to nothing is taken off. Percents are left
+    alone — a percent re-taken against the current sum is still the same share of it.
+    Lines first, then the order's discount against what they leave.
+    """
+    for item in order.items:
+        if item.discount_kind is not DiscountKind.AMOUNT or item.discount_value is None:
+            continue
+        taken = line_discount_cents(item)
+        if taken == 0:
+            clear_discount(item)
+        elif taken < item.discount_value:
+            item.discount_value = taken
+            item.discount_base_cents = line_subtotal_cents(item)
+    if order.discount_kind is not DiscountKind.AMOUNT or order.discount_value is None:
+        return
+    totals = order_totals(order)
+    if totals.order_discount_cents == 0:
+        clear_discount(order)
+    elif totals.order_discount_cents < order.discount_value:
+        order.discount_value = totals.order_discount_cents
+        order.discount_base_cents = totals.after_items_cents

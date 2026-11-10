@@ -13,7 +13,13 @@ from app.catalog.images import variant_image_url
 from app.catalog.models import Category, Product, ProductVariant
 from app.cycles.models import CycleStatus, OrderCycle
 from app.cycles.service import CyclesService
-from app.orders.discounts import anchor_discounts, line_discount_cents, order_totals
+from app.orders.discounts import (
+    anchor_discounts,
+    clear_discount,
+    line_discount_cents,
+    order_totals,
+    settle_amounts,
+)
 from app.orders.models import (
     ADMIN_EDITABLE_STATUSES,
     ADMIN_ORDER_WINDOW,
@@ -817,9 +823,10 @@ class OrdersService:
     def _recalculate_total(order: Order) -> None:
         """Every change to the lines comes through here, so the revision moves with it.
 
-        Discounts are re-counted with the lines: a percent follows the price it is a share
-        of, and an amount is capped at what is left of the line or the order.
+        Discounts are re-counted with the lines against their anchors, and an amount the
+        lines have shrunk is stored as what it now comes to (`settle_amounts`).
         """
+        settle_amounts(order)
         order.total_cents = order_totals(order).total_cents
         order.revision = (order.revision or 0) + 1
 
@@ -838,6 +845,9 @@ class OrdersService:
         The snapshot is taken now, from the current catalog — this line joins the order
         today, so today's price is the one the customer is agreeing to. Lines that were
         already there keep the price they were checked out with.
+
+        The customer changing the order takes the order's discount off, and a line's own
+        when the volume joins a line that had one (`_customer_changed`).
         """
         order = await self._get_editable(user_id, order_id)
 
@@ -866,6 +876,7 @@ class OrdersService:
             existing.quantity = min(existing.quantity + quantity, MAX_ITEM_QUANTITY)
         else:
             order.items.append(_snapshot_line(product, variant, quantity))
+        self._customer_changed(order, existing)
 
         self._recalculate_total(order)
         await self._session.flush()
@@ -879,8 +890,11 @@ class OrdersService:
     ) -> Order:
         order = await self._get_editable(user_id, order_id)
         item = self._find_item(order, item_id)
+        if item.quantity == quantity:
+            return order
 
         item.quantity = quantity
+        self._customer_changed(order, item)
         self._recalculate_total(order)
         await self._session.flush()
         return order
@@ -894,9 +908,25 @@ class OrdersService:
             raise LastOrderItemError
 
         order.items.remove(item)
+        self._customer_changed(order, None)
         self._recalculate_total(order)
         await self._session.flush()
         return order
+
+    @staticmethod
+    def _customer_changed(order: Order, item: OrderItem | None) -> None:
+        """The customer changed the order: the discounts the change touches come off whole.
+
+        A discount is the admin's answer to the order as it stood; a composition the
+        customer has since rewritten is not the one it was given on, and scaling it to the
+        new one would be guessing what the admin meant. So the order's discount comes off on
+        any change, and a line's when that line is the one changed (a removed line takes
+        its own with it). The website says so before the change is sent. Other lines keep
+        theirs — they are as the admin saw them.
+        """
+        clear_discount(order)
+        if item is not None:
+            clear_discount(item)
 
     async def set_discount(
         self,

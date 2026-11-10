@@ -12,6 +12,11 @@ import { SiteLayout } from '@/layouts/SiteLayout'
 import { ACCOUNT_NAVIGATION } from '@/layouts/accountNavigation'
 import { useAuth } from '@/contexts/AuthContext'
 import { useProductSearch } from '@/hooks/useProductSearch'
+import {
+  discountLoss,
+  linesOfVariants,
+  useDiscountLossConfirm,
+} from '@/hooks/useDiscountLossConfirm'
 import { isApiError, messageForError, type ErrorScope } from '@/services/apiErrors'
 import { getActiveCycleOrNull } from '@/services/endpoints/cycles'
 import {
@@ -69,6 +74,7 @@ const OrderPage: React.FC = () => {
   const loginHref = useLoginHref()
   const { notify } = useToast()
   const { confirm } = useConfirm()
+  const confirmDiscountLoss = useDiscountLossConfirm()
 
   const userId = user?.id ?? null
   const orderId = typeof router.query.id === 'string' ? router.query.id : null
@@ -284,12 +290,19 @@ const OrderPage: React.FC = () => {
         */
         contactLink={{ href: INSTAGRAM_URL, target: '_blank' }}
         onItemQuantityChange={(itemId, quantity) => {
-          void runAction(
-            () => updateMyOrderItemQuantity(order.id, itemId, quantity),
-            'Количество изменено',
-            'order.item.update',
-            itemId
-          )
+          void (async (): Promise<void> => {
+            // Отказ ничего не откатывает: степпер показывает количество из заявки.
+            if (!(await confirmDiscountLoss(order, [itemId]))) {
+              return
+            }
+
+            await runAction(
+              () => updateMyOrderItemQuantity(order.id, itemId, quantity),
+              'Количество изменено',
+              'order.item.update',
+              itemId
+            )
+          })()
         }}
         onItemRemove={itemId => {
           const item = order.items.find(orderItem => orderItem.id === itemId)
@@ -307,11 +320,23 @@ const OrderPage: React.FC = () => {
           // не смотрят на список, и вернуть надо понимая, что именно убрали.
           const name = item?.productName
 
+          /*
+            Скидки, которые удаление снимет, — в том же диалоге, а не вторым:
+            два подтверждения подряд на одно действие читают уже не глядя.
+            «Вернуть» из тоста товар возвращает, а скидку — нет.
+          */
+          const loss = discountLoss(order, [itemId])
+          const description = [
+            name === undefined ? null : `«${name}» больше не будет в этой заявке`,
+            loss,
+          ]
+            .filter((line): line is string => line !== null)
+            .join('. ')
+
           void (async (): Promise<void> => {
             const confirmed = await confirm({
               title: 'Удалить товар из заявки?',
-              description:
-                name === undefined ? undefined : `«${name}» больше не будет в этой заявке`,
+              description: description === '' ? undefined : description,
               confirmLabel: 'Удалить',
               cancelLabel: 'Оставить',
               tone: 'danger',
@@ -360,11 +385,17 @@ const OrderPage: React.FC = () => {
               .map(item => item.variantId)
               .filter((variantId): variantId is string => variantId !== null)}
             onAdd={variantId => {
-              void runAction(
-                () => addMyOrderItem(order.id, variantId),
-                'Товар добавлен',
-                'order.item.add'
-              )
+              void (async (): Promise<void> => {
+                if (!(await confirmDiscountLoss(order, linesOfVariants(order, [variantId])))) {
+                  return
+                }
+
+                await runAction(
+                  () => addMyOrderItem(order.id, variantId),
+                  'Товар добавлен',
+                  'order.item.add'
+                )
+              })()
             }}
             isBusy={isBusy}
           />

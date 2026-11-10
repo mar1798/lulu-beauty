@@ -16,6 +16,7 @@ import * as styles from '@/styles/layout.css'
 import { useAuth } from '@/contexts/AuthContext'
 import { useCart } from '@/contexts/CartContext'
 import { useProductSearch } from '@/hooks/useProductSearch'
+import { linesOfVariants, useDiscountLossConfirm } from '@/hooks/useDiscountLossConfirm'
 import { messageForError } from '@/services/apiErrors'
 import { addMyOrderItem, checkout, getMyOrder } from '@/services/endpoints/orders'
 import { isOrdersKey } from '@/services/swrKeys'
@@ -59,6 +60,7 @@ const CheckoutPage: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [order, setOrder] = useState<IOrder | null>(null)
+  const confirmDiscountLoss = useDiscountLossConfirm()
   /** Идёт добавление: подборщик блокируется целиком, чтобы не задвоить товар. */
   const [isAdding, setIsAdding] = useState(false)
 
@@ -130,11 +132,16 @@ const CheckoutPage: React.FC = () => {
    * из ответа: количество позиций пересчитывает сервер (объём, который в
    * заявке уже есть, сливается со своей строкой, а не заводит вторую).
    */
-  const handleAddToOrder = async (orderId: string, variantId: string): Promise<void> => {
+  const handleAddToOrder = async (current: IOrder, variantId: string): Promise<void> => {
+    // Скидку на заявку, открытую заново, магазин мог дать, пока экран висел.
+    if (!(await confirmDiscountLoss(current, linesOfVariants(current, [variantId])))) {
+      return
+    }
+
     setIsAdding(true)
 
     try {
-      setOrder(await addMyOrderItem(orderId, variantId))
+      setOrder(await addMyOrderItem(current.id, variantId))
       // Список заявок показывает состав — там та же заявка уже другая.
       void globalMutate(isOrdersKey)
       notify({ tone: 'success', title: 'Товар добавлен в заявку' })
@@ -229,7 +236,7 @@ const CheckoutPage: React.FC = () => {
                 .map(item => item.variantId)
                 .filter((variantId): variantId is string => variantId !== null)}
               onAdd={variantId => {
-                void handleAddToOrder(order.id, variantId)
+                void handleAddToOrder(order, variantId)
               }}
               isBusy={isAdding}
               label="Забыли что-то? Добавьте в эту же заявку"
