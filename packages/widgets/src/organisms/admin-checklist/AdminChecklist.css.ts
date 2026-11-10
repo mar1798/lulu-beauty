@@ -39,6 +39,19 @@ export const progress = style({
   borderBottom: border(1, color.border('subtle')),
 })
 
+/** Счётчик слева, тумблер справа; на узком экране тумблер уходит под счётчик. */
+export const progressHead = style({
+  display: 'flex',
+  flexWrap: 'wrap',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  gap: `${vars.space.xs} ${vars.space.md}`,
+})
+
+export const hideSwitch = style({
+  font: font('14/20', 500),
+})
+
 export const progressLabel = style({
   font: font('14/20', 500),
   color: color.text('secondary'),
@@ -200,4 +213,11 @@ export const footTotals = style({
   marginInlineStart: vars.space.sm,
   whiteSpace: 'nowrap',
   fontVariantNumeric: 'tabular-nums',
+})
+
+export const allDone = style({
+  ...cellBase,
+  padding: vars.space.lg,
+  textAlign: 'center',
+  color: color.text('secondary'),
 })

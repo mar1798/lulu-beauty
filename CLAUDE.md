@@ -94,7 +94,7 @@ Run from the repo root unless noted. Workspace-scoped commands use `-w <workspac
 | Command           | Does                                                                                                                                  |
 | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
 | `npm run check`   | `tsc --noEmit` + eslint across `website` and `widgets`. **Run before finishing any change touching them.** Does not cover `apps/api`. |
-| `npm test`        | each JS workspace's tests (`vitest run` in `widgets`). Not `apps/api`.                                                                |
+| `npm test`        | each JS workspace's tests (`vitest run` in `widgets` and `website`). Not `apps/api`.                                                  |
 | `npm run lint`    | eslint only.                                                                                                                          |
 | `npm run barrels` | regenerate the auto-generated `index.ts` barrels.                                                                                     |
 | `npm run format`  | Prettier across the repo.                                                                                                             |

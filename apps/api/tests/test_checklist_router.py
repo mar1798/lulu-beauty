@@ -111,3 +111,92 @@ async def test_only_the_owner_edits_the_checklist(client: AsyncClient) -> None:
         )
 
     assert response.status_code == 401
+
+
+async def test_ticking_a_row(client: AsyncClient) -> None:
+    cycle_id = uuid.uuid4()
+
+    with patch("app.checklist.router.ChecklistMarksService") as service_cls:
+        service_cls.return_value.set = AsyncMock()
+        async with client as c:
+            response = await c.put(
+                "/admin/checklist/marks",
+                json={"cycleId": str(cycle_id), "key": "Тонер|250|165000", "checked": True},
+            )
+
+    assert response.status_code == 204
+    service_cls.return_value.set.assert_awaited_once_with(
+        cycle_id, "Тонер|250|165000", checked=True
+    )
+
+
+async def test_ticking_a_row_of_a_deleted_cycle(client: AsyncClient) -> None:
+    with patch("app.checklist.router.ChecklistMarksService") as service_cls:
+        service_cls.return_value.set = AsyncMock(side_effect=CycleNotFoundError)
+        async with client as c:
+            response = await c.put(
+                "/admin/checklist/marks",
+                json={"cycleId": str(uuid.uuid4()), "key": "Тонер", "checked": False},
+            )
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "cycle_not_found"}
+
+
+async def test_an_empty_key_is_refused(client: AsyncClient) -> None:
+    with patch("app.checklist.router.ChecklistMarksService") as service_cls:
+        service_cls.return_value.set = AsyncMock()
+        async with client as c:
+            response = await c.put(
+                "/admin/checklist/marks",
+                json={"cycleId": str(uuid.uuid4()), "key": "", "checked": True},
+            )
+
+    assert response.status_code == 422
+    service_cls.return_value.set.assert_not_awaited()
+
+
+async def test_clearing_the_ticks(client: AsyncClient) -> None:
+    cycle_id = uuid.uuid4()
+
+    with patch("app.checklist.router.ChecklistMarksService") as service_cls:
+        service_cls.return_value.clear = AsyncMock()
+        async with client as c:
+            response = await c.delete("/admin/checklist/marks", params={"cycleId": str(cycle_id)})
+
+    assert response.status_code == 204
+    service_cls.return_value.clear.assert_awaited_once_with(cycle_id)
+
+
+async def test_only_the_owner_ticks(client: AsyncClient) -> None:
+    app.dependency_overrides.pop(require_admin)
+    async with client as c:
+        response = await c.put(
+            "/admin/checklist/marks",
+            json={"cycleId": str(uuid.uuid4()), "key": "Тонер", "checked": True},
+        )
+
+    assert response.status_code == 401
+
+
+async def test_clearing_needs_the_cycle(client: AsyncClient) -> None:
+    with patch("app.checklist.router.ChecklistMarksService") as service_cls:
+        service_cls.return_value.clear = AsyncMock()
+        async with client as c:
+            response = await c.delete("/admin/checklist/marks")
+
+    assert response.status_code == 422
+    service_cls.return_value.clear.assert_not_awaited()
+
+
+async def test_only_the_owner_clears_the_ticks(client: AsyncClient) -> None:
+    app.dependency_overrides.pop(require_admin)
+    with patch("app.checklist.router.ChecklistMarksService") as service_cls:
+        service_cls.return_value.clear = AsyncMock()
+        async with client as c:
+            response = await c.delete(
+                "/admin/checklist/marks", params={"cycleId": str(uuid.uuid4())}
+            )
+
+    assert response.status_code == 401
+    service_cls.return_value.clear.assert_not_awaited()

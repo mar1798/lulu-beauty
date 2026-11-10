@@ -762,18 +762,28 @@ shop with a phone: the rows of the sheet with prices, from the open cycle or —
 open — the last closed one (`CyclesService.get_latest_closed_cycle`), picked by the API
 rather than the page. Cancelled orders are left out, since the checklist has no status
 filter of its own. Each name links to the product page by the live catalogue slug
-(none once the product row is gone). The "bought" ticks are not stored on the server: they live in the
-browser's `localStorage` (`useChecklistMarks`), keyed by cycle, and a row is identified by
-name + volume + price (+ shade, appended only when there is one, so marks made before shades
-existed still match) — not quantity, so a cancellation after the purchase does not untick
-what was already bought.
+(none once the product row is gone). The "bought" ticks are shared by every admin: two
+people splitting a shop must see each other's. They are `checklist_marks` rows
+(`ChecklistMark`), one per cycle and row key, deleted with the cycle, returned as
+`checkedKeys` by `GET /admin/checklist`, set with `PUT /admin/checklist/marks`
+(`{cycleId, key, checked}`, idempotent both ways) and cleared for the whole cycle — for
+everyone — by `DELETE /admin/checklist/marks?cycleId=` («Снять отметки»). The page ticks
+optimistically and polls the list every 10 seconds while the tab is visible, so another
+admin's ticks arrive without a reload; it also re-reads the list once the last tick in flight
+settles, since SWR drops the result (and the rollback) of a mutation another one overtook. The key is built by the page (`itemKey`) and stored
+as an opaque string: name + volume + price (+ shade, appended only when there is one) — not
+quantity, so a cancellation after the purchase does not untick what was already bought; a
+key whose row has gone matches nothing and is ignored. «Скрыть купленное» on the page is a
+per-viewer filter (not stored): it hides ticked rows and the footer then totals only what is
+left to buy. (Until November 2026 the ticks lived in each browser's `localStorage`; those were
+not carried over.)
 
 The owner can also add lines of their own — what no order asks for (bags, a tester,
 something for the shop): «Добавить пункт» on the page, a name, a quantity and a price per
 unit that defaults to 0. They are `checklist_extras` rows (`app/checklist/`), tied to the
 cycle the page is showing and deleted with it, appended after the order rows by
-`GET /admin/checklist` with an `extraId` and counted in the total. They live on the server,
-unlike the ticks: a line added on a laptop has to be on the phone in the shop. Added with
+`GET /admin/checklist` with an `extraId` and counted in the total. They live on the server:
+a line added on a laptop has to be on the phone in the shop. Added with
 `POST /admin/checklist/extras` (any cycle, closed ones included — the checklist shows the
 last closed one exactly when the owner is buying it) and removed with
 `DELETE /admin/checklist/extras/{id}`; there is no editing — delete and add again. They are

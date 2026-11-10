@@ -140,9 +140,11 @@ async def test_the_checklist_shows_the_open_cycle(client: AsyncClient) -> None:
         patch("app.export.router.CyclesService") as cycles_cls,
         patch("app.export.router.ExportService") as service_cls,
         patch("app.export.router.ChecklistExtrasService") as extras_cls,
+        patch("app.export.router.ChecklistMarksService") as marks_cls,
     ):
         cycles_cls.return_value.get_active_cycle = AsyncMock(return_value=active)
         extras_cls.return_value.list = AsyncMock(return_value=[extra])
+        marks_cls.return_value.keys = AsyncMock(return_value=["Крем|50|15000"])
         cycles_cls.return_value.get_latest_closed_cycle = AsyncMock()
         service_cls.return_value.checklist_rows = AsyncMock(return_value=[row])
         async with client as c:
@@ -175,6 +177,9 @@ async def test_the_checklist_shows_the_open_cycle(client: AsyncClient) -> None:
             "extraId": str(extra.id),
         },
     ]
+    # Shared by every admin, so they come with the list rather than from the browser.
+    assert body["checkedKeys"] == ["Крем|50|15000"]
+    marks_cls.return_value.keys.assert_awaited_once_with(active.id)
     extras_cls.return_value.list.assert_awaited_once_with(active.id)
     cycles_cls.return_value.get_latest_closed_cycle.assert_not_awaited()
     service_cls.return_value.checklist_rows.assert_awaited_once_with(active.id)
@@ -189,8 +194,10 @@ async def test_without_an_open_cycle_the_checklist_falls_back_to_the_last_closed
         patch("app.export.router.CyclesService") as cycles_cls,
         patch("app.export.router.ExportService") as service_cls,
         patch("app.export.router.ChecklistExtrasService") as extras_cls,
+        patch("app.export.router.ChecklistMarksService") as marks_cls,
     ):
         extras_cls.return_value.list = AsyncMock(return_value=[])
+        marks_cls.return_value.keys = AsyncMock(return_value=[])
         cycles_cls.return_value.get_active_cycle = AsyncMock(return_value=None)
         cycles_cls.return_value.get_latest_closed_cycle = AsyncMock(return_value=closed)
         service_cls.return_value.checklist_rows = AsyncMock(return_value=[])
@@ -208,4 +215,4 @@ async def test_a_shop_without_cycles_gets_an_empty_checklist(client: AsyncClient
         async with client as c:
             response = await c.get("/admin/checklist")
 
-    assert response.json() == {"cycle": None, "items": []}
+    assert response.json() == {"cycle": None, "items": [], "checkedKeys": []}

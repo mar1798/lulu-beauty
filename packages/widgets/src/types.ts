@@ -2533,6 +2533,11 @@ export interface IAdminChecklist {
     isActive: boolean
   } | null
   items: Omit<IChecklistItem, 'key'>[]
+  /**
+   * Ключи строк, отмеченных купленными, — общие для всех админов. Могут
+   * называть строки, которых в `items` уже нет (заявку отменили): такие не в счёт.
+   */
+  checkedKeys: string[]
 }
 
 export interface IAdminChecklistProps {
@@ -2546,6 +2551,12 @@ export interface IAdminChecklistProps {
    * удаления нет. Строки из заявок не удаляются никогда — их меняют сами заявки.
    */
   onRemoveExtra?: (item: IChecklistItem) => void
+  /**
+   * Прятать отмеченные строки — в магазине остаётся только то, что ещё купить.
+   * Тумблер рисуется, только когда передан `onHideCheckedChange`.
+   */
+  hideChecked?: boolean
+  onHideCheckedChange?: (hideChecked: boolean) => void
   isLoading?: boolean
   skeletonRows?: number
   emptyState?: ReactNode

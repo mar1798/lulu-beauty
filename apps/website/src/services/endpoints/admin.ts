@@ -443,3 +443,14 @@ export const addChecklistExtra = (
 
 export const deleteChecklistExtra = (extraId: string): Promise<void> =>
   api.remove(`/admin/checklist/extras/${encodeURIComponent(extraId)}`)
+
+/**
+ * Отметка «куплено» — на сервере, общая для всех админов. Повтор безвреден:
+ * отметить отмеченное и снять снятое — не ошибка.
+ */
+export const setChecklistMark = (cycleId: string, key: string, checked: boolean): Promise<void> =>
+  api.put('/admin/checklist/marks', { body: { cycleId, key, checked } })
+
+/** «Снять отметки» — все отметки сбора, у всех админов сразу. */
+export const clearChecklistMarks = (cycleId: string): Promise<void> =>
+  api.remove('/admin/checklist/marks', { query: { cycleId } })

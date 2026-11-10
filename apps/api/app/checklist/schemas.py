@@ -3,7 +3,7 @@ from typing import Annotated
 
 from pydantic import Field, StringConstraints
 
-from app.checklist.models import ChecklistExtra
+from app.checklist.models import MARK_KEY_MAX_LENGTH, ChecklistExtra
 from app.common.limits import MAX_ITEM_QUANTITY, MAX_PRICE_CENTS
 from app.common.schemas import CamelModel
 
@@ -18,6 +18,15 @@ class ChecklistExtraRequest(CamelModel):
     name: _Name
     quantity: int = Field(ge=1, le=MAX_ITEM_QUANTITY)
     unit_price_cents: int = Field(default=0, ge=0, le=MAX_PRICE_CENTS)
+
+
+class ChecklistMarkRequest(CamelModel):
+    """Tick or untick one row of the cycle the page is showing. The key is the page's own
+    (`ChecklistMark`), stored as sent."""
+
+    cycle_id: uuid.UUID
+    key: Annotated[str, StringConstraints(min_length=1, max_length=MARK_KEY_MAX_LENGTH)]
+    checked: bool
 
 
 class ChecklistItem(CamelModel):
