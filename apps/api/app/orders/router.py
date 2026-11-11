@@ -135,6 +135,7 @@ def _order_response(
         is_cancellable=flags.is_cancellable,
         pending_stage=flags.pending_stage,
         paid_at=order.paid_at,
+        revision=order.revision,
     )
 
 
@@ -253,6 +254,8 @@ def _editing_error(error: Exception) -> HTTPException:
         return HTTPException(status.HTTP_404_NOT_FOUND, "product_not_found")
     if isinstance(error, OrderNotRestorableError):
         return HTTPException(status.HTTP_409_CONFLICT, "order_not_restorable")
+    if isinstance(error, OrderChangedError):
+        return HTTPException(status.HTTP_409_CONFLICT, "order_changed")
     return HTTPException(status.HTTP_409_CONFLICT, "order_not_editable")
 
 
@@ -294,9 +297,14 @@ async def add_my_order_item(
     service = OrdersService(session)
     try:
         order, loss = await service.add_item(
-            current_user.id, order_id, body.variant_id, body.quantity
+            current_user.id, order_id, body.variant_id, body.quantity, revision=body.revision
         )
-    except (OrderNotFoundError, OrderNotEditableError, ProductNotFoundError) as error:
+    except (
+        OrderNotFoundError,
+        OrderNotEditableError,
+        OrderChangedError,
+        ProductNotFoundError,
+    ) as error:
         raise _editing_error(error) from error
 
     response = await _one_order_response(service, order)
@@ -318,9 +326,14 @@ async def update_my_order_item(
     service = OrdersService(session)
     try:
         order, loss = await service.set_item_quantity(
-            current_user.id, order_id, item_id, body.quantity
+            current_user.id, order_id, item_id, body.quantity, revision=body.revision
         )
-    except (OrderNotFoundError, OrderNotEditableError, OrderItemNotFoundError) as error:
+    except (
+        OrderNotFoundError,
+        OrderNotEditableError,
+        OrderChangedError,
+        OrderItemNotFoundError,
+    ) as error:
         raise _editing_error(error) from error
 
     response = await _one_order_response(service, order)
@@ -335,15 +348,20 @@ async def remove_my_order_item(
     order_id: uuid.UUID,
     item_id: uuid.UUID,
     background_tasks: BackgroundTasks,
+    # In the query: a DELETE carries no body. See `OrderItemQuantityRequest.revision`.
+    revision: int = Query(ge=0),
     session: AsyncSession = Depends(get_session),
     current_user: CurrentUser = Depends(get_current_user),
 ) -> OrderResponse:
     service = OrdersService(session)
     try:
-        order, loss = await service.remove_item(current_user.id, order_id, item_id)
+        order, loss = await service.remove_item(
+            current_user.id, order_id, item_id, revision=revision
+        )
     except (
         OrderNotFoundError,
         OrderNotEditableError,
+        OrderChangedError,
         OrderItemNotFoundError,
         LastOrderItemError,
     ) as error:

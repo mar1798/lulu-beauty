@@ -994,6 +994,7 @@ export const feedOrder = (overrides: Partial<IOrder> = {}): IOrder => {
     isCancellable: true,
     pendingStage: 'COLLECTING',
     paidAt: null,
+    revision: 1,
     ...overrides,
   }
 }
@@ -1472,7 +1473,6 @@ export const feedAdminOrder = (overrides: Partial<IAdminOrder> = {}): IAdminOrde
   canMessage: true,
   createdById: null,
   createdByName: null,
-  revision: 1,
   ...overrides,
 })
 

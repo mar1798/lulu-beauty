@@ -831,6 +831,25 @@ async def test_an_admin_edit_that_only_adds_a_line_keeps_the_line_discounts(
     assert edited.total_cents == 1000 + 3600 + 500
 
 
+async def test_a_customer_edit_on_a_stale_revision_is_refused(db_session: AsyncSession) -> None:
+    """The page warned about the discounts it saw; one given since must not go unwarned."""
+    order = await _placed(db_session)
+    serum = order.items[1]
+    service = OrdersService(db_session)
+    seen = order.revision
+    order, _ = await service.set_discount(
+        order.id, order.revision, None, (DiscountKind.PERCENT, 10), None
+    )
+
+    with pytest.raises(OrderChangedError):
+        await service.set_item_quantity(order.user_id, order.id, serum.id, 3, revision=seen)
+    with pytest.raises(OrderChangedError):
+        await service.remove_item(order.user_id, order.id, serum.id, revision=seen)
+    assert serum.variant_id is not None
+    with pytest.raises(OrderChangedError):
+        await service.add_item(order.user_id, order.id, serum.variant_id, 1, revision=seen)
+    assert order.discount_value == 10
+
 
 async def test_discount_refuses_one_that_rounds_to_nothing(db_session: AsyncSession) -> None:
     order = await _placed(db_session)

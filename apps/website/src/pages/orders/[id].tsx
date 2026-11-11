@@ -297,7 +297,7 @@ const OrderPage: React.FC = () => {
             }
 
             await runAction(
-              () => updateMyOrderItemQuantity(order.id, itemId, quantity),
+              () => updateMyOrderItemQuantity(order.id, order.revision, itemId, quantity),
               'Количество изменено',
               'order.item.update',
               itemId
@@ -333,6 +333,12 @@ const OrderPage: React.FC = () => {
             .filter((line): line is string => line !== null)
             .join('. ')
 
+          /*
+            «Вернуть» идёт уже после удаления — с `revision`, которую вернуло
+            оно, а не с той, что была у страницы до него.
+          */
+          let revisionAfter = order.revision
+
           void (async (): Promise<void> => {
             const confirmed = await confirm({
               title: 'Удалить товар из заявки?',
@@ -347,7 +353,9 @@ const OrderPage: React.FC = () => {
             }
 
             await runAction(
-              () => removeMyOrderItem(order.id, itemId),
+              async () => {
+                revisionAfter = (await removeMyOrderItem(order.id, order.revision, itemId)).revision
+              },
               'Позиция убрана из заявки',
               'order.item.remove',
               itemId,
@@ -359,7 +367,7 @@ const OrderPage: React.FC = () => {
                     ? undefined
                     : () => {
                         void runAction(
-                          () => addMyOrderItem(order.id, variantId, quantity),
+                          () => addMyOrderItem(order.id, revisionAfter, variantId, quantity),
                           'Позиция снова в заявке',
                           'order.item.add',
                           null,
@@ -391,7 +399,7 @@ const OrderPage: React.FC = () => {
                 }
 
                 await runAction(
-                  () => addMyOrderItem(order.id, variantId),
+                  () => addMyOrderItem(order.id, order.revision, variantId),
                   'Товар добавлен',
                   'order.item.add'
                 )

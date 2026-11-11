@@ -62,6 +62,9 @@ class OrderNoteUpdateRequest(CamelModel):
 
 
 class OrderItemQuantityRequest(CamelModel):
+    # The order's as the customer's page read it (`OrderResponse.revision`): the page
+    # warned about the discounts the change takes off, and a newer one would go unwarned.
+    revision: int = Field(ge=0)
     # Same floor as the cart: dropping to zero is "remove", and that has its own endpoint,
     # so a 0 here is a mistake worth reporting rather than a silent deletion.
     quantity: int = Field(ge=1, le=MAX_ITEM_QUANTITY)
@@ -74,8 +77,11 @@ class OrderItemAddRequest(CamelModel):
 
     Addressed by variant, not by product: the customer picks "30 мл", and a product sold
     in two volumes gives the server no way to guess which one was meant.
+
+    `revision` as in `OrderItemQuantityRequest`.
     """
 
+    revision: int = Field(ge=0)
     variant_id: uuid.UUID
     quantity: int = Field(default=1, ge=1, le=MAX_ITEM_QUANTITY)
 
@@ -247,6 +253,10 @@ class OrderResponse(CamelModel):
     pending_stage: PendingStage | None = None
     # When the owner confirmed the payment, from the receipt the customer sent the bot.
     paid_at: datetime | None = None
+    # Moves with every change to the lines and their discounts. Sent back with an edit
+    # (`OrderItemQuantityRequest.revision`, `AdminOrderEditRequest.revision`), so a change
+    # decided on lines that have since moved is refused instead of applied over them.
+    revision: int = 0
 
 
 class AdminOrderResponse(OrderResponse):
@@ -273,8 +283,6 @@ class AdminOrderResponse(OrderResponse):
     # customer's own checkout. The name is null too when that admin's account is gone.
     created_by_id: uuid.UUID | None = None
     created_by_name: str | None = None
-    # What the panel sends back with an edit (`AdminOrderEditRequest.revision`).
-    revision: int = 0
 
 
 class AdminOrderMessageRequest(CamelModel):

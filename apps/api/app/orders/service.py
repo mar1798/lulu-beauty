@@ -66,11 +66,12 @@ class OrderItemNotFoundError(Exception):
 
 
 class OrderChangedError(Exception):
-    """The order's lines moved since the admin panel read them (`Order.revision`).
+    """The order's lines moved since the page that sends the change read them (`Order.revision`).
 
-    The customer edited it, a catalogue change repriced or trimmed it, or another admin
-    saved first. The draft was built on lines that are no longer there, and saving it
-    would write over a change nobody in the panel has seen.
+    The customer edited it, a catalogue change repriced or trimmed it, an admin gave a
+    discount or saved first. The change was decided on lines that are no longer there —
+    in the panel a draft that would write over them, on the customer's page a warning
+    about the discounts an edit takes off that was worked out without the newest one.
     """
 
 
@@ -883,10 +884,21 @@ class OrdersService:
     async def _flags_for(self, order: Order) -> OrderFlags:
         return (await self.customer_flags([order]))[order.id]
 
-    async def _get_editable(self, user_id: uuid.UUID, order_id: uuid.UUID) -> Order:
+    async def _get_editable(
+        self, user_id: uuid.UUID, order_id: uuid.UUID, revision: int | None = None
+    ) -> Order:
+        """The customer's order, locked, if they may still change it.
+
+        `revision` is the one their page read the order at, for the edits that can take a
+        discount off: the page warned about the discounts it could see, and one given since
+        would come off without a word (`OrderChangedError`). The note touches no money and
+        sends none.
+        """
         order = await self.get_for_user(user_id, order_id, for_update=True)
         if not (await self._flags_for(order)).is_editable:
             raise OrderNotEditableError
+        if revision is not None and order.revision != revision:
+            raise OrderChangedError
         return order
 
     async def _get_cancellable(self, user_id: uuid.UUID, order_id: uuid.UUID) -> Order:
@@ -921,7 +933,13 @@ class OrdersService:
         raise OrderItemNotFoundError
 
     async def add_item(
-        self, user_id: uuid.UUID, order_id: uuid.UUID, variant_id: uuid.UUID, quantity: int
+        self,
+        user_id: uuid.UUID,
+        order_id: uuid.UUID,
+        variant_id: uuid.UUID,
+        quantity: int,
+        *,
+        revision: int | None = None,
     ) -> tuple[Order, DiscountLoss | None]:
         """Add a volume of a product to an order that's already been placed.
 
@@ -929,11 +947,14 @@ class OrdersService:
         today, so today's price is the one the customer is agreeing to. Lines that were
         already there keep the price they were checked out with.
 
+        `revision` is the one the customer's page read the order at (`_get_editable`); the
+        router always sends it.
+
         The customer changing the order takes the order's discount off, and a line's own
         when the volume joins a line that had one (`_customer_changed`). Returns the order
         and what that took off, None when it took nothing.
         """
-        order = await self._get_editable(user_id, order_id)
+        order = await self._get_editable(user_id, order_id, revision)
 
         result = await self._session.execute(
             select(ProductVariant, Product)
@@ -974,9 +995,15 @@ class OrdersService:
         return order, loss
 
     async def set_item_quantity(
-        self, user_id: uuid.UUID, order_id: uuid.UUID, item_id: uuid.UUID, quantity: int
+        self,
+        user_id: uuid.UUID,
+        order_id: uuid.UUID,
+        item_id: uuid.UUID,
+        quantity: int,
+        *,
+        revision: int | None = None,
     ) -> tuple[Order, DiscountLoss | None]:
-        order = await self._get_editable(user_id, order_id)
+        order = await self._get_editable(user_id, order_id, revision)
         item = self._find_item(order, item_id)
         if item.quantity == quantity:
             return order, None
@@ -988,9 +1015,14 @@ class OrdersService:
         return order, loss
 
     async def remove_item(
-        self, user_id: uuid.UUID, order_id: uuid.UUID, item_id: uuid.UUID
+        self,
+        user_id: uuid.UUID,
+        order_id: uuid.UUID,
+        item_id: uuid.UUID,
+        *,
+        revision: int | None = None,
     ) -> tuple[Order, DiscountLoss | None]:
-        order = await self._get_editable(user_id, order_id)
+        order = await self._get_editable(user_id, order_id, revision)
         item = self._find_item(order, item_id)
         if len(order.items) == 1:
             raise LastOrderItemError

@@ -58,6 +58,7 @@ const order = (overrides: Partial<IOrder> = {}): IOrder => ({
   status: 'PENDING',
   totalCents: 200_000,
   subtotalCents: 200_000,
+  revision: 1,
   ...NO_DISCOUNT,
   note: null,
   createdAt: '2026-11-01T00:00:00Z',

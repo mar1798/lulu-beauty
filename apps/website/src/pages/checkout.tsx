@@ -17,7 +17,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import { useCart } from '@/contexts/CartContext'
 import { useProductSearch } from '@/hooks/useProductSearch'
 import { linesOfVariants, useDiscountLossConfirm } from '@/hooks/useDiscountLossConfirm'
-import { messageForError } from '@/services/apiErrors'
+import { isApiError, messageForError } from '@/services/apiErrors'
 import { addMyOrderItem, checkout, getMyOrder } from '@/services/endpoints/orders'
 import { isOrdersKey } from '@/services/swrKeys'
 import { useLoginHref } from '@/hooks/useLoginHref'
@@ -141,7 +141,7 @@ const CheckoutPage: React.FC = () => {
     setIsAdding(true)
 
     try {
-      setOrder(await addMyOrderItem(current.id, variantId))
+      setOrder(await addMyOrderItem(current.id, current.revision, variantId))
       // Список заявок показывает состав — там та же заявка уже другая.
       void globalMutate(isOrdersKey)
       notify({ tone: 'success', title: 'Товар добавлен в заявку' })
@@ -151,6 +151,11 @@ const CheckoutPage: React.FC = () => {
         title: 'Не получилось',
         description: messageForError(cause, 'order.item.add'),
       })
+
+      // Магазин успел поменять заявку: берём свежую, иначе повтор упрётся в тот же отказ.
+      if (isApiError(cause) && cause.code === 'order_changed') {
+        setOrder(await getMyOrder(current.id).catch(() => current))
+      }
     } finally {
       setIsAdding(false)
     }

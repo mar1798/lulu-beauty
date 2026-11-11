@@ -108,6 +108,10 @@ Public and customer-facing:
 | `POST`/`PATCH`/`DELETE`       | `/orders/{id}/items[/{item_id}]`              | Add / change quantity / remove. `POST` takes `variantId`.                                                                           |
 | `POST`                        | `/orders/{id}/cancel`, `/orders/{id}/restore` |                                                                                                                                     |
 
+The three item edits take the order's `revision` as the page read it (`DELETE` in the query
+string): one stale by a discount given since is `409 order_changed`, so a discount never
+comes off unwarned.
+
 Owner-only (`ADMIN` or `SUPER_ADMIN`, checked on the API — the frontend gate is UX only).
 `PATCH /admin/users/{id}/role` is the one exception: **SUPER_ADMIN only**.
 

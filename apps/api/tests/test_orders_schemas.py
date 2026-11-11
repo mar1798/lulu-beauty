@@ -10,6 +10,7 @@ from app.orders.schemas import (
     AdminOrderResponse,
     CheckoutRequest,
     OrderItemAddRequest,
+    OrderItemQuantityRequest,
     OrderItemResponse,
     OrderResponse,
     OrderStatusUpdateRequest,
@@ -39,10 +40,18 @@ def test_order_status_update_round_trips_enum() -> None:
 def test_order_item_add_accepts_camel_case_and_defaults_to_one() -> None:
     variant_id = uuid.uuid4()
 
-    request = OrderItemAddRequest.model_validate({"variantId": str(variant_id)})
+    request = OrderItemAddRequest.model_validate({"variantId": str(variant_id), "revision": 4})
 
     assert request.variant_id == variant_id
     assert request.quantity == 1
+    assert request.revision == 4
+
+
+def test_order_item_requests_need_the_revision_the_page_read() -> None:
+    with pytest.raises(ValidationError):
+        OrderItemAddRequest.model_validate({"variantId": str(uuid.uuid4())})
+    with pytest.raises(ValidationError):
+        OrderItemQuantityRequest.model_validate({"quantity": 2})
 
 
 def test_order_item_add_rejects_quantities_outside_the_range() -> None:

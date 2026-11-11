@@ -577,10 +577,12 @@ bought, add what the customer asked for in a message, change a quantity.
   price, under the same rule as placing an order: a discontinued or sold-out volume refuses
   the whole edit (`404 product_not_found`). A volume already on a kept line joins it. A
   `PENDING` order is then repriced as usual.
-- **`orders.revision`** moves with every change to the lines (`_recalculate_total`). The
-  panel sends back the one it opened with, and a draft built on lines the customer, a
+- **`orders.revision`** moves with every change to the lines and their discounts
+  (`_recalculate_total`). Every response carries it — the customer's `OrderResponse` too.
+  The panel sends back the one it opened with, and a draft built on lines the customer, a
   catalogue edit or another admin has since changed is `409 order_changed` instead of a
-  silent overwrite. `updated_at` would not do: a change that keeps the total untouched never
+  silent overwrite. The customer's own edits (`POST`/`PATCH`/`DELETE /orders/{id}/items`)
+  send it as well — see "An edit of the composition takes discounts off" under Discounts. `updated_at` would not do: a change that keeps the total untouched never
   updates the order row. A catalogue edit running at the same moment as the save waits for
   the order's lock and moves the revision after it, like every other path that rewrites lines.
 - **The purchase list follows.** It is computed live from the cycle's orders, so an edit
@@ -623,6 +625,11 @@ and asks for confirmation — with the sum before and after — before anything 
   sum — giving one back is theirs to do from the panel. The edit methods return the loss
   (`DiscountLoss`) next to the order, None when the change touched no discount, so several
   edits in a row are announced once.
+
+  The warning is only as good as the order the page read, so the customer's edits carry the
+  page's `revision`, and a discount given while the page was open makes the edit
+  `409 order_changed` rather than a discount gone unwarned; the page re-reads the order, and
+  the retry warns about it.
 
   An admin's edit of the composition (`edit_by_admin`) follows the same rule: the order's
   own discount on any change, a line's own when that line's quantity changed or it was

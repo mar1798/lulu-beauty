@@ -69,8 +69,12 @@ export const EditableOrderNotice: React.FC = () => {
     setIsMoving(true)
 
     try {
+      // Каждое добавление двигает `revision` — следующее идёт с той, что вернуло предыдущее.
+      let revision = order.revision
+
       for (const item of items) {
-        await addMyOrderItem(order.id, item.variantId, item.quantity)
+        revision = (await addMyOrderItem(order.id, revision, item.variantId, item.quantity))
+          .revision
 
         const result = await removeItem(item.variantId)
 
