@@ -2,6 +2,8 @@ import uuid
 from datetime import UTC, datetime
 from unittest.mock import MagicMock
 
+import pytest
+
 from app.auth.models import User
 from app.cart.schemas import CartItemResponse, CartResponse
 from app.catalog.schemas import ProductResponse
@@ -813,7 +815,12 @@ def test_order_discount_names_the_line_the_reason_and_the_sum_to_pay() -> None:
     item.id = uuid.uuid4()
     item.product_name = "Крем"
     change = DiscountChange(
-        previous_total_cents=1000, kind=DiscountKind.PERCENT, value=10, note="Помятая <коробка>"
+        previous_total_cents=1000,
+        previous_kind=None,
+        previous_value=None,
+        kind=DiscountKind.PERCENT,
+        value=10,
+        note="Помятая <коробка>",
     )
 
     text = messages.order_discount(order, item.id, change)
@@ -832,25 +839,69 @@ def test_order_discount_reason_alone_is_an_update_not_a_new_gift() -> None:
 
     order = _order(status=OrderStatus.PENDING, items=1, total_cents=900)
     change = DiscountChange(
-        previous_total_cents=900, kind=DiscountKind.AMOUNT, value=100, note="Акция"
+        previous_total_cents=900,
+        previous_kind=DiscountKind.AMOUNT,
+        previous_value=100,
+        kind=DiscountKind.AMOUNT,
+        value=100,
+        note="Акция",
     )
 
     text = messages.order_discount(order, None, change)
 
-    assert text.startswith("Обновлена скидка 1 сом по заявке #a1b2c3d4")
+    assert text.startswith("Изменена причина скидки 1 сом по заявке #a1b2c3d4")
     assert "🎁" not in text
     assert "Сумма: <b>9 сом</b>" in text
 
 
-def test_order_discount_removed_from_the_whole_order() -> None:
+@pytest.mark.parametrize(
+    ("previous_value", "total_cents", "heading"),
+    [
+        # 20% → 10%: the customer now pays more, and is told so, without a gift box.
+        (20, 900, "Скидка по заявке #a1b2c3d4 уменьшена: 20% → 10%"),
+        (5, 700, "🎁 Скидка по заявке #a1b2c3d4 увеличена: 5% → 10%"),
+        (15, 800, "Скидка по заявке #a1b2c3d4 изменена: 15% → 10%"),
+    ],
+)
+def test_order_discount_says_which_way_a_changed_one_went(
+    previous_value: int, total_cents: int, heading: str
+) -> None:
+    from app.orders.models import DiscountKind
     from app.orders.service import DiscountChange
 
-    order = _order(status=OrderStatus.PENDING, items=1, total_cents=1000)
-    change = DiscountChange(previous_total_cents=900, kind=None, value=None, note=None)
+    order = _order(status=OrderStatus.PENDING, items=1, total_cents=total_cents)
+    change = DiscountChange(
+        previous_total_cents=800,
+        previous_kind=DiscountKind.PERCENT,
+        previous_value=previous_value,
+        kind=DiscountKind.PERCENT,
+        value=10,
+        note=None,
+    )
 
     text = messages.order_discount(order, None, change)
 
-    assert text.startswith("Скидка по заявке #a1b2c3d4 отменена")
+    assert text.startswith(heading)
+    assert heading.startswith("🎁") == ("🎁" in text)
+
+
+def test_order_discount_removed_from_the_whole_order() -> None:
+    from app.orders.models import DiscountKind
+    from app.orders.service import DiscountChange
+
+    order = _order(status=OrderStatus.PENDING, items=1, total_cents=1000)
+    change = DiscountChange(
+        previous_total_cents=900,
+        previous_kind=DiscountKind.PERCENT,
+        previous_value=10,
+        kind=None,
+        value=None,
+        note=None,
+    )
+
+    text = messages.order_discount(order, None, change)
+
+    assert text.startswith("Скидка 10% по заявке #a1b2c3d4 отменена")
     assert "Сумма: <s>9 сом</s> <b>10 сом</b>" in text
     # Nothing to pay yet in PENDING.
     assert "К оплате" not in text

@@ -305,10 +305,13 @@ class DiscountChange:
 
     By value, like `OrderPriceChange`: by the time the notification runs another admin may
     have changed the discount again, and the message must describe the change it is about.
-    `kind`, `value` and `note` are the new discount — all None when it was taken back.
+    `kind`, `value` and `note` are the new discount — all None when it was taken back;
+    `previous_kind` and `previous_value` the one it replaced — None when there was none.
     """
 
     previous_total_cents: int
+    previous_kind: DiscountKind | None
+    previous_value: int | None
     kind: DiscountKind | None
     value: int | None
     note: str | None
@@ -1101,6 +1104,7 @@ class OrdersService:
             for h in holders
         ]
         previous_total = order.total_cents
+        previous = _discount_of(target)
         target.discount_kind = kind
         target.discount_value = value
         target.discount_note = note
@@ -1118,7 +1122,12 @@ class OrdersService:
         self._recalculate_total(order)
         await self._session.flush()
         return order, DiscountChange(
-            previous_total_cents=previous_total, kind=kind, value=value, note=note
+            previous_total_cents=previous_total,
+            previous_kind=previous[0] if previous is not None else None,
+            previous_value=previous[1] if previous is not None else None,
+            kind=kind,
+            value=value,
+            note=note,
         )
 
     @staticmethod

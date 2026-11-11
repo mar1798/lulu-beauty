@@ -320,7 +320,7 @@ with admin rights — `ADMIN` and `SUPER_ADMIN` alike (`recipients.get_owners`).
 | New order — at checkout, or placed by an admin (then it names them)           | Owner                           |
 | Order an admin placed for the customer, listing its lines                     | That customer                   |
 | Composition changed by an admin: the new lines and sum, discounts it took off | That customer                   |
-| Discount given or taken back by an admin: on what, how much, why, new sum     | That customer                   |
+| Discount given, made bigger or smaller, or taken back by an admin: new sum    | That customer                   |
 | Order status change (incl. the owner undoing their own cancel)                | Customer                        |
 | Order taken (AWAITING_PAYMENT): the bill, requisites and «📎 Отправить чек»   | Customer                        |
 | Payment receipt sent to the bot                                               | Owner (the file, with verdict)  |

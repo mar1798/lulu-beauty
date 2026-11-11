@@ -526,13 +526,21 @@ def _order_discount_lines(order: Order) -> list[str]:
 
 
 def order_discount(order: Order, item_id: uuid.UUID | None, change: DiscountChange) -> str:
-    """An admin gave a discount on the order or one of its lines, or took it back.
+    """An admin gave a discount on the order or one of its lines, changed it, or took it back.
 
     Says what it is on, how much, why (the admin's own words) and the new sum, with the
     old one struck through. On an unpaid bill (`AWAITING_PAYMENT`) the sum is named as what
-    to pay — the bill already went out with the old one, and this message replaces it. A
-    change of the reason alone keeps the sum and says the discount was updated rather than
-    given again. The whole composition is on the site, behind the button under the message.
+    to pay — the bill already went out with the old one, and this message replaces it. The
+    whole composition is on the site, behind the button under the message.
+
+    The heading says plainly which of these happened, so a smaller discount never arrives
+    dressed as a gift:
+    - a new one — "🎁 Вам скидка";
+    - a changed one — "увеличена" or "уменьшена" by which way the sum moved (a percent
+      turned into an amount compares by money, not by number), the old size next to the new;
+      "изменена" when the sum stayed, the size having been capped by the line;
+    - only the reason changed — said so, the size unchanged;
+    - taken back — "отменена", with the size it had.
 
     The discount comes from `change`, not from the row: the row may already hold the next
     one by the time this is sent.
@@ -562,15 +570,26 @@ def order_discount(order: Order, item_id: uuid.UUID | None, change: DiscountChan
         else f"{label}: <b>{total}</b>"
     )
 
+    previous = (
+        discount_label(change.previous_kind, change.previous_value)
+        if change.previous_kind is not None
+        else None
+    )
     if change.kind is None:
-        return "\n".join([f"Скидка {target} отменена", "", sum_line])
+        size = f" {previous}" if previous else ""
+        return "\n".join([f"Скидка{size} {target} отменена", "", sum_line])
 
     tag = discount_label(change.kind, change.value)
-    heading = (
-        f"Обновлена скидка {tag} {target}"
-        if change.previous_total_cents == order.total_cents
-        else f"🎁 Вам скидка {tag} {target}"
-    )
+    if previous is None:
+        heading = f"🎁 Вам скидка {tag} {target}"
+    elif (change.previous_kind, change.previous_value) == (change.kind, change.value):
+        heading = f"Изменена причина скидки {tag} {target}"
+    elif order.total_cents < change.previous_total_cents:
+        heading = f"🎁 Скидка {target} увеличена: {previous} → {tag}"
+    elif order.total_cents > change.previous_total_cents:
+        heading = f"Скидка {target} уменьшена: {previous} → {tag}"
+    else:
+        heading = f"Скидка {target} изменена: {previous} → {tag}"
     return "\n".join(
         [
             heading,

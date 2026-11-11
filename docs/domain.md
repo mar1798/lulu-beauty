@@ -672,7 +672,10 @@ and asks for confirmation — with the sum before and after — before anything 
   second change in between cannot turn it into a message about the wrong one. It says what
   the discount is on, its size, the note, and the sum with the old one struck through,
   labelled «К оплате» on `AWAITING_PAYMENT`, since the bill already went out with the old
-  one. A change of the note alone says «Обновлена скидка» instead of announcing it as new.
+  one. The heading says plainly what happened: «🎁 Вам скидка» for a new one; for a changed
+  one «увеличена» or «уменьшена» by which way the sum moved, with the old size next to the
+  new («изменена» when the sum stayed); «Изменена причина скидки» for the note alone; and
+  «Скидка 10% … отменена» when taken back. A smaller discount never arrives as a gift.
   The bill, the edit message and the order page show discounted lines struck through with
   the new price, the size and the note, and the order discount as its own line with its
   note. The note is written to the customer: it is shown to them, not kept for the admins.

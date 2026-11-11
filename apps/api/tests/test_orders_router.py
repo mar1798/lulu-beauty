@@ -565,7 +565,7 @@ async def test_edit_order_admin_maps_errors_to_codes(
     notify.assert_not_awaited()
 
 
-_GIVEN = DiscountChange(1500, DiscountKind.PERCENT, 15, None)
+_GIVEN = DiscountChange(1500, None, None, DiscountKind.PERCENT, 15, None)
 
 
 async def _discount(
@@ -614,7 +614,7 @@ async def test_removing_a_discount_on_the_whole_order(committing_client: AsyncCl
     code, _, service, notify = await _discount(
         committing_client,
         {"revision": 0, "discount": None},
-        change=DiscountChange(900, None, None, None),
+        change=DiscountChange(900, DiscountKind.PERCENT, 10, None, None, None),
     )
 
     assert code == 200
