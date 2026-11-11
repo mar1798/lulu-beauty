@@ -1186,6 +1186,9 @@ export const feedAdminOrderDiscountDialog = (): IAdminOrderDiscountDialogProps =
   }),
   onSubmit: noop,
   onRemove: noop,
+  onDraftChange: noop,
+  // Ответ бэкенда на 10% со всей заявки: 4 200 сом − 420 сом.
+  preview: { totalCents: 378_000, error: null, isPending: false },
 })
 
 export const feedAdminOrderEditDialog = (): IAdminOrderEditDialogProps => {

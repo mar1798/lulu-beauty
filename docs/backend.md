@@ -123,6 +123,10 @@ Owner-only (`ADMIN` or `SUPER_ADMIN`, checked on the API — the frontend gate i
 | `POST`   | `/admin/categories`, `/admin/products`, `/admin/products/{id}/restore`, `/admin/products/{id}/images`, `/admin/catalog/import`, `/admin/cycles`, `/admin/cycles/{id}/close`, `/admin/export/links`, `/admin/orders`, `/admin/orders/{id}/message`, `/admin/checklist/extras` |
 | `DELETE` | `/admin/categories/{id}`, `/admin/products/{id}` (soft), `/admin/products/{id}/images/{image_id}`, `/admin/cycles/{id}`, `/admin/orders/{id}`, `/admin/checklist/extras/{id}`, `/admin/checklist/marks?cycleId=`                                                             |
 
+`POST /admin/orders/{id}/discount/preview` is the `PUT .../discount` above with the same
+body, rolled back instead of committed: it answers with the sum the order would come to, or
+with the same refusal, and tells nobody. The discount dialog shows the sum from it.
+
 `GET /export/download/{token}` takes no session: the token from `POST /admin/export/links`
 is the authorisation — see "Export" in [domain.md](domain.md#export).
 
@@ -240,8 +244,8 @@ cycle_not_closed          cycle_not_found           cycle_orders_changed
 discount_exceeds_total    discount_rounds_to_zero
 export_link_invalid       invalid_refresh_token     invalid_token
 last_order_item           no_active_cycle           not_authenticated
-order_changed             order_has_receipt         order_item_not_found
-order_not_discountable
+order_changed             order_discount_no_room    order_has_receipt
+order_item_not_found      order_not_discountable
 order_not_editable        order_not_found           order_not_restorable
 order_status_not_assignable
 order_status_transition_invalid                     super_admin_immutable

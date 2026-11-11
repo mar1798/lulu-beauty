@@ -31,6 +31,7 @@ __all__ = [
     "AdminOrderCreateRequest",
     "AdminOrderCycleResponse",
     "AdminOrderDiscount",
+    "AdminOrderDiscountPreviewResponse",
     "AdminOrderDiscountRequest",
     "AdminOrderEditRequest",
     "AdminOrderItemQuantity",
@@ -171,6 +172,12 @@ class AdminOrderDiscountRequest(CamelModel):
     revision: int = Field(ge=0)
     item_id: uuid.UUID | None = None
     discount: AdminOrderDiscount | None
+
+
+class AdminOrderDiscountPreviewResponse(CamelModel):
+    """What the order would come to with the discount — `PUT .../discount` without saving."""
+
+    total_cents: int
 
 
 class AdminOrderCycleResponse(CamelModel):

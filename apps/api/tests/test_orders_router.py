@@ -24,6 +24,7 @@ from app.orders.service import (
     NoCycleForOrderError,
     OrderChangedError,
     OrderCycleUnavailableError,
+    OrderDiscountNoRoomError,
     OrderHasReceiptError,
     OrderItemNotFoundError,
     OrderNotDiscountableError,
@@ -646,9 +647,7 @@ async def test_a_discount_that_changed_nothing_tells_nobody(
 async def test_discount_refuses_an_invalid_value(
     committing_client: AsyncClient, discount: dict[str, object]
 ) -> None:
-    code, _, service, _ = await _discount(
-        committing_client, {"revision": 0, "discount": discount}
-    )
+    code, _, service, _ = await _discount(committing_client, {"revision": 0, "discount": discount})
 
     assert code == 422
     service.set_discount.assert_not_awaited()
@@ -663,6 +662,7 @@ async def test_discount_refuses_an_invalid_value(
         (OrderItemNotFoundError(), (404, "order_item_not_found")),
         (OrderHasReceiptError(), (409, "order_has_receipt")),
         (DiscountExceedsTotalError(), (409, "discount_exceeds_total")),
+        (OrderDiscountNoRoomError(), (409, "order_discount_no_room")),
         (DiscountRoundsToZeroError(), (409, "discount_rounds_to_zero")),
     ],
 )
@@ -677,6 +677,49 @@ async def test_discount_maps_errors_to_codes(
 
     assert (code, body["detail"]) == expected  # type: ignore[index]
     notify.assert_not_awaited()
+
+
+async def _preview(
+    body: dict[str, object], *, error: Exception | None = None
+) -> tuple[int, object, MagicMock, AsyncMock]:
+    order = _order(OrderStatus.PENDING)
+    order.total_cents = 4200
+    session = AsyncMock()
+    app.dependency_overrides[get_session] = lambda: session
+    app.dependency_overrides[require_admin] = lambda: CurrentUser(id=uuid.uuid4(), role=Role.ADMIN)
+    try:
+        with (
+            patch("app.orders.router.OrdersService") as mock_service_cls,
+            patch("app.orders.router.notify_order_discount", new_callable=AsyncMock) as notify,
+        ):
+            service = _mock_service(mock_service_cls)
+            service.set_discount = AsyncMock(return_value=(order, _GIVEN), side_effect=error)
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+                response = await c.post(f"/admin/orders/{order.id}/discount/preview", json=body)
+    finally:
+        app.dependency_overrides.clear()
+    notify.assert_not_awaited()
+    session.commit.assert_not_awaited()
+    session.rollback.assert_awaited_once()
+    return response.status_code, response.json(), service, session
+
+
+async def test_discount_preview_runs_the_same_call_and_rolls_it_back() -> None:
+    code, body, service, _ = await _preview(
+        {"revision": 1, "discount": {"kind": "PERCENT", "value": 10}}
+    )
+
+    assert (code, body) == (200, {"totalCents": 4200})
+    assert service.set_discount.await_args.args[1:] == (1, None, (DiscountKind.PERCENT, 10), None)
+
+
+async def test_discount_preview_refuses_with_the_same_codes() -> None:
+    code, body, _, _ = await _preview(
+        {"revision": 0, "discount": {"kind": "AMOUNT", "value": 500}},
+        error=OrderDiscountNoRoomError(),
+    )
+
+    assert (code, body) == (409, {"detail": "order_discount_no_room"})
 
 
 async def test_admin_order_cycles_maps_user_id_and_shape(client: AsyncClient) -> None:

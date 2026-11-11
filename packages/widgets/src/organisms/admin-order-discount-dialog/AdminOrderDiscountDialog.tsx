@@ -19,9 +19,7 @@ import { orderStatusLabel } from '../../molecules/order-status-badge'
 import {
   DISCOUNT_NOTE_MAX_LENGTH,
   MAX_DISCOUNT_PERCENT,
-  discountProblem,
   formatDiscount,
-  totalWithDiscount,
 } from '../../utils/discount'
 import { parsePrice, priceOnly, priceToInput } from '../../utils/priceInput'
 import { formatVariant } from '../../utils/variants'
@@ -43,8 +41,9 @@ import * as styles from './AdminOrderDiscountDialog.css'
  * строки: от них админ и прикидывает, какую скидку может дать. В списке строки
  * узнаются по миниатюре товара.
  *
- * Внизу — сумма заявки до и после: та же арифметика, что на бэкенде
- * (`utils/discount`), чтобы админ подтверждал ровно то число, которое уйдёт
+ * Внизу — сумма заявки до и после. Её считает бэкенд: окно отдаёт набранное в
+ * `onDraftChange`, страница спрашивает `.../discount/preview` и возвращает
+ * ответ в `preview`, — так админ подтверждает ровно то число, которое уйдёт
  * покупателю. Само подтверждение спрашивает страница — окно только собирает
  * скидку и отдаёт её в `onSubmit`.
  *
@@ -52,7 +51,8 @@ import * as styles from './AdminOrderDiscountDialog.css'
  * уже ушли, и новая сумма к оплате за ними не успеет. Сначала решите с чеком.
  *
  * Отказы бэкенда («больше суммы», «округлилась до нуля», «скидке на заявку не
- * останется места») окно знает заранее (`discountProblem`) и показывает у поля.
+ * останется места») приходят тем же ответом (`preview.error`) и видны у поля
+ * до «Дать скидку».
  * Та же скидка с той же причиной — не изменение, и кнопка недоступна.
  *
  * Клик мимо окна его не закрывает (`isDismissable={false}`): за ним набранное.
@@ -109,6 +109,8 @@ export const AdminOrderDiscountDialog: FC<IAdminOrderDiscountDialogProps & IBasi
   error = null,
   onSubmit,
   onRemove,
+  onDraftChange,
+  preview,
   className,
 }) => {
   const [target, setTarget] = useState(WHOLE_ORDER)
@@ -148,28 +150,21 @@ export const AdminOrderDiscountDialog: FC<IAdminOrderDiscountDialogProps & IBasi
         ? 'Сумма в сомах, например 500 или 250.50'
         : null
 
-  const problem =
-    order === null || inputError !== null || value === null
-      ? null
-      : discountProblem(order, { itemId, kind: fields.kind, value })
+  const draftValue = inputError === null ? value : null
 
-  /*
-    «Больше суммы» бывает про саму скидку и про уже стоящую скидку на заявку:
-    скидка строки оставляет ей меньше, и бэкенд её молча не урежет.
-  */
-  const overLine =
-    targetItem === undefined ||
-    (fields.kind === 'AMOUNT' && value !== null && value > targetItem.lineTotalCents)
+  // Набранное уходит странице на расчёт; пока окно закрыто, считать нечего.
+  useEffect(() => {
+    if (!isOpen) {
+      return
+    }
 
-  const valueError =
-    inputError ??
-    (problem === 'zero'
-      ? 'Скидка округлилась до 0 сом - увеличьте её'
-      : problem === 'exceeds'
-        ? overLine
-          ? 'Скидка больше суммы, с которой она снимается'
-          : 'Скидке на всю заявку не останется места - сначала уменьшите её'
-        : null)
+    onDraftChange(draftValue === null ? null : { itemId, kind: fields.kind, value: draftValue })
+    // `onDraftChange` страница пересоздаёт на каждый рендер — слушаем только набранное.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, itemId, fields.kind, draftValue])
+
+  // Ответ на прежнее набранное — уже не про это: пока считается, ни суммы, ни отказа.
+  const valueError = inputError ?? (preview.isPending ? null : preview.error)
 
   const note = fields.note.trim()
   const isUnchanged =
@@ -179,9 +174,7 @@ export const AdminOrderDiscountDialog: FC<IAdminOrderDiscountDialogProps & IBasi
     (current.discountNote ?? '') === note
 
   const totalAfter =
-    order === null || valueError !== null || value === null
-      ? null
-      : totalWithDiscount(order, { itemId, kind: fields.kind, value })
+    order === null || valueError !== null || preview.isPending ? null : preview.totalCents
 
   const targetOptions: ISelectOption[] =
     order === null
@@ -211,11 +204,11 @@ export const AdminOrderDiscountDialog: FC<IAdminOrderDiscountDialogProps & IBasi
   const handleSubmit = (): void => {
     setIsSubmitted(true)
 
-    if (valueError !== null || value === null || isUnchanged || hasReceipt) {
+    if (valueError !== null || draftValue === null || isUnchanged || hasReceipt) {
       return
     }
 
-    onSubmit({ itemId, kind: fields.kind, value, note: note === '' ? null : note })
+    onSubmit({ itemId, kind: fields.kind, value: draftValue, note: note === '' ? null : note })
   }
 
   return (

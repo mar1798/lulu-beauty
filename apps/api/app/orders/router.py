@@ -13,6 +13,7 @@ from app.orders.models import Order, OrderItem, OrderStatus
 from app.orders.schemas import (
     AdminOrderCreateRequest,
     AdminOrderCycleResponse,
+    AdminOrderDiscountPreviewResponse,
     AdminOrderDiscountRequest,
     AdminOrderEditRequest,
     AdminOrderMessageRequest,
@@ -29,6 +30,7 @@ from app.orders.schemas import (
 )
 from app.orders.service import (
     CustomerNotFoundError,
+    DiscountChange,
     DiscountExceedsTotalError,
     DiscountRoundsToZeroError,
     EmptyCartError,
@@ -37,6 +39,7 @@ from app.orders.service import (
     NoCycleForOrderError,
     OrderChangedError,
     OrderCycleUnavailableError,
+    OrderDiscountNoRoomError,
     OrderFlags,
     OrderHasReceiptError,
     OrderItemNotFoundError,
@@ -607,24 +610,13 @@ async def edit_order_admin(
     return response
 
 
-@router.put("/admin/orders/{order_id}/discount", response_model=AdminOrderResponse)
-async def set_order_discount_admin(
-    order_id: uuid.UUID,
-    body: AdminOrderDiscountRequest,
-    background_tasks: BackgroundTasks,
-    session: AsyncSession = Depends(get_session),
-    _admin: CurrentUser = Depends(require_admin),
-) -> AdminOrderResponse:
-    """An admin gives a discount on a line or the whole order, or takes it back.
-
-    Before the payment only, and not while a receipt for the bill waits for a verdict.
-    The status does not move; after the commit the customer is told the discount, its
-    reason and the new sum. Setting what is already there sends nothing.
-    """
-    service = OrdersService(session)
+async def _set_discount(
+    service: OrdersService, order_id: uuid.UUID, body: AdminOrderDiscountRequest
+) -> tuple[Order, DiscountChange | None]:
+    """`OrdersService.set_discount` with its refusals as the codes the panel branches on."""
     discount = body.discount
     try:
-        order, change = await service.set_discount(
+        return await service.set_discount(
             order_id,
             body.revision,
             body.item_id,
@@ -643,8 +635,28 @@ async def set_order_discount_admin(
         raise HTTPException(status.HTTP_409_CONFLICT, "order_has_receipt") from error
     except DiscountExceedsTotalError as error:
         raise HTTPException(status.HTTP_409_CONFLICT, "discount_exceeds_total") from error
+    except OrderDiscountNoRoomError as error:
+        raise HTTPException(status.HTTP_409_CONFLICT, "order_discount_no_room") from error
     except DiscountRoundsToZeroError as error:
         raise HTTPException(status.HTTP_409_CONFLICT, "discount_rounds_to_zero") from error
+
+
+@router.put("/admin/orders/{order_id}/discount", response_model=AdminOrderResponse)
+async def set_order_discount_admin(
+    order_id: uuid.UUID,
+    body: AdminOrderDiscountRequest,
+    background_tasks: BackgroundTasks,
+    session: AsyncSession = Depends(get_session),
+    _admin: CurrentUser = Depends(require_admin),
+) -> AdminOrderResponse:
+    """An admin gives a discount on a line or the whole order, or takes it back.
+
+    Before the payment only, and not while a receipt for the bill waits for a verdict.
+    The status does not move; after the commit the customer is told the discount, its
+    reason and the new sum. Setting what is already there sends nothing.
+    """
+    service = OrdersService(session)
+    order, change = await _set_discount(service, order_id, body)
 
     customers = await service.load_customers([order])
     creators = await service.load_creators([order])
@@ -657,6 +669,30 @@ async def set_order_discount_admin(
     if change is not None:
         background_tasks.add_task(notify_order_discount, order.id, body.item_id, change)
     return response
+
+
+@router.post(
+    "/admin/orders/{order_id}/discount/preview",
+    response_model=AdminOrderDiscountPreviewResponse,
+)
+async def preview_order_discount_admin(
+    order_id: uuid.UUID,
+    body: AdminOrderDiscountRequest,
+    session: AsyncSession = Depends(get_session),
+    _admin: CurrentUser = Depends(require_admin),
+) -> AdminOrderDiscountPreviewResponse:
+    """What `PUT .../discount` with this body would make the order come to, or why it refuses.
+
+    The very same call, rolled back instead of committed: the discount dialog shows the new
+    sum and the refusal while the admin types, and the arithmetic stays in one place
+    (`app/orders/discounts.py`) instead of being copied into the website. Nothing is sent.
+    """
+    service = OrdersService(session)
+    try:
+        order, _ = await _set_discount(service, order_id, body)
+        return AdminOrderDiscountPreviewResponse(total_cents=order.total_cents)
+    finally:
+        await session.rollback()
 
 
 @router.post("/admin/orders/{order_id}/message", status_code=status.HTTP_204_NO_CONTENT)

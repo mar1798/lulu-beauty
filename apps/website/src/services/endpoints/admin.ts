@@ -416,6 +416,17 @@ export const setAdminOrderDiscount = (
 ): Promise<IAdminOrder> =>
   api.put(`/admin/orders/${encodeURIComponent(orderId)}/discount`, { body: input })
 
+/**
+ * Та же скидка без сохранения: во что обойдётся заявка или почему бэкенд
+ * откажет (те же коды, что у `setAdminOrderDiscount`). Ничего не меняет и
+ * никому не пишет. Сумму скидки фронтенд сам не считает — только так.
+ */
+export const previewAdminOrderDiscount = (
+  orderId: string,
+  input: IAdminOrderDiscountRequest
+): Promise<{ totalCents: number }> =>
+  api.post(`/admin/orders/${encodeURIComponent(orderId)}/discount/preview`, { body: input })
+
 export const updateOrderStatus = (orderId: string, status: OrderStatus): Promise<IAdminOrder> =>
   api.patch(`/admin/orders/${encodeURIComponent(orderId)}/status`, { body: { status } })
 

@@ -654,18 +654,21 @@ and asks for confirmation — with the sum before and after — before anything 
 - **The arithmetic.** A line's discount comes off its price × quantity; the order's comes
   off what the lines add up to after theirs. Percent discounts, and discounts scaled down
   with the sum, are rounded to whole сом, half up (10% of 1 255 is 126, not 125,50).
-  Neither ever goes below zero; 100%, a total of 0, is allowed. The website repeats the same
-  arithmetic as it stands right after an admin's action (`widgets/utils/discount.ts`) to
-  preview the sum in the discount dialog, its confirmation and the edit dialog; the number
-  the customer pays is always the API's.
+  Neither ever goes below zero; 100%, a total of 0, is allowed. This arithmetic lives in
+  `app/orders/discounts.py` and nowhere else: the discount dialog and its confirmation get
+  the sum from `POST /admin/orders/{id}/discount/preview` — the same `set_discount`, rolled
+  back instead of committed — and the edit dialog adds up the per-line `discountCents` the
+  API already sent. `widgets/utils/discount.ts` only names discounts.
 - **One per target, replaced not stacked.** Setting a discount where one already is
   replaces it; `discount: null` takes it off. Refused when it is set, with nothing changed,
   rather than silently adjusted — the admin confirmed the number they typed:
-  - an amount larger than what it comes off, and that includes the order's own amount,
-    which a new line discount leaves less to come off (`409 discount_exceeds_total`);
+  - an amount larger than what it comes off (`409 discount_exceeds_total`);
+  - a line discount that leaves the order's own amount more than there is left to take it
+    from (`409 order_discount_no_room`) — that one is to be made smaller first;
   - a discount that rounds to nothing, 1% of 40 сом (`409 discount_rounds_to_zero`).
 
-  The dialog knows both in advance (`discountProblem`) and shows them under the field. The
+  The dialog learns them from the preview while the admin types and shows them under the
+  field. The
   same discount with the same note is not a change: the dialog keeps the button off, and
   the API returns without telling anyone.
 

@@ -30,13 +30,17 @@ describe('AdminOrderDiscountDialog', () => {
     })
   })
 
-  it('показывает сумму до и после', async () => {
+  it('отдаёт набранное на расчёт и показывает сумму, которую вернула страница', async () => {
+    const onDraftChange = vi.fn()
     const user = userEvent.setup()
 
-    renderWidget(<AdminOrderDiscountDialog {...feedAdminOrderDiscountDialog()} />)
+    renderWidget(
+      <AdminOrderDiscountDialog {...feedAdminOrderDiscountDialog()} onDraftChange={onDraftChange} />
+    )
     await user.type(screen.getByLabelText(/Размер, %/), '10')
 
-    // 4 200 сом − 10% = 3 780 сом.
+    expect(onDraftChange).toHaveBeenLastCalledWith({ itemId: null, kind: 'PERCENT', value: 10 })
+    // Сумму считает бэкенд — в окне то, что пришло в `preview`.
     expect(screen.getByText(/Было/)).toBeTruthy()
     // Разряды Intl разделяет неразрывным пробелом, который нормализатор
     // testing-library сворачивает, — сравниваем текст как есть.
@@ -59,6 +63,29 @@ describe('AdminOrderDiscountDialog', () => {
     expect(
       screen.getAllByText((_, element) => element?.textContent === formatPrice(300_000))
     ).not.toHaveLength(0)
+  })
+
+  it('отказ бэкенда виден у поля и не даёт отправить', async () => {
+    const onSubmit = vi.fn()
+    const user = userEvent.setup()
+    const preview = {
+      totalCents: null,
+      error: 'Скидка больше суммы, с которой она снимается',
+      isPending: false,
+    }
+
+    renderWidget(
+      <AdminOrderDiscountDialog
+        {...feedAdminOrderDiscountDialog()}
+        preview={preview}
+        onSubmit={onSubmit}
+      />
+    )
+    await user.type(screen.getByLabelText(/Размер, %/), '90')
+    await user.click(screen.getByRole('button', { name: 'Дать скидку' }))
+
+    expect(onSubmit).not.toHaveBeenCalled()
+    expect(screen.getByText('Скидка больше суммы, с которой она снимается')).toBeTruthy()
   })
 
   it('без размера не отправляет', async () => {

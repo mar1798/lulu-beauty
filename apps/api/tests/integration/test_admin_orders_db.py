@@ -25,6 +25,7 @@ from app.orders.service import (
     NoCycleForOrderError,
     OrderChangedError,
     OrderCycleUnavailableError,
+    OrderDiscountNoRoomError,
     OrderHasReceiptError,
     OrderItemNotFoundError,
     OrderNotDiscountableError,
@@ -874,7 +875,7 @@ async def test_a_line_discount_may_not_leave_the_order_amount_without_room(
         order.id, order.revision, None, (DiscountKind.AMOUNT, 4000), None
     )
 
-    with pytest.raises(DiscountExceedsTotalError):
+    with pytest.raises(OrderDiscountNoRoomError):
         # Serum −2000 leaves 3000 for an order amount of 4000.
         await service.set_discount(
             order.id, order.revision, serum.id, (DiscountKind.AMOUNT, 2000), None

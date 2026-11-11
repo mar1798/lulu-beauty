@@ -26,6 +26,10 @@ takes the discounts it touches off altogether (`clear_discount` in the service) 
 order's on any change, a line's when that line is changed — and the website warns before
 it does.
 
+This module is the only place the arithmetic lives. The website shows the sum a discount
+would come to by asking the API (`POST /admin/orders/{id}/discount/preview`), not by
+counting it again.
+
 The order of operations is fixed: each line's own discount comes off its price × quantity,
 and the order's discount comes off what the lines add up to after that. Neither ever takes
 more than what it is taken from.

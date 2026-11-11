@@ -2175,6 +2175,36 @@ export interface IAdminOrderDiscountDialogProps {
   onSubmit: (input: IAdminOrderDiscountInput) => void
   /** Снять скидку, которая уже стоит у цели: у строки (`itemId`) или у заявки (`null`). */
   onRemove: (itemId: string | null) => void
+  /**
+   * Скидка, набранная в окне, — чтобы страница спросила у бэкенда, во что она
+   * обойдётся (`preview`). `null` — набранное ещё не скидка (пустое поле,
+   * процент вне 1–100). Окно зовёт его на каждое изменение цели, вида или размера.
+   */
+  onDraftChange: (draft: IAdminOrderDiscountDraft | null) => void
+  /** Ответ бэкенда на последний `onDraftChange`. */
+  preview: IAdminOrderDiscountPreview
+}
+
+/** Скидка, какой её набрали в окне, без причины — на сумму причина не влияет. */
+export interface IAdminOrderDiscountDraft {
+  /** Строка заявки; `null` — вся заявка. */
+  itemId: string | null
+  kind: DiscountKind
+  value: number
+}
+
+/**
+ * Во что обойдётся набранная скидка — посчитано бэкендом, тем же кодом, что
+ * сохраняет. Арифметики скидок на фронтенде нет: одно место счёта — одна сумма
+ * в окне, в подтверждении и в сообщении покупателю.
+ */
+export interface IAdminOrderDiscountPreview {
+  /** Сумма заявки с этой скидкой; `null` — ещё не посчитана или отказ. */
+  totalCents: number | null
+  /** Почему бэкенд такую скидку не примет — текст для поля. */
+  error: string | null
+  /** Запрос в пути: старый ответ ещё на экране, но уже не про набранное. */
+  isPending: boolean
 }
 
 /**

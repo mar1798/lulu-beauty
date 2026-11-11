@@ -88,6 +88,15 @@ class DiscountExceedsTotalError(Exception):
     """
 
 
+class OrderDiscountNoRoomError(Exception):
+    """A line's new discount leaves the order's own amount more than there is to take it from.
+
+    Apart from `DiscountExceedsTotalError`, which is about the discount being set: here
+    that one is fine, and it is the order's discount, set earlier, that no longer fits.
+    The admin is told to make that one smaller first rather than this one.
+    """
+
+
 class DiscountRoundsToZeroError(Exception):
     """A percent so small of so little that, rounded to whole сом, it takes nothing off.
 
@@ -1085,9 +1094,9 @@ class OrdersService:
           the current bill waiting for a verdict (`OrderHasReceiptError`);
         - `revision` other than the order's (`OrderChangedError`): the admin confirmed a sum
           computed from the lines they saw;
-        - an amount larger than what it is taken from — and that holds for the order's own
-          amount too, which a new line discount leaves less to come off
-          (`DiscountExceedsTotalError`);
+        - an amount larger than what it is taken from (`DiscountExceedsTotalError`) — and
+          the order's own amount, which a new line discount leaves less to come off, larger
+          than what is left for it (`OrderDiscountNoRoomError`);
         - a discount that rounds to nothing (`DiscountRoundsToZeroError`).
 
         Returns the order and the change, or None when nothing changed — the same discount
@@ -1143,7 +1152,7 @@ class OrdersService:
         anchor_discounts(order)
         try:
             self._check_discounts(order, target)
-        except (DiscountExceedsTotalError, DiscountRoundsToZeroError):
+        except (DiscountExceedsTotalError, OrderDiscountNoRoomError, DiscountRoundsToZeroError):
             for holder, (k, v, n, b) in zip(holders, saved, strict=True):
                 holder.discount_kind = k
                 holder.discount_value = v
@@ -1188,7 +1197,7 @@ class OrdersService:
             and order.discount_value is not None
             and totals.order_discount_cents < order.discount_value
         ):
-            raise DiscountExceedsTotalError
+            raise DiscountExceedsTotalError if target is order else OrderDiscountNoRoomError
 
     async def update_note(self, user_id: uuid.UUID, order_id: uuid.UUID, note: str | None) -> Order:
         order = await self._get_editable(user_id, order_id)
