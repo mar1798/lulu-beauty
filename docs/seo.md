@@ -91,9 +91,10 @@ JSON-LD ever sees markup. The first-sentence rule splits on sentence punctuation
 lines, so a description that _opens_ with a subheading or a list folds its first line into
 the sentence after it.
 
-Two claims in the copy are facts about the catalogue, not slogans, and stop being true if the
-catalogue changes: that everything in it is Korean, and that the four sections are face care,
-hair care, sets and gadgets.
+One claim in the copy is a fact about the catalogue, not a slogan, and stops being true if the
+catalogue changes: that the four sections are face care, hair care, sets and gadgets. The copy
+used to call the whole catalogue Korean; it no longer does, because the range isn't only Korean
+any more.
 
 ## Structured data (JSON-LD)
 
