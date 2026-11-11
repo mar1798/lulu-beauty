@@ -402,7 +402,7 @@ def order_edited(order: Order) -> str:
 # Where the money goes. Written into the text rather than kept in settings: it is part
 # of the wording, and the owner reads and changes it the same way as the rest of it.
 PAYMENT_DETAILS = (
-    "💳 996509817818\n(доступны переводы по номеру телефона на обанк, симбу, бакай и оптиму)"
+    "💳 996509817818\n(доступны переводы по номеру телефона на обанк, симбу и бакай)"
 )
 
 
