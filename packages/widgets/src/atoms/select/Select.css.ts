@@ -201,6 +201,43 @@ export const disabled = style({
   },
 })
 
+/**
+ * Подпись с миниатюрой — в строке списка и в поле. `minWidth: 0`, чтобы
+ * многоточие у подписи срабатывало и рядом с картинкой.
+ */
+export const withThumb = style({
+  ...flexRow(8),
+  alignItems: 'center',
+  minWidth: 0,
+})
+
+/** Пропорции те же, что у карточки товара, — 4:5, — только мельче. */
+const thumbBase = style({
+  position: 'relative',
+  flexShrink: 0,
+  aspectRatio: '4 / 5',
+  overflow: 'hidden',
+  borderRadius: vars.radius.xs,
+  backgroundColor: color.surface('sunken'),
+})
+
+/** В списке — крупнее: там по фото и ищут; в поле — в его высоту. */
+export const thumb = styleVariants({
+  option: [thumbBase, { width: rem(32) }],
+  value: [thumbBase, { width: rem(20) }],
+})
+
+/** Фото нет — приглушённая коробка, как у позиции заявки (`ItemRow`). */
+export const thumbPlaceholder = style({
+  position: 'absolute',
+  inset: 0,
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  fontSize: rem(14),
+  color: color.text('subtle'),
+})
+
 export const optionLabel = style({
   overflow: 'hidden',
   textOverflow: 'ellipsis',

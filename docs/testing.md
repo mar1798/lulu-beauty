@@ -2,11 +2,11 @@
 
 Three suites, none of which covers another.
 
-| Package            | Runner                   | Command                                                        |
-| ------------------ | ------------------------ | -------------------------------------------------------------- |
-| `packages/widgets` | vitest + Testing Library | `npm test -w widgets` (or `npm test` from the root, via turbo) |
-| `apps/api`         | pytest + pytest-asyncio  | `uv run pytest` from `apps/api`                                |
-| `apps/website`     | _(no test suite)_        | covered by `npm run check` — types + lint                      |
+| Package            | Runner                   | Command                                                         |
+| ------------------ | ------------------------ | --------------------------------------------------------------- |
+| `packages/widgets` | vitest + Testing Library | `npm test -w widgets` (or `npm test` from the root, via turbo)  |
+| `apps/api`         | pytest + pytest-asyncio  | `uv run pytest` from `apps/api`                                 |
+| `apps/website`     | vitest + Testing Library | `npm test -w website` — hooks only; the rest is `npm run check` |
 
 ## ⚠️ Never point the API suite at your dev database
 
@@ -79,10 +79,23 @@ Single file:
 cd packages/widgets && npx vitest run src/atoms/button/Button.test.tsx
 ```
 
+## `apps/website`
+
+Config in `vitest.config.mts` (`jsdom`, the `@/` alias, `src/**/*.test.ts`). Not for pages or
+markup — that is `widgets`' job, and the site only assembles it. It is for hooks whose logic
+typechecks while being wrong: `useChecklistMarks.test.ts` drives real SWR with deferred
+requests to pin down what happens when several ticks are in flight at once. Mock
+`@/services/endpoints/*` with `vi.mock`, and give each test its own SWR cache
+(`SWRConfig` with `provider: () => new Map()`).
+
+```bash
+cd apps/website && npx vitest run src/hooks/useChecklistMarks.test.ts
+```
+
 ## What CI actually runs
 
 - `node.js.yml`: `npm ci` → `npm run check` → `npm test`. Types and lint are not the tests:
-  the vitest suites in `packages/widgets` cover behavior that typechecks perfectly while being
-  wrong.
+  the vitest suites in `packages/widgets` and `apps/website` cover behavior that typechecks
+  perfectly while being wrong.
 - `api.yml`: `ruff` → `mypy` → `alembic upgrade head` → `pytest`, with a real Postgres, so the
   integration tests execute there.

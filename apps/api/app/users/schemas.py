@@ -3,9 +3,9 @@ from datetime import datetime
 
 from pydantic import Field, field_validator
 
-from app.auth.models import Role
+from app.auth.models import DELIVERY_TEXT_MAX_LENGTH, Role
 from app.common.schemas import CamelModel, require_not_null
-from app.common.text import single_line
+from app.common.text import multi_line, single_line
 
 
 class UserResponse(CamelModel):
@@ -19,11 +19,20 @@ class UserResponse(CamelModel):
     # one phone share the webview's cookies, and without the check an order would go out
     # from whichever of them signed in last.
     telegram_user_id: int | None
+    # Both optional and both the customer's own: the owner reads them next to the order
+    # (`AdminOrderResponse.customer_delivery_*`) and arranges the hand-over in person.
+    delivery_address: str | None = None
+    delivery_note: str | None = None
 
 
 class UserUpdateRequest(CamelModel):
     # None is the "field omitted" default, not a value: users.name is NOT NULL.
     name: str | None = Field(default=None, min_length=1, max_length=255)
+    # Here None *is* a value — it clears the field — and so is "", which the validator
+    # below turns into None: a textarea emptied by hand sends an empty string, and
+    # storing that would leave two spellings of "nothing" in the column.
+    delivery_address: str | None = Field(default=None, max_length=DELIVERY_TEXT_MAX_LENGTH)
+    delivery_note: str | None = Field(default=None, max_length=DELIVERY_TEXT_MAX_LENGTH)
 
     @field_validator("name", mode="before")
     @classmethod
@@ -41,6 +50,15 @@ class UserUpdateRequest(CamelModel):
         if not name:
             raise ValueError("name must not be blank")
         return name
+
+    @field_validator("delivery_address", "delivery_note")
+    @classmethod
+    def _tidy_delivery(cls, value: str | None) -> str | None:
+        # Line breaks kept (an address reads better with the flat on its own line),
+        # everything blank collapsed to None.
+        if value is None:
+            return None
+        return multi_line(value) or None
 
 
 class AdminUserResponse(UserResponse):

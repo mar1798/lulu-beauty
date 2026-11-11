@@ -33,6 +33,10 @@ class Role(enum.StrEnum):
 #: above it, so anything checking "is this the owner" has to accept both.
 ADMIN_ROLES = (Role.ADMIN, Role.SUPER_ADMIN)
 
+#: Cap on each of the two delivery fields on a profile. An address with a landmark fits
+#: in a fraction of it; the cap is there so the column has one, not to be reached.
+DELIVERY_TEXT_MAX_LENGTH = 500
+
 
 class User(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     """A customer (or the owner), identified by a phone number Telegram vouched for.
@@ -50,8 +54,9 @@ class User(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     `deleted_at` is erasure, not a soft delete of the product kind: the row survives only
     so the orders hanging off it survive (they cascade), and by the time it is stamped
     the personal data is already gone — `phone` overwritten with a placeholder, `name`
-    replaced, `telegram_chat_id` cleared. Nothing here can be restored, and nothing about
-    the person can be read back out of it. See `UsersService.delete_account`.
+    replaced, `telegram_chat_id` and both delivery fields cleared. Nothing here can be
+    restored, and nothing about the person can be read back out of it. See
+    `UsersService.delete_account`.
     """
 
     __tablename__ = "users"
@@ -60,6 +65,14 @@ class User(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     name: Mapped[str] = mapped_column(String(255))
     role: Mapped[Role] = mapped_column(SAEnum(Role, name="role"), default=Role.CUSTOMER)
     telegram_chat_id: Mapped[int | None] = mapped_column(BigInteger, unique=True)
+    #: Where the goods go, as the customer writes it. Free text: nothing here delivers
+    #: anything — the owner reads it and arranges the hand-over in person — so splitting
+    #: it into city / street / flat would only be more boxes to leave empty.
+    delivery_address: Mapped[str | None] = mapped_column(String(DELIVERY_TEXT_MAX_LENGTH))
+    #: How the customer wants to receive: pick-up, a courier, a parcel to another town,
+    #: "call after six". About the person rather than one order, which is what tells it
+    #: apart from `Order.note`.
+    delivery_note: Mapped[str | None] = mapped_column(String(DELIVERY_TEXT_MAX_LENGTH))
     #: When the person asked to be forgotten. NULL for every live account, which is what
     #: every listing and lookup filters on.
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

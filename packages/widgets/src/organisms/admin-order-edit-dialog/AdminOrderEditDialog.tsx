@@ -5,6 +5,7 @@ import type {
   IAdminOrderEditLine,
   IBasicStyling,
   IItemRowItem,
+  IOrderItem,
   OrderStatus,
 } from '../../types'
 import { Alert } from '../../atoms/alert'
@@ -14,6 +15,7 @@ import { Text } from '../../atoms/text'
 import { ItemRow } from '../../molecules/item-row'
 import { ITEM_FORMS } from '../../molecules/order-card'
 import { orderStatusLabel } from '../../molecules/order-status-badge'
+import { editedItemIds, formatDiscount, lostDiscounts } from '../../utils/discount'
 import { pluralize } from '../../utils/plural'
 import { adminOrderNumber } from '../admin-orders-table'
 import { Modal } from '../modal'
@@ -38,6 +40,13 @@ import * as styles from './AdminOrderEditDialog.css'
  *
  * Пустой состав не сохранить: заявка без товаров — это отмена, и делается
  * она статусом.
+ *
+ * Скидки правка снимает так же, как правка покупателя: скидку на заявку — при
+ * любом изменении, скидку строки — если строку убрали или поменяли количество.
+ * Нетронутые строки свою сохраняют. Что снимется, окно говорит над итогом, а
+ * страница переспрашивает перед сохранением. Итог складывается из того, что
+ * прислал бэкенд: нетронутая строка стоит, сколько стоила со скидкой, остальные
+ * — цена × количество. Своей арифметики скидок здесь нет.
  *
  * Клик мимо окна его не закрывает (`isDismissable={false}`): за ним правка.
  */
@@ -79,7 +88,27 @@ export const AdminOrderEditDialog: FC<IAdminOrderEditDialogProps & IBasicStyling
   onSubmit,
   className,
 }) => {
-  const totalCents = lines.reduce((sum, line) => sum + line.priceCents * line.quantity, 0)
+  const edited = order === null ? [] : editedItemIds(order, lines)
+
+  /* Строка заявки, которую правка не тронула, — со своей скидкой и её суммой. */
+  const untouched = (line: IAdminOrderEditLine): IOrderItem | undefined =>
+    line.itemId === null || edited.includes(line.itemId)
+      ? undefined
+      : order?.items.find(item => item.id === line.itemId)
+
+  const lost = order === null || !hasChanges ? [] : lostDiscounts(order, edited)
+  const totalCents =
+    order !== null && !hasChanges
+      ? order.totalCents
+      : lines.reduce((sum, line) => {
+          const item = untouched(line)
+
+          return (
+            sum +
+            (item?.lineTotalCents ?? line.priceCents * line.quantity) -
+            (item?.discountCents ?? 0)
+          )
+        }, 0)
   const canSubmit = order !== null && lines.length > 0 && hasChanges
 
   const notes: string[] = []
@@ -143,27 +172,52 @@ export const AdminOrderEditDialog: FC<IAdminOrderEditDialogProps & IBasicStyling
         <div className={styles.section}>
           {lines.length > 0 ? (
             <div className={styles.items}>
-              {lines.map(line => (
-                <ItemRow
-                  key={line.key}
-                  item={asItem(line)}
-                  href={buildProductHref(line.productSlug)}
-                  onQuantityChange={quantity => {
-                    onQuantityChange(line.key, quantity)
-                  }}
-                  onRemove={() => {
-                    onRemove(line.key)
-                  }}
-                  removeLabel={`Убрать из заявки: ${line.productName}`}
-                  isBusy={isBusy}
-                  isQuantityBusy={isBusy}
-                />
-              ))}
+              {lines.map(line => {
+                const own = untouched(line)
+
+                return (
+                  <ItemRow
+                    key={line.key}
+                    item={asItem(line)}
+                    discount={
+                      own?.discountKind == null || own.discountValue === null
+                        ? null
+                        : {
+                            cents: own.discountCents,
+                            label: formatDiscount(own.discountKind, own.discountValue),
+                            note: own.discountNote,
+                          }
+                    }
+                    href={buildProductHref(line.productSlug)}
+                    onQuantityChange={quantity => {
+                      onQuantityChange(line.key, quantity)
+                    }}
+                    onRemove={() => {
+                      onRemove(line.key)
+                    }}
+                    removeLabel={`Убрать из заявки: ${line.productName}`}
+                    isBusy={isBusy}
+                    isQuantityBusy={isBusy}
+                  />
+                )
+              })}
             </div>
           ) : (
             <Alert tone="warning" title="В заявке не осталось товаров">
               Пустую заявку не сохранить - если она больше не нужна, отмените её статусом
             </Alert>
+          )}
+
+          {lost.length > 0 && (
+            <Alert tone="warning" title={lost.length > 1 ? 'Скидки снимутся' : 'Скидка снимется'}>
+              {`${lost.join(', ')} - ${lost.length > 1 ? 'они были даны' : 'она была дана'} на прежний состав. Покупатель увидит это в сообщении бота; если скидка остаётся в силе - дайте её заново после сохранения`}
+            </Alert>
+          )}
+
+          {order?.discountKind != null && order.discountValue !== null && !hasChanges && (
+            <Text size="sm" tone="muted">
+              {`Скидка на заявку ${formatDiscount(order.discountKind, order.discountValue)}`}
+            </Text>
           )}
 
           <div className={styles.totalRow}>

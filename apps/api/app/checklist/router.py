@@ -1,11 +1,20 @@
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import CurrentUser, require_admin
-from app.checklist.schemas import ChecklistExtraRequest, ChecklistItem, extra_item
-from app.checklist.service import ChecklistExtraNotFoundError, ChecklistExtrasService
+from app.checklist.schemas import (
+    ChecklistExtraRequest,
+    ChecklistItem,
+    ChecklistMarkRequest,
+    extra_item,
+)
+from app.checklist.service import (
+    ChecklistExtraNotFoundError,
+    ChecklistExtrasService,
+    ChecklistMarksService,
+)
 from app.cycles.service import CycleNotFoundError
 from app.db import get_session
 
@@ -46,5 +55,33 @@ async def delete_checklist_extra(
     except ChecklistExtraNotFoundError as error:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "checklist_extra_not_found") from error
 
+    await session.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.put("/admin/checklist/marks", status_code=status.HTTP_204_NO_CONTENT)
+async def set_checklist_mark(
+    body: ChecklistMarkRequest,
+    session: AsyncSession = Depends(get_session),
+    _admin: CurrentUser = Depends(require_admin),
+) -> Response:
+    """Tick or untick a row as bought — for every admin, not just this browser."""
+    try:
+        await ChecklistMarksService(session).set(body.cycle_id, body.key, checked=body.checked)
+    except CycleNotFoundError as error:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "cycle_not_found") from error
+
+    await session.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.delete("/admin/checklist/marks", status_code=status.HTTP_204_NO_CONTENT)
+async def clear_checklist_marks(
+    cycle_id: uuid.UUID = Query(alias="cycleId"),
+    session: AsyncSession = Depends(get_session),
+    _admin: CurrentUser = Depends(require_admin),
+) -> Response:
+    """«Снять отметки»: every tick of the cycle, for everyone."""
+    await ChecklistMarksService(session).clear(cycle_id)
     await session.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)

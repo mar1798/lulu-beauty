@@ -37,6 +37,33 @@ describe('Select', () => {
     expect(screen.getByRole('combobox')).toHaveTextContent('Все категории')
   })
 
+  it('рисует миниатюру у строки с картинкой и заглушку у строки без фото', async () => {
+    const { container } = renderWidget(
+      <Select
+        value="toner"
+        onChange={vi.fn()}
+        options={[
+          { value: '', label: 'Всю заявку' },
+          { value: 'toner', label: 'Тонер', imageUrl: '/toner.jpg' },
+          { value: 'cream', label: 'Крем', imageUrl: null },
+        ]}
+      />
+    )
+
+    // Выбранное — с картинкой и в самом поле.
+    expect(container.querySelector('button img')).not.toBeNull()
+
+    await userEvent.click(screen.getByRole('combobox'))
+
+    const listbox = screen.getByRole('listbox')
+
+    expect(listbox.querySelectorAll('img')).toHaveLength(1)
+    expect(screen.getByRole('option', { name: 'Крем' }).querySelector('svg')).not.toBeNull()
+    expect(screen.getByRole('option', { name: 'Всю заявку' }).querySelector('svg')).toBeNull()
+    // Подпись строки не обрастает текстом картинки.
+    expect(screen.getByRole('option', { name: 'Тонер' })).toBeInTheDocument()
+  })
+
   it('раскрывает список по клику и отдаёт выбранное значение', async () => {
     const onChange = vi.fn()
 

@@ -5,7 +5,7 @@ import { IconBox, IconClose } from '../../svg/icons'
 import { AppImage } from '../../atoms/app-image'
 import { AppLink } from '../../atoms/app-link'
 import { IconButton } from '../../atoms/icon-button'
-import { Price } from '../../atoms/price'
+import { Price, formatPrice } from '../../atoms/price'
 import { Text } from '../../atoms/text'
 import { QuantityStepper } from '../quantity-stepper'
 import { clampTag, productTags } from '../../utils/tags'
@@ -31,6 +31,7 @@ const IMAGE_SIZES = { fb: '64px' } as const
 
 export const ItemRow: FC<IItemRowProps & IBasicStyling> = ({
   item,
+  discount = null,
   href,
   onQuantityChange,
   onRemove,
@@ -129,6 +130,13 @@ export const ItemRow: FC<IItemRowProps & IBasicStyling> = ({
           той же причине приглушены: они уточняют, что именно заказано, когда
           одно название этого не говорит («Toner» в трёх объёмах).
         */}
+        {discount != null && discount.cents > 0 && (
+          <Text size="xs" tone="secondary">
+            {`Скидка ${discount.label}`}
+            {discount.note === null ? '' : ` - ${discount.note}`}
+          </Text>
+        )}
+
         {tags.length > 0 && (
           <span className={styles.tags}>
             {tags.map(tag => (
@@ -166,7 +174,14 @@ export const ItemRow: FC<IItemRowProps & IBasicStyling> = ({
         )}
 
         <div className={styles.total}>
-          <Price priceCents={item.lineTotalCents} />
+          {discount != null && discount.cents > 0 ? (
+            <>
+              <span className={styles.totalBefore}>{formatPrice(item.lineTotalCents)}</span>
+              <Price priceCents={item.lineTotalCents - discount.cents} />
+            </>
+          ) : (
+            <Price priceCents={item.lineTotalCents} />
+          )}
         </div>
       </div>
     </div>

@@ -1,4 +1,4 @@
-import type { IAuthUser } from 'widgets/types'
+import type { IAuthUser, IProfileValues } from 'widgets/types'
 import { api, nextApi } from '../api'
 
 /**
@@ -56,8 +56,9 @@ export const logout = (): Promise<void> => nextApi.post('/auth/logout')
 /** Профиль текущего пользователя; `ApiError` со статусом 401 — значит, не залогинен. */
 export const getMe = (): Promise<IAuthUser> => nextApi.get('/auth/me')
 
-export const updateProfile = (name: string): Promise<IAuthUser> =>
-  api.patch('/users/me', { body: { name } })
+/** Пустые поля доставки уходят пустой строкой — бэкенд хранит их как `null`. */
+export const updateProfile = (values: IProfileValues): Promise<IAuthUser> =>
+  api.patch('/users/me', { body: values })
 
 /**
  * Что мешает удалить аккаунт прямо сейчас. Правило считает бэкенд

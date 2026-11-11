@@ -40,6 +40,23 @@ registration endpoint, no password column and no OTP — see [telegram.md](teleg
 - Anything addressed to "the owner" goes to **every** admin of either role
   (`telegram/recipients.get_owners`).
 
+### Delivery details on the profile
+
+A profile carries two optional free-text fields the customer fills in on `/account`:
+`delivery_address` and `delivery_note` («Как удобнее получить» — pick-up, a courier, a
+parcel to another town, a convenient time). Both are `String(500)`, edited through
+`PATCH /users/me`; `""` and blank text are stored as `NULL`, so "not filled in" has one
+spelling. Line breaks survive (`common/text.multi_line`) — an address reads better with the
+flat on its own line — while tabs, padding and empty lines do not.
+
+They are deliberately unstructured and there is no delivery-method enum: nothing in the
+shop delivers anything, the hand-over is arranged in person after payment, and the owner
+reads these as text. The admin order list shows them in an expanded order
+(`customerDeliveryAddress`/`customerDeliveryNote` on `AdminOrderResponse`), taken from the
+profile **as it is now**, not copied onto the order at checkout — the address that matters
+is the one on the day of the hand-over. Erasure clears both. The privacy policy lists them
+(`pages/privacy.tsx`, section 3); a new profile field means a new line there.
+
 ### Erasing an account
 
 A customer may erase their own account from `/account` (`DELETE /users/me`,
@@ -52,8 +69,8 @@ with it — including cycles that closed months ago. What goes is the data about
 person; what stays is a nameless row and the order history hanging off it:
 
 - `phone` is overwritten with a per-row placeholder (the column is UNIQUE and NOT NULL, so
-  erasing it means filling it), `name` becomes "Удалённый аккаунт", `telegram_chat_id` is
-  cleared and `deleted_at` is stamped.
+  erasing it means filling it), `name` becomes "Удалённый аккаунт", `telegram_chat_id` and
+  both delivery fields are cleared and `deleted_at` is stamped.
 - Cart, wishlist, refresh tokens and any waiting login session are deleted outright, and
   so are the account's wanted-product wishes: those carry their own copy of the name and
   the number, which is the one thing this erasure is about.
@@ -549,8 +566,8 @@ bought, add what the customer asked for in a message, change a quantity.
 - **The status never moves, and nothing is asked of the customer.** An unpaid bill is not
   re-issued (`confirmed_at` stays), a paid order stays paid, no new receipt is expected. Any
   difference in money is settled by the owner in person. The customer is only told — one
-  bot message with the new lines and sum (`messages.order_edited`) — and only when
-  something actually changed.
+  bot message with the new lines and sum (`messages.order_edited`), naming any discount the
+  edit took off — and only when something actually changed.
 - **The whole composition at once.** The request names the order's lines to keep with their
   quantities (left out — removed) and the volumes to add, so the order is never left
   half-edited and the customer hears about it once. Leaving nothing is a cancellation, not
@@ -560,14 +577,126 @@ bought, add what the customer asked for in a message, change a quantity.
   price, under the same rule as placing an order: a discontinued or sold-out volume refuses
   the whole edit (`404 product_not_found`). A volume already on a kept line joins it. A
   `PENDING` order is then repriced as usual.
-- **`orders.revision`** moves with every change to the lines (`_recalculate_total`). The
-  panel sends back the one it opened with, and a draft built on lines the customer, a
+- **`orders.revision`** moves with every change to the lines and their discounts
+  (`_recalculate_total`). Every response carries it — the customer's `OrderResponse` too.
+  The panel sends back the one it opened with, and a draft built on lines the customer, a
   catalogue edit or another admin has since changed is `409 order_changed` instead of a
-  silent overwrite. `updated_at` would not do: a change that keeps the total untouched never
+  silent overwrite. The customer's own edits (`POST`/`PATCH`/`DELETE /orders/{id}/items`)
+  send it as well — see "An edit of the composition takes discounts off" under Discounts. `updated_at` would not do: a change that keeps the total untouched never
   updates the order row. A catalogue edit running at the same moment as the save waits for
   the order's lock and moves the revision after it, like every other path that rewrites lines.
 - **The purchase list follows.** It is computed live from the cycle's orders, so an edit
   after the cycle closed changes it — the point, when the edit is "не смогла достать".
+
+### Discounts
+
+An admin can give a discount on one line of a customer's order or on the whole order, as a
+percent or as an amount, with a note on why (`PUT /admin/orders/{id}/discount`,
+`OrdersService.set_discount`). The panel opens it from the percent sign in the order's row
+and asks for confirmation — with the sum before and after — before anything is sent.
+
+- **Where.** `DISCOUNTABLE_STATUSES` — `PENDING` and `AWAITING_PAYMENT`, i.e. up to the
+  payment. A discount changes nothing but the money, and once the order is paid the money
+  has already moved: a discount there would be a refund promised in a bot message. Past it,
+  `409 order_not_discountable`. The website mirrors the set (`isDiscountable`).
+- **Not while a receipt waits.** On `AWAITING_PAYMENT` with a receipt for the current bill
+  still undecided (`hasReceipt`), the money has moved even though the status has not — a
+  new sum to pay could not be met, and taking a discount back would leave the receipt short.
+  `409 order_has_receipt`; the dialog says so and keeps both buttons off. Settle the receipt
+  first.
+- **Stored as set, anchored, counted every time.** Each line and the order carry
+  `discount_kind` (`PERCENT`/`AMOUNT`), `discount_value` (whole percent 1–100, or cents),
+  `discount_note`, and `discount_base_cents` — the _anchor_, the sum the discount was taken
+  from when an admin last looked at it. All NULL without a discount. Only `total_cents`
+  stores money; it is computed in `app/orders/discounts.py` from `_recalculate_total`, so
+  every path that rewrites lines re-counts the discounts with it.
+- **An edit of the composition takes discounts off — the customer's and the admin's alike.**
+  A discount is the admin's answer to the order as it stood, so a customer who changes the
+  order loses the discounts the change touches,
+  whole rather than scaled (`OrdersService._customer_changed`): the order's own on any
+  change — a line added, a quantity changed, a line removed — and a line's own when that
+  line is the one changed. Lines the change does not touch keep theirs. A quantity set to
+  what it already is changes nothing. The website warns before sending such a change
+  (`useDiscountLossConfirm` — the order page, the checkout success screen and the
+  "add to the open order" notice), naming each discount that will come off; the line's
+  delete dialog carries it in its own text rather than asking twice, and its «Вернуть»
+  brings the product back but not the discount. The owner is told in Telegram
+  (`notify_discount_lost`): what the customer changed, which discounts came off and the new
+  sum — giving one back is theirs to do from the panel. The edit methods return the loss
+  (`DiscountLoss`) next to the order, None when the change touched no discount, so several
+  edits in a row are announced once.
+
+  The warning is only as good as the order the page read, so the customer's edits carry the
+  page's `revision`, and a discount given while the page was open makes the edit
+  `409 order_changed` rather than a discount gone unwarned; the page re-reads the order, and
+  the retry warns about it.
+
+  An admin's edit of the composition (`edit_by_admin`) follows the same rule: the order's
+  own discount on any change, a line's own when that line's quantity changed or it was
+  removed; untouched lines keep theirs. The edit dialog says which discounts will go and
+  the panel asks before saving; the customer's edit message lists them
+  (`AdminEdit.lost_discounts`). Nothing is scaled to the new composition — scaling an
+  amount to a smaller sum is exactly what could make a line or the order free.
+
+- **Only an admin can make a discount bigger.** The anchor moves only when an admin sets a
+  discount (`anchor_discounts` in `set_discount`): the admin is looking at the order, so a
+  percent they leave in place is a percent of what it holds now. A reprice or a dropped product counts against the anchor,
+  and there a discount can only shrink: with the sum as large as at the anchor or larger it
+  stays what it was in money, and with the sum smaller it shrinks in the same proportion
+  (2000 off 3000 is two thirds, and stays two thirds of the 500 left, rather than making it
+  free). An amount that shrank is written back as the money it now comes to, on every
+  recount (`settle_amounts`), and one that shrank to nothing is taken off. So the stored
+  value is always what the customer gets: the next discount re-anchors that, rather
+  than growing the discount back to the number first typed, and the "exceeds" check on the
+  next discount never trips over a stale amount. The two migrations behind anchors are
+  `a3d8f1c6b274` and `c6e2a9d4f1b8`; a discount saved between them has no anchor and is
+  counted against the current sum.
+- **The arithmetic.** A line's discount comes off its price × quantity; the order's comes
+  off what the lines add up to after theirs. Percent discounts, and discounts scaled down
+  with the sum, are rounded to whole сом, half up (10% of 1 255 is 126, not 125,50).
+  Neither ever goes below zero; 100%, a total of 0, is allowed. This arithmetic lives in
+  `app/orders/discounts.py` and nowhere else: the discount dialog and its confirmation get
+  the sum from `POST /admin/orders/{id}/discount/preview` — the same `set_discount`, rolled
+  back instead of committed — and the edit dialog adds up the per-line `discountCents` the
+  API already sent. `widgets/utils/discount.ts` only names discounts.
+- **One per target, replaced not stacked.** Setting a discount where one already is
+  replaces it; `discount: null` takes it off. Refused when it is set, with nothing changed,
+  rather than silently adjusted — the admin confirmed the number they typed:
+  - an amount larger than what it comes off (`409 discount_exceeds_total`);
+  - a line discount that leaves the order's own amount more than there is left to take it
+    from (`409 order_discount_no_room`) — that one is to be made smaller first;
+  - a discount that rounds to nothing, 1% of 40 сом (`409 discount_rounds_to_zero`).
+
+  The dialog learns them from the preview while the admin types and shows them under the
+  field. The
+  same discount with the same note is not a change: the dialog keeps the button off, and
+  the API returns without telling anyone.
+
+- **Revision.** The request carries `revision` like an edit does: the confirmation showed a
+  sum computed from the lines the panel read, and lines that have moved since make it a
+  different sum — `409 order_changed`. A discount moves the revision too. The table is
+  re-read on that refusal and the open dialog takes the fresh order, so the next
+  confirmation shows the right sum.
+- **The customer is told and sees why.** After the commit, one bot message
+  (`messages.order_discount`) — the discount travels to it by value (`DiscountChange`), so a
+  second change in between cannot turn it into a message about the wrong one. It says what
+  the discount is on, its size, the note, and the sum with the old one struck through,
+  labelled «К оплате» on `AWAITING_PAYMENT`, since the bill already went out with the old
+  one. The heading says plainly what happened: «🎁 Вам скидка» for a new one; for a changed
+  one «увеличена» or «уменьшена» by which way the sum moved, with the old size next to the
+  new («изменена» when the sum stayed); «Изменена причина скидки» for the note alone; and
+  «Скидка 10% … отменена» when taken back. A smaller discount never arrives as a gift.
+  The bill, the edit message and the order page show discounted lines struck through with
+  the new price, the size and the note, and the order discount as its own line with its
+  note. The note is written to the customer: it is shown to them, not kept for the admins.
+- **Untouched lines keep it.** A line an admin's edit leaves as it was keeps its discount; a
+  volume removed and added back in the same draft at the same quantity brings back its own
+  line — snapshot price and discount — rather than a new one at the catalogue's price.
+- **What it does not touch.** The purchase list and the checklist are what the shop buys,
+  at the price per unit, so a discount changes neither. `orders.total_cents` — and with it
+  the admin table's sum and the cycle's summary — is after discounts.
+- **No discount at checkout.** A discount is the admin's act on a placed order; the cart
+  and checkout know nothing of it.
 
 ### Statuses
 
@@ -745,18 +874,28 @@ shop with a phone: the rows of the sheet with prices, from the open cycle or —
 open — the last closed one (`CyclesService.get_latest_closed_cycle`), picked by the API
 rather than the page. Cancelled orders are left out, since the checklist has no status
 filter of its own. Each name links to the product page by the live catalogue slug
-(none once the product row is gone). The "bought" ticks are not stored on the server: they live in the
-browser's `localStorage` (`useChecklistMarks`), keyed by cycle, and a row is identified by
-name + volume + price (+ shade, appended only when there is one, so marks made before shades
-existed still match) — not quantity, so a cancellation after the purchase does not untick
-what was already bought.
+(none once the product row is gone). The "bought" ticks are shared by every admin: two
+people splitting a shop must see each other's. They are `checklist_marks` rows
+(`ChecklistMark`), one per cycle and row key, deleted with the cycle, returned as
+`checkedKeys` by `GET /admin/checklist`, set with `PUT /admin/checklist/marks`
+(`{cycleId, key, checked}`, idempotent both ways) and cleared for the whole cycle — for
+everyone — by `DELETE /admin/checklist/marks?cycleId=` («Снять отметки»). The page ticks
+optimistically and polls the list every 10 seconds while the tab is visible, so another
+admin's ticks arrive without a reload; it also re-reads the list once the last tick in flight
+settles, since SWR drops the result (and the rollback) of a mutation another one overtook. The key is built by the page (`itemKey`) and stored
+as an opaque string: name + volume + price (+ shade, appended only when there is one) — not
+quantity, so a cancellation after the purchase does not untick what was already bought; a
+key whose row has gone matches nothing and is ignored. «Скрыть купленное» on the page is a
+per-viewer filter (not stored): it hides ticked rows and the footer then totals only what is
+left to buy. (Until November 2026 the ticks lived in each browser's `localStorage`; those were
+not carried over.)
 
 The owner can also add lines of their own — what no order asks for (bags, a tester,
 something for the shop): «Добавить пункт» on the page, a name, a quantity and a price per
 unit that defaults to 0. They are `checklist_extras` rows (`app/checklist/`), tied to the
 cycle the page is showing and deleted with it, appended after the order rows by
-`GET /admin/checklist` with an `extraId` and counted in the total. They live on the server,
-unlike the ticks: a line added on a laptop has to be on the phone in the shop. Added with
+`GET /admin/checklist` with an `extraId` and counted in the total. They live on the server:
+a line added on a laptop has to be on the phone in the shop. Added with
 `POST /admin/checklist/extras` (any cycle, closed ones included — the checklist shows the
 last closed one exactly when the owner is buying it) and removed with
 `DELETE /admin/checklist/extras/{id}`; there is no editing — delete and add again. They are
@@ -791,7 +930,9 @@ Client side: `apps/website/src/utils/exportDownload.ts`.
 
 ## Money
 
-Integer `*_cents` everywhere, never floats. `MAX_PRICE_CENTS = 2 000 000 000` because
+Integer `*_cents` everywhere, never floats. `orders.total_cents` is what the customer pays,
+after any discount; `discount_value` of an `AMOUNT` discount is cents too, and of a
+`PERCENT` one whole percent (see [Discounts](#discounts)). `MAX_PRICE_CENTS = 2 000 000 000` because
 `products.price_cents` is a 32-bit `INTEGER`; `orders.total_cents` was widened to `BIGINT`.
 Currency is a setting (`CURRENCY`, default `KGS`) and appears in export headers.
 

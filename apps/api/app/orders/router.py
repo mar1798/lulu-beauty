@@ -8,10 +8,13 @@ from app.auth.dependencies import CurrentUser, get_current_user, require_admin, 
 from app.auth.models import User
 from app.common.schemas import PageResponse
 from app.db import get_session
+from app.orders.discounts import line_discount_cents, order_totals
 from app.orders.models import Order, OrderItem, OrderStatus
 from app.orders.schemas import (
     AdminOrderCreateRequest,
     AdminOrderCycleResponse,
+    AdminOrderDiscountPreviewResponse,
+    AdminOrderDiscountRequest,
     AdminOrderEditRequest,
     AdminOrderMessageRequest,
     AdminOrderPageResponse,
@@ -27,14 +30,20 @@ from app.orders.schemas import (
 )
 from app.orders.service import (
     CustomerNotFoundError,
+    DiscountChange,
+    DiscountExceedsTotalError,
+    DiscountRoundsToZeroError,
     EmptyCartError,
     LastOrderItemError,
     NoActiveCycleError,
     NoCycleForOrderError,
     OrderChangedError,
     OrderCycleUnavailableError,
+    OrderDiscountNoRoomError,
     OrderFlags,
+    OrderHasReceiptError,
     OrderItemNotFoundError,
+    OrderNotDiscountableError,
     OrderNotEditableError,
     OrderNotFoundError,
     OrderNotRestorableError,
@@ -48,10 +57,12 @@ from app.payments.service import PaymentsService
 from app.telegram import recipients
 from app.telegram.client import notifications_service
 from app.telegram.notify import (
+    notify_discount_lost,
     notify_new_order,
     notify_order_cancelled_by_customer,
     notify_order_created_for_customer,
     notify_order_deleted,
+    notify_order_discount,
     notify_order_edited,
     notify_order_status,
 )
@@ -78,6 +89,10 @@ def _order_item(item: OrderItem, tags: ProductTags) -> OrderItemResponse:
         product_category_name=tags.category_name,
         product_volume_ml=item.product_volume_ml,
         product_shade=item.product_shade,
+        discount_kind=item.discount_kind,
+        discount_value=item.discount_value,
+        discount_note=item.discount_note,
+        discount_cents=line_discount_cents(item),
     )
 
 
@@ -104,11 +119,17 @@ def _order_response(
     tags: Mapping[uuid.UUID, ProductTags],
     flags: OrderFlags = _NO_ACTIONS,
 ) -> OrderResponse:
+    totals = order_totals(order)
     return OrderResponse(
         id=order.id,
         cycle_id=order.cycle_id,
         status=order.status,
         total_cents=order.total_cents,
+        subtotal_cents=totals.subtotal_cents,
+        discount_kind=order.discount_kind,
+        discount_value=order.discount_value,
+        discount_note=order.discount_note,
+        discount_cents=totals.order_discount_cents,
         note=order.note,
         created_at=order.created_at,
         items=_order_items(order, tags),
@@ -117,6 +138,7 @@ def _order_response(
         is_cancellable=flags.is_cancellable,
         pending_stage=flags.pending_stage,
         paid_at=order.paid_at,
+        revision=order.revision,
     )
 
 
@@ -139,16 +161,24 @@ def _admin_order_response(
     # response already had for a missing row is exactly the right answer. The order itself
     # is unchanged — what the owner bought is still on it.
     creator = (creators or {}).get(order.created_by_id) if order.created_by_id is not None else None
+    totals = order_totals(order)
     return AdminOrderResponse(
         id=order.id,
         cycle_id=order.cycle_id,
         status=order.status,
         total_cents=order.total_cents,
+        subtotal_cents=totals.subtotal_cents,
+        discount_kind=order.discount_kind,
+        discount_value=order.discount_value,
+        discount_note=order.discount_note,
+        discount_cents=totals.order_discount_cents,
         note=order.note,
         created_at=order.created_at,
         items=_order_items(order, tags),
         customer_name=customer.name if customer is not None else "-",
         customer_phone=customer.phone if customer is not None else "-",
+        customer_delivery_address=customer.delivery_address if customer is not None else None,
+        customer_delivery_note=customer.delivery_note if customer is not None else None,
         paid_at=order.paid_at,
         has_receipt=order.id in with_receipts,
         can_message=customer is not None and customer.telegram_chat_id is not None,
@@ -227,6 +257,8 @@ def _editing_error(error: Exception) -> HTTPException:
         return HTTPException(status.HTTP_404_NOT_FOUND, "product_not_found")
     if isinstance(error, OrderNotRestorableError):
         return HTTPException(status.HTTP_409_CONFLICT, "order_not_restorable")
+    if isinstance(error, OrderChangedError):
+        return HTTPException(status.HTTP_409_CONFLICT, "order_changed")
     return HTTPException(status.HTTP_409_CONFLICT, "order_not_editable")
 
 
@@ -256,6 +288,7 @@ async def update_my_order_note(
 async def add_my_order_item(
     order_id: uuid.UUID,
     body: OrderItemAddRequest,
+    background_tasks: BackgroundTasks,
     session: AsyncSession = Depends(get_session),
     current_user: CurrentUser = Depends(get_current_user),
 ) -> OrderResponse:
@@ -266,12 +299,21 @@ async def add_my_order_item(
     """
     service = OrdersService(session)
     try:
-        order = await service.add_item(current_user.id, order_id, body.variant_id, body.quantity)
-    except (OrderNotFoundError, OrderNotEditableError, ProductNotFoundError) as error:
+        order, loss = await service.add_item(
+            current_user.id, order_id, body.variant_id, body.quantity, revision=body.revision
+        )
+    except (
+        OrderNotFoundError,
+        OrderNotEditableError,
+        OrderChangedError,
+        ProductNotFoundError,
+    ) as error:
         raise _editing_error(error) from error
 
     response = await _one_order_response(service, order)
     await session.commit()
+    if loss is not None:
+        background_tasks.add_task(notify_discount_lost, order.id, loss)
     return response
 
 
@@ -280,17 +322,27 @@ async def update_my_order_item(
     order_id: uuid.UUID,
     item_id: uuid.UUID,
     body: OrderItemQuantityRequest,
+    background_tasks: BackgroundTasks,
     session: AsyncSession = Depends(get_session),
     current_user: CurrentUser = Depends(get_current_user),
 ) -> OrderResponse:
     service = OrdersService(session)
     try:
-        order = await service.set_item_quantity(current_user.id, order_id, item_id, body.quantity)
-    except (OrderNotFoundError, OrderNotEditableError, OrderItemNotFoundError) as error:
+        order, loss = await service.set_item_quantity(
+            current_user.id, order_id, item_id, body.quantity, revision=body.revision
+        )
+    except (
+        OrderNotFoundError,
+        OrderNotEditableError,
+        OrderChangedError,
+        OrderItemNotFoundError,
+    ) as error:
         raise _editing_error(error) from error
 
     response = await _one_order_response(service, order)
     await session.commit()
+    if loss is not None:
+        background_tasks.add_task(notify_discount_lost, order.id, loss)
     return response
 
 
@@ -298,15 +350,21 @@ async def update_my_order_item(
 async def remove_my_order_item(
     order_id: uuid.UUID,
     item_id: uuid.UUID,
+    background_tasks: BackgroundTasks,
+    # In the query: a DELETE carries no body. See `OrderItemQuantityRequest.revision`.
+    revision: int = Query(ge=0),
     session: AsyncSession = Depends(get_session),
     current_user: CurrentUser = Depends(get_current_user),
 ) -> OrderResponse:
     service = OrdersService(session)
     try:
-        order = await service.remove_item(current_user.id, order_id, item_id)
+        order, loss = await service.remove_item(
+            current_user.id, order_id, item_id, revision=revision
+        )
     except (
         OrderNotFoundError,
         OrderNotEditableError,
+        OrderChangedError,
         OrderItemNotFoundError,
         LastOrderItemError,
     ) as error:
@@ -314,6 +372,8 @@ async def remove_my_order_item(
 
     response = await _one_order_response(service, order)
     await session.commit()
+    if loss is not None:
+        background_tasks.add_task(notify_discount_lost, order.id, loss)
     return response
 
 
@@ -513,12 +573,12 @@ async def edit_order_admin(
     """The owner rewrites an order's composition — awaiting confirmation, payment, or paid.
 
     The status stays where it is and nothing is asked of the customer: after the commit
-    they are sent the new composition and the sum, and that is all. A save that changed
-    nothing sends nothing.
+    they are sent the new composition, the sum and the discounts the edit took off, and
+    that is all. A save that changed nothing sends nothing.
     """
     service = OrdersService(session)
     try:
-        order, changed = await service.edit_by_admin(
+        order, edit = await service.edit_by_admin(
             order_id,
             body.revision,
             {line.item_id: line.quantity for line in body.items},
@@ -545,9 +605,94 @@ async def edit_order_admin(
         order, customers.get(order.user_id), tags, with_receipts, creators
     )
     await session.commit()
-    if changed:
-        background_tasks.add_task(notify_order_edited, order.id)
+    if edit is not None:
+        background_tasks.add_task(notify_order_edited, order.id, edit.lost_discounts)
     return response
+
+
+async def _set_discount(
+    service: OrdersService, order_id: uuid.UUID, body: AdminOrderDiscountRequest
+) -> tuple[Order, DiscountChange | None]:
+    """`OrdersService.set_discount` with its refusals as the codes the panel branches on."""
+    discount = body.discount
+    try:
+        return await service.set_discount(
+            order_id,
+            body.revision,
+            body.item_id,
+            None if discount is None else (discount.kind, discount.value),
+            None if discount is None else discount.note,
+        )
+    except OrderNotFoundError as error:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "order_not_found") from error
+    except OrderNotDiscountableError as error:
+        raise HTTPException(status.HTTP_409_CONFLICT, "order_not_discountable") from error
+    except OrderChangedError as error:
+        raise HTTPException(status.HTTP_409_CONFLICT, "order_changed") from error
+    except OrderItemNotFoundError as error:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "order_item_not_found") from error
+    except OrderHasReceiptError as error:
+        raise HTTPException(status.HTTP_409_CONFLICT, "order_has_receipt") from error
+    except DiscountExceedsTotalError as error:
+        raise HTTPException(status.HTTP_409_CONFLICT, "discount_exceeds_total") from error
+    except OrderDiscountNoRoomError as error:
+        raise HTTPException(status.HTTP_409_CONFLICT, "order_discount_no_room") from error
+    except DiscountRoundsToZeroError as error:
+        raise HTTPException(status.HTTP_409_CONFLICT, "discount_rounds_to_zero") from error
+
+
+@router.put("/admin/orders/{order_id}/discount", response_model=AdminOrderResponse)
+async def set_order_discount_admin(
+    order_id: uuid.UUID,
+    body: AdminOrderDiscountRequest,
+    background_tasks: BackgroundTasks,
+    session: AsyncSession = Depends(get_session),
+    _admin: CurrentUser = Depends(require_admin),
+) -> AdminOrderResponse:
+    """An admin gives a discount on a line or the whole order, or takes it back.
+
+    Before the payment only, and not while a receipt for the bill waits for a verdict.
+    The status does not move; after the commit the customer is told the discount, its
+    reason and the new sum. Setting what is already there sends nothing.
+    """
+    service = OrdersService(session)
+    order, change = await _set_discount(service, order_id, body)
+
+    customers = await service.load_customers([order])
+    creators = await service.load_creators([order])
+    tags = await service.load_item_tags([order])
+    with_receipts = await PaymentsService(session).orders_with_receipts([order.id])
+    response = _admin_order_response(
+        order, customers.get(order.user_id), tags, with_receipts, creators
+    )
+    await session.commit()
+    if change is not None:
+        background_tasks.add_task(notify_order_discount, order.id, body.item_id, change)
+    return response
+
+
+@router.post(
+    "/admin/orders/{order_id}/discount/preview",
+    response_model=AdminOrderDiscountPreviewResponse,
+)
+async def preview_order_discount_admin(
+    order_id: uuid.UUID,
+    body: AdminOrderDiscountRequest,
+    session: AsyncSession = Depends(get_session),
+    _admin: CurrentUser = Depends(require_admin),
+) -> AdminOrderDiscountPreviewResponse:
+    """What `PUT .../discount` with this body would make the order come to, or why it refuses.
+
+    The very same call, rolled back instead of committed: the discount dialog shows the new
+    sum and the refusal while the admin types, and the arithmetic stays in one place
+    (`app/orders/discounts.py`) instead of being copied into the website. Nothing is sent.
+    """
+    service = OrdersService(session)
+    try:
+        order, _ = await _set_discount(service, order_id, body)
+        return AdminOrderDiscountPreviewResponse(total_cents=order.total_cents)
+    finally:
+        await session.rollback()
 
 
 @router.post("/admin/orders/{order_id}/message", status_code=status.HTTP_204_NO_CONTENT)

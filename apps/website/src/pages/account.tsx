@@ -7,6 +7,7 @@ import { useConfirm } from 'widgets/contexts'
 import { EmptyState, orderNumber } from 'widgets/molecules'
 import { plural, pluralize, type IPluralForms } from 'widgets/utils'
 import { ProfileForm, TelegramLinkPrompt } from 'widgets/organisms'
+import type { IProfileValues } from 'widgets/types'
 import { AccountTemplate } from 'widgets/templates'
 import { SiteLayout } from '@/layouts/SiteLayout'
 import { ACCOUNT_NAVIGATION } from '@/layouts/accountNavigation'
@@ -18,9 +19,10 @@ import { publicConfig } from '@/сonfig'
 import { useLoginHref } from '@/hooks/useLoginHref'
 
 /**
- * Профиль: имя, номер, привязка Telegram, выход.
+ * Профиль: имя, номер, адрес доставки, привязка Telegram, выход.
  *
- * Менять можно только имя — `PATCH /users/me` другого и не принимает.
+ * Менять можно имя, адрес доставки и комментарий к получению — номер
+ * `PATCH /users/me` не принимает.
  * Привязка Telegram здесь же, потому что это единственный экран, куда
  * человек вернётся, если не довёл её до конца при регистрации.
  *
@@ -91,13 +93,13 @@ const AccountPage: React.FC = () => {
           ? null
           : `Сначала закройте ${pluralize(blockingOrders.length, ORDER_FORMS)}: ${blockingOrders.map(orderNumber).join(', ')}`
 
-  const handleSubmit = async (name: string): Promise<void> => {
+  const handleSubmit = async (values: IProfileValues): Promise<void> => {
     setIsSubmitting(true)
     setError(null)
     setIsSaved(false)
 
     try {
-      await updateProfile(name)
+      await updateProfile(values)
       setIsSaved(true)
     } catch (cause: unknown) {
       setError(messageForError(cause, 'account.save'))
@@ -126,7 +128,7 @@ const AccountPage: React.FC = () => {
     const confirmed = await confirm({
       title: 'Удалить аккаунт?',
       description:
-        'Номер, имя и привязка к боту будут стёрты, корзина и избранное - удалены, ' +
+        'Номер, имя, адрес доставки и привязка к боту будут стёрты, корзина и избранное - удалены, ' +
         'а заявки, ожидающие подтверждения или оплаты, отменены: мы перестанем закупать ' +
         'по ним товар. Отменить это нельзя. Вернуться можно будет только заведя ' +
         'аккаунт заново.',
@@ -187,7 +189,7 @@ const AccountPage: React.FC = () => {
       return (
         <EmptyState
           title="Аккаунт удалён"
-          description="Номер, имя и привязка к боту стёрты, корзина и избранное - удалены, заявки, ожидавшие подтверждения или оплаты, отменены. Согласие на обработку данных отозвано. Вернуться можно, заведя аккаунт заново."
+          description="Номер, имя, адрес доставки и привязка к боту стёрты, корзина и избранное - удалены, заявки, ожидавшие подтверждения или оплаты, отменены. Согласие на обработку данных отозвано. Вернуться можно, заведя аккаунт заново."
           action={
             <Button link={{ href: '/catalog' }} isFullWidth="mobile">
               В каталог
@@ -207,8 +209,8 @@ const AccountPage: React.FC = () => {
         <ProfileForm
           user={null}
           isLoading={true}
-          onSubmit={name => {
-            void handleSubmit(name)
+          onSubmit={values => {
+            void handleSubmit(values)
           }}
         />
       )
@@ -218,7 +220,7 @@ const AccountPage: React.FC = () => {
       return (
         <EmptyState
           title="Профиль виден после входа"
-          description="Войдите - и здесь можно будет поправить имя и привязать Telegram"
+          description="Войдите - и здесь можно будет поправить имя, указать адрес доставки и привязать Telegram"
           action={
             <Button link={{ href: loginHref }} isFullWidth="mobile">
               Войти
@@ -237,8 +239,8 @@ const AccountPage: React.FC = () => {
         <ProfileForm
           key={user.id}
           user={user}
-          onSubmit={name => {
-            void handleSubmit(name)
+          onSubmit={values => {
+            void handleSubmit(values)
           }}
           isSubmitting={isSubmitting}
           error={error}
@@ -301,8 +303,8 @@ const AccountPage: React.FC = () => {
                     </Text>
                   ) : (
                     <Text size="sm" tone="muted">
-                      Удаление стирает номер, имя и привязку к боту, отменяет заявки, ожидающие
-                      подтверждения, и отзывает согласие на обработку данных.
+                      Удаление стирает номер, имя, адрес доставки и привязку к боту, отменяет
+                      заявки, ожидающие подтверждения, и отзывает согласие на обработку данных.
                     </Text>
                   )}
 
@@ -349,7 +351,7 @@ const AccountPage: React.FC = () => {
 
       <AccountTemplate
         title="Профиль"
-        summary="Имя видим мы, когда собираем заказ по вашей заявке"
+        summary="Имя видим мы, когда собираем заказ по вашей заявке, а адрес - когда договариваемся о доставке"
         navigation={ACCOUNT_NAVIGATION}
         currentHref="/account"
       >

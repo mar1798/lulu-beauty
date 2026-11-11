@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { AdminChecklist } from '.'
+import { formatPrice } from '../../atoms/price'
 import { feedAdminChecklist } from '../../stories/feed'
 import { renderWidget } from '../../testing/render'
 
@@ -102,5 +103,60 @@ describe('AdminChecklist', () => {
     expect(removeButtons).toHaveLength(1)
     expect(onRemoveExtra).toHaveBeenCalledWith(extra)
     expect(onToggle).not.toHaveBeenCalled()
+  })
+
+  it('прячет купленное по тумблеру и считает итог по оставшемуся', async () => {
+    const props = feedAdminChecklist()
+    const onHideCheckedChange = vi.fn()
+    const { container, rerender } = renderWidget(
+      <AdminChecklist {...props} onHideCheckedChange={onHideCheckedChange} />
+    )
+
+    await userEvent.click(screen.getByRole('switch', { name: 'Скрыть купленное' }))
+    expect(onHideCheckedChange).toHaveBeenCalledWith(true)
+    expect(screen.getByText('Тонер Heartleaf 77')).toBeTruthy()
+
+    rerender(
+      <AdminChecklist {...props} hideChecked={true} onHideCheckedChange={onHideCheckedChange} />
+    )
+
+    expect(screen.queryByText('Тонер Heartleaf 77')).toBeNull()
+    // Прогресс — по всему списку, итог — только по тому, что осталось купить.
+    expect(screen.getByText('Отмечено 1 из 6')).toBeTruthy()
+    expect(screen.getByText('Осталось')).toBeTruthy()
+    // Без тонера (2 шт по 1 650): 37 - 2 штук и 21 191,50 - 3 300,00 сом. Текст
+    // подвала сверяется целиком: в сумме неразрывные пробелы, а `getByText`
+    // нормализует их только на странице, не в искомой строке.
+    expect(container.querySelector('tfoot')?.textContent).toBe(
+      `Осталось35 шт · ${formatPrice(1_789_150)}`
+    )
+  })
+
+  it('без тумблера считает итог по всему списку', () => {
+    const { container } = renderWidget(<AdminChecklist {...feedAdminChecklist()} />)
+
+    expect(container.querySelector('tfoot')?.textContent).toBe(
+      `Итого37 шт · ${formatPrice(2_119_150)}`
+    )
+  })
+
+  it('без отметок к покупке пишет «Всё куплено», а не пустую таблицу', () => {
+    const props = feedAdminChecklist()
+
+    renderWidget(
+      <AdminChecklist
+        {...props}
+        checkedKeys={props.items.map(item => item.key)}
+        hideChecked={true}
+      />
+    )
+
+    expect(screen.getByText('Всё куплено')).toBeTruthy()
+  })
+
+  it('без обработчика тумблера не рисует', () => {
+    renderWidget(<AdminChecklist {...feedAdminChecklist()} />)
+
+    expect(screen.queryByRole('switch')).toBeNull()
   })
 })

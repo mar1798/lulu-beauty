@@ -1,19 +1,23 @@
 import clsx from 'clsx'
 import { Fragment, type FC, useState } from 'react'
 import type { IAdminOrdersTableProps, IBasicStyling } from '../../types'
-import { IconPencil, IconTelegram, IconTrash } from '../../svg/icons'
+import { IconPencil, IconPercent, IconTelegram, IconTrash } from '../../svg/icons'
 import { AppLink } from '../../atoms/app-link'
 import { Badge } from '../../atoms/badge'
 import { IconButton } from '../../atoms/icon-button'
-import { Price } from '../../atoms/price'
+import { Price, formatPrice } from '../../atoms/price'
 import { Skeleton } from '../../atoms/skeleton'
 import { orderNumber } from '../../molecules/order-card'
-import { isAdminEditable } from '../../molecules/order-status-badge'
+import { isAdminEditable, isDiscountable } from '../../molecules/order-status-badge'
 import { StatusSelect } from '../../molecules/status-select'
 import { formatDateTime } from '../../utils/datetime'
+import { formatDiscount } from '../../utils/discount'
 import { formatVariant } from '../../utils/variants'
-import { pluralize } from '../../utils/plural'
+import { type IPluralForms, pluralize } from '../../utils/plural'
 import * as styles from './AdminOrdersTable.css'
+
+/** Состав считается в штуках: «Крем ×2» — это два товара, а не один. */
+const UNIT_FORMS: IPluralForms = ['товар', 'товара', 'товаров']
 
 /**
  * Заявки покупателей с возможностью сменить статус.
@@ -27,7 +31,9 @@ import * as styles from './AdminOrdersTable.css'
  * «Не оплачено». Сама оплата — уже статус («Подтверждена»), отдельной метки ей не нужно.
  *
  * Телефон — ссылка `tel:`: заявку владелец подтверждает в чате бота, но о выдаче
- * договаривается лично, и копировать номер для этого руками незачем.
+ * договаривается лично, и копировать номер для этого руками незачем. Адрес
+ * доставки и комментарий к получению из профиля покупателя — в раскрытом
+ * составе, под комментарием к заявке: в строке им не хватило бы места.
  *
  * Ниже `md` та же разметка раскладывается в карточки (см. миксин
  * `styling/mixin/table.ts`): название колонки берётся из `data-label`, а роли
@@ -46,6 +52,11 @@ import * as styles from './AdminOrdersTable.css'
  *
  * Заявка, которую оформил админ за покупателя, помечена под датой — с именем
  * того админа: их бывает несколько, и иначе не понять, откуда она взялась.
+ *
+ * «Скидка» (знак процента) — до оплаты (`isDiscountable`); у остальных заявок
+ * кнопка на месте, но недоступна и говорит почему. Заявка со скидкой помечена
+ * под суммой, а в раскрытом составе у строки со скидкой — зачёркнутая цена,
+ * размер и причина, у скидки на всю заявку — своя строка под составом.
  */
 
 const DEFAULT_SKELETON_ROWS = 5
@@ -68,6 +79,7 @@ export const AdminOrdersTable: FC<IAdminOrdersTableProps & IBasicStyling> = ({
   onDelete,
   onMessage,
   onEdit,
+  onDiscount,
   buildProductHref,
   isLoading = false,
   skeletonRows = DEFAULT_SKELETON_ROWS,
@@ -92,7 +104,11 @@ export const AdminOrdersTable: FC<IAdminOrdersTableProps & IBasicStyling> = ({
     Колонка действий необязательна, а `colSpan` у скелетонов и состава — нет.
     Она есть, если есть хоть одно действие.
   */
-  const hasActions = onDelete !== undefined || onMessage !== undefined || onEdit !== undefined
+  const hasActions =
+    onDelete !== undefined ||
+    onMessage !== undefined ||
+    onEdit !== undefined ||
+    onDiscount !== undefined
   const columnCount = hasActions ? BASE_COLUMNS + 1 : BASE_COLUMNS
 
   return (
@@ -176,13 +192,19 @@ export const AdminOrdersTable: FC<IAdminOrdersTableProps & IBasicStyling> = ({
                             toggle(order.id)
                           }}
                         >
-                          {pluralize(order.items.length, ['позиция', 'позиции', 'позиций'])}
+                          {pluralize(
+                            order.items.reduce((sum, item) => sum + item.quantity, 0),
+                            UNIT_FORMS
+                          )}
                         </button>
                       </td>
 
                       <td className={styles.cell} role="cell" data-label="Сумма">
                         <div className={styles.total}>
                           <Price priceCents={order.totalCents} size="sm" />
+                          {order.totalCents !== order.subtotalCents && (
+                            <Badge tone="accent">Со скидкой</Badge>
+                          )}
                           {order.hasReceipt ? (
                             <Badge tone="warning" withDot={true}>
                               Чек на проверке
@@ -226,6 +248,23 @@ export const AdminOrdersTable: FC<IAdminOrdersTableProps & IBasicStyling> = ({
                                 }
                                 onClick={() => {
                                   onEdit(order)
+                                }}
+                              />
+                            )}
+                            {onDiscount !== undefined && (
+                              <IconButton
+                                icon={<IconPercent />}
+                                label={`Скидка по заявке № ${adminOrderNumber(order.id)}`}
+                                size="sm"
+                                hasPopup="dialog"
+                                disabled={busyId === order.id}
+                                unavailableReason={
+                                  isDiscountable(order.status)
+                                    ? null
+                                    : 'Скидку можно дать только до оплаты'
+                                }
+                                onClick={() => {
+                                  onDiscount(order)
                                 }}
                               />
                             )}
@@ -297,14 +336,50 @@ export const AdminOrdersTable: FC<IAdminOrdersTableProps & IBasicStyling> = ({
                                   </span>
 
                                   <span className={styles.itemQuantity}>× {item.quantity}</span>
-                                  <Price priceCents={item.lineTotalCents} size="sm" />
+                                  {item.discountCents > 0 && (
+                                    <span className={styles.itemPriceBefore}>
+                                      {formatPrice(item.lineTotalCents)}
+                                    </span>
+                                  )}
+                                  <Price
+                                    priceCents={item.lineTotalCents - item.discountCents}
+                                    size="sm"
+                                  />
+                                  {item.discountKind !== null && item.discountValue !== null && (
+                                    <span className={styles.discount}>
+                                      {`Скидка ${formatDiscount(item.discountKind, item.discountValue)}`}
+                                      {item.discountNote === null ? '' : ` - ${item.discountNote}`}
+                                    </span>
+                                  )}
                                 </li>
                               )
                             })}
                           </ul>
 
+                          {order.discountKind !== null && order.discountValue !== null && (
+                            <p className={styles.discount}>
+                              {`Скидка на заявку ${formatDiscount(order.discountKind, order.discountValue)}: -${formatPrice(order.discountCents)}`}
+                              {order.discountNote === null ? '' : ` - ${order.discountNote}`}
+                            </p>
+                          )}
+
                           {order.note !== null && order.note !== '' && (
                             <p className={styles.note}>Комментарий: {order.note}</p>
+                          )}
+
+                          {/*
+                            Из профиля покупателя, а не из заявки: адрес у человека
+                            один на все заявки, и о выдаче договариваются по нему.
+                          */}
+                          {order.customerDeliveryAddress !== null && (
+                            <p className={styles.delivery}>
+                              Адрес доставки: {order.customerDeliveryAddress}
+                            </p>
+                          )}
+                          {order.customerDeliveryNote !== null && (
+                            <p className={styles.delivery}>
+                              Получение: {order.customerDeliveryNote}
+                            </p>
                           )}
                         </td>
                       </tr>
@@ -321,7 +396,7 @@ export const AdminOrdersTable: FC<IAdminOrdersTableProps & IBasicStyling> = ({
                 Итого: {pluralize(summary.orderCount, ['заявка', 'заявки', 'заявок'])}
               </td>
               <td className={styles.footCell} role="cell" data-label="Состав">
-                {pluralize(summary.itemCount, ['позиция', 'позиции', 'позиций'])}
+                {pluralize(summary.itemCount, UNIT_FORMS)}
               </td>
               <td className={styles.footCell} role="cell" data-label="Сумма">
                 <Price priceCents={summary.totalCents} size="sm" />

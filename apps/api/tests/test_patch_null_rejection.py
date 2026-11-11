@@ -35,6 +35,8 @@ NULLABLE_FIELDS = [
     (ProductUpdateRequest, "volumeMl"),
     (ProductUpdateRequest, "categoryId"),
     (CycleUpdateRequest, "label"),
+    (UserUpdateRequest, "deliveryAddress"),
+    (UserUpdateRequest, "deliveryNote"),
 ]
 
 

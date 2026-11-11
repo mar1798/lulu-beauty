@@ -22,7 +22,10 @@ import { adminChecklistKey } from '@/services/swrKeys'
  * закрытого, по строке на объём. Владелец ходит с ним по магазину и отмечает
  * купленное — почти всегда с телефона, поэтому на странице только таблица.
  *
- * Отметки хранятся в браузере (`useChecklistMarks`) и привязаны к сбору.
+ * Отметки «куплено» — на сервере, у сбора, и общие для всех админов
+ * (`useChecklistMarks`). Чтобы отметки соседа появлялись без перезагрузки,
+ * список перечитывается раз в `REFRESH_INTERVAL_MS`, пока вкладка на экране.
+ * Тумблер «Скрыть купленное» оставляет в таблице только то, что ещё купить.
  *
  * Кроме строк из заявок, владелец добавляет свои пункты — «Добавить пункт»:
  * название, количество и цена (по умолчанию 0). Они хранятся на сервере, у
@@ -46,6 +49,13 @@ const itemKey = (item: IAdminChecklist['items'][number]): string =>
         item.shade ? `|${item.shade}` : ''
       }`
 
+/**
+ * Как часто подтягивать чужие отметки. Десяти секунд хватает, чтобы двое в
+ * одном магазине не купили одно и то же дважды, а запрос лёгкий. Скрытая
+ * вкладка не опрашивает (`refreshWhenHidden` в SWR выключен по умолчанию).
+ */
+const REFRESH_INTERVAL_MS = 10_000
+
 const cycleSummary = (cycle: NonNullable<IAdminChecklist['cycle']>): string => {
   const name = cycle.label ?? 'Без подписи'
   const deadline = formatDate(cycle.deadlineAt)
@@ -59,13 +69,20 @@ const cycleSummary = (cycle: NonNullable<IAdminChecklist['cycle']>): string => {
 const AdminChecklistPage: React.FC = () => {
   const { confirm } = useConfirm()
   const { notify } = useToast()
-  const { data, error: fetchError, mutate } = useSWR(adminChecklistKey, () => getAdminChecklist())
+  const {
+    data,
+    error: fetchError,
+    mutate,
+  } = useSWR(adminChecklistKey, () => getAdminChecklist(), {
+    refreshInterval: REFRESH_INTERVAL_MS,
+  })
   const [isExtraOpen, setIsExtraOpen] = useState(false)
   const [isExtraBusy, setIsExtraBusy] = useState(false)
   const [extraError, setExtraError] = useState<string | null>(null)
+  const [hideChecked, setHideChecked] = useState(false)
 
   const cycle = data?.cycle ?? null
-  const { checkedKeys, toggle, reset } = useChecklistMarks(cycle?.id ?? null)
+  const { checkedKeys, toggle, reset } = useChecklistMarks(data, mutate)
 
   const items = useMemo<IChecklistItem[]>(
     () => (data?.items ?? []).map(item => ({ ...item, key: itemKey(item) })),
@@ -75,15 +92,28 @@ const AdminChecklistPage: React.FC = () => {
   const error = fetchError === undefined ? null : messageForError(fetchError, 'admin.checklist')
   const hasMarks = items.some(item => checkedKeys.includes(item.key))
 
+  const notifyMarkError = (cause: unknown): void => {
+    notify({
+      tone: 'danger',
+      title: 'Отметка не сохранилась',
+      description: messageForError(cause, 'admin.checklist.mark'),
+    })
+  }
+
+  const handleToggle = (key: string, checked: boolean): void => {
+    toggle(key, checked).catch(notifyMarkError)
+  }
+
   const handleReset = async (): Promise<void> => {
     const confirmed = await confirm({
       title: 'Снять все отметки?',
-      description: 'Все строки снова станут неотмеченными. Сам список не изменится.',
+      description:
+        'Все строки снова станут неотмеченными - у всех админов. Сам список не изменится.',
       confirmLabel: 'Снять',
     })
 
     if (confirmed) {
-      reset()
+      reset().catch(notifyMarkError)
     }
   }
 
@@ -181,7 +211,9 @@ const AdminChecklistPage: React.FC = () => {
       <AdminChecklist
         items={items}
         checkedKeys={checkedKeys}
-        onToggle={toggle}
+        onToggle={handleToggle}
+        hideChecked={hideChecked}
+        onHideCheckedChange={setHideChecked}
         onRemoveExtra={item => {
           void handleRemoveExtra(item)
         }}

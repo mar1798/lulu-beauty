@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth import token_service
 from app.auth.dependencies import CurrentUser, load_admin, require_admin
 from app.checklist.schemas import ChecklistItem, extra_item
-from app.checklist.service import ChecklistExtrasService
+from app.checklist.service import ChecklistExtrasService, ChecklistMarksService
 from app.common.schemas import CamelModel
 from app.cycles.service import CyclesService
 from app.db import get_session
@@ -54,6 +54,9 @@ class ChecklistResponse(CamelModel):
     # None only when the shop has never had a cycle to show.
     cycle: ChecklistCycle | None
     items: list[ChecklistItem]
+    # The rows ticked as bought, shared by every admin (`ChecklistMark`). May name rows that
+    # are no longer in `items` — a cancelled order's — which the page simply ignores.
+    checked_keys: list[str] = []
 
 
 def _xlsx(content: bytes, filename: str) -> Response:
@@ -122,6 +125,7 @@ async def get_checklist(
     rows = await ExportService(session).checklist_rows(cycle.id)
     # The owner's own lines go last, after everything the orders ask for.
     extras = await ChecklistExtrasService(session).list(cycle.id)
+    checked_keys = await ChecklistMarksService(session).keys(cycle.id)
     return ChecklistResponse(
         cycle=ChecklistCycle(
             id=cycle.id, label=cycle.label, deadline_at=cycle.deadline_at, is_active=is_active
@@ -139,6 +143,7 @@ async def get_checklist(
             for row in rows
         ]
         + [extra_item(extra) for extra in extras],
+        checked_keys=checked_keys,
     )
 
 

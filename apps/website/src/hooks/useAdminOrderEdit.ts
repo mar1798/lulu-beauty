@@ -1,8 +1,14 @@
 import { useState } from 'react'
 import { mutate as globalMutate } from 'swr'
-import type { IAdminOrder, IAdminOrderEditDialogProps, IAdminOrderEditLine } from 'widgets/types'
+import type {
+  IAdminOrder,
+  IAdminOrderEditDialogProps,
+  IAdminOrderEditLine,
+  IOrderItem,
+} from 'widgets/types'
 import { useConfirm, useToast } from 'widgets/contexts'
 import { adminOrderNumber } from 'widgets/organisms'
+import { editedItemIds, lostDiscounts } from 'widgets/utils'
 import { useProductSearch } from '@/hooks/useProductSearch'
 import { catalogLine, clampQuantity } from '@/utils/orderDraft'
 import { isApiError, messageForError } from '@/services/apiErrors'
@@ -20,6 +26,11 @@ import { adminChecklistKey, isAdminOrdersKey, isAdminOverviewKey } from '@/servi
  * Вместе с составом уходит `revision` заявки, с которой окно открыли: если
  * её успели поменять (покупатель, правка каталога, другой админ), бэкенд
  * откажет `order_changed`, а не перезапишет чужое изменение.
+ *
+ * Скидки правка админа снимает так же, как правка покупателя (`edit_by_admin`
+ * в API): на всю заявку — при любом изменении, у строки — если её тронули.
+ * Если есть что снимать, перед сохранением спрашивается подтверждение, как у
+ * покупателя на его странице заявки.
  */
 
 interface IAdminOrderEdit {
@@ -28,21 +39,22 @@ interface IAdminOrderEdit {
   open: (order: IAdminOrder) => void
 }
 
-/** Строки заявки, как они есть, — исходная точка правки. */
-const linesOf = (order: IAdminOrder): IAdminOrderEditLine[] =>
-  order.items.map(item => ({
-    key: item.id,
-    itemId: item.id,
-    variantId: item.variantId,
-    productName: item.productName,
-    productSlug: item.productSlug,
-    productImageUrl: item.productImageUrl,
-    productBrand: item.productBrand,
-    productVolumeMl: item.productVolumeMl,
-    productShade: item.productShade ?? null,
-    priceCents: item.productPriceCents,
-    quantity: item.quantity,
-  }))
+/** Строка заявки, как она есть, — исходная точка правки. */
+const lineOf = (item: IOrderItem): IAdminOrderEditLine => ({
+  key: item.id,
+  itemId: item.id,
+  variantId: item.variantId,
+  productName: item.productName,
+  productSlug: item.productSlug,
+  productImageUrl: item.productImageUrl,
+  productBrand: item.productBrand,
+  productVolumeMl: item.productVolumeMl,
+  productShade: item.productShade ?? null,
+  priceCents: item.productPriceCents,
+  quantity: item.quantity,
+})
+
+const linesOf = (order: IAdminOrder): IAdminOrderEditLine[] => order.items.map(lineOf)
 
 /** Отличается ли правка от заявки: новая строка, убранная или другое количество. */
 const differs = (order: IAdminOrder, lines: IAdminOrderEditLine[]): boolean =>
@@ -92,25 +104,31 @@ export const useAdminOrderEdit = (): IAdminOrderEdit => {
   /*
     Объём, который уже есть в заявке, прибавляется к своей строке — и к бывшей,
     и к добавленной сейчас: две строки одного объёма бэкенд всё равно слил бы.
-    Убранную строку повторное добавление не воскрешает: объём встаёт новой
-    строкой по цене каталога, как и на бэкенде.
+
+    Объём, чью строку в этой же правке убрали, возвращает ту самую строку, а не
+    новую: с ценой снимка и со скидкой, если она была. Иначе «убрал и добавил
+    обратно» молча снимало бы скидку и переписывало цену на каталожную.
   */
   const add = (variantId: string): void => {
-    const line = catalogLine(products.products, variantId)
+    const original = order?.items.find(item => item.variantId === variantId)
 
-    if (line === null) {
-      return
-    }
+    setLines(current => {
+      if (current.some(existing => existing.variantId === variantId)) {
+        return current.map(existing =>
+          existing.variantId === variantId
+            ? { ...existing, quantity: clampQuantity(existing.quantity + 1) }
+            : existing
+        )
+      }
 
-    setLines(current =>
-      current.some(existing => existing.variantId === variantId)
-        ? current.map(existing =>
-            existing.variantId === variantId
-              ? { ...existing, quantity: clampQuantity(existing.quantity + 1) }
-              : existing
-          )
-        : [...current, { ...line, key: variantId, itemId: null }]
-    )
+      if (original !== undefined) {
+        return [...current, { ...lineOf(original), quantity: 1 }]
+      }
+
+      const line = catalogLine(products.products, variantId)
+
+      return line === null ? current : [...current, { ...line, key: variantId, itemId: null }]
+    })
   }
 
   const setQuantity = (key: string, quantity: number): void => {
@@ -126,8 +144,32 @@ export const useAdminOrderEdit = (): IAdminOrderEdit => {
   }
 
   const submit = async (): Promise<void> => {
-    if (order === null || lines.length === 0 || !hasChanges) {
+    if (order === null || lines.length === 0 || !hasChanges || isSubmitting) {
       return
+    }
+
+    const lost = lostDiscounts(order, editedItemIds(order, lines))
+
+    if (lost.length > 0) {
+      const isMany = lost.length > 1
+      const subject = lost.join(', ')
+      const confirmed = await confirm({
+        title: 'Изменить заявку?',
+        description: [
+          `${subject.charAt(0).toUpperCase()}${subject.slice(1)} - ${isMany ? 'будут сняты: они были даны' : 'будет снята: она была дана'} на прежний состав.`,
+          order.canMessage
+            ? 'Покупатель увидит это в сообщении бота.'
+            : 'Покупатель не привязан к боту - сообщение ему не придёт.',
+          'Если скидка остаётся в силе - дайте её заново после сохранения.',
+        ].join(' '),
+        confirmLabel: 'Изменить',
+        cancelLabel: 'Вернуться',
+        tone: 'danger',
+      })
+
+      if (!confirmed) {
+        return
+      }
     }
 
     setIsSubmitting(true)

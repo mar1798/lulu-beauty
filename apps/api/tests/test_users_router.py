@@ -134,3 +134,33 @@ async def test_deletion_state_is_404_for_an_account_already_erased(client: Async
 
     assert response.status_code == 404
     assert response.json()["detail"] == "user_not_found"
+
+
+async def test_patch_me_saves_and_returns_the_delivery_fields(client: AsyncClient) -> None:
+    """Only what was sent reaches the service — the name stays out of an address edit —
+    and an emptied note arrives as a clear, not as an empty string."""
+    user = MagicMock(
+        id=CURRENT_USER_ID,
+        phone="+996700123456",
+        role=Role.CUSTOMER,
+        telegram_chat_id=None,
+        delivery_address="Бишкек, Киевская 10",
+        delivery_note=None,
+    )
+    user.name = "Aigul"
+    with patch("app.users.router.UsersService") as service_cls:
+        service = service_cls.return_value
+        service.update = AsyncMock(return_value=user)
+        async with client as c:
+            response = await c.patch(
+                "/users/me",
+                json={"deliveryAddress": " Бишкек, Киевская 10 ", "deliveryNote": ""},
+            )
+
+    assert response.status_code == 200
+    service.update.assert_awaited_once_with(
+        CURRENT_USER_ID, {"delivery_address": "Бишкек, Киевская 10", "delivery_note": None}
+    )
+    body = response.json()
+    assert body["deliveryAddress"] == "Бишкек, Киевская 10"
+    assert body["deliveryNote"] is None

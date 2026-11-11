@@ -6,6 +6,7 @@ import { useToast } from 'widgets/contexts'
 import { orderNumber } from 'widgets/molecules'
 import { useCart } from '@/contexts/CartContext'
 import { useEditableOrder } from '@/hooks/useEditableOrder'
+import { linesOfVariants, useDiscountLossConfirm } from '@/hooks/useDiscountLossConfirm'
 import { messageForError } from '@/services/apiErrors'
 import { addMyOrderItem } from '@/services/endpoints/orders'
 import { isOrdersKey } from '@/services/swrKeys'
@@ -27,6 +28,7 @@ export const EditableOrderNotice: React.FC = () => {
   const { cart, removeItem } = useCart()
   const { notify } = useToast()
   const [isMoving, setIsMoving] = useState(false)
+  const confirmDiscountLoss = useDiscountLossConfirm()
 
   if (order === null) {
     return null
@@ -54,11 +56,25 @@ export const EditableOrderNotice: React.FC = () => {
       return
     }
 
+    // Один вопрос на весь перенос, а не на каждую позицию.
+    const touched = linesOfVariants(
+      order,
+      items.map(item => item.variantId)
+    )
+
+    if (!(await confirmDiscountLoss(order, touched))) {
+      return
+    }
+
     setIsMoving(true)
 
     try {
+      // Каждое добавление двигает `revision` — следующее идёт с той, что вернуло предыдущее.
+      let revision = order.revision
+
       for (const item of items) {
-        await addMyOrderItem(order.id, item.variantId, item.quantity)
+        revision = (await addMyOrderItem(order.id, revision, item.variantId, item.quantity))
+          .revision
 
         const result = await removeItem(item.variantId)
 

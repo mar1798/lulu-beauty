@@ -264,7 +264,7 @@ async def test_list_admin_page_filters_by_status_and_paginates(
     assert len(second_page) == 1
 
 
-async def test_admin_summary_counts_lines_and_money_across_every_page(
+async def test_admin_summary_counts_units_and_money_across_every_page(
     db_session: AsyncSession,
 ) -> None:
     user = await make_user(db_session)
@@ -282,9 +282,9 @@ async def test_admin_summary_counts_lines_and_money_across_every_page(
 
     await service.update_status(two_lines.id, OrderStatus.AWAITING_PAYMENT)
 
-    # Lines, not units: the first order is two lines however many of each it holds.
-    assert await service.admin_summary(None, None) == (3, 2 * 1000 + 2500 + 1000)
-    assert await service.admin_summary(None, OrderStatus.AWAITING_PAYMENT) == (2, 2 * 1000 + 2500)
+    # Units, not lines: the first order is two lines but three pieces.
+    assert await service.admin_summary(None, None) == (4, 2 * 1000 + 2500 + 1000)
+    assert await service.admin_summary(None, OrderStatus.AWAITING_PAYMENT) == (3, 2 * 1000 + 2500)
     assert await service.admin_summary(uuid.uuid4(), None) == (0, 0)
 
 
@@ -414,7 +414,7 @@ async def test_set_item_quantity_recalculates_the_total(db_session: AsyncSession
     user_id, order = await _order_with_items(db_session, lines=2)
     service = OrdersService(db_session)
 
-    updated = await service.set_item_quantity(user_id, order.id, order.items[0].id, 4)
+    updated, _ = await service.set_item_quantity(user_id, order.id, order.items[0].id, 4)
 
     assert updated.items[0].quantity == 4
     assert updated.total_cents == 5000
@@ -432,7 +432,7 @@ async def test_set_item_quantity_keeps_the_snapshot_price(db_session: AsyncSessi
     product.price_cents = 9999
     await db_session.flush()
 
-    updated = await service.set_item_quantity(user.id, order.id, order.items[0].id, 2)
+    updated, _ = await service.set_item_quantity(user.id, order.id, order.items[0].id, 2)
 
     assert updated.items[0].product_price_cents == 1000
     assert updated.total_cents == 2000
@@ -444,7 +444,7 @@ async def test_add_item_appends_a_line_and_recalculates(db_session: AsyncSession
     await make_product_image(db_session, product, url="http://x/new.jpg", is_primary=True)
     service = OrdersService(db_session)
 
-    updated = await service.add_item(user_id, order.id, variant_id(product), 2)
+    updated, _ = await service.add_item(user_id, order.id, variant_id(product), 2)
 
     assert len(updated.items) == 2
     added = next(item for item in updated.items if item.product_id == product.id)
@@ -501,7 +501,7 @@ async def test_add_item_puts_the_new_line_in_place_in_the_response(
     product = await make_product(db_session, name="Product 0a")
     service = OrdersService(db_session)
 
-    updated = await service.add_item(user_id, order.id, variant_id(product), 1)
+    updated, _ = await service.add_item(user_id, order.id, variant_id(product), 1)
 
     assert [item.product_name for item in updated.items] == ["Product 0", "Product 0a", "Product 1"]
 
@@ -515,7 +515,7 @@ async def test_add_item_merges_into_the_line_that_is_already_there(
     variant = order.items[0].variant_id
     assert variant is not None
 
-    updated = await service.add_item(user_id, order.id, variant, 3)
+    updated, _ = await service.add_item(user_id, order.id, variant, 3)
 
     assert len(updated.items) == 1
     assert updated.items[0].quantity == 5
@@ -530,7 +530,7 @@ async def test_add_item_prices_the_new_line_from_the_current_catalog(
     later = await make_product(db_session, name="Later", price_cents=3000)
     service = OrdersService(db_session)
 
-    updated = await service.add_item(user_id, order.id, variant_id(later), 1)
+    updated, _ = await service.add_item(user_id, order.id, variant_id(later), 1)
 
     prices = {item.product_name: item.product_price_cents for item in updated.items}
     assert prices == {"Product 0": 1000, "Later": 3000}
@@ -544,7 +544,7 @@ async def test_add_item_clamps_the_merged_quantity_to_the_ceiling(
     variant = order.items[0].variant_id
     assert variant is not None
 
-    updated = await service.add_item(user_id, order.id, variant, 5)
+    updated, _ = await service.add_item(user_id, order.id, variant, 5)
 
     assert updated.items[0].quantity == MAX_ITEM_QUANTITY
 
@@ -569,7 +569,7 @@ async def test_remove_item_drops_the_line_and_recalculates(db_session: AsyncSess
     service = OrdersService(db_session)
     removed_id, kept_id = order.items[0].id, order.items[1].id
 
-    updated = await service.remove_item(user_id, order.id, removed_id)
+    updated, _ = await service.remove_item(user_id, order.id, removed_id)
 
     assert [item.id for item in updated.items] == [kept_id]
     assert updated.total_cents == 1000

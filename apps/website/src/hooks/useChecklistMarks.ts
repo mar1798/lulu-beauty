@@ -1,119 +1,100 @@
-import { useCallback, useMemo, useSyncExternalStore } from 'react'
+import { useCallback, useRef } from 'react'
+import type { KeyedMutator } from 'swr'
+import type { IAdminChecklist } from 'widgets/types'
+import { clearChecklistMarks, setChecklistMark } from '@/services/endpoints/admin'
 
 /**
- * Отметки «куплено» в чек-листе закупки — в `localStorage` этого браузера.
+ * Отметки «куплено» в чек-листе закупки — на сервере, общие для всех админов:
+ * двое делят магазин пополам, и купленное одним другой должен видеть
+ * купленным. Сами ключи приходят в ответе `GET /admin/checklist`
+ * (`checkedKeys`), так что отметки и список читаются одним запросом.
  *
- * Не на сервере: отметка нужна одному человеку с одним телефоном на время
- * похода по магазину, и строка в базе ради неё — миграция и ручка без
- * причины. Зато перезагрузка страницы или закрытый Telegram их не стирают.
+ * Нажатие красит строку сразу (оптимистично), не дожидаясь сервера: в
+ * магазине связь бывает плохой, а отметку ставят на ходу. Не дошла — ошибка
+ * уходит наверх, а экран выправляет перечитанный список.
  *
- * Хранится список одного сбора. Открылся новый — старые отметки ему не
- * принадлежат и выбрасываются при первой же записи, так что хранилище не
- * копит историю.
- *
- * Хранилища может не быть вовсе (приватный режим, запрет сайта) — тогда
- * отметки живут до перезагрузки, а страница работает как обычно.
+ * Несколько отметок подряд, пока предыдущие ещё в пути, — обычное дело, и
+ * SWR тут сам не справляется: ответ, к приходу которого началась следующая
+ * мутация, он отбрасывает (ни кеша, ни отката), а `revalidate` между
+ * мутациями тоже игнорирует. Поэтому каждая оптимистичная правка строится от
+ * того, что на экране, а когда завершается последняя из запросов в пути,
+ * список перечитывается один раз — и экран сходится с сервером, что бы ни
+ * случилось по дороге: сорвавшаяся отметка, «Снять отметки», обогнавшие
+ * отметку, чужие отметки.
  */
-
-const STORAGE_KEY = 'lb-checklist'
-
-interface IStoredMarks {
-  cycleId: string
-  keys: string[]
-}
-
-/** Запасное место, когда `localStorage` бросает: отметки доживут до перезагрузки. */
-let memoryValue: string | null = null
-
-const listeners = new Set<() => void>()
-
-const readRaw = (): string | null => {
-  try {
-    return window.localStorage.getItem(STORAGE_KEY)
-  } catch {
-    return memoryValue
-  }
-}
-
-const writeRaw = (value: string): void => {
-  try {
-    window.localStorage.setItem(STORAGE_KEY, value)
-  } catch {
-    memoryValue = value
-  }
-
-  listeners.forEach(listener => listener())
-}
-
-const subscribe = (onChange: () => void): (() => void) => {
-  listeners.add(onChange)
-  // Вторая вкладка с тем же списком тоже видит отметки.
-  window.addEventListener('storage', onChange)
-
-  return (): void => {
-    listeners.delete(onChange)
-    window.removeEventListener('storage', onChange)
-  }
-}
-
-const parseMarks = (raw: string | null, cycleId: string): string[] => {
-  if (raw === null) {
-    return []
-  }
-
-  try {
-    const stored = JSON.parse(raw) as Partial<IStoredMarks>
-
-    return stored.cycleId === cycleId && Array.isArray(stored.keys) ? stored.keys : []
-  } catch {
-    return []
-  }
-}
 
 export interface IChecklistMarks {
   checkedKeys: string[]
-  toggle: (key: string, checked: boolean) => void
-  reset: () => void
+  toggle: (key: string, checked: boolean) => Promise<void>
+  reset: () => Promise<void>
 }
 
-export const useChecklistMarks = (cycleId: string | null): IChecklistMarks => {
-  // На сервере хранилища нет: статическая страница рендерится без отметок, а
-  // первая отрисовка в браузере подставляет сохранённые.
-  const raw = useSyncExternalStore(subscribe, readRaw, (): string | null => null)
+const withKey = (keys: string[], key: string, checked: boolean): string[] => {
+  const rest = keys.filter(existing => existing !== key)
 
-  const checkedKeys = useMemo(
-    () => (cycleId === null ? [] : parseMarks(raw, cycleId)),
-    [raw, cycleId]
-  )
+  return checked ? [...rest, key] : rest
+}
 
-  const update = useCallback(
-    (next: (current: string[]) => string[]) => {
-      if (cycleId === null) {
+export const useChecklistMarks = (
+  data: IAdminChecklist | undefined,
+  mutate: KeyedMutator<IAdminChecklist>
+): IChecklistMarks => {
+  /** Сколько запросов отметок сейчас в пути. */
+  const inFlight = useRef(0)
+
+  const apply = useCallback(
+    async (
+      buildRequest: (cycleId: string) => Promise<void>,
+      next: (keys: string[]) => string[]
+    ): Promise<void> => {
+      const cycleId = data?.cycle?.id
+
+      if (data === undefined || cycleId === undefined) {
         return
       }
 
-      // Перечитывается из хранилища, а не берётся из рендера: два быстрых нажатия
-      // подряд иначе писали бы поверх друг друга.
-      const keys = next(parseMarks(readRaw(), cycleId))
-      writeRaw(JSON.stringify({ cycleId, keys } satisfies IStoredMarks))
+      inFlight.current += 1
+
+      try {
+        await mutate(
+          buildRequest(cycleId).then(() => undefined),
+          {
+            /*
+              От показанного (`displayed`), а не от первого аргумента: тот —
+              последнее подтверждённое значение, без отметок, которые ещё в
+              пути, и вторая отметка подряд гасила бы первую.
+            */
+            optimisticData: (_committed, displayed) => {
+              const base = displayed ?? data
+
+              return { ...base, checkedKeys: next(base.checkedKeys) }
+            },
+            populateCache: false,
+            revalidate: false,
+            rollbackOnError: true,
+          }
+        )
+      } finally {
+        inFlight.current -= 1
+
+        if (inFlight.current === 0) {
+          void mutate()
+        }
+      }
     },
-    [cycleId]
+    [data, mutate]
   )
 
   const toggle = useCallback(
-    (key: string, checked: boolean) => {
-      update(current => {
-        const rest = current.filter(existing => existing !== key)
-
-        return checked ? [...rest, key] : rest
-      })
-    },
-    [update]
+    (key: string, checked: boolean): Promise<void> =>
+      apply(
+        cycleId => setChecklistMark(cycleId, key, checked),
+        keys => withKey(keys, key, checked)
+      ),
+    [apply]
   )
 
-  const reset = useCallback(() => {
-    update(() => [])
-  }, [update])
+  const reset = useCallback((): Promise<void> => apply(clearChecklistMarks, () => []), [apply])
 
-  return { checkedKeys, toggle, reset }
+  return { checkedKeys: data?.checkedKeys ?? [], toggle, reset }
 }

@@ -230,8 +230,32 @@ export const itemQuantity = style({
   fontVariantNumeric: 'tabular-nums',
 })
 
+/** Цена строки до скидки — зачёркнутая, рядом с ценой после. */
+export const itemPriceBefore = style({
+  font: font('13/18'),
+  color: color.text('muted'),
+  textDecoration: 'line-through',
+  fontVariantNumeric: 'tabular-nums',
+})
+
+/** Скидка строки или заявки и её причина — под составом, тоном комментария. */
+export const discount = style({
+  font: font('13/20'),
+  color: color.text('secondary'),
+})
+
 export const note = style({
   marginTop: vars.space.xs,
   font: font('13/20'),
   color: color.text('secondary'),
+})
+
+/**
+ * Адрес и комментарий к получению — тот же тон, что у комментария к заявке,
+ * но с переносами строк: адрес пишут и в несколько строк (квартира, ориентир).
+ */
+export const delivery = style({
+  font: font('13/20'),
+  color: color.text('secondary'),
+  whiteSpace: 'pre-line',
 })

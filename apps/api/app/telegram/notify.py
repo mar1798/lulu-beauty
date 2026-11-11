@@ -27,7 +27,13 @@ from app.cycles.models import CycleStatus, OrderCycle
 from app.cycles.scheduler_service import CartRescue, CycleReminder
 from app.db import async_session
 from app.orders.models import Order, OrderStatus
-from app.orders.service import OrderItemDrop, OrderPriceChange
+from app.orders.service import (
+    DiscountChange,
+    DiscountLoss,
+    LostDiscount,
+    OrderItemDrop,
+    OrderPriceChange,
+)
 from app.payments.models import PaymentReceipt
 from app.telegram import messages, recipients, relay
 from app.telegram.client import notifications_service
@@ -108,12 +114,13 @@ async def notify_order_created_for_customer(order_id: uuid.UUID) -> None:
         logger.exception("Failed to tell the customer about order %s", order_id)
 
 
-async def notify_order_edited(order_id: uuid.UUID) -> None:
+async def notify_order_edited(order_id: uuid.UUID, lost: Sequence[LostDiscount] = ()) -> None:
     """Tells the customer the owner changed their order's composition from the panel.
 
     Re-reads the order, so the lines sent are the ones the row holds by the time this
     runs — a second edit committed in between is announced with its own lines, not
-    with a stale copy of the first.
+    with a stale copy of the first. The discounts the edit took off travel by value: the
+    row no longer holds them.
     """
     try:
         async with async_session() as session:
@@ -124,9 +131,58 @@ async def notify_order_edited(order_id: uuid.UUID) -> None:
             customer = await _load_customer(session, order.user_id)
             if customer is None:
                 return
-            await notifications_service.send_order_edited(customer, order)
+            await notifications_service.send_order_edited(customer, order, lost)
     except Exception:  # noqa: BLE001 - the edit is already committed; see module docstring
         logger.exception("Failed to tell the customer about the edit of order %s", order_id)
+
+
+async def notify_order_discount(
+    order_id: uuid.UUID, item_id: uuid.UUID | None, change: DiscountChange
+) -> None:
+    """Tells the customer an admin gave or took back a discount on their order.
+
+    The order is re-read for the sum and the line's name; the discount itself travels by
+    value (`DiscountChange`), so a second change committed in between cannot turn this
+    message into one about a discount that is no longer the one it announces.
+    """
+    try:
+        async with async_session() as session:
+            order = await _load_order(session, order_id)
+            if order is None:
+                return
+
+            customer = await _load_customer(session, order.user_id)
+            if customer is None:
+                return
+            await notifications_service.send_order_discount(customer, order, item_id, change)
+    except Exception:  # noqa: BLE001 - the discount is already committed; see module docstring
+        logger.exception("Failed to tell the customer about a discount on order %s", order_id)
+
+
+async def notify_discount_lost(order_id: uuid.UUID, loss: DiscountLoss) -> None:
+    """Tells the owner a customer's own edit took off a discount an admin had given.
+
+    The discount was the owner's decision and went without them doing anything; the admin
+    table shows only that it is no longer there, not that it ever was. The loss travels by
+    value — the row no longer holds it. Several edits in a row are announced once: the
+    first takes the discount, and the rest have nothing left to take.
+    """
+    try:
+        async with async_session() as session:
+            order = await _load_order(session, order_id)
+            if order is None:
+                return
+
+            owners = await recipients.get_owners(session)
+            if not owners:
+                logger.warning("No ADMIN user to notify about order %s", order_id)
+                return
+
+            customer = await _load_customer(session, order.user_id)
+            for owner in owners:
+                await notifications_service.send_discount_loss(owner, order, customer, loss)
+    except Exception:  # noqa: BLE001 - the edit is already committed; see module docstring
+        logger.exception("Failed to announce the discount lost on order %s", order_id)
 
 
 async def notify_order_status(order_id: uuid.UUID) -> None:

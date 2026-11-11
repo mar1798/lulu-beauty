@@ -6,6 +6,7 @@ import type {
   IAdminProductSort,
   IAdminProductSortField,
   IAdminUser,
+  DiscountKind,
   ICategory,
   IChecklistExtraInput,
   IChecklistItem,
@@ -396,6 +397,36 @@ export const editAdminOrder = (
 ): Promise<IAdminOrder> =>
   api.put(`/admin/orders/${encodeURIComponent(orderId)}/items`, { body: input })
 
+export interface IAdminOrderDiscountRequest {
+  /** `revision` заявки, с которой открыли окно: состав успели поменять — `order_changed`. */
+  revision: number
+  /** Строка заявки; `null` — скидка на всю заявку. */
+  itemId: string | null
+  /** `null` снимает скидку, которая стоит у цели. */
+  discount: { kind: DiscountKind; value: number; note: string | null } | null
+}
+
+/**
+ * Скидка на строку или на всю заявку — или её снятие. Только до оплаты;
+ * статус не меняется, покупатель получает в боте скидку, причину и новую сумму.
+ */
+export const setAdminOrderDiscount = (
+  orderId: string,
+  input: IAdminOrderDiscountRequest
+): Promise<IAdminOrder> =>
+  api.put(`/admin/orders/${encodeURIComponent(orderId)}/discount`, { body: input })
+
+/**
+ * Та же скидка без сохранения: во что обойдётся заявка или почему бэкенд
+ * откажет (те же коды, что у `setAdminOrderDiscount`). Ничего не меняет и
+ * никому не пишет. Сумму скидки фронтенд сам не считает — только так.
+ */
+export const previewAdminOrderDiscount = (
+  orderId: string,
+  input: IAdminOrderDiscountRequest
+): Promise<{ totalCents: number }> =>
+  api.post(`/admin/orders/${encodeURIComponent(orderId)}/discount/preview`, { body: input })
+
 export const updateOrderStatus = (orderId: string, status: OrderStatus): Promise<IAdminOrder> =>
   api.patch(`/admin/orders/${encodeURIComponent(orderId)}/status`, { body: { status } })
 
@@ -443,3 +474,14 @@ export const addChecklistExtra = (
 
 export const deleteChecklistExtra = (extraId: string): Promise<void> =>
   api.remove(`/admin/checklist/extras/${encodeURIComponent(extraId)}`)
+
+/**
+ * Отметка «куплено» — на сервере, общая для всех админов. Повтор безвреден:
+ * отметить отмеченное и снять снятое — не ошибка.
+ */
+export const setChecklistMark = (cycleId: string, key: string, checked: boolean): Promise<void> =>
+  api.put('/admin/checklist/marks', { body: { cycleId, key, checked } })
+
+/** «Снять отметки» — все отметки сбора, у всех админов сразу. */
+export const clearChecklistMarks = (cycleId: string): Promise<void> =>
+  api.remove('/admin/checklist/marks', { query: { cycleId } })

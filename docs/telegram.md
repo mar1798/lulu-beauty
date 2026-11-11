@@ -26,9 +26,12 @@ share-contact reply keyboard, then `messages.CONSENT` carrying a «Полити�
 `reply_markup` and the greeting spends it on the keyboard — and the consent goes second so
 it sits directly above the button it is about, still before the tap. It names what will be
 stored (number, Telegram profile name, this chat) and why; that list must keep matching
-what the `users` table actually holds. The address is never written into the text: it is a
-button, so on a host Telegram won't link to it simply drops (`_site_button`) rather than
-leaving `http://localhost:3000/privacy` in the first thing a customer reads.
+what the `users` table holds **at sign-up**. Fields the customer may fill in later on
+`/account` (the delivery address and note) are not stored at that tap, so the consent does
+not name them — the privacy policy does, in section 3. The address is never written into
+the text: it is a button, so on a host Telegram won't link to it simply drops
+(`_site_button`) rather than leaving `http://localhost:3000/privacy` in the first thing a
+customer reads.
 
 The same promise is made on the site's `/login` page, and both are the consent the shop
 relies on. Erasing an account is how it is withdrawn
@@ -316,12 +319,14 @@ with admin rights — `ADMIN` and `SUPER_ADMIN` alike (`recipients.get_owners`).
 | ----------------------------------------------------------------------------- | ------------------------------- |
 | New order — at checkout, or placed by an admin (then it names them)           | Owner                           |
 | Order an admin placed for the customer, listing its lines                     | That customer                   |
-| Order's composition changed by an admin: the new lines and sum, nothing asked | That customer                   |
+| Composition changed by an admin: the new lines and sum, discounts it took off | That customer                   |
+| Discount given, made bigger or smaller, or taken back by an admin: new sum    | That customer                   |
 | Order status change (incl. the owner undoing their own cancel)                | Customer                        |
 | Order taken (AWAITING_PAYMENT): the bill, requisites and «📎 Отправить чек»   | Customer                        |
 | Payment receipt sent to the bot                                               | Owner (the file, with verdict)  |
 | Owner accepted / rejected a receipt, or marked the payment in the panel       | Customer                        |
 | Order cancelled by its customer, and that cancellation taken back             | Owner                           |
+| Customer's own edit took off an admin's discount: the edit, what came off     | Owner                           |
 | Order cancelled by its customer: confirmed, with the way to restore it        | That customer                   |
 | Order deleted by owner (unless it was already completed or cancelled)         | Customer                        |
 | Catalog price change repricing PENDING orders                                 | Each affected customer          |

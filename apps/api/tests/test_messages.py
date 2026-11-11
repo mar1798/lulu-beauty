@@ -2,14 +2,16 @@ import uuid
 from datetime import UTC, datetime
 from unittest.mock import MagicMock
 
+import pytest
+
 from app.auth.models import User
 from app.cart.schemas import CartItemResponse, CartResponse
 from app.catalog.schemas import ProductResponse
 from app.catalog.shades import ShadeLabel
 from app.common.limits import MAX_WISHLIST_ITEMS
 from app.cycles.models import OrderCycle
-from app.orders.models import Order, OrderItem, OrderStatus
-from app.orders.service import OrderItemDrop, OrderPriceChange
+from app.orders.models import DiscountKind, Order, OrderItem, OrderStatus
+from app.orders.service import DiscountLoss, OrderItemDrop, OrderPriceChange
 from app.telegram import messages
 from app.wanted.models import WantedProduct
 from app.wishlist.schemas import WishlistItemResponse, WishlistResponse
@@ -382,6 +384,26 @@ def test_order_edited_lists_the_new_composition_and_sum() -> None:
     assert "—" not in text
 
 
+def test_order_edited_names_the_discounts_it_took_off() -> None:
+    from app.orders.models import DiscountKind
+    from app.orders.service import LostDiscount
+
+    order = _order(items=1, total_cents=1000)
+
+    text = messages.order_edited(
+        order,
+        [
+            LostDiscount(DiscountKind.PERCENT, 10),
+            LostDiscount(DiscountKind.AMOUNT, 500, "Крем <SPF>", 50, None),
+        ],
+    )
+
+    assert "Скидки сняты - они были даны на прежний состав:" in text
+    assert "• 10% на всю заявку" in text
+    assert "• 5 сом на Крем &lt;SPF&gt;, 50 мл" in text
+    assert "—" not in text
+
+
 def test_my_orders_truncates_and_says_so() -> None:
     orders = [_order() for _ in range(messages.MAX_LISTED_ORDERS + 3)]
 
@@ -550,6 +572,42 @@ def test_customer_cancellation_for_owner_survives_a_deleted_customer() -> None:
     )
 
     assert "Покупатель: -" in text
+
+
+def _loss(before: int, after: int, *, line: bool = False) -> DiscountLoss:
+    return DiscountLoss(
+        product_name="Сыворотка",
+        product_volume_ml=30,
+        product_shade=None,
+        quantity_before=before,
+        quantity_after=after,
+        order_discount=(DiscountKind.PERCENT, 10),
+        line_discount=(DiscountKind.AMOUNT, 50_000) if line else None,
+    )
+
+
+def test_discount_loss_for_owner_names_the_edit_and_what_came_off() -> None:
+    """По сообщению владелец решает, давать ли скидку снова, - без админки: что сделал
+    покупатель, какие скидки снялись и сколько теперь."""
+    customer = User(name="Айгуль", phone="+996700112233")
+
+    text = _normalize(messages.discount_loss_for_owner(_order(), customer, _loss(2, 3, line=True)))
+
+    assert "изменена покупателем" in text
+    assert "Айгуль, +996700112233" in text
+    assert "Сыворотка" in text and "2 → 3 шт." in text
+    assert "10% на всю заявку" in text
+    assert "500 сом на Сыворотка" in text
+    assert "Сумма теперь: 1 250 сом" in text
+
+
+def test_discount_loss_for_owner_tells_an_added_line_from_a_removed_one() -> None:
+    added = messages.discount_loss_for_owner(_order(), None, _loss(0, 2))
+    removed = messages.discount_loss_for_owner(_order(), None, _loss(1, 0))
+
+    assert "добавлен" in added and "(2 шт.)" in added
+    assert "удалён" in removed
+    assert "Покупатель: -" in removed
 
 
 def test_order_cancelled_by_customer_says_who_and_the_way_back() -> None:
@@ -727,3 +785,123 @@ def test_a_wish_for_the_owner_opens_with_the_title_the_reply_is_matched_by() -> 
     wanted = WantedProduct(name="Айсулуу", phone="+996555000111", message="Крем с SPF")
 
     assert messages.wanted_product_for_owner(wanted).startswith(messages.WANTED_PRODUCT_TITLE)
+
+
+def test_bill_strikes_through_a_discounted_line_and_names_the_order_discount() -> None:
+    from app.orders.models import DiscountKind
+
+    order = _order(status=OrderStatus.AWAITING_PAYMENT, items=2, total_cents=1600)
+    order.items[0].discount_kind = DiscountKind.PERCENT
+    order.items[0].discount_value = 20
+    order.items[0].discount_note = "Брак"
+    order.discount_kind = DiscountKind.AMOUNT
+    order.discount_value = 200
+    order.discount_note = "Постоянный <клиент>"
+
+    text = messages.order_confirmed(order, first_cycle=False)
+
+    assert "<s>10 сом</s> 8 сом (скидка 20% - Брак)" in text
+    assert "Скидка на заказ (2 сом): -2 сом" in text
+    assert "Причина: Постоянный &lt;клиент&gt;" in text
+    assert "—" not in text
+
+
+def test_order_discount_names_the_line_the_reason_and_the_sum_to_pay() -> None:
+    from app.orders.models import DiscountKind
+    from app.orders.service import DiscountChange
+
+    order = _order(status=OrderStatus.AWAITING_PAYMENT, items=1, total_cents=900)
+    item = order.items[0]
+    item.id = uuid.uuid4()
+    item.product_name = "Крем"
+    change = DiscountChange(
+        previous_total_cents=1000,
+        previous_kind=None,
+        previous_value=None,
+        kind=DiscountKind.PERCENT,
+        value=10,
+        note="Помятая <коробка>",
+    )
+
+    text = messages.order_discount(order, item.id, change)
+
+    assert text.startswith("🎁 Вам скидка 10% на Крем в заявке #a1b2c3d4")
+    assert "Причина: Помятая &lt;коробка&gt;" in text
+    # One sum, named as what to pay: the bill already went out.
+    assert "К оплате: <s>10 сом</s> <b>9 сом</b>" in text
+    assert text.count("9 сом") == 1
+    assert "—" not in text
+
+
+def test_order_discount_reason_alone_is_an_update_not_a_new_gift() -> None:
+    from app.orders.models import DiscountKind
+    from app.orders.service import DiscountChange
+
+    order = _order(status=OrderStatus.PENDING, items=1, total_cents=900)
+    change = DiscountChange(
+        previous_total_cents=900,
+        previous_kind=DiscountKind.AMOUNT,
+        previous_value=100,
+        kind=DiscountKind.AMOUNT,
+        value=100,
+        note="Акция",
+    )
+
+    text = messages.order_discount(order, None, change)
+
+    assert text.startswith("Изменена причина скидки 1 сом по заявке #a1b2c3d4")
+    assert "🎁" not in text
+    assert "Сумма: <b>9 сом</b>" in text
+
+
+@pytest.mark.parametrize(
+    ("previous_value", "total_cents", "heading"),
+    [
+        # 20% → 10%: the customer now pays more, and is told so, without a gift box.
+        (20, 900, "Скидка по заявке #a1b2c3d4 уменьшена: 20% → 10%"),
+        (5, 700, "🎁 Скидка по заявке #a1b2c3d4 увеличена: 5% → 10%"),
+        (15, 800, "Скидка по заявке #a1b2c3d4 изменена: 15% → 10%"),
+    ],
+)
+def test_order_discount_says_which_way_a_changed_one_went(
+    previous_value: int, total_cents: int, heading: str
+) -> None:
+    from app.orders.models import DiscountKind
+    from app.orders.service import DiscountChange
+
+    order = _order(status=OrderStatus.PENDING, items=1, total_cents=total_cents)
+    change = DiscountChange(
+        previous_total_cents=800,
+        previous_kind=DiscountKind.PERCENT,
+        previous_value=previous_value,
+        kind=DiscountKind.PERCENT,
+        value=10,
+        note=None,
+    )
+
+    text = messages.order_discount(order, None, change)
+
+    assert text.startswith(heading)
+    assert heading.startswith("🎁") == ("🎁" in text)
+
+
+def test_order_discount_removed_from_the_whole_order() -> None:
+    from app.orders.models import DiscountKind
+    from app.orders.service import DiscountChange
+
+    order = _order(status=OrderStatus.PENDING, items=1, total_cents=1000)
+    change = DiscountChange(
+        previous_total_cents=900,
+        previous_kind=DiscountKind.PERCENT,
+        previous_value=10,
+        kind=None,
+        value=None,
+        note=None,
+    )
+
+    text = messages.order_discount(order, None, change)
+
+    assert text.startswith("Скидка 10% по заявке #a1b2c3d4 отменена")
+    assert "Сумма: <s>9 сом</s> <b>10 сом</b>" in text
+    # Nothing to pay yet in PENDING.
+    assert "К оплате" not in text

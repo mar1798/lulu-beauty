@@ -9,15 +9,18 @@ export default {
   component: AdminChecklist,
 } satisfies Meta<typeof AdminChecklist>
 
-/** Отметки живут в стори, чтобы строки красились по нажатию, как на странице. */
+/** Отметки и тумблер «Скрыть купленное» живут в стори, чтобы строки красились по нажатию, как на странице. */
 const Template: StoryFn<typeof AdminChecklist> = args => {
   const [checkedKeys, setCheckedKeys] = useState(args.checkedKeys)
+  const [hideChecked, setHideChecked] = useState(args.hideChecked ?? false)
 
   return (
     <StoryWrapper>
       <AdminChecklist
         {...args}
         checkedKeys={checkedKeys}
+        hideChecked={hideChecked}
+        onHideCheckedChange={setHideChecked}
         onToggle={(key, checked) => {
           setCheckedKeys(current =>
             checked ? [...current, key] : current.filter(existing => existing !== key)

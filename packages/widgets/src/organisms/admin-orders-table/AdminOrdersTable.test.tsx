@@ -1,7 +1,8 @@
 import { fireEvent } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
-import { AdminOrdersTable } from '.'
-import { feedAdminOrder, feedAdminOrdersTable } from '../../stories/feed'
+import { AdminOrdersTable, adminOrderNumber } from '.'
+import { formatPrice } from '../../atoms/price'
+import { feedAdminOrder, feedAdminOrdersTable, feedOrderItem } from '../../stories/feed'
 import { renderWidget } from '../../testing/render'
 
 /**
@@ -20,7 +21,7 @@ describe('AdminOrdersTable', () => {
     const { getByText } = renderWidget(<AdminOrdersTable {...feedAdminOrdersTable()} />)
 
     expect(getByText('Итого: 42 заявки')).toBeTruthy()
-    expect(getByText('118 позиций')).toBeTruthy()
+    expect(getByText('118 товаров')).toBeTruthy()
   })
 
   it('без `summary` строки итогов нет', () => {
@@ -96,5 +97,87 @@ describe('AdminOrdersTable', () => {
       'true',
       'true',
     ])
+  })
+
+  it('в раскрытой заявке показывает адрес и получение из профиля, пустые — пропускает', () => {
+    const withDelivery = feedAdminOrder({
+      customerDeliveryAddress: 'Бишкек, Киевская 10\nкв. 5',
+      customerDeliveryNote: 'Самовывоз',
+    })
+    const without = feedAdminOrder({ customerDeliveryAddress: null, customerDeliveryNote: null })
+    const { getAllByRole, getByText, queryAllByText } = renderWidget(
+      <AdminOrdersTable {...feedAdminOrdersTable()} orders={[withDelivery, without]} />
+    )
+
+    // До раскрытия адреса не видно: он в составе, а не в строке.
+    expect(queryAllByText(/Адрес доставки:/)).toHaveLength(0)
+
+    for (const toggle of getAllByRole('button', { expanded: false })) {
+      fireEvent.click(toggle)
+    }
+
+    expect(queryAllByText(/Адрес доставки:/)).toHaveLength(1)
+    expect(getByText(/Адрес доставки: Бишкек, Киевская 10/)).toBeInTheDocument()
+    expect(getByText('Получение: Самовывоз')).toBeInTheDocument()
+  })
+
+  it('скидка — только до оплаты, и заявка со скидкой помечена', () => {
+    const onDiscount = vi.fn()
+    const pending = feedAdminOrder({ status: 'PENDING' })
+    const paid = feedAdminOrder({ status: 'CONFIRMED' })
+    const discounted = feedAdminOrder({
+      status: 'AWAITING_PAYMENT',
+      totalCents: 100,
+      subtotalCents: 200,
+    })
+    const { getByRole, getByText } = renderWidget(
+      <AdminOrdersTable
+        {...feedAdminOrdersTable()}
+        orders={[pending, paid, discounted]}
+        onDiscount={onDiscount}
+      />
+    )
+
+    fireEvent.click(
+      getByRole('button', {
+        name: new RegExp(`Скидка по заявке № ${adminOrderNumber(pending.id)}`),
+      })
+    )
+    expect(onDiscount).toHaveBeenCalledWith(pending)
+
+    fireEvent.click(
+      getByRole('button', { name: new RegExp(`Скидка по заявке № ${adminOrderNumber(paid.id)}`) })
+    )
+    expect(onDiscount).toHaveBeenCalledTimes(1)
+
+    expect(getByText('Со скидкой')).toBeTruthy()
+  })
+
+  it('в раскрытом составе — скидка строки и скидка заявки с причинами', () => {
+    const order = feedAdminOrder({
+      items: [
+        feedOrderItem({
+          lineTotalCents: 20_000,
+          discountKind: 'PERCENT',
+          discountValue: 10,
+          discountNote: 'Помятая коробка',
+          discountCents: 2_000,
+        }),
+      ],
+      discountKind: 'AMOUNT',
+      discountValue: 1_000,
+      discountNote: 'Акция',
+      discountCents: 1_000,
+    })
+    const { getByRole, getByText } = renderWidget(
+      <AdminOrdersTable {...feedAdminOrdersTable()} orders={[order]} />
+    )
+
+    fireEvent.click(getByRole('button', { name: '1 товар' }))
+
+    expect(getByText('Скидка 10% - Помятая коробка')).toBeTruthy()
+    expect(
+      getByText(`Скидка на заявку ${formatPrice(1_000)}: -${formatPrice(1_000)} - Акция`)
+    ).toBeTruthy()
   })
 })

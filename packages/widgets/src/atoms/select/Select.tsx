@@ -14,7 +14,8 @@ import {
   useSyncExternalStore,
 } from 'react'
 import type { IBasicStyling, ISelectOption, ISelectProps } from '../../types'
-import { IconCheck, IconChevronDown } from '../../svg/icons'
+import { IconBox, IconCheck, IconChevronDown } from '../../svg/icons'
+import { AppImage } from '../app-image'
 import { Portal } from '../portal'
 import { POPOVER_OFFSET, POPOVER_TRANSITION } from '../../utils/motion'
 import * as styles from './Select.css'
@@ -118,6 +119,65 @@ const seek = (options: ISelectOption[], from: number, step: number): number => {
   }
 
   return -1
+}
+
+const THUMB_SIZES = { option: { fb: '32px' }, value: { fb: '20px' } } as const
+
+interface IOptionThumbProps {
+  imageUrl: string | null
+  place: keyof typeof THUMB_SIZES
+}
+
+/**
+ * Миниатюра строки. Адрес у позиции заявки — снапшот и может пережить сам
+ * файл, поэтому «не отдался» рисуется той же заглушкой, что «фото нет».
+ * Картинка декоративная (`alt=""`): строку называет подпись рядом.
+ */
+const OptionThumb: FC<IOptionThumbProps> = ({ imageUrl, place }) => {
+  const [isBroken, setIsBroken] = useState(false)
+
+  useEffect(() => {
+    setIsBroken(false)
+  }, [imageUrl])
+
+  return (
+    <span className={styles.thumb[place]} aria-hidden={true}>
+      {imageUrl === null || isBroken ? (
+        <span className={styles.thumbPlaceholder}>
+          <IconBox />
+        </span>
+      ) : (
+        <AppImage
+          image={{ src: imageUrl, alt: '' }}
+          sizes={THUMB_SIZES[place]}
+          fill={true}
+          onError={() => {
+            setIsBroken(true)
+          }}
+        />
+      )}
+    </span>
+  )
+}
+
+/** Подпись строки — с миниатюрой, если она у строки есть. */
+const optionContent = (
+  option: ISelectOption,
+  place: IOptionThumbProps['place'],
+  labelClassName: string
+): ReactElement => {
+  const label = <span className={labelClassName}>{option.label}</span>
+
+  if (option.imageUrl === undefined) {
+    return label
+  }
+
+  return (
+    <span className={styles.withThumb}>
+      <OptionThumb imageUrl={option.imageUrl} place={place} />
+      {label}
+    </span>
+  )
 }
 
 interface IOptionEntry {
@@ -604,7 +664,7 @@ export const Select: FC<ISelectProps & IBasicStyling> = ({
         }}
         onClick={() => commit(index)}
       >
-        <span className={styles.optionLabel}>{option.label}</span>
+        {optionContent(option, 'option', styles.optionLabel)}
         {isSelected && <IconCheck className={styles.check} />}
       </li>
     )
@@ -709,9 +769,11 @@ export const Select: FC<ISelectProps & IBasicStyling> = ({
             }
           }}
         >
-          <span className={clsx(styles.value, selected === null && styles.placeholder)}>
-            {selected?.label ?? placeholder ?? ''}
-          </span>
+          {selected === null ? (
+            <span className={clsx(styles.value, styles.placeholder)}>{placeholder ?? ''}</span>
+          ) : (
+            optionContent(selected, 'value', styles.value)
+          )}
         </button>
 
         <IconChevronDown className={styles.chevron} />

@@ -23,8 +23,15 @@ from app.catalog.labels import product_label
 from app.common.limits import MAX_WISHLIST_ITEMS
 from app.config import settings
 from app.cycles.models import OrderCycle
-from app.orders.models import CANCELLED_STATUSES, Order, OrderItem, OrderStatus
-from app.orders.service import OrderItemDrop, OrderPriceChange
+from app.orders.discounts import line_discount_cents, line_subtotal_cents, order_totals
+from app.orders.models import CANCELLED_STATUSES, DiscountKind, Order, OrderItem, OrderStatus
+from app.orders.service import (
+    DiscountChange,
+    DiscountLoss,
+    LostDiscount,
+    OrderItemDrop,
+    OrderPriceChange,
+)
 from app.wanted.models import WantedProduct
 from app.wishlist.schemas import WishlistResponse
 
@@ -224,6 +231,43 @@ def customer_cancellation_for_owner(order: Order, customer: User | None, *, rest
     )
 
 
+def discount_loss_for_owner(order: Order, customer: User | None, loss: DiscountLoss) -> str:
+    """The customer changed their order, and that took off a discount an admin gave.
+
+    The site warned the customer; the owner learns it here, or the discount they decided on
+    is simply gone the next time anyone opens the order. What the customer did is named, so
+    the owner can tell whether the discount still deserves to be given again — that is
+    theirs to do from the panel, nothing here re-grants it.
+
+    Plain text like `customer_cancellation_for_owner`: nothing is escaped, nothing needs to be.
+    """
+    product = product_label(loss.product_name, loss.product_volume_ml, loss.product_shade)
+    if loss.quantity_before == 0:
+        change = f"добавлен {product} ({loss.quantity_after} шт.)"
+    elif loss.quantity_after == 0:
+        change = f"удалён {product}"
+    else:
+        change = f"{product}: {loss.quantity_before} → {loss.quantity_after} шт."
+    dropped = []
+    if loss.order_discount is not None:
+        dropped.append(f"• {discount_label(*loss.order_discount)} на всю заявку")
+    if loss.line_discount is not None:
+        dropped.append(f"• {discount_label(*loss.line_discount)} на {product}")
+    return "\n".join(
+        [
+            f"✏️ Заявка {order_reference(order.id)} изменена покупателем - скидка снята",
+            # `None` is an erased account, as in `customer_cancellation_for_owner`.
+            f"Покупатель: {customer.name}, {customer.phone}" if customer else "Покупатель: -",
+            f"Изменение: {change}",
+            "Снята скидка:",
+            *dropped,
+            f"Сумма теперь: {format_price(order.total_cents)}",
+            "",
+            "Если скидка остаётся в силе - назначьте её заново в админке",
+        ]
+    )
+
+
 def order_cancelled_by_customer(order: Order) -> str:
     """Покупателю — подтверждение его же отмены.
 
@@ -365,6 +409,7 @@ def order_created_for_customer(order: Order, cycle: OrderCycle | None, *, is_ope
             f"🛍{_items_count(order)}",
             *(_bill_line(item) for item in order.items),
             "",
+            *_order_discount_lines(order),
             f"Сумма: <b>{format_price(order.total_cents, grouped=False)}</b>",
             "",
             "Ваша заявка принята и ожидает подтверждения 💜",
@@ -374,15 +419,32 @@ def order_created_for_customer(order: Order, cycle: OrderCycle | None, *, is_ope
     )
 
 
-def order_edited(order: Order) -> str:
-    """Владелец изменил состав заявки в админке — покупателю новый состав и сумма.
+def order_edited(order: Order, lost: Sequence[LostDiscount] = ()) -> str:
+    """The owner changed the order's composition in the panel — the new one and the sum.
 
-    Только сообщить: статус не меняется, и ничего от покупателя не ждут — ни нового
-    подтверждения, ни нового чека. Перечислены все строки, как в счёте: сравнивать
-    покупатель будет с тем, что помнит, и «и ещё 2» не дали бы увидеть, что поменялось.
+    Only to tell: the status does not move, and nothing is expected of the customer — no
+    new confirmation, no new receipt. Every line is listed, as on the bill: the customer
+    compares with what they remember, and "and 2 more" would hide what changed.
 
-    HTML: названия товаров экранируются в `_bill_line`.
+    The discounts the edit took off (`OrdersService.edit_by_admin`) are named, each with
+    what it was on: the sum went up, and a bill with no word on why reads as a mistake.
+
+    HTML: product names are escaped in `_bill_line` and here.
     """
+    dropped = [
+        f"• {discount_label(discount.kind, discount.value)} "
+        + (
+            "на всю заявку"
+            if discount.product_name is None
+            else "на "
+            + html.escape(
+                product_label(
+                    discount.product_name, discount.product_volume_ml, discount.product_shade
+                )
+            )
+        )
+        for discount in lost
+    ]
     return "\n".join(
         [
             f"Заявка {order_reference(order.id)} изменена",
@@ -391,6 +453,18 @@ def order_edited(order: Order) -> str:
             f"🛍{_items_count(order)}",
             *(_bill_line(item) for item in order.items),
             "",
+            *(
+                [
+                    "Скидка снята - она была дана на прежний состав:"
+                    if len(dropped) == 1
+                    else "Скидки сняты - они были даны на прежний состав:",
+                    *dropped,
+                    "",
+                ]
+                if dropped
+                else []
+            ),
+            *_order_discount_lines(order),
             f"Сумма: <b>{format_price(order.total_cents, grouped=False)}</b>",
         ]
     )
@@ -399,18 +473,131 @@ def order_edited(order: Order) -> str:
 # Where the money goes. Written into the text rather than kept in settings: it is part
 # of the wording, and the owner reads and changes it the same way as the rest of it.
 PAYMENT_DETAILS = (
-    "💳 996509817818\n(доступны переводы по номеру телефона на обанк, симбу, бакай и оптиму)"
+    "💳 996509817818\n(доступны переводы по номеру телефона на обанк, симбу и бакай)"
 )
 
 
 def _bill_line(item: OrderItem) -> str:
-    """A line of the bill — HTML, so the product name is escaped."""
+    """A line of the bill — HTML, so the product name is escaped.
+
+    A discounted line shows the price it had struck through next to the one it has, with the
+    size and the reason: the customer compares the bill with the catalogue, and a lower
+    number with no word on why reads as a mistake. The reason is the admin's text, escaped.
+    """
     label = html.escape(
         product_label(item.product_name, item.product_volume_ml, item.product_shade)
     )
     quantity = f" × {item.quantity}" if item.quantity > 1 else ""
-    price = format_price(item.product_price_cents * item.quantity, grouped=False)
+    subtotal = line_subtotal_cents(item)
+    discount = line_discount_cents(item)
+    price = format_price(subtotal - discount, grouped=False)
+    if discount:
+        before = format_price(subtotal, grouped=False)
+        tag = discount_label(item.discount_kind, item.discount_value)
+        why = f" - {html.escape(item.discount_note)}" if item.discount_note else ""
+        price = f"<s>{before}</s> {price} (скидка {tag}{why})"
     return f"• {label}{quantity} - {price}"
+
+
+def discount_label(kind: DiscountKind | None, value: int | None) -> str:
+    """The discount as the admin set it ("10%", "500 сом"), not what it came to."""
+    if kind is None or value is None:
+        return ""
+    if kind is DiscountKind.PERCENT:
+        return f"{value}%"
+    return format_price(value, grouped=False)
+
+
+def _order_discount_lines(order: Order) -> list[str]:
+    """The order's own discount above the sum, with its reason — empty without one.
+
+    HTML: the reason is the admin's text and is escaped.
+    """
+    totals = order_totals(order)
+    if not totals.order_discount_cents:
+        return []
+    lines = [
+        f"Скидка на заказ ({discount_label(order.discount_kind, order.discount_value)}): "
+        f"-{format_price(totals.order_discount_cents, grouped=False)}"
+    ]
+    if order.discount_note:
+        lines.append(f"Причина: {html.escape(order.discount_note)}")
+    return lines
+
+
+def order_discount(order: Order, item_id: uuid.UUID | None, change: DiscountChange) -> str:
+    """An admin gave a discount on the order or one of its lines, changed it, or took it back.
+
+    Says what it is on, how much, why (the admin's own words) and the new sum, with the
+    old one struck through. On an unpaid bill (`AWAITING_PAYMENT`) the sum is named as what
+    to pay — the bill already went out with the old one, and this message replaces it. The
+    whole composition is on the site, behind the button under the message.
+
+    The heading says plainly which of these happened, so a smaller discount never arrives
+    dressed as a gift:
+    - a new one — "🎁 Вам скидка";
+    - a changed one — "увеличена" or "уменьшена" by which way the sum moved (a percent
+      turned into an amount compares by money, not by number), the old size next to the new;
+      "изменена" when the sum stayed, the size having been capped by the line;
+    - only the reason changed — said so, the size unchanged;
+    - taken back — "отменена", with the size it had.
+
+    The discount comes from `change`, not from the row: the row may already hold the next
+    one by the time this is sent.
+
+    HTML: product names and the reason are escaped.
+    """
+    reference = order_reference(order.id)
+    item = next((line for line in order.items if line.id == item_id), None)
+    # "по заявке №…" for the whole order, "на <товар> в заявке №…" for one line.
+    target = (
+        f"по заявке {reference}"
+        if item_id is None
+        else "на "
+        + html.escape(
+            product_label(item.product_name, item.product_volume_ml, item.product_shade)
+            if item is not None
+            else "товар"
+        )
+        + f" в заявке {reference}"
+    )
+    total = format_price(order.total_cents, grouped=False)
+    before = format_price(change.previous_total_cents, grouped=False)
+    label = "К оплате" if order.status is OrderStatus.AWAITING_PAYMENT else "Сумма"
+    sum_line = (
+        f"{label}: <s>{before}</s> <b>{total}</b>"
+        if change.previous_total_cents != order.total_cents
+        else f"{label}: <b>{total}</b>"
+    )
+
+    previous = (
+        discount_label(change.previous_kind, change.previous_value)
+        if change.previous_kind is not None
+        else None
+    )
+    if change.kind is None:
+        size = f" {previous}" if previous else ""
+        return "\n".join([f"Скидка{size} {target} отменена", "", sum_line])
+
+    tag = discount_label(change.kind, change.value)
+    if previous is None:
+        heading = f"🎁 Вам скидка {tag} {target}"
+    elif (change.previous_kind, change.previous_value) == (change.kind, change.value):
+        heading = f"Изменена причина скидки {tag} {target}"
+    elif order.total_cents < change.previous_total_cents:
+        heading = f"🎁 Скидка {target} увеличена: {previous} → {tag}"
+    elif order.total_cents > change.previous_total_cents:
+        heading = f"Скидка {target} уменьшена: {previous} → {tag}"
+    else:
+        heading = f"Скидка {target} изменена: {previous} → {tag}"
+    return "\n".join(
+        [
+            heading,
+            *([f"Причина: {html.escape(change.note)}"] if change.note else []),
+            "",
+            sum_line,
+        ]
+    )
 
 
 def order_confirmed(order: Order, *, first_cycle: bool) -> str:
@@ -443,6 +630,7 @@ def order_confirmed(order: Order, *, first_cycle: bool) -> str:
             f"🛍{_items_count(order)}",
             *(_bill_line(item) for item in order.items),
             "",
+            *_order_discount_lines(order),
             f"Итого к оплате: <b>{format_price(order.total_cents, grouped=False)}</b>",
             "Если всё верно, можете произвести оплату по реквизитам:",
             "",

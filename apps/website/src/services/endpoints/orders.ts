@@ -52,22 +52,39 @@ export const getMyOrder = (orderId: string): Promise<IOrder> =>
  */
 export const addMyOrderItem = (
   orderId: string,
+  revision: number,
   variantId: string,
   quantity: number = 1
 ): Promise<IOrder> =>
-  api.post(`/orders/${encodeURIComponent(orderId)}/items`, { body: { variantId, quantity } })
+  api.post(`/orders/${encodeURIComponent(orderId)}/items`, {
+    body: { revision, variantId, quantity },
+  })
 
+/*
+  `revision` во всех трёх правках состава — та, с которой страница прочитала
+  заявку. О снятии скидок страница предупреждает по тем скидкам, что видит;
+  если магазин дал новую, пока страница открыта, бэкенд откажет
+  `order_changed` вместо того, чтобы молча снять её.
+*/
 export const updateMyOrderItemQuantity = (
   orderId: string,
+  revision: number,
   itemId: string,
   quantity: number
 ): Promise<IOrder> =>
   api.patch(`/orders/${encodeURIComponent(orderId)}/items/${encodeURIComponent(itemId)}`, {
-    body: { quantity },
+    body: { revision, quantity },
   })
 
-export const removeMyOrderItem = (orderId: string, itemId: string): Promise<IOrder> =>
-  api.remove(`/orders/${encodeURIComponent(orderId)}/items/${encodeURIComponent(itemId)}`)
+/** У DELETE нет тела — `revision` уходит в строке запроса. */
+export const removeMyOrderItem = (
+  orderId: string,
+  revision: number,
+  itemId: string
+): Promise<IOrder> =>
+  api.remove(`/orders/${encodeURIComponent(orderId)}/items/${encodeURIComponent(itemId)}`, {
+    query: { revision },
+  })
 
 export const updateMyOrderNote = (orderId: string, note: string | null): Promise<IOrder> =>
   api.patch(`/orders/${encodeURIComponent(orderId)}`, { body: { note } })

@@ -66,7 +66,7 @@ Each domain module under `app/` is roughly `router.py` / `service.py` / `schemas
 | `wishlist/`  | Saved products, cycle-independent.                                                                                                                                              |
 | `wanted/`    | Wishes for products the catalog does not stock, written under an empty search. Write-only.                                                                                      |
 | `payments/`  | Payment receipts sent to the bot and the owner's verdict on them; accepting one moves the order to CONFIRMED and stamps `orders.paid_at`. No router — the bot is its only door. |
-| `checklist/` | Lines the owner adds to a cycle's purchase list by hand (`checklist_extras`); `GET /admin/checklist` itself is in `export/`.                                                    |
+| `checklist/` | Lines the owner adds to a cycle's purchase list by hand (`checklist_extras`) and the shared "bought" ticks (`checklist_marks`); `GET /admin/checklist` itself is in `export/`.  |
 | `export/`    | xlsx purchase list (`service.py`) and the catalogue export (`products.py`).                                                                                                     |
 | `telegram/`  | Bot, handlers, keyboards, Russian messages, notifications, throttling, webhook.                                                                                                 |
 | `storage/`   | Local disk file storage for images.                                                                                                                                             |
@@ -84,29 +84,33 @@ Two files that are easy to forget:
 
 Public and customer-facing:
 
-| Method                        | Path                                          | Notes                                                                                                                            |
-| ----------------------------- | --------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| `GET`                         | `/health`                                     | Real DB check; `503` if unreachable. Rate-limit exempt.                                                                          |
-| `POST`                        | `/auth/telegram/session`                      | Opens a sign-in session, returns the bot link + poll secret.                                                                     |
-| `POST`                        | `/auth/telegram/claim`                        | Claims a session the bot confirmed.                                                                                              |
-| `POST`                        | `/auth/telegram/widget`                       | Trades a Telegram Login Widget signature for tokens.                                                                             |
-| `POST`                        | `/auth/telegram/mini-app`                     | Same, for Mini App `initData`.                                                                                                   |
-| `POST`                        | `/auth/refresh`, `/auth/logout`               |                                                                                                                                  |
-| `GET`                         | `/categories`, `/brands`                      |                                                                                                                                  |
-| `GET`                         | `/products`                                   | Paged. Query params **snake_case**: `in_stock`, `page_size`. `sort`: `new` (default), `price_asc`, `price_desc`.                 |
-| `GET`                         | `/products/{slug}`                            |                                                                                                                                  |
-| `GET`                         | `/search/suggest`                             | Header search: categories + brands + 5 products. `q` 1–255.                                                                      |
-| `GET`                         | `/cycles/active`                              |                                                                                                                                  |
-| `GET`/`PATCH`/`DELETE`        | `/users/me`                                   | `DELETE` erases the account — see "Erasing an account".                                                                          |
-| `GET`                         | `/users/me/deletion`                          | Whether the caller may erase, and what blocks it.                                                                                |
-| `GET`/`POST`/`PATCH`/`DELETE` | `/cart`, `/cart/items[/{variant_id}]`         | 409 `no_active_cycle` without an open cycle. A line is a **volume**: `POST` takes `variantId`, and `PATCH`/`DELETE` address one. |
-| `GET`/`POST`/`DELETE`         | `/wishlist`, `/wishlist/items[/{product_id}]` | Cycle-independent.                                                                                                               |
-| `POST`                        | `/wanted-products`                            | A wish for something the catalog lacks. Signed-in (live account); strict rate-limit budget.                                      |
-| `POST`                        | `/orders/checkout`                            |                                                                                                                                  |
-| `GET`                         | `/orders`, `/orders/{id}`                     |                                                                                                                                  |
-| `PATCH`                       | `/orders/{id}`                                | Note only.                                                                                                                       |
-| `POST`/`PATCH`/`DELETE`       | `/orders/{id}/items[/{item_id}]`              | Add / change quantity / remove. `POST` takes `variantId`.                                                                        |
-| `POST`                        | `/orders/{id}/cancel`, `/orders/{id}/restore` |                                                                                                                                  |
+| Method                        | Path                                          | Notes                                                                                                                               |
+| ----------------------------- | --------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `GET`                         | `/health`                                     | Real DB check; `503` if unreachable. Rate-limit exempt.                                                                             |
+| `POST`                        | `/auth/telegram/session`                      | Opens a sign-in session, returns the bot link + poll secret.                                                                        |
+| `POST`                        | `/auth/telegram/claim`                        | Claims a session the bot confirmed.                                                                                                 |
+| `POST`                        | `/auth/telegram/widget`                       | Trades a Telegram Login Widget signature for tokens.                                                                                |
+| `POST`                        | `/auth/telegram/mini-app`                     | Same, for Mini App `initData`.                                                                                                      |
+| `POST`                        | `/auth/refresh`, `/auth/logout`               |                                                                                                                                     |
+| `GET`                         | `/categories`, `/brands`                      |                                                                                                                                     |
+| `GET`                         | `/products`                                   | Paged. Query params **snake_case**: `in_stock`, `page_size`. `sort`: `new` (default), `price_asc`, `price_desc`.                    |
+| `GET`                         | `/products/{slug}`                            |                                                                                                                                     |
+| `GET`                         | `/search/suggest`                             | Header search: categories + brands + 5 products. `q` 1–255.                                                                         |
+| `GET`                         | `/cycles/active`                              |                                                                                                                                     |
+| `GET`/`PATCH`/`DELETE`        | `/users/me`                                   | `PATCH`: `name`, `deliveryAddress`, `deliveryNote` (the last two nullable). `DELETE` erases the account — see "Erasing an account". |
+| `GET`                         | `/users/me/deletion`                          | Whether the caller may erase, and what blocks it.                                                                                   |
+| `GET`/`POST`/`PATCH`/`DELETE` | `/cart`, `/cart/items[/{variant_id}]`         | 409 `no_active_cycle` without an open cycle. A line is a **volume**: `POST` takes `variantId`, and `PATCH`/`DELETE` address one.    |
+| `GET`/`POST`/`DELETE`         | `/wishlist`, `/wishlist/items[/{product_id}]` | Cycle-independent.                                                                                                                  |
+| `POST`                        | `/wanted-products`                            | A wish for something the catalog lacks. Signed-in (live account); strict rate-limit budget.                                         |
+| `POST`                        | `/orders/checkout`                            |                                                                                                                                     |
+| `GET`                         | `/orders`, `/orders/{id}`                     |                                                                                                                                     |
+| `PATCH`                       | `/orders/{id}`                                | Note only.                                                                                                                          |
+| `POST`/`PATCH`/`DELETE`       | `/orders/{id}/items[/{item_id}]`              | Add / change quantity / remove. `POST` takes `variantId`.                                                                           |
+| `POST`                        | `/orders/{id}/cancel`, `/orders/{id}/restore` |                                                                                                                                     |
+
+The three item edits take the order's `revision` as the page read it (`DELETE` in the query
+string): one stale by a discount given since is `409 order_changed`, so a discount never
+comes off unwarned.
 
 Owner-only (`ADMIN` or `SUPER_ADMIN`, checked on the API — the frontend gate is UX only).
 `PATCH /admin/users/{id}/role` is the one exception: **SUPER_ADMIN only**.
@@ -115,9 +119,13 @@ Owner-only (`ADMIN` or `SUPER_ADMIN`, checked on the API — the frontend gate i
 | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `GET`    | `/admin/users`, `/admin/brands`, `/admin/products`, `/admin/products/{id}`, `/admin/orders`, `/admin/orders/cycles`, `/admin/cycles`, `/admin/cycles/{id}/deletion`, `/admin/checklist`, `/admin/export/orders`, `/admin/export/products`                                    |
 | `PATCH`  | `/admin/users/{id}/role`, `/admin/categories/{id}`, `/admin/products/{id}`, `/admin/cycles/{id}`, `/admin/orders/{id}/status`                                                                                                                                                |
-| `PUT`    | `/admin/products/{id}/images` (the gallery's order and photo tags, whole), `/admin/orders/{id}/items` (an order's composition, whole)                                                                                                                                        |
+| `PUT`    | `/admin/products/{id}/images` (the gallery's order and photo tags, whole), `/admin/orders/{id}/items` (an order's composition, whole), `/admin/orders/{id}/discount` (a line's or the order's discount; `null` removes it), `/admin/checklist/marks` (one tick, idempotent)  |
 | `POST`   | `/admin/categories`, `/admin/products`, `/admin/products/{id}/restore`, `/admin/products/{id}/images`, `/admin/catalog/import`, `/admin/cycles`, `/admin/cycles/{id}/close`, `/admin/export/links`, `/admin/orders`, `/admin/orders/{id}/message`, `/admin/checklist/extras` |
-| `DELETE` | `/admin/categories/{id}`, `/admin/products/{id}` (soft), `/admin/products/{id}/images/{image_id}`, `/admin/cycles/{id}`, `/admin/orders/{id}`, `/admin/checklist/extras/{id}`                                                                                                |
+| `DELETE` | `/admin/categories/{id}`, `/admin/products/{id}` (soft), `/admin/products/{id}/images/{image_id}`, `/admin/cycles/{id}`, `/admin/orders/{id}`, `/admin/checklist/extras/{id}`, `/admin/checklist/marks?cycleId=`                                                             |
+
+`POST /admin/orders/{id}/discount/preview` is the `PUT .../discount` above with the same
+body, rolled back instead of committed: it answers with the sum the order would come to, or
+with the same refusal, and tells nobody. The discount dialog shows the sum from it.
 
 `GET /export/download/{token}` takes no session: the token from `POST /admin/export/links`
 is the authorisation — see "Export" in [domain.md](domain.md#export).
@@ -209,7 +217,7 @@ survive a rollback (any `notify_*`) fire _after_ the commit.
 **Wire format.** Request/response schemas subclass `common.schemas.CamelModel`, so JSON is
 camelCase while Python stays snake_case. `PageResponse[T]` is the paging envelope.
 `GET /admin/orders` extends it (`AdminOrderPageResponse`) with a `summary` of `itemCount`
-(order lines, not units) and `totalCents` across **every** order the filters match, not
+(units, summed over `quantity`, not order lines) and `totalCents` across **every** order the filters match, not
 the page — the table's "Итого" row; the order count is the envelope's `total`. Like the
 export, it counts cancelled orders whenever the status filter lets them in.
 
@@ -233,10 +241,13 @@ category_nesting_too_deep category_not_found        category_parent_not_found
 checklist_extra_not_found
 cycle_already_closed      cycle_closed_recently     cycle_has_orders
 cycle_not_closed          cycle_not_found           cycle_orders_changed
+discount_exceeds_total    discount_rounds_to_zero
 export_link_invalid       invalid_refresh_token     invalid_token
 last_order_item           no_active_cycle           not_authenticated
-order_changed             order_item_not_found      order_not_editable
-order_not_found           order_not_restorable      order_status_not_assignable
+order_changed             order_discount_no_room    order_has_receipt
+order_item_not_found      order_not_discountable
+order_not_editable        order_not_found           order_not_restorable
+order_status_not_assignable
 order_status_transition_invalid                     super_admin_immutable
 super_admin_not_assignable                          super_admin_only
 featured_limit_reached

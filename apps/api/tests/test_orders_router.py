@@ -11,16 +11,23 @@ from app.auth.models import Role, User
 from app.cycles.models import OrderCycle
 from app.db import get_session
 from app.main import app
-from app.orders.models import Order, OrderStatus
+from app.orders.models import DiscountKind, Order, OrderStatus
 from app.orders.service import (
+    AdminEdit,
     AdminOrderCycle,
     CustomerNotFoundError,
     DeletedOrder,
+    DiscountChange,
+    DiscountExceedsTotalError,
+    DiscountRoundsToZeroError,
     LastOrderItemError,
     NoCycleForOrderError,
     OrderChangedError,
     OrderCycleUnavailableError,
+    OrderDiscountNoRoomError,
+    OrderHasReceiptError,
     OrderItemNotFoundError,
+    OrderNotDiscountableError,
     OrderNotEditableError,
     OrderNotFoundError,
     ProductNotFoundError,
@@ -479,7 +486,10 @@ async def _edit(
     ):
         payments_cls.return_value.orders_with_receipts = AsyncMock(return_value=set())
         service = _mock_service(mock_service_cls)
-        service.edit_by_admin = AsyncMock(return_value=(order, changed), side_effect=error)
+        service.edit_by_admin = AsyncMock(
+            return_value=(order, AdminEdit(lost_discounts=()) if changed else None),
+            side_effect=error,
+        )
         async with client as c:
             response = await c.put(f"/admin/orders/{order.id}/items", json=body)
     return response.status_code, response.json(), service, notify
@@ -554,6 +564,162 @@ async def test_edit_order_admin_maps_errors_to_codes(
 
     assert (code, body["detail"]) == expected  # type: ignore[index]
     notify.assert_not_awaited()
+
+
+_GIVEN = DiscountChange(1500, None, None, DiscountKind.PERCENT, 15, None)
+
+
+async def _discount(
+    client: AsyncClient,
+    body: dict[str, object],
+    *,
+    error: Exception | None = None,
+    change: DiscountChange | None = _GIVEN,
+) -> tuple[int, object, MagicMock, AsyncMock]:
+    order = _order(OrderStatus.AWAITING_PAYMENT)
+    with (
+        patch("app.orders.router.OrdersService") as mock_service_cls,
+        patch("app.orders.router.PaymentsService") as payments_cls,
+        patch("app.orders.router.notify_order_discount", new_callable=AsyncMock) as notify,
+    ):
+        payments_cls.return_value.orders_with_receipts = AsyncMock(return_value=set())
+        service = _mock_service(mock_service_cls)
+        service.set_discount = AsyncMock(return_value=(order, change), side_effect=error)
+        async with client as c:
+            response = await c.put(f"/admin/orders/{order.id}/discount", json=body)
+    return response.status_code, response.json(), service, notify
+
+
+async def test_discount_passes_the_target_and_tells_the_customer(
+    committing_client: AsyncClient,
+) -> None:
+    item = uuid.uuid4()
+    code, body, service, notify = await _discount(
+        committing_client,
+        {
+            "revision": 2,
+            "itemId": str(item),
+            "discount": {"kind": "PERCENT", "value": 15, "note": " Помятая коробка "},
+        },
+    )
+
+    assert code == 200
+    assert body["subtotalCents"] == 0  # type: ignore[index]
+    args = service.set_discount.await_args.args
+    assert args[1:] == (2, item, (DiscountKind.PERCENT, 15), "Помятая коробка")
+    notify.assert_awaited_once()
+    assert notify.await_args.args[1:] == (item, _GIVEN)
+
+
+async def test_removing_a_discount_on_the_whole_order(committing_client: AsyncClient) -> None:
+    code, _, service, notify = await _discount(
+        committing_client,
+        {"revision": 0, "discount": None},
+        change=DiscountChange(900, DiscountKind.PERCENT, 10, None, None, None),
+    )
+
+    assert code == 200
+    assert service.set_discount.await_args.args[1:] == (0, None, None, None)
+    assert notify.await_args.args[2].kind is None
+
+
+async def test_a_discount_that_changed_nothing_tells_nobody(
+    committing_client: AsyncClient,
+) -> None:
+    code, _, _, notify = await _discount(
+        committing_client,
+        {"revision": 0, "discount": {"kind": "AMOUNT", "value": 500}},
+        change=None,
+    )
+
+    assert code == 200
+    notify.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
+    "discount",
+    [
+        {"kind": "PERCENT", "value": 101},
+        {"kind": "AMOUNT", "value": 0},
+        {"kind": "AMOUNT", "value": 100, "note": "x" * 501},
+    ],
+)
+async def test_discount_refuses_an_invalid_value(
+    committing_client: AsyncClient, discount: dict[str, object]
+) -> None:
+    code, _, service, _ = await _discount(committing_client, {"revision": 0, "discount": discount})
+
+    assert code == 422
+    service.set_discount.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
+    ("error", "expected"),
+    [
+        (OrderNotFoundError(), (404, "order_not_found")),
+        (OrderNotDiscountableError(), (409, "order_not_discountable")),
+        (OrderChangedError(), (409, "order_changed")),
+        (OrderItemNotFoundError(), (404, "order_item_not_found")),
+        (OrderHasReceiptError(), (409, "order_has_receipt")),
+        (DiscountExceedsTotalError(), (409, "discount_exceeds_total")),
+        (OrderDiscountNoRoomError(), (409, "order_discount_no_room")),
+        (DiscountRoundsToZeroError(), (409, "discount_rounds_to_zero")),
+    ],
+)
+async def test_discount_maps_errors_to_codes(
+    committing_client: AsyncClient, error: Exception, expected: tuple[int, str]
+) -> None:
+    code, body, _, notify = await _discount(
+        committing_client,
+        {"revision": 0, "discount": {"kind": "AMOUNT", "value": 500}},
+        error=error,
+    )
+
+    assert (code, body["detail"]) == expected  # type: ignore[index]
+    notify.assert_not_awaited()
+
+
+async def _preview(
+    body: dict[str, object], *, error: Exception | None = None
+) -> tuple[int, object, MagicMock, AsyncMock]:
+    order = _order(OrderStatus.PENDING)
+    order.total_cents = 4200
+    session = AsyncMock()
+    app.dependency_overrides[get_session] = lambda: session
+    app.dependency_overrides[require_admin] = lambda: CurrentUser(id=uuid.uuid4(), role=Role.ADMIN)
+    try:
+        with (
+            patch("app.orders.router.OrdersService") as mock_service_cls,
+            patch("app.orders.router.notify_order_discount", new_callable=AsyncMock) as notify,
+        ):
+            service = _mock_service(mock_service_cls)
+            service.set_discount = AsyncMock(return_value=(order, _GIVEN), side_effect=error)
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+                response = await c.post(f"/admin/orders/{order.id}/discount/preview", json=body)
+    finally:
+        app.dependency_overrides.clear()
+    notify.assert_not_awaited()
+    session.commit.assert_not_awaited()
+    session.rollback.assert_awaited_once()
+    return response.status_code, response.json(), service, session
+
+
+async def test_discount_preview_runs_the_same_call_and_rolls_it_back() -> None:
+    code, body, service, _ = await _preview(
+        {"revision": 1, "discount": {"kind": "PERCENT", "value": 10}}
+    )
+
+    assert (code, body) == (200, {"totalCents": 4200})
+    assert service.set_discount.await_args.args[1:] == (1, None, (DiscountKind.PERCENT, 10), None)
+
+
+async def test_discount_preview_refuses_with_the_same_codes() -> None:
+    code, body, _, _ = await _preview(
+        {"revision": 0, "discount": {"kind": "AMOUNT", "value": 500}},
+        error=OrderDiscountNoRoomError(),
+    )
+
+    assert (code, body) == (409, {"detail": "order_discount_no_room"})
 
 
 async def test_admin_order_cycles_maps_user_id_and_shape(client: AsyncClient) -> None:
