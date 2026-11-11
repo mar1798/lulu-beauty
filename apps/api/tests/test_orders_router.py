@@ -13,6 +13,7 @@ from app.db import get_session
 from app.main import app
 from app.orders.models import DiscountKind, Order, OrderStatus
 from app.orders.service import (
+    AdminEdit,
     AdminOrderCycle,
     CustomerNotFoundError,
     DeletedOrder,
@@ -484,7 +485,10 @@ async def _edit(
     ):
         payments_cls.return_value.orders_with_receipts = AsyncMock(return_value=set())
         service = _mock_service(mock_service_cls)
-        service.edit_by_admin = AsyncMock(return_value=(order, changed), side_effect=error)
+        service.edit_by_admin = AsyncMock(
+            return_value=(order, AdminEdit(lost_discounts=()) if changed else None),
+            side_effect=error,
+        )
         async with client as c:
             response = await c.put(f"/admin/orders/{order.id}/items", json=body)
     return response.status_code, response.json(), service, notify

@@ -382,6 +382,26 @@ def test_order_edited_lists_the_new_composition_and_sum() -> None:
     assert "—" not in text
 
 
+def test_order_edited_names_the_discounts_it_took_off() -> None:
+    from app.orders.models import DiscountKind
+    from app.orders.service import LostDiscount
+
+    order = _order(items=1, total_cents=1000)
+
+    text = messages.order_edited(
+        order,
+        [
+            LostDiscount(DiscountKind.PERCENT, 10),
+            LostDiscount(DiscountKind.AMOUNT, 500, "Крем <SPF>", 50, None),
+        ],
+    )
+
+    assert "Скидки сняты - они были даны на прежний состав:" in text
+    assert "• 10% на всю заявку" in text
+    assert "• 5 сом на Крем &lt;SPF&gt;, 50 мл" in text
+    assert "—" not in text
+
+
 def test_my_orders_truncates_and_says_so() -> None:
     orders = [_order() for _ in range(messages.MAX_LISTED_ORDERS + 3)]
 

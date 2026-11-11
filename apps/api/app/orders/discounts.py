@@ -7,9 +7,9 @@ computed (`OrdersService._recalculate_total`). Kept apart from the service so th
 is one pure function that every reader agrees on: the stored total, the API response and the
 bot's messages all count the same way.
 
-The anchor is what keeps the discount the admin's. Only admin actions move it
-(`anchor_discounts`, called by `set_discount` and `edit_by_admin`); a reprice or a dropped
-product do not. Against the anchor, a discount can shrink but never grow:
+The anchor is what keeps the discount the admin's. Only giving a discount moves it
+(`anchor_discounts`, called by `set_discount`); a reprice or a dropped product do not.
+Against the anchor, a discount can shrink but never grow:
 
 - the sum it is taken from is as large as at the anchor or larger — the discount is what it
   was at the anchor, not a share of the new sum;
@@ -21,9 +21,10 @@ on every recount), so the stored value is always what the customer gets. Without
 next admin action would re-anchor the old, larger number against the smaller sum and hand
 the shrunk part back — up to making the line or the order free.
 
-A customer's own edit does not shrink anything: it takes the discounts it touches off
-altogether (`clear_discount` in the service) — the order's on any change, a line's when that
-line is changed — and the website warns before it does.
+An edit of the composition — the customer's or an admin's — does not shrink anything: it
+takes the discounts it touches off altogether (`clear_discount` in the service) — the
+order's on any change, a line's when that line is changed — and the website warns before
+it does.
 
 The order of operations is fixed: each line's own discount comes off its price × quantity,
 and the order's discount comes off what the lines add up to after that. Neither ever takes
@@ -122,10 +123,9 @@ def order_totals(order: Order) -> OrderTotals:
 def anchor_discounts(order: Order) -> None:
     """Re-take every discount on the order against the sums as they are now.
 
-    An admin's action — giving a discount, rewriting the composition — is the admin
-    looking at the order as it stands, so what they leave in place means what it says
-    against it: a percent is a percent of the current lines. Lines first, then the
-    order's discount against what they leave.
+    Giving a discount is the admin looking at the order as it stands, so what they leave
+    in place means what it says against it: a percent is a percent of the current lines.
+    Lines first, then the order's discount against what they leave.
     """
     for item in order.items:
         item.discount_base_cents = (

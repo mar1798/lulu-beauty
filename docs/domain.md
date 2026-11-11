@@ -566,8 +566,8 @@ bought, add what the customer asked for in a message, change a quantity.
 - **The status never moves, and nothing is asked of the customer.** An unpaid bill is not
   re-issued (`confirmed_at` stays), a paid order stays paid, no new receipt is expected. Any
   difference in money is settled by the owner in person. The customer is only told — one
-  bot message with the new lines and sum (`messages.order_edited`) — and only when
-  something actually changed.
+  bot message with the new lines and sum (`messages.order_edited`), naming any discount the
+  edit took off — and only when something actually changed.
 - **The whole composition at once.** The request names the order's lines to keep with their
   quantities (left out — removed) and the volumes to add, so the order is never left
   half-edited and the customer hears about it once. Leaving nothing is a cancellation, not
@@ -608,8 +608,9 @@ and asks for confirmation — with the sum before and after — before anything 
   from when an admin last looked at it. All NULL without a discount. Only `total_cents`
   stores money; it is computed in `app/orders/discounts.py` from `_recalculate_total`, so
   every path that rewrites lines re-counts the discounts with it.
-- **The customer's edit takes discounts off.** A discount is the admin's answer to the order
-  as it stood, so a customer who changes the order loses the discounts the change touches,
+- **An edit of the composition takes discounts off — the customer's and the admin's alike.**
+  A discount is the admin's answer to the order as it stood, so a customer who changes the
+  order loses the discounts the change touches,
   whole rather than scaled (`OrdersService._customer_changed`): the order's own on any
   change — a line added, a quantity changed, a line removed — and a line's own when that
   line is the one changed. Lines the change does not touch keep theirs. A quantity set to
@@ -622,16 +623,23 @@ and asks for confirmation — with the sum before and after — before anything 
   sum — giving one back is theirs to do from the panel. The edit methods return the loss
   (`DiscountLoss`) next to the order, None when the change touched no discount, so several
   edits in a row are announced once.
-- **Only an admin can make a discount bigger.** The anchor moves on an admin's action only —
-  setting a discount and rewriting the composition (`anchor_discounts` in `set_discount` and
-  `edit_by_admin`): the admin is looking at the order, so a percent they leave in place is a
-  percent of what it holds now. A reprice or a dropped product counts against the anchor,
+
+  An admin's edit of the composition (`edit_by_admin`) follows the same rule: the order's
+  own discount on any change, a line's own when that line's quantity changed or it was
+  removed; untouched lines keep theirs. The edit dialog says which discounts will go and
+  the panel asks before saving; the customer's edit message lists them
+  (`AdminEdit.lost_discounts`). Nothing is scaled to the new composition — scaling an
+  amount to a smaller sum is exactly what could make a line or the order free.
+
+- **Only an admin can make a discount bigger.** The anchor moves only when an admin sets a
+  discount (`anchor_discounts` in `set_discount`): the admin is looking at the order, so a
+  percent they leave in place is a percent of what it holds now. A reprice or a dropped product counts against the anchor,
   and there a discount can only shrink: with the sum as large as at the anchor or larger it
   stays what it was in money, and with the sum smaller it shrinks in the same proportion
   (2000 off 3000 is two thirds, and stays two thirds of the 500 left, rather than making it
   free). An amount that shrank is written back as the money it now comes to, on every
   recount (`settle_amounts`), and one that shrank to nothing is taken off. So the stored
-  value is always what the customer gets: the next admin action re-anchors that, rather
+  value is always what the customer gets: the next discount re-anchors that, rather
   than growing the discount back to the number first typed, and the "exceeds" check on the
   next discount never trips over a stale amount. The two migrations behind anchors are
   `a3d8f1c6b274` and `c6e2a9d4f1b8`; a discount saved between them has no anchor and is
@@ -668,9 +676,9 @@ and asks for confirmation — with the sum before and after — before anything 
   The bill, the edit message and the order page show discounted lines struck through with
   the new price, the size and the note, and the order discount as its own line with its
   note. The note is written to the customer: it is shown to them, not kept for the admins.
-- **Edits keep it.** A line kept in an admin's edit keeps its discount; a volume removed
-  and added back in the same draft brings back its own line — snapshot price and discount —
-  rather than a new one at the catalogue's price.
+- **Untouched lines keep it.** A line an admin's edit leaves as it was keeps its discount; a
+  volume removed and added back in the same draft at the same quantity brings back its own
+  line — snapshot price and discount — rather than a new one at the catalogue's price.
 - **What it does not touch.** The purchase list and the checklist are what the shop buys,
   at the price per unit, so a discount changes neither. `orders.total_cents` — and with it
   the admin table's sum and the cycle's summary — is after discounts.

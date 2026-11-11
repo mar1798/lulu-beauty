@@ -334,6 +334,28 @@ class DiscountLoss:
     line_discount: tuple[DiscountKind, int] | None
 
 
+@dataclass(frozen=True)
+class LostDiscount:
+    """A discount an admin's edit of the composition took off, for the customer's message.
+
+    The product is None for the order's own discount. By value: the row no longer holds it.
+    """
+
+    kind: DiscountKind
+    value: int
+    product_name: str | None = None
+    product_volume_ml: int | None = None
+    product_shade: str | None = None
+
+
+@dataclass(frozen=True)
+class AdminEdit:
+    """An admin's edit that changed the composition — what the customer is told about."""
+
+    # The discounts it took off: the order's own, and those of the lines it changed and kept.
+    lost_discounts: tuple[LostDiscount, ...]
+
+
 def _discount_of(holder: Order | OrderItem) -> tuple[DiscountKind, int] | None:
     if holder.discount_kind is None or holder.discount_value is None:
         return None
@@ -571,7 +593,7 @@ class OrdersService:
         revision: int,
         kept: Mapping[uuid.UUID, int],
         added: Sequence[tuple[uuid.UUID, int]],
-    ) -> tuple[Order, bool]:
+    ) -> tuple[Order, AdminEdit | None]:
         """The owner rewrites what an order holds, whoever placed it.
 
         The whole composition arrives at once, as the panel's draft has it: `kept` maps the
@@ -586,12 +608,17 @@ class OrdersService:
         discontinued or sold-out volume refuses the whole edit. A volume already on a kept
         line joins that line, as it does in `add_item`.
 
+        Discounts go the way a customer's edit takes them (`_customer_changed`): the
+        order's own comes off on any change, and a line's own when that line's quantity
+        changed or it was removed. Lines left as they were keep theirs. The panel warns
+        before saving, and the customer's message names what came off.
+
         `ADMIN_EDITABLE_STATUSES` only, and the status does not move: a paid order stays
         paid, and the customer is only told. `revision` is the one the panel read the
         order at — anything else is `OrderChangedError`.
 
-        Returns the order and whether anything changed: a save that left the lines as they
-        were is not news to send.
+        Returns the order and the edit, or None when nothing changed: a save that left the
+        lines as they were is not news to send.
         """
         result = await self._session.execute(
             select(Order)
@@ -635,13 +662,12 @@ class OrdersService:
             if found.keys() != quantities.keys():
                 raise ProductNotFoundError
 
-        if not quantities and kept == {item.id: item.quantity for item in order.items}:
-            return order, False
-
+        before = {item.id: item.quantity for item in order.items}
         for item in list(order.items):
             if item.id in kept:
                 item.quantity = kept[item.id]
             else:
+                clear_discount(item)
                 order.items.remove(item)
 
         lines = {item.variant_id: item for item in order.items if item.variant_id is not None}
@@ -653,14 +679,42 @@ class OrdersService:
                 variant, product = found[variant_id]
                 order.items.append(_snapshot_line(product, variant, quantity))
 
-        # The admin rewrote the order looking at it: what discounts it keeps now mean what
-        # they say against the new composition (`anchor_discounts`).
-        anchor_discounts(order)
+        # Compared after the merge, not by what was sent: a volume added to a line already
+        # at the ceiling leaves it as it was, and a kept line sent at its own quantity is
+        # not a change either.
+        changed = [
+            item for item in order.items if item.id in before and item.quantity != before[item.id]
+        ]
+        # A new line has no id until the flush, so it is never in `before`.
+        same_lines = len(order.items) == len(before) and all(
+            item.id in before for item in order.items
+        )
+        if same_lines and not changed:
+            return order, None
+
+        lost: list[LostDiscount] = []
+        order_discount = _discount_of(order)
+        if order_discount is not None:
+            lost.append(LostDiscount(*order_discount))
+        for item in changed:
+            line_discount = _discount_of(item)
+            if line_discount is not None:
+                lost.append(
+                    LostDiscount(
+                        *line_discount,
+                        product_name=item.product_name,
+                        product_volume_ml=item.product_volume_ml,
+                        product_shade=item.product_shade,
+                    )
+                )
+            clear_discount(item)
+        clear_discount(order)
+
         self._recalculate_total(order)
         await self._session.flush()
         # New lines went in last; read them back in `Order.items` order, as `add_item` does.
         await self._session.refresh(order, attribute_names=["items"])
-        return order, True
+        return order, AdminEdit(lost_discounts=tuple(lost))
 
     async def list_for_user(
         self,

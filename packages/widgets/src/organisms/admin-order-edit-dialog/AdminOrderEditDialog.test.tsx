@@ -115,4 +115,30 @@ describe('AdminOrderEditDialog', () => {
       screen.getAllByText((_, element) => element?.textContent === formatPrice(full - 100))
     ).not.toHaveLength(0)
   })
+
+  it('предупреждает, что правка снимет скидку на заявку, и считает итог без неё', () => {
+    const props = feedAdminOrderEditDialog()
+    const order =
+      props.order === null
+        ? null
+        : {
+            ...props.order,
+            discountKind: 'PERCENT' as const,
+            discountValue: 10,
+            discountNote: null,
+            discountCents: 1_000,
+          }
+
+    renderWidget(<AdminOrderEditDialog {...props} order={order} />)
+
+    const full = props.lines.reduce((sum, line) => sum + line.priceCents * line.quantity, 0)
+
+    expect(screen.getByText('Скидка снимется')).toBeTruthy()
+    expect(
+      screen.getByText(/скидка 10% на всю заявку - она была дана на прежний состав/)
+    ).toBeTruthy()
+    expect(
+      screen.getAllByText((_, element) => element?.textContent === formatPrice(full))
+    ).not.toHaveLength(0)
+  })
 })

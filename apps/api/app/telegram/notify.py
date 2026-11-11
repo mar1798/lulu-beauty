@@ -27,7 +27,13 @@ from app.cycles.models import CycleStatus, OrderCycle
 from app.cycles.scheduler_service import CartRescue, CycleReminder
 from app.db import async_session
 from app.orders.models import Order, OrderStatus
-from app.orders.service import DiscountChange, DiscountLoss, OrderItemDrop, OrderPriceChange
+from app.orders.service import (
+    DiscountChange,
+    DiscountLoss,
+    LostDiscount,
+    OrderItemDrop,
+    OrderPriceChange,
+)
 from app.payments.models import PaymentReceipt
 from app.telegram import messages, recipients, relay
 from app.telegram.client import notifications_service
@@ -108,12 +114,13 @@ async def notify_order_created_for_customer(order_id: uuid.UUID) -> None:
         logger.exception("Failed to tell the customer about order %s", order_id)
 
 
-async def notify_order_edited(order_id: uuid.UUID) -> None:
+async def notify_order_edited(order_id: uuid.UUID, lost: Sequence[LostDiscount] = ()) -> None:
     """Tells the customer the owner changed their order's composition from the panel.
 
     Re-reads the order, so the lines sent are the ones the row holds by the time this
     runs — a second edit committed in between is announced with its own lines, not
-    with a stale copy of the first.
+    with a stale copy of the first. The discounts the edit took off travel by value: the
+    row no longer holds them.
     """
     try:
         async with async_session() as session:
@@ -124,7 +131,7 @@ async def notify_order_edited(order_id: uuid.UUID) -> None:
             customer = await _load_customer(session, order.user_id)
             if customer is None:
                 return
-            await notifications_service.send_order_edited(customer, order)
+            await notifications_service.send_order_edited(customer, order, lost)
     except Exception:  # noqa: BLE001 - the edit is already committed; see module docstring
         logger.exception("Failed to tell the customer about the edit of order %s", order_id)
 

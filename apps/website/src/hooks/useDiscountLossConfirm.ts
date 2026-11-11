@@ -1,7 +1,7 @@
 import { useCallback } from 'react'
 import { useConfirm } from 'widgets/contexts'
 import type { IOrder } from 'widgets/types'
-import { formatDiscount } from 'widgets/utils'
+import { lostDiscounts } from 'widgets/utils'
 
 /**
  * Что из скидок снимет правка покупателя — зеркало `_customer_changed` в API.
@@ -15,19 +15,7 @@ import { formatDiscount } from 'widgets/utils'
  * предупреждения или `null`, если снимать нечего.
  */
 export const discountLoss = (order: IOrder, itemIds: readonly string[]): string | null => {
-  const lost: string[] = []
-
-  if (order.discountKind !== null && order.discountValue !== null) {
-    lost.push(`скидка ${formatDiscount(order.discountKind, order.discountValue)} на всю заявку`)
-  }
-
-  for (const item of order.items) {
-    if (itemIds.includes(item.id) && item.discountKind !== null && item.discountValue !== null) {
-      lost.push(
-        `скидка ${formatDiscount(item.discountKind, item.discountValue)} на «${item.productName}»`
-      )
-    }
-  }
+  const lost = lostDiscounts(order, itemIds)
 
   if (lost.length === 0) {
     return null

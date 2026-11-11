@@ -8,6 +8,7 @@ import type {
 } from 'widgets/types'
 import { useConfirm, useToast } from 'widgets/contexts'
 import { adminOrderNumber } from 'widgets/organisms'
+import { editedItemIds, lostDiscounts } from 'widgets/utils'
 import { useProductSearch } from '@/hooks/useProductSearch'
 import { catalogLine, clampQuantity } from '@/utils/orderDraft'
 import { isApiError, messageForError } from '@/services/apiErrors'
@@ -25,6 +26,11 @@ import { adminChecklistKey, isAdminOrdersKey, isAdminOverviewKey } from '@/servi
  * Вместе с составом уходит `revision` заявки, с которой окно открыли: если
  * её успели поменять (покупатель, правка каталога, другой админ), бэкенд
  * откажет `order_changed`, а не перезапишет чужое изменение.
+ *
+ * Скидки правка админа снимает так же, как правка покупателя (`edit_by_admin`
+ * в API): на всю заявку — при любом изменении, у строки — если её тронули.
+ * Если есть что снимать, перед сохранением спрашивается подтверждение, как у
+ * покупателя на его странице заявки.
  */
 
 interface IAdminOrderEdit {
@@ -138,8 +144,32 @@ export const useAdminOrderEdit = (): IAdminOrderEdit => {
   }
 
   const submit = async (): Promise<void> => {
-    if (order === null || lines.length === 0 || !hasChanges) {
+    if (order === null || lines.length === 0 || !hasChanges || isSubmitting) {
       return
+    }
+
+    const lost = lostDiscounts(order, editedItemIds(order, lines))
+
+    if (lost.length > 0) {
+      const isMany = lost.length > 1
+      const subject = lost.join(', ')
+      const confirmed = await confirm({
+        title: 'Изменить заявку?',
+        description: [
+          `${subject.charAt(0).toUpperCase()}${subject.slice(1)} - ${isMany ? 'будут сняты: они были даны' : 'будет снята: она была дана'} на прежний состав.`,
+          order.canMessage
+            ? 'Покупатель увидит это в сообщении бота.'
+            : 'Покупатель не привязан к боту - сообщение ему не придёт.',
+          'Если скидка остаётся в силе - дайте её заново после сохранения.',
+        ].join(' '),
+        confirmLabel: 'Изменить',
+        cancelLabel: 'Вернуться',
+        tone: 'danger',
+      })
+
+      if (!confirmed) {
+        return
+      }
     }
 
     setIsSubmitting(true)

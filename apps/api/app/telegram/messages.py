@@ -25,7 +25,13 @@ from app.config import settings
 from app.cycles.models import OrderCycle
 from app.orders.discounts import line_discount_cents, line_subtotal_cents, order_totals
 from app.orders.models import CANCELLED_STATUSES, DiscountKind, Order, OrderItem, OrderStatus
-from app.orders.service import DiscountChange, DiscountLoss, OrderItemDrop, OrderPriceChange
+from app.orders.service import (
+    DiscountChange,
+    DiscountLoss,
+    LostDiscount,
+    OrderItemDrop,
+    OrderPriceChange,
+)
 from app.wanted.models import WantedProduct
 from app.wishlist.schemas import WishlistResponse
 
@@ -413,15 +419,32 @@ def order_created_for_customer(order: Order, cycle: OrderCycle | None, *, is_ope
     )
 
 
-def order_edited(order: Order) -> str:
-    """Владелец изменил состав заявки в админке — покупателю новый состав и сумма.
+def order_edited(order: Order, lost: Sequence[LostDiscount] = ()) -> str:
+    """The owner changed the order's composition in the panel — the new one and the sum.
 
-    Только сообщить: статус не меняется, и ничего от покупателя не ждут — ни нового
-    подтверждения, ни нового чека. Перечислены все строки, как в счёте: сравнивать
-    покупатель будет с тем, что помнит, и «и ещё 2» не дали бы увидеть, что поменялось.
+    Only to tell: the status does not move, and nothing is expected of the customer — no
+    new confirmation, no new receipt. Every line is listed, as on the bill: the customer
+    compares with what they remember, and "and 2 more" would hide what changed.
 
-    HTML: названия товаров экранируются в `_bill_line`.
+    The discounts the edit took off (`OrdersService.edit_by_admin`) are named, each with
+    what it was on: the sum went up, and a bill with no word on why reads as a mistake.
+
+    HTML: product names are escaped in `_bill_line` and here.
     """
+    dropped = [
+        f"• {discount_label(discount.kind, discount.value)} "
+        + (
+            "на всю заявку"
+            if discount.product_name is None
+            else "на "
+            + html.escape(
+                product_label(
+                    discount.product_name, discount.product_volume_ml, discount.product_shade
+                )
+            )
+        )
+        for discount in lost
+    ]
     return "\n".join(
         [
             f"Заявка {order_reference(order.id)} изменена",
@@ -430,6 +453,17 @@ def order_edited(order: Order) -> str:
             f"🛍{_items_count(order)}",
             *(_bill_line(item) for item in order.items),
             "",
+            *(
+                [
+                    "Скидка снята - она была дана на прежний состав:"
+                    if len(dropped) == 1
+                    else "Скидки сняты - они были даны на прежний состав:",
+                    *dropped,
+                    "",
+                ]
+                if dropped
+                else []
+            ),
             *_order_discount_lines(order),
             f"Сумма: <b>{format_price(order.total_cents, grouped=False)}</b>",
         ]

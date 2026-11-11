@@ -4,18 +4,18 @@ import type {
   IAdminOrderEditDialogProps,
   IAdminOrderEditLine,
   IBasicStyling,
-  IDiscountFields,
   IItemRowItem,
+  IOrderItem,
   OrderStatus,
 } from '../../types'
 import { Alert } from '../../atoms/alert'
 import { Button } from '../../atoms/button'
-import { Price, formatPrice } from '../../atoms/price'
+import { Price } from '../../atoms/price'
 import { Text } from '../../atoms/text'
 import { ItemRow } from '../../molecules/item-row'
 import { ITEM_FORMS } from '../../molecules/order-card'
 import { orderStatusLabel } from '../../molecules/order-status-badge'
-import { formatDiscount, previewDiscounts } from '../../utils/discount'
+import { editedItemIds, formatDiscount, lostDiscounts } from '../../utils/discount'
 import { pluralize } from '../../utils/plural'
 import { adminOrderNumber } from '../admin-orders-table'
 import { Modal } from '../modal'
@@ -41,10 +41,12 @@ import * as styles from './AdminOrderEditDialog.css'
  * Пустой состав не сохранить: заявка без товаров — это отмена, и делается
  * она статусом.
  *
- * Скидки остаются со строками, на которые их дали: оставленная строка несёт
- * свою, новая — без скидки, скидка на заявку снимается с того, что получится.
- * Правка админа заново привязывает их к новому составу — процент считается
- * от новой цены строки, — и итог в окне считает так же (`previewDiscounts`).
+ * Скидки правка снимает так же, как правка покупателя: скидку на заявку — при
+ * любом изменении, скидку строки — если строку убрали или поменяли количество.
+ * Нетронутые строки свою сохраняют. Что снимется, окно говорит над итогом, а
+ * страница переспрашивает перед сохранением. Итог складывается из того, что
+ * прислал бэкенд: нетронутая строка стоит, сколько стоила со скидкой, остальные
+ * — цена × количество. Своей арифметики скидок здесь нет.
  *
  * Клик мимо окна его не закрывает (`isDismissable={false}`): за ним правка.
  */
@@ -86,24 +88,27 @@ export const AdminOrderEditDialog: FC<IAdminOrderEditDialogProps & IBasicStyling
   onSubmit,
   className,
 }) => {
-  /* Скидка строки — та, что стоит у неё в заявке; у новых строк её нет. */
-  const discountOf = (line: IAdminOrderEditLine): IDiscountFields | undefined =>
-    line.itemId === null ? undefined : order?.items.find(item => item.id === line.itemId)
+  const edited = order === null ? [] : editedItemIds(order, lines)
 
-  const preview = previewDiscounts(
-    lines.map(line => {
-      const own = discountOf(line)
+  /* Строка заявки, которую правка не тронула, — со своей скидкой и её суммой. */
+  const untouched = (line: IAdminOrderEditLine): IOrderItem | undefined =>
+    line.itemId === null || edited.includes(line.itemId)
+      ? undefined
+      : order?.items.find(item => item.id === line.itemId)
 
-      return {
-        id: line.itemId,
-        lineTotalCents: line.priceCents * line.quantity,
-        discountKind: own?.discountKind ?? null,
-        discountValue: own?.discountValue ?? null,
-      }
-    }),
-    { discountKind: order?.discountKind ?? null, discountValue: order?.discountValue ?? null }
-  )
-  const totalCents = preview.totalCents
+  const lost = order === null || !hasChanges ? [] : lostDiscounts(order, edited)
+  const totalCents =
+    order !== null && !hasChanges
+      ? order.totalCents
+      : lines.reduce((sum, line) => {
+          const item = untouched(line)
+
+          return (
+            sum +
+            (item?.lineTotalCents ?? line.priceCents * line.quantity) -
+            (item?.discountCents ?? 0)
+          )
+        }, 0)
   const canSubmit = order !== null && lines.length > 0 && hasChanges
 
   const notes: string[] = []
@@ -167,8 +172,8 @@ export const AdminOrderEditDialog: FC<IAdminOrderEditDialogProps & IBasicStyling
         <div className={styles.section}>
           {lines.length > 0 ? (
             <div className={styles.items}>
-              {lines.map((line, index) => {
-                const own = discountOf(line)
+              {lines.map(line => {
+                const own = untouched(line)
 
                 return (
                   <ItemRow
@@ -178,7 +183,7 @@ export const AdminOrderEditDialog: FC<IAdminOrderEditDialogProps & IBasicStyling
                       own?.discountKind == null || own.discountValue === null
                         ? null
                         : {
-                            cents: preview.lineDiscounts[index] ?? 0,
+                            cents: own.discountCents,
                             label: formatDiscount(own.discountKind, own.discountValue),
                             note: own.discountNote,
                           }
@@ -203,9 +208,15 @@ export const AdminOrderEditDialog: FC<IAdminOrderEditDialogProps & IBasicStyling
             </Alert>
           )}
 
-          {order?.discountKind != null && order.discountValue !== null && (
+          {lost.length > 0 && (
+            <Alert tone="warning" title={lost.length > 1 ? 'Скидки снимутся' : 'Скидка снимется'}>
+              {`${lost.join(', ')} - ${lost.length > 1 ? 'они были даны' : 'она была дана'} на прежний состав. Покупатель увидит это в сообщении бота; если скидка остаётся в силе - дайте её заново после сохранения`}
+            </Alert>
+          )}
+
+          {order?.discountKind != null && order.discountValue !== null && !hasChanges && (
             <Text size="sm" tone="muted">
-              {`Скидка на заявку ${formatDiscount(order.discountKind, order.discountValue)}: -${formatPrice(preview.orderDiscountCents)}`}
+              {`Скидка на заявку ${formatDiscount(order.discountKind, order.discountValue)}`}
             </Text>
           )}
 

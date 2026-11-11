@@ -1,4 +1,4 @@
-import type { DiscountKind, IDiscountFields, IOrder } from '../types'
+import type { DiscountKind, IAdminOrderEditLine, IDiscountFields, IOrder } from '../types'
 import { formatPrice } from '../atoms/price/Price'
 
 /**
@@ -152,4 +152,41 @@ export const discountProblem = (
   }
 
   return tooMuch(own.discountKind, own.discountValue, preview.orderDiscountCents) ? 'exceeds' : null
+}
+
+/** Строки, которых правка состава касается: убранные и с другим количеством. */
+export const editedItemIds = (
+  order: Pick<IOrder, 'items'>,
+  lines: readonly Pick<IAdminOrderEditLine, 'itemId' | 'quantity'>[]
+): string[] =>
+  order.items
+    .filter(item => lines.find(line => line.itemId === item.id)?.quantity !== item.quantity)
+    .map(item => item.id)
+
+/**
+ * Скидки, которые снимет правка состава, — названиями: «скидка 10% на всю
+ * заявку», «скидка 500 сом на «Крем»». Правило одно для покупателя и для
+ * админа (`_customer_changed` и `edit_by_admin` в API): скидка на заявку
+ * снимается при любой правке, скидка строки — когда правка касается этой
+ * строки (`itemIds`). Пусто — снимать нечего.
+ */
+export const lostDiscounts = (
+  order: Pick<IOrder, 'discountKind' | 'discountValue' | 'items'>,
+  itemIds: readonly string[]
+): string[] => {
+  const lost: string[] = []
+
+  if (order.discountKind !== null && order.discountValue !== null) {
+    lost.push(`скидка ${formatDiscount(order.discountKind, order.discountValue)} на всю заявку`)
+  }
+
+  for (const item of order.items) {
+    if (itemIds.includes(item.id) && item.discountKind !== null && item.discountValue !== null) {
+      lost.push(
+        `скидка ${formatDiscount(item.discountKind, item.discountValue)} на «${item.productName}»`
+      )
+    }
+  }
+
+  return lost
 }

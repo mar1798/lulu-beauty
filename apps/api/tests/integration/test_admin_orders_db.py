@@ -311,11 +311,12 @@ async def test_edit_rewrites_the_lines_and_leaves_the_status(
     cream = await make_product(db_session, name="Cream", price_cents=500)
     revision = order.revision
 
-    edited, changed = await OrdersService(db_session).edit_by_admin(
+    edited, edit = await OrdersService(db_session).edit_by_admin(
         order.id, revision, {balm.id: 3}, [(variant_id(cream), 2)]
     )
 
-    assert changed is True
+    assert edit is not None
+    assert edit.lost_discounts == ()
     assert _quantities(edited) == {"Balm": 3, "Cream": 2}
     assert edited.total_cents == 3 * 1000 + 2 * 500
     assert edited.status is status
@@ -375,11 +376,11 @@ async def test_edit_that_changes_nothing_reports_no_change(db_session: AsyncSess
     balm, serum = order.items
     revision = order.revision
 
-    edited, changed = await OrdersService(db_session).edit_by_admin(
+    edited, edit = await OrdersService(db_session).edit_by_admin(
         order.id, revision, {balm.id: 1, serum.id: 2}, []
     )
 
-    assert changed is False
+    assert edit is None
     assert edited.revision == revision
 
 
@@ -593,22 +594,6 @@ async def test_discount_refuses_an_amount_over_what_the_lines_leave(
         )
 
 
-async def test_a_line_discount_survives_an_edit_and_follows_the_quantity(
-    db_session: AsyncSession,
-) -> None:
-    order = await _placed(db_session)
-    balm, serum = order.items
-    service = OrdersService(db_session)
-    order, _ = await service.set_discount(
-        order.id, order.revision, serum.id, (DiscountKind.PERCENT, 50), None
-    )
-
-    edited, _ = await service.edit_by_admin(order.id, order.revision, {balm.id: 1, serum.id: 4}, [])
-
-    # Serum ×4 at 2000 is 8000, half of it off.
-    assert edited.total_cents == 1000 + 4000
-
-
 async def test_a_reprice_upwards_does_not_grow_a_discount(db_session: AsyncSession) -> None:
     order = await _placed(db_session)
     balm = order.items[0]
@@ -763,27 +748,6 @@ async def test_an_amount_a_reprice_shrank_is_stored_as_what_it_takes_off(
     assert order.total_cents == 1000 + 500
 
 
-async def test_an_admin_edit_does_not_grow_back_an_amount_a_reprice_shrank(
-    db_session: AsyncSession,
-) -> None:
-    """The edit re-anchors what the line gets now, not the number first typed."""
-    order = await _placed(db_session)
-    balm, serum = order.items
-    service = OrdersService(db_session)
-    order, _ = await service.set_discount(
-        order.id, order.revision, None, (DiscountKind.AMOUNT, 4000), None
-    )
-    assert serum.variant_id is not None
-    await service.reprice_variant(serum.variant_id, 500)
-    # 1000 + 1000 = 2000 left; 4000 of 5000 scaled to it is 1600.
-    assert (order.discount_value, order.total_cents) == (1600, 400)
-
-    edited, _ = await service.edit_by_admin(order.id, order.revision, {balm.id: 2, serum.id: 2}, [])
-
-    # 2000 + 1000 = 3000, still 1600 off — not 3000 off, which would make it free.
-    assert edited.total_cents == 3000 - 1600
-
-
 async def test_a_shrunk_amount_does_not_block_the_next_discount(
     db_session: AsyncSession,
 ) -> None:
@@ -809,20 +773,63 @@ async def test_a_shrunk_amount_does_not_block_the_next_discount(
     assert order.total_cents == 500 + 500
 
 
-async def test_an_admin_edit_re_anchors_a_percent_to_the_new_composition(
+async def test_an_admin_edit_takes_off_the_discounts_it_touches(
+    db_session: AsyncSession,
+) -> None:
+    """As a customer's edit does: the order's own, and the changed line's; the rest stay."""
+    order = await _placed(db_session)
+    balm, serum = order.items
+    service = OrdersService(db_session)
+    order, _ = await service.set_discount(
+        order.id, order.revision, None, (DiscountKind.AMOUNT, 1000), None
+    )
+    order, _ = await service.set_discount(
+        order.id, order.revision, balm.id, (DiscountKind.PERCENT, 50), "Помятая"
+    )
+    order, _ = await service.set_discount(
+        order.id, order.revision, serum.id, (DiscountKind.AMOUNT, 2000), None
+    )
+
+    # Serum 2 → 1: the 2000 off it would have made the line free.
+    edited, edit = await service.edit_by_admin(
+        order.id, order.revision, {balm.id: 1, serum.id: 1}, []
+    )
+
+    assert edit is not None
+    assert [(d.kind, d.value, d.product_name) for d in edit.lost_discounts] == [
+        (DiscountKind.AMOUNT, 1000, None),
+        (DiscountKind.AMOUNT, 2000, "Serum"),
+    ]
+    assert (edited.discount_kind, edited.discount_base_cents) == (None, None)
+    assert serum.discount_kind is None
+    assert (balm.discount_kind, balm.discount_value, balm.discount_note) == (
+        DiscountKind.PERCENT,
+        50,
+        "Помятая",
+    )
+    assert edited.total_cents == 500 + 2000
+
+
+async def test_an_admin_edit_that_only_adds_a_line_keeps_the_line_discounts(
     db_session: AsyncSession,
 ) -> None:
     order = await _placed(db_session)
     balm, serum = order.items
     service = OrdersService(db_session)
     order, _ = await service.set_discount(
-        order.id, order.revision, None, (DiscountKind.PERCENT, 10), None
+        order.id, order.revision, serum.id, (DiscountKind.PERCENT, 10), None
+    )
+    cream = await make_product(db_session, name="Cream", price_cents=500)
+
+    edited, edit = await service.edit_by_admin(
+        order.id, order.revision, {balm.id: 1, serum.id: 2}, [(variant_id(cream), 1)]
     )
 
-    edited, _ = await service.edit_by_admin(order.id, order.revision, {balm.id: 1, serum.id: 4}, [])
+    assert edit is not None
+    assert edit.lost_discounts == ()
+    assert serum.discount_value == 10
+    assert edited.total_cents == 1000 + 3600 + 500
 
-    # 1000 + 8000 = 9000: the admin left 10% in place looking at it.
-    assert edited.total_cents == 8100
 
 
 async def test_discount_refuses_one_that_rounds_to_nothing(db_session: AsyncSession) -> None:

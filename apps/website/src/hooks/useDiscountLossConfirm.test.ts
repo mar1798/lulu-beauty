@@ -3,14 +3,30 @@ import type { IOrder, IOrderItem } from 'widgets/types'
 import { discountLoss, linesOfVariants } from './useDiscountLossConfirm'
 
 /*
-  Контексты и `formatDiscount` тянут за собой компоненты widgets, а их этот
-  конфиг не собирает (см. `vitest.config.ts`). Проверяется здесь только текст.
+  Контексты и `widgets/utils` тянут за собой компоненты widgets, а их этот
+  конфиг не собирает (см. `vitest.config.ts`). Какие скидки снимутся, решает
+  `lostDiscounts` — он проверен в widgets (`utils/discount.test.ts`); здесь его
+  заменяет простая копия, и проверяется только текст предупреждения.
 */
 vi.mock('widgets/contexts', () => ({ useConfirm: vi.fn() }))
-vi.mock('widgets/utils', () => ({
-  formatDiscount: (kind: string, value: number): string =>
-    kind === 'PERCENT' ? `${value}%` : `${value / 100} сом`,
-}))
+vi.mock('widgets/utils', () => {
+  const label = (kind: string, value: number): string =>
+    kind === 'PERCENT' ? `${value}%` : `${value / 100} сом`
+
+  return {
+    lostDiscounts: (order: IOrder, itemIds: readonly string[]): string[] => [
+      ...(order.discountKind !== null && order.discountValue !== null
+        ? [`скидка ${label(order.discountKind, order.discountValue)} на всю заявку`]
+        : []),
+      ...order.items
+        .filter(item => itemIds.includes(item.id) && item.discountKind !== null)
+        .map(
+          item =>
+            `скидка ${label(item.discountKind ?? '', item.discountValue ?? 0)} на «${item.productName}»`
+        ),
+    ],
+  }
+})
 
 const NO_DISCOUNT = {
   discountKind: null,

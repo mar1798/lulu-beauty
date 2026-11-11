@@ -13,7 +13,7 @@ from aiogram.types import InlineKeyboardMarkup, Message, MessageId, ReplyParamet
 from app.auth.models import User
 from app.cycles.models import OrderCycle
 from app.orders.models import Order, OrderStatus
-from app.orders.service import DiscountChange, DiscountLoss
+from app.orders.service import DiscountChange, DiscountLoss, LostDiscount
 from app.payments.models import PaymentReceipt, ReceiptKind
 from app.telegram import keyboards, messages
 from app.wanted.models import WantedProduct
@@ -195,10 +195,12 @@ class NotificationsService:
                 return
         logger.info("Told %s about order %s placed by the owner", user.phone, order.id)
 
-    async def send_order_edited(self, user: User, order: Order) -> None:
+    async def send_order_edited(
+        self, user: User, order: Order, lost: Sequence[LostDiscount] = ()
+    ) -> None:
         """The owner changed what the order holds. Every line is listed, so a long one
         goes out in parts, the link to the orders under the last — like the bill."""
-        parts = split_message(messages.order_edited(order))
+        parts = split_message(messages.order_edited(order, lost))
         for index, part in enumerate(parts):
             keyboard = keyboards.orders_link() if index == len(parts) - 1 else None
             if not await self._try_send(

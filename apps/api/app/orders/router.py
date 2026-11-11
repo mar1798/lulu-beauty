@@ -552,12 +552,12 @@ async def edit_order_admin(
     """The owner rewrites an order's composition — awaiting confirmation, payment, or paid.
 
     The status stays where it is and nothing is asked of the customer: after the commit
-    they are sent the new composition and the sum, and that is all. A save that changed
-    nothing sends nothing.
+    they are sent the new composition, the sum and the discounts the edit took off, and
+    that is all. A save that changed nothing sends nothing.
     """
     service = OrdersService(session)
     try:
-        order, changed = await service.edit_by_admin(
+        order, edit = await service.edit_by_admin(
             order_id,
             body.revision,
             {line.item_id: line.quantity for line in body.items},
@@ -584,8 +584,8 @@ async def edit_order_admin(
         order, customers.get(order.user_id), tags, with_receipts, creators
     )
     await session.commit()
-    if changed:
-        background_tasks.add_task(notify_order_edited, order.id)
+    if edit is not None:
+        background_tasks.add_task(notify_order_edited, order.id, edit.lost_discounts)
     return response
 
 
