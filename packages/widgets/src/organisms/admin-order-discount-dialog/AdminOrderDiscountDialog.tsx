@@ -39,6 +39,10 @@ import * as styles from './AdminOrderDiscountDialog.css'
  * У строки и у заявки скидка одна: новая заменяет прежнюю. Если у выбранной
  * цели скидка уже стоит, поля заполняются ею — её можно поправить или снять.
  *
+ * У выбранной строки сразу под списком — цена за штуку, количество и сумма
+ * строки: от них админ и прикидывает, какую скидку может дать. В списке строки
+ * узнаются по миниатюре товара.
+ *
  * Внизу — сумма заявки до и после: та же арифметика, что на бэкенде
  * (`utils/discount`), чтобы админ подтверждал ровно то число, которое уйдёт
  * покупателю. Само подтверждение спрашивает страница — окно только собирает
@@ -190,6 +194,7 @@ export const AdminOrderDiscountDialog: FC<IAdminOrderDiscountDialogProps & IBasi
             return {
               value: item.id,
               label: `${item.productName}${variant === null ? '' : `, ${variant}`} × ${item.quantity}`,
+              imageUrl: item.productImageUrl,
             }
           }),
         ]
@@ -275,6 +280,20 @@ export const AdminOrderDiscountDialog: FC<IAdminOrderDiscountDialogProps & IBasi
             disabled={isBusy}
             onChange={chooseTarget}
           />
+
+          {/*
+            Цена выбранной строки — от неё и считают, какую скидку можно дать:
+            в списке она не помещается рядом с длинным названием.
+          */}
+          {targetItem !== undefined && (
+            <div className={styles.linePrice}>
+              <div className={styles.lineMeta}>
+                <Price priceCents={targetItem.productPriceCents} size="sm" />
+                <Text size="sm" tone="muted">{`× ${targetItem.quantity} шт`}</Text>
+              </div>
+              <Price priceCents={targetItem.lineTotalCents} />
+            </div>
+          )}
 
           {current?.discountKind != null && current.discountValue !== null && (
             <div className={styles.current}>

@@ -45,6 +45,22 @@ describe('AdminOrderDiscountDialog', () => {
     ).not.toHaveLength(0)
   })
 
+  it('у выбранной строки показывает цену за штуку и сумму строки', async () => {
+    const user = userEvent.setup()
+
+    renderWidget(<AdminOrderDiscountDialog {...feedAdminOrderDiscountDialog()} />)
+    await user.click(screen.getByRole('combobox', { name: 'Скидка на' }))
+    await user.click(screen.getByRole('option', { name: /Тонер Heartleaf/ }))
+
+    expect(screen.getByText('× 2 шт')).toBeTruthy()
+    expect(
+      screen.getAllByText((_, element) => element?.textContent === formatPrice(150_000))
+    ).not.toHaveLength(0)
+    expect(
+      screen.getAllByText((_, element) => element?.textContent === formatPrice(300_000))
+    ).not.toHaveLength(0)
+  })
+
   it('без размера не отправляет', async () => {
     const onSubmit = vi.fn()
     const user = userEvent.setup()

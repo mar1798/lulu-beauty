@@ -1,5 +1,5 @@
 import { style } from '@vanilla-extract/css'
-import { media } from '../../styling/lib'
+import { color, media } from '../../styling/lib'
 import { flexColumn, flexRow } from '../../styling/mixin'
 import { vars } from '../../styling/themes/contract.css'
 
@@ -16,6 +16,22 @@ export const current = style({
   alignItems: 'center',
   justifyContent: 'space-between',
   flexWrap: 'wrap',
+})
+
+/** Цена выбранной строки: «цена × количество» слева, сумма строки справа. */
+export const linePrice = style({
+  ...flexRow(12),
+  alignItems: 'baseline',
+  justifyContent: 'space-between',
+  flexWrap: 'wrap',
+  padding: `${vars.space.sm} ${vars.space.md}`,
+  borderRadius: vars.radius.md,
+  backgroundColor: color.surface('sunken'),
+})
+
+export const lineMeta = style({
+  ...flexRow(6),
+  alignItems: 'baseline',
 })
 
 /**
