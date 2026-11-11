@@ -8,7 +8,8 @@ from aiogram.types import Chat, Message, MessageId
 
 from app.auth.models import User
 from app.cycles.models import OrderCycle
-from app.orders.models import Order, OrderItem, OrderStatus
+from app.orders.models import DiscountKind, Order, OrderItem, OrderStatus
+from app.orders.service import DiscountLoss
 from app.payments.models import PaymentReceipt, ReceiptKind
 from app.telegram import keyboards, messages
 from app.telegram.keyboards import OrderAction, PaymentAction, ReceiptAction, ReplyAction
@@ -415,6 +416,35 @@ async def test_send_customer_cancellation_reaches_the_owner_without_order_button
     chat_id, message = bot.send_message.await_args.args
     assert chat_id == 42
     assert "отменена покупателем" in message
+    markup = bot.send_message.await_args.kwargs["reply_markup"]
+    buttons = [button for row in markup.inline_keyboard for button in row]
+    assert [keyboards.button_target(button) for button in buttons] == [
+        "https://lulu.example.com/admin/orders"
+    ]
+
+
+async def test_send_discount_loss_reaches_the_owner_with_the_way_to_the_panel(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Скидку вернуть можно только в админке - туда и ведёт единственная кнопка."""
+    monkeypatch.setattr("app.config.settings.website_base_url", "https://lulu.example.com")
+    bot = AsyncMock()
+    service = NotificationsService(bot)
+    loss = DiscountLoss(
+        product_name="Крем",
+        product_volume_ml=None,
+        product_shade=None,
+        quantity_before=1,
+        quantity_after=2,
+        order_discount=(DiscountKind.PERCENT, 10),
+        line_discount=None,
+    )
+
+    await service.send_discount_loss(_user(telegram_chat_id=42), _order(), None, loss)
+
+    chat_id, message = bot.send_message.await_args.args
+    assert chat_id == 42
+    assert "скидка снята" in message
     markup = bot.send_message.await_args.kwargs["reply_markup"]
     buttons = [button for row in markup.inline_keyboard for button in row]
     assert [keyboards.button_target(button) for button in buttons] == [

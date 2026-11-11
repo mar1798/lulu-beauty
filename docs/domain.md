@@ -617,7 +617,11 @@ and asks for confirmation — with the sum before and after — before anything 
   (`useDiscountLossConfirm` — the order page, the checkout success screen and the
   "add to the open order" notice), naming each discount that will come off; the line's
   delete dialog carries it in its own text rather than asking twice, and its «Вернуть»
-  brings the product back but not the discount.
+  brings the product back but not the discount. The owner is told in Telegram
+  (`notify_discount_lost`): what the customer changed, which discounts came off and the new
+  sum — giving one back is theirs to do from the panel. The edit methods return the loss
+  (`DiscountLoss`) next to the order, None when the change touched no discount, so several
+  edits in a row are announced once.
 - **Only an admin can make a discount bigger.** The anchor moves on an admin's action only —
   setting a discount and rewriting the composition (`anchor_discounts` in `set_discount` and
   `edit_by_admin`): the admin is looking at the order, so a percent they leave in place is a

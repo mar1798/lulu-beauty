@@ -315,6 +315,32 @@ class DiscountChange:
 
 
 @dataclass(frozen=True)
+class DiscountLoss:
+    """A customer's own edit that took a discount off, for the owner's message after the commit.
+
+    By value, like `DiscountChange`: the line may be gone (a removal), and the discounts
+    are already cleared from the row by the time anyone reads it. The product is the line
+    the customer touched; `line_discount` is that line's own, the only line discount an
+    edit can take. Quantities are 0 for a line that was not there before (added) or is not
+    there after (removed).
+    """
+
+    product_name: str
+    product_volume_ml: int | None
+    product_shade: str | None
+    quantity_before: int
+    quantity_after: int
+    order_discount: tuple[DiscountKind, int] | None
+    line_discount: tuple[DiscountKind, int] | None
+
+
+def _discount_of(holder: Order | OrderItem) -> tuple[DiscountKind, int] | None:
+    if holder.discount_kind is None or holder.discount_value is None:
+        return None
+    return holder.discount_kind, holder.discount_value
+
+
+@dataclass(frozen=True)
 class DeletedOrder:
     """Who to notify about a deletion, and what the order was at the moment of it.
 
@@ -839,7 +865,7 @@ class OrdersService:
 
     async def add_item(
         self, user_id: uuid.UUID, order_id: uuid.UUID, variant_id: uuid.UUID, quantity: int
-    ) -> Order:
+    ) -> tuple[Order, DiscountLoss | None]:
         """Add a volume of a product to an order that's already been placed.
 
         The snapshot is taken now, from the current catalog — this line joins the order
@@ -847,7 +873,8 @@ class OrdersService:
         already there keep the price they were checked out with.
 
         The customer changing the order takes the order's discount off, and a line's own
-        when the volume joins a line that had one (`_customer_changed`).
+        when the volume joins a line that had one (`_customer_changed`). Returns the order
+        and what that took off, None when it took nothing.
         """
         order = await self._get_editable(user_id, order_id)
 
@@ -871,50 +898,56 @@ class OrdersService:
         # collapsing them onto the product would put one price on both.
         existing = next((item for item in order.items if item.variant_id == variant.id), None)
         if existing is not None:
+            before = existing.quantity
             # The clamp is a ceiling, not a rule worth an error — nobody means 1000 of
             # anything here.
             existing.quantity = min(existing.quantity + quantity, MAX_ITEM_QUANTITY)
+            line = existing
         else:
-            order.items.append(_snapshot_line(product, variant, quantity))
-        self._customer_changed(order, existing)
+            before = 0
+            line = _snapshot_line(product, variant, quantity)
+            order.items.append(line)
+        loss = self._customer_changed(order, line, before, line.quantity)
 
         self._recalculate_total(order)
         await self._session.flush()
         # The append put the new line last; read the lines back so the response already
         # has them in `Order.items` order instead of moving the line on the next fetch.
         await self._session.refresh(order, attribute_names=["items"])
-        return order
+        return order, loss
 
     async def set_item_quantity(
         self, user_id: uuid.UUID, order_id: uuid.UUID, item_id: uuid.UUID, quantity: int
-    ) -> Order:
+    ) -> tuple[Order, DiscountLoss | None]:
         order = await self._get_editable(user_id, order_id)
         item = self._find_item(order, item_id)
         if item.quantity == quantity:
-            return order
+            return order, None
 
+        loss = self._customer_changed(order, item, item.quantity, quantity)
         item.quantity = quantity
-        self._customer_changed(order, item)
         self._recalculate_total(order)
         await self._session.flush()
-        return order
+        return order, loss
 
     async def remove_item(
         self, user_id: uuid.UUID, order_id: uuid.UUID, item_id: uuid.UUID
-    ) -> Order:
+    ) -> tuple[Order, DiscountLoss | None]:
         order = await self._get_editable(user_id, order_id)
         item = self._find_item(order, item_id)
         if len(order.items) == 1:
             raise LastOrderItemError
 
+        loss = self._customer_changed(order, item, item.quantity, 0)
         order.items.remove(item)
-        self._customer_changed(order, None)
         self._recalculate_total(order)
         await self._session.flush()
-        return order
+        return order, loss
 
     @staticmethod
-    def _customer_changed(order: Order, item: OrderItem | None) -> None:
+    def _customer_changed(
+        order: Order, item: OrderItem, quantity_before: int, quantity_after: int
+    ) -> DiscountLoss | None:
         """The customer changed the order: the discounts the change touches come off whole.
 
         A discount is the admin's answer to the order as it stood; a composition the
@@ -923,10 +956,25 @@ class OrdersService:
         any change, and a line's when that line is the one changed (a removed line takes
         its own with it). The website says so before the change is sent. Other lines keep
         theirs — they are as the admin saw them.
+
+        Returns what came off, for the owner: the discount was their decision, and it is
+        gone without them having done anything. None when the change touched no discount.
         """
+        order_discount = _discount_of(order)
+        line_discount = _discount_of(item)
         clear_discount(order)
-        if item is not None:
-            clear_discount(item)
+        clear_discount(item)
+        if order_discount is None and line_discount is None:
+            return None
+        return DiscountLoss(
+            product_name=item.product_name,
+            product_volume_ml=item.product_volume_ml,
+            product_shade=item.product_shade,
+            quantity_before=quantity_before,
+            quantity_after=quantity_after,
+            order_discount=order_discount,
+            line_discount=line_discount,
+        )
 
     async def set_discount(
         self,

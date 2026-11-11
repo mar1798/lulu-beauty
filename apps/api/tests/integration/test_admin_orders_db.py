@@ -637,8 +637,13 @@ async def test_a_customer_adding_a_line_takes_the_order_discount_off(
     )
     cream = await make_product(db_session, name="Cream", price_cents=10_000)
 
-    order = await service.add_item(order.user_id, order.id, variant_id(cream), 1)
+    order, loss = await service.add_item(order.user_id, order.id, variant_id(cream), 1)
 
+    # The owner is told what went: the order's own, and nothing of the line left alone.
+    assert loss is not None
+    assert (loss.product_name, loss.quantity_before, loss.quantity_after) == ("Cream", 0, 1)
+    assert loss.order_discount == (DiscountKind.PERCENT, 50)
+    assert loss.line_discount is None
     assert (order.discount_kind, order.discount_value, order.discount_note) == (None, None, None)
     assert order.discount_base_cents is None
     # A line the customer did not touch keeps its own.
@@ -657,8 +662,11 @@ async def test_a_customer_adding_to_a_discounted_line_takes_its_discount_off(
     )
     assert serum.variant_id is not None
 
-    order = await service.add_item(order.user_id, order.id, serum.variant_id, 1)
+    order, loss = await service.add_item(order.user_id, order.id, serum.variant_id, 1)
 
+    assert loss is not None
+    assert (loss.quantity_before, loss.quantity_after) == (2, 3)
+    assert (loss.order_discount, loss.line_discount) == (None, (DiscountKind.PERCENT, 10))
     assert serum.discount_kind is None
     assert order.total_cents == 1000 + 3 * 2000
 
@@ -673,8 +681,11 @@ async def test_a_customer_removing_a_line_takes_the_order_discount_off(
         order.id, order.revision, None, (DiscountKind.AMOUNT, 4000), None
     )
 
-    order = await service.remove_item(order.user_id, order.id, serum.id)
+    order, loss = await service.remove_item(order.user_id, order.id, serum.id)
 
+    assert loss is not None
+    assert (loss.product_name, loss.quantity_before, loss.quantity_after) == ("Serum", 2, 0)
+    assert loss.order_discount == (DiscountKind.AMOUNT, 4000)
     assert order.discount_kind is None
     assert order.total_cents == 1000
 
@@ -692,11 +703,28 @@ async def test_a_customer_changing_a_quantity_takes_that_lines_discount_off(
         order.id, order.revision, balm.id, (DiscountKind.AMOUNT, 500), None
     )
 
-    order = await service.set_item_quantity(order.user_id, order.id, serum.id, 1)
+    order, loss = await service.set_item_quantity(order.user_id, order.id, serum.id, 1)
 
+    assert loss is not None
+    assert (loss.quantity_before, loss.quantity_after) == (2, 1)
+    assert (loss.order_discount, loss.line_discount) == (None, (DiscountKind.AMOUNT, 3000))
     assert serum.discount_kind is None
     assert balm.discount_value == 500
     assert order.total_cents == 500 + 2000
+
+
+async def test_a_customer_edit_without_a_discount_has_nothing_to_announce(
+    db_session: AsyncSession,
+) -> None:
+    """The owner hears about a customer's edit only when it cost a discount they gave."""
+    order = await _placed(db_session)
+    serum = order.items[1]
+
+    _, loss = await OrdersService(db_session).set_item_quantity(
+        order.user_id, order.id, serum.id, 5
+    )
+
+    assert loss is None
 
 
 async def test_a_customer_setting_the_same_quantity_changes_nothing(
@@ -710,8 +738,9 @@ async def test_a_customer_setting_the_same_quantity_changes_nothing(
     )
     revision = order.revision
 
-    order = await service.set_item_quantity(order.user_id, order.id, serum.id, 2)
+    order, loss = await service.set_item_quantity(order.user_id, order.id, serum.id, 2)
 
+    assert loss is None
     assert order.discount_value == 10
     assert order.revision == revision
 

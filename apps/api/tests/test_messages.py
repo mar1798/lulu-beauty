@@ -8,8 +8,8 @@ from app.catalog.schemas import ProductResponse
 from app.catalog.shades import ShadeLabel
 from app.common.limits import MAX_WISHLIST_ITEMS
 from app.cycles.models import OrderCycle
-from app.orders.models import Order, OrderItem, OrderStatus
-from app.orders.service import OrderItemDrop, OrderPriceChange
+from app.orders.models import DiscountKind, Order, OrderItem, OrderStatus
+from app.orders.service import DiscountLoss, OrderItemDrop, OrderPriceChange
 from app.telegram import messages
 from app.wanted.models import WantedProduct
 from app.wishlist.schemas import WishlistItemResponse, WishlistResponse
@@ -550,6 +550,42 @@ def test_customer_cancellation_for_owner_survives_a_deleted_customer() -> None:
     )
 
     assert "Покупатель: -" in text
+
+
+def _loss(before: int, after: int, *, line: bool = False) -> DiscountLoss:
+    return DiscountLoss(
+        product_name="Сыворотка",
+        product_volume_ml=30,
+        product_shade=None,
+        quantity_before=before,
+        quantity_after=after,
+        order_discount=(DiscountKind.PERCENT, 10),
+        line_discount=(DiscountKind.AMOUNT, 50_000) if line else None,
+    )
+
+
+def test_discount_loss_for_owner_names_the_edit_and_what_came_off() -> None:
+    """По сообщению владелец решает, давать ли скидку снова, - без админки: что сделал
+    покупатель, какие скидки снялись и сколько теперь."""
+    customer = User(name="Айгуль", phone="+996700112233")
+
+    text = _normalize(messages.discount_loss_for_owner(_order(), customer, _loss(2, 3, line=True)))
+
+    assert "изменена покупателем" in text
+    assert "Айгуль, +996700112233" in text
+    assert "Сыворотка" in text and "2 → 3 шт." in text
+    assert "10% на всю заявку" in text
+    assert "500 сом на Сыворотка" in text
+    assert "Сумма теперь: 1 250 сом" in text
+
+
+def test_discount_loss_for_owner_tells_an_added_line_from_a_removed_one() -> None:
+    added = messages.discount_loss_for_owner(_order(), None, _loss(0, 2))
+    removed = messages.discount_loss_for_owner(_order(), None, _loss(1, 0))
+
+    assert "добавлен" in added and "(2 шт.)" in added
+    assert "удалён" in removed
+    assert "Покупатель: -" in removed
 
 
 def test_order_cancelled_by_customer_says_who_and_the_way_back() -> None:

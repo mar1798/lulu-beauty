@@ -54,6 +54,7 @@ from app.payments.service import PaymentsService
 from app.telegram import recipients
 from app.telegram.client import notifications_service
 from app.telegram.notify import (
+    notify_discount_lost,
     notify_new_order,
     notify_order_cancelled_by_customer,
     notify_order_created_for_customer,
@@ -281,6 +282,7 @@ async def update_my_order_note(
 async def add_my_order_item(
     order_id: uuid.UUID,
     body: OrderItemAddRequest,
+    background_tasks: BackgroundTasks,
     session: AsyncSession = Depends(get_session),
     current_user: CurrentUser = Depends(get_current_user),
 ) -> OrderResponse:
@@ -291,12 +293,16 @@ async def add_my_order_item(
     """
     service = OrdersService(session)
     try:
-        order = await service.add_item(current_user.id, order_id, body.variant_id, body.quantity)
+        order, loss = await service.add_item(
+            current_user.id, order_id, body.variant_id, body.quantity
+        )
     except (OrderNotFoundError, OrderNotEditableError, ProductNotFoundError) as error:
         raise _editing_error(error) from error
 
     response = await _one_order_response(service, order)
     await session.commit()
+    if loss is not None:
+        background_tasks.add_task(notify_discount_lost, order.id, loss)
     return response
 
 
@@ -305,17 +311,22 @@ async def update_my_order_item(
     order_id: uuid.UUID,
     item_id: uuid.UUID,
     body: OrderItemQuantityRequest,
+    background_tasks: BackgroundTasks,
     session: AsyncSession = Depends(get_session),
     current_user: CurrentUser = Depends(get_current_user),
 ) -> OrderResponse:
     service = OrdersService(session)
     try:
-        order = await service.set_item_quantity(current_user.id, order_id, item_id, body.quantity)
+        order, loss = await service.set_item_quantity(
+            current_user.id, order_id, item_id, body.quantity
+        )
     except (OrderNotFoundError, OrderNotEditableError, OrderItemNotFoundError) as error:
         raise _editing_error(error) from error
 
     response = await _one_order_response(service, order)
     await session.commit()
+    if loss is not None:
+        background_tasks.add_task(notify_discount_lost, order.id, loss)
     return response
 
 
@@ -323,12 +334,13 @@ async def update_my_order_item(
 async def remove_my_order_item(
     order_id: uuid.UUID,
     item_id: uuid.UUID,
+    background_tasks: BackgroundTasks,
     session: AsyncSession = Depends(get_session),
     current_user: CurrentUser = Depends(get_current_user),
 ) -> OrderResponse:
     service = OrdersService(session)
     try:
-        order = await service.remove_item(current_user.id, order_id, item_id)
+        order, loss = await service.remove_item(current_user.id, order_id, item_id)
     except (
         OrderNotFoundError,
         OrderNotEditableError,
@@ -339,6 +351,8 @@ async def remove_my_order_item(
 
     response = await _one_order_response(service, order)
     await session.commit()
+    if loss is not None:
+        background_tasks.add_task(notify_discount_lost, order.id, loss)
     return response
 
 

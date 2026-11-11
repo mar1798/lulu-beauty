@@ -326,6 +326,7 @@ with admin rights — `ADMIN` and `SUPER_ADMIN` alike (`recipients.get_owners`).
 | Payment receipt sent to the bot                                               | Owner (the file, with verdict)  |
 | Owner accepted / rejected a receipt, or marked the payment in the panel       | Customer                        |
 | Order cancelled by its customer, and that cancellation taken back             | Owner                           |
+| Customer's own edit took off an admin's discount: the edit, what came off     | Owner                           |
 | Order cancelled by its customer: confirmed, with the way to restore it        | That customer                   |
 | Order deleted by owner (unless it was already completed or cancelled)         | Customer                        |
 | Catalog price change repricing PENDING orders                                 | Each affected customer          |

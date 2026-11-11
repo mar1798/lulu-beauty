@@ -25,7 +25,7 @@ from app.config import settings
 from app.cycles.models import OrderCycle
 from app.orders.discounts import line_discount_cents, line_subtotal_cents, order_totals
 from app.orders.models import CANCELLED_STATUSES, DiscountKind, Order, OrderItem, OrderStatus
-from app.orders.service import DiscountChange, OrderItemDrop, OrderPriceChange
+from app.orders.service import DiscountChange, DiscountLoss, OrderItemDrop, OrderPriceChange
 from app.wanted.models import WantedProduct
 from app.wishlist.schemas import WishlistResponse
 
@@ -221,6 +221,43 @@ def customer_cancellation_for_owner(order: Order, customer: User | None, *, rest
             f"Покупатель: {customer.name}, {customer.phone}" if customer else "Покупатель: -",
             f"Позиций: {len(order.items)}",
             f"Сумма: {format_price(order.total_cents)}",
+        ]
+    )
+
+
+def discount_loss_for_owner(order: Order, customer: User | None, loss: DiscountLoss) -> str:
+    """The customer changed their order, and that took off a discount an admin gave.
+
+    The site warned the customer; the owner learns it here, or the discount they decided on
+    is simply gone the next time anyone opens the order. What the customer did is named, so
+    the owner can tell whether the discount still deserves to be given again — that is
+    theirs to do from the panel, nothing here re-grants it.
+
+    Plain text like `customer_cancellation_for_owner`: nothing is escaped, nothing needs to be.
+    """
+    product = product_label(loss.product_name, loss.product_volume_ml, loss.product_shade)
+    if loss.quantity_before == 0:
+        change = f"добавлен {product} ({loss.quantity_after} шт.)"
+    elif loss.quantity_after == 0:
+        change = f"удалён {product}"
+    else:
+        change = f"{product}: {loss.quantity_before} → {loss.quantity_after} шт."
+    dropped = []
+    if loss.order_discount is not None:
+        dropped.append(f"• {discount_label(*loss.order_discount)} на всю заявку")
+    if loss.line_discount is not None:
+        dropped.append(f"• {discount_label(*loss.line_discount)} на {product}")
+    return "\n".join(
+        [
+            f"✏️ Заявка {order_reference(order.id)} изменена покупателем - скидка снята",
+            # `None` is an erased account, as in `customer_cancellation_for_owner`.
+            f"Покупатель: {customer.name}, {customer.phone}" if customer else "Покупатель: -",
+            f"Изменение: {change}",
+            "Снята скидка:",
+            *dropped,
+            f"Сумма теперь: {format_price(order.total_cents)}",
+            "",
+            "Если скидка остаётся в силе - назначьте её заново в админке",
         ]
     )
 

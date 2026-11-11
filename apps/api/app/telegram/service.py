@@ -13,7 +13,7 @@ from aiogram.types import InlineKeyboardMarkup, Message, MessageId, ReplyParamet
 from app.auth.models import User
 from app.cycles.models import OrderCycle
 from app.orders.models import Order, OrderStatus
-from app.orders.service import DiscountChange
+from app.orders.service import DiscountChange, DiscountLoss
 from app.payments.models import PaymentReceipt, ReceiptKind
 from app.telegram import keyboards, messages
 from app.wanted.models import WantedProduct
@@ -230,6 +230,25 @@ class NotificationsService:
             )
             return
         logger.info("Told %s about a discount on order %s", user.phone, order.id)
+
+    async def send_discount_loss(
+        self, owner: User, order: Order, customer: User | None, loss: DiscountLoss
+    ) -> None:
+        """The customer's edit took off an admin's discount. Under it, like a cancellation,
+        only the way to the panel — giving the discount back is done there."""
+        message = messages.discount_loss_for_owner(order, customer, loss)
+        if await self._try_send(
+            owner.telegram_chat_id, message, reply_markup=keyboards.admin_orders_link()
+        ):
+            logger.info(
+                "Notified owner %s that the customer's edit took a discount off order %s",
+                owner.phone,
+                order.id,
+            )
+            return
+        logger.warning(
+            "%s; discount lost on order %s not announced", self._fallback_reason(owner), order.id
+        )
 
     async def send_customer_cancellation(
         self, owner: User, order: Order, customer: User | None, *, restored: bool
