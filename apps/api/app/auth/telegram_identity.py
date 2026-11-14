@@ -36,10 +36,12 @@ from app.config import settings
 # worthless by the time it is found.
 MAX_AGE_SECONDS = 24 * 60 * 60
 
-# Excluded from the string that gets hashed. `hash` is the signature itself; `signature`
-# is the newer Ed25519 field Telegram adds for third-party validation, and it is not part
-# of what the HMAC covers — leaving it in makes every Mini App login fail.
-UNSIGNED_FIELDS = frozenset({"hash", "signature"})
+# The one field left out of the string that gets hashed: it is the HMAC itself. Everything
+# else takes part, `signature` included — the Ed25519 field Telegram adds to `initData`
+# for third-party validation is covered by the HMAC like any other field. Leaving it out
+# made every real Mini App login a 401 `telegram_auth_invalid` (found in production
+# logs); aiogram's `check_webapp_signature` drops `hash` alone for the same reason.
+HASH_FIELD = "hash"
 
 
 class InvalidTelegramAuthError(Exception):
@@ -62,7 +64,7 @@ def verify_widget_payload(payload: dict[str, str]) -> int:
     them before verifying would break the signature, so the payload is hashed whole and
     only then read from.
     """
-    fields = {key: str(value) for key, value in payload.items() if key not in UNSIGNED_FIELDS}
+    fields = {key: str(value) for key, value in payload.items() if key != HASH_FIELD}
 
     secret_key = hashlib.sha256(_token()).digest()
     _check(secret_key, _data_check_string(fields), str(payload.get("hash", "")))
@@ -82,7 +84,7 @@ def verify_init_data(init_data: str) -> int:
     from the widget's, so neither payload can be replayed as the other.
     """
     fields = dict(parse_qsl(init_data, keep_blank_values=True))
-    signed = {key: value for key, value in fields.items() if key not in UNSIGNED_FIELDS}
+    signed = {key: value for key, value in fields.items() if key != HASH_FIELD}
 
     secret_key = hmac.new(b"WebAppData", _token(), hashlib.sha256).digest()
     _check(secret_key, _data_check_string(signed), fields.get("hash", ""))

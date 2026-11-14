@@ -93,8 +93,9 @@ browser                 next (/api/auth/*)            api                 telegr
 own HMAC-SHA256 offline in `auth/telegram_identity.py`. Both are the same trick with different
 keys derived from the bot token; payloads older than `MAX_AGE_SECONDS` (24h) are rejected.
 
-`hash` and `signature` are excluded from the hashed string — leaving `signature` in makes
-every Mini App login fail.
+Only `hash` is excluded from the hashed string; `signature` (Ed25519, for third-party
+validation) is covered by the HMAC like any other field. Excluding it was the reason every
+Mini App login came back `telegram_auth_invalid` — see [gotchas](gotchas.md).
 
 **Neither path carries a phone number**, so they can only sign in an account that already
 exists; a stranger gets `telegram_account_not_linked` and is sent to the bot.

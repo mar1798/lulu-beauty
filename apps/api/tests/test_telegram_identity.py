@@ -52,9 +52,8 @@ def init_data(*, extra: dict[str, str] | None = None, **overrides: str) -> str:
         "auth_date": str(int(time.time())),
     }
     fields.update(overrides)
-    signed = {**fields, "hash": _sign(_mini_app_key(), fields)}
-    signed.update(extra or {})
-    return urlencode(signed)
+    fields.update(extra or {})
+    return urlencode({**fields, "hash": _sign(_mini_app_key(), fields)})
 
 
 # ─── Login Widget ────────────────────────────────────────────────────────────────
@@ -120,12 +119,21 @@ def test_init_data_with_an_edited_user_is_refused() -> None:
         verify_init_data(tampered)
 
 
-def test_the_ed25519_signature_field_is_not_part_of_the_hmac() -> None:
-    """Telegram appends `signature` for third-party validation and does not include it
-    in the HMAC. Hashed along with the rest, every real Mini App login would fail — and
-    it would fail only against the live client, never in a test that built its own data.
+def test_the_ed25519_signature_field_is_part_of_the_hmac() -> None:
+    """Telegram signs `signature` along with everything else; only `hash` stays out.
+
+    This test once asserted the opposite and passed, because it appended `signature`
+    after signing — the code agreed with the test and every real login got a 401.
     """
-    assert verify_init_data(init_data(extra={"signature": "irrelevant-but-present"})) == TELEGRAM_ID
+    assert verify_init_data(init_data(extra={"signature": "ed25519-signature"})) == TELEGRAM_ID
+
+
+def test_init_data_with_an_edited_signature_field_is_refused() -> None:
+    raw = init_data(extra={"signature": "ed25519-signature"})
+    tampered = raw.replace("ed25519-signature", "something-else")
+
+    with pytest.raises(InvalidTelegramAuthError):
+        verify_init_data(tampered)
 
 
 def test_old_init_data_is_expired() -> None:
