@@ -32,6 +32,8 @@ export const TelegramLoginPanel: FC<ITelegramLoginPanelProps & IBasicStyling> = 
   loginWidget,
   error = null,
   onRetry,
+  notice,
+  help,
   className,
 }) => {
   const isDead = status === 'expired' || status === 'error'
@@ -54,12 +56,22 @@ export const TelegramLoginPanel: FC<ITelegramLoginPanelProps & IBasicStyling> = 
         </Alert>
       ) : (
         <>
+          {notice}
+
+          {/*
+            Шаги называют кнопки теми же словами, что человек увидит в Telegram:
+            «Запустить» — подпись клиента на русском, «Поделиться номером телефона» — кнопка
+            бота (`SHARE_CONTACT_BUTTON` в `apps/api/app/telegram/messages.py`).
+            Переименуют там — менять и здесь. Чаще всего вход бросают на третьем
+            шаге: клавиатура бота свёрнута, и кнопки просто не видно.
+          */}
           <ol className={styles.steps}>
-            <li>Откройте бота кнопкой ниже</li>
-            <li>Нажмите «Start», если чат новый, - или просто дождитесь ответа бота</li>
+            <li>Нажмите «Войти через Telegram» - откроется наш бот</li>
+            <li>В Telegram нажмите «Запустить» (или «Start»)</li>
             <li>
-              В первый раз бот попросит поделиться номером - это и есть регистрация, заполнять
-              ничего не нужно
+              В первый раз бот попросит поделиться номером - нажмите кнопку «📱 Поделиться номером
+              телефона» внизу экрана, это вся регистрация. Кнопки не видно? Нажмите значок
+              клавиатуры рядом с полем ввода
             </li>
           </ol>
 
@@ -108,6 +120,8 @@ export const TelegramLoginPanel: FC<ITelegramLoginPanelProps & IBasicStyling> = 
               </Text>
             </div>
           )}
+
+          {help !== undefined && help !== null && <div className={styles.help}>{help}</div>}
         </>
       )}
     </div>

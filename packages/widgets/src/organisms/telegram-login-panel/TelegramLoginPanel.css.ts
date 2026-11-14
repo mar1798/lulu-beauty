@@ -50,3 +50,11 @@ export const qr = style({
   borderTop: `1px solid ${color.border('subtle')}`,
   textAlign: 'center',
 })
+
+/** Запасной путь — тем же отделённым блоком, что и QR: это не шаг, а обход. */
+export const help = style({
+  ...flexColumn(4),
+  paddingTop: vars.space.md,
+  borderTop: `1px solid ${color.border('subtle')}`,
+  textAlign: 'center',
+})

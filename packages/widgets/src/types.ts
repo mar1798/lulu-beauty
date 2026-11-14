@@ -1679,6 +1679,16 @@ export interface ITelegramLoginPanelProps {
   /** Текст сбоя; показывается только при `status: 'error'`. */
   error?: string | null
   onRetry: () => void
+  /**
+   * Сообщение над шагами — например, что собранная гостем корзина после входа
+   * не пропадёт. Слотом: что именно сказать, знает сайт.
+   */
+  notice?: ReactNode
+  /**
+   * Запасной путь под всем остальным: что делать без Telegram или если вход не
+   * получается. Слотом — ссылки на магазин приложений и на контакты знает сайт.
+   */
+  help?: ReactNode
 }
 
 export interface ITelegramLinkPromptProps {

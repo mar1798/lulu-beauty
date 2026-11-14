@@ -1095,12 +1095,24 @@ def cycle_closed_for_owner(cycle: OrderCycle, orders_count: int, total_cents: in
 
 # ─── Replies to commands ─────────────────────────────────────────────────────────
 
-SHARE_CONTACT_BUTTON = "Поделиться номером телефона"
+# Named word for word in two places outside this file — the site's login steps
+# (`TelegramLoginPanel` in packages/widgets) and the privacy policy
+# (`apps/website/src/pages/privacy.tsx`, which quotes the text after the emoji). Rename
+# it there too. The phone is the picture people look for: the reply keyboard sits
+# where a typing keyboard usually is, and is easy to take for one.
+SHARE_CONTACT_BUTTON = "📱 Поделиться номером телефона"
 
+#: The first thing a newcomer reads, so it is one instruction and nothing else: which
+#: button, where it is, and that it is the whole registration. What the chat is for
+#: (confirmations, reminders) is said by the bot later, when it actually writes;
+#: telling it up front only pushed the button's name further down. The last line is
+#: for the commonest dead end — a client that keeps the reply keyboard folded, so the
+#: button the text talks about is nowhere to be seen.
 START = (
-    "Добро пожаловать в Sululu! Поделитесь номером телефона, чтобы привязать "
-    "этот чат к вашему аккаунту: сюда придут вход на сайт, подтверждение заявки "
-    "и напоминания о дедлайне сборов"
+    "Здравствуйте! Это бот магазина Sululu.\n\n"
+    f"Чтобы войти, нажмите кнопку «{SHARE_CONTACT_BUTTON}» внизу экрана - "
+    "это вся регистрация, заполнять ничего не нужно.\n\n"
+    "Кнопки не видно? Нажмите значок клавиатуры рядом с полем ввода"
 )
 
 #: Фиксация согласия, вторым сообщением сразу за `START`.

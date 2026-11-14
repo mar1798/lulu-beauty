@@ -67,4 +67,41 @@ describe('TelegramLoginPanel', () => {
 
     expect(onRetry).toHaveBeenCalledTimes(1)
   })
+
+  it('называет кнопку бота так же, как она подписана в Telegram', () => {
+    renderWidget(<TelegramLoginPanel {...feedTelegramLoginPanel()} />)
+
+    expect(screen.getByText(/«📱 Поделиться номером телефона»/)).toBeInTheDocument()
+  })
+
+  it('показывает сообщение над шагами и запасной путь под ними', () => {
+    renderWidget(
+      <TelegramLoginPanel
+        {...feedTelegramLoginPanel()}
+        notice={<p>Корзина перенесётся</p>}
+        help={<p>Нет Telegram?</p>}
+      />
+    )
+
+    const notice = screen.getByText('Корзина перенесётся')
+    const help = screen.getByText('Нет Telegram?')
+    const steps = screen.getByRole('list')
+
+    expect(notice.compareDocumentPosition(steps) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(steps.compareDocumentPosition(help) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  it('прячет сообщение и запасной путь, когда ссылка умерла', () => {
+    renderWidget(
+      <TelegramLoginPanel
+        {...feedTelegramLoginPanel()}
+        status="expired"
+        notice={<p>Корзина перенесётся</p>}
+        help={<p>Нет Telegram?</p>}
+      />
+    )
+
+    expect(screen.queryByText('Корзина перенесётся')).toBeNull()
+    expect(screen.queryByText('Нет Telegram?')).toBeNull()
+  })
 })

@@ -33,6 +33,13 @@ the text: it is a button, so on a host Telegram won't link to it simply drops
 (`_site_button`) rather than leaving `http://localhost:3000/privacy` in the first thing a
 customer reads.
 
+The greeting (`messages.START`) is a single instruction — which button, where, and that it
+is the whole registration — plus a line for the commonest dead end: a client that keeps the
+reply keyboard folded, so the button is nowhere to be seen. The button's label
+(`SHARE_CONTACT_BUTTON`, «📱 Поделиться номером телефона») is quoted word for word by the
+site's login steps (`TelegramLoginPanel`) and, after the emoji, by the privacy policy
+(`pages/privacy.tsx`); rename all three together.
+
 The same promise is made on the site's `/login` page, and both are the consent the shop
 relies on. Erasing an account is how it is withdrawn
 ([domain.md](domain.md#erasing-an-account)); it also unbinds the chat, so the same number
