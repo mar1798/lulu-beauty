@@ -1,11 +1,9 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
-import { useRouter } from 'next/router'
 import type { IControlSize, IProduct } from 'widgets/types'
 import { Button, IconButton, Tooltip } from 'widgets/atoms'
 import { useToast } from 'widgets/contexts'
 import { IconCart, IconCheck, IconPlus } from 'widgets/svg'
 import { shadeLabelForms, variantShades, variantVolumes } from 'widgets/utils'
-import { useAuth } from '@/contexts/AuthContext'
 import { useCart } from '@/contexts/CartContext'
 import { useActiveCycle } from '@/hooks/useActiveCycle'
 import * as styles from '@/styles/cartButton.css'
@@ -13,11 +11,11 @@ import * as styles from '@/styles/cartButton.css'
 /**
  * Кнопка «В корзину» для карточки и страницы товара.
  *
- * Живёт в `apps/website`, а не в `widgets`: ей нужны и корзина, и сессия, и
- * роутер. В виджетах для неё оставлены слоты (`action`/`renderAction`).
+ * Живёт в `apps/website`, а не в `widgets`: ей нужны корзина и сбор. В
+ * виджетах для неё оставлены слоты (`action`/`renderAction`).
  *
- * Гостя отправляем на вход, а не показываем ошибку: корзина на бэкенде
- * привязана к пользователю, анонимной корзины не существует.
+ * Гость кладёт товар без входа: его корзина живёт в браузере, а вход нужен
+ * только на оформлении (`CartContext`, `utils/guestStorage`).
  *
  * Когда открытого сбора нет, кнопка гаснет заранее: `POST /cart/items` в этом
  * состоянии отвечает 409 `no_active_cycle`, и это известно ещё до нажатия (см.
@@ -102,8 +100,6 @@ export const AddToCartButton: React.FC<{
   disabled = false,
   isCompact = false,
 }) => {
-  const router = useRouter()
-  const { user, isLoading: isAuthLoading, reload: reloadSession } = useAuth()
   const { cart, addItem, isItemBusy } = useCart()
   const { isClosed } = useActiveCycle()
   const { notify, announce } = useToast()
@@ -174,19 +170,11 @@ export const AddToCartButton: React.FC<{
 
     try {
       /*
-        Пока `/api/auth/me` не ответил, `user === null` ещё не значит «гость»,
-        и уводить на `/login` рано — дожидаемся ответа прямо в обработчике.
-        Раньше кнопка на это время выключалась, и вся сетка каталога успевала
-        мигнуть приглушёнными кнопками сразу после загрузки страницы.
+        Гостя на вход больше не уводим: корзина гостя живёт в браузере, и вход
+        нужен только на оформлении (`CartContext`, `utils/guestStorage`). Раньше
+        здесь был `/login` — и человек, который хотел только отложить баночку,
+        упирался в Telegram раньше, чем что-то выбрал.
       */
-      const current = isAuthLoading ? await reloadSession() : user
-
-      if (current === null) {
-        void router.push({ pathname: '/login', query: { next: router.asPath } })
-
-        return
-      }
-
       const result = await addItem(target.id)
 
       if (result.ok) {
@@ -210,18 +198,7 @@ export const AddToCartButton: React.FC<{
     } finally {
       isRunning.current = false
     }
-  }, [
-    user,
-    isAuthLoading,
-    reloadSession,
-    router,
-    addItem,
-    isItemBusy,
-    target,
-    notify,
-    announce,
-    product.name,
-  ])
+  }, [addItem, isItemBusy, target, notify, announce, product.name])
 
   /*
     `disabled` (нет в наличии) и «сбор закрыт» — разные вещи, и ведут себя они

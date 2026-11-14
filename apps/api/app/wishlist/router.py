@@ -3,9 +3,14 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth.dependencies import CurrentUser, get_current_user
+from app.auth.dependencies import CurrentUser, get_current_user, require_live_user
 from app.db import get_session
-from app.wishlist.schemas import AddWishlistItemRequest, WishlistResponse
+from app.wishlist.schemas import (
+    AddWishlistItemRequest,
+    GuestWishlistRequest,
+    GuestWishlistResponse,
+    WishlistResponse,
+)
 from app.wishlist.service import (
     ProductNotFoundError,
     WishlistFullError,
@@ -22,6 +27,27 @@ async def get_wishlist(
     current_user: CurrentUser = Depends(get_current_user),
 ) -> WishlistResponse:
     return await WishlistService(session).get_wishlist(current_user.id)
+
+
+# Public, like `POST /cart/preview`: a guest's list kept in their browser, read against
+# the catalogue and stored nowhere.
+@router.post("/preview", response_model=GuestWishlistResponse)
+async def preview_wishlist(
+    body: GuestWishlistRequest,
+    session: AsyncSession = Depends(get_session),
+) -> GuestWishlistResponse:
+    return await WishlistService(session).preview(body.product_ids)
+
+
+@router.post("/merge", response_model=WishlistResponse)
+async def merge_wishlist(
+    body: GuestWishlistRequest,
+    session: AsyncSession = Depends(get_session),
+    current_user: CurrentUser = Depends(require_live_user),
+) -> WishlistResponse:
+    wishlist = await WishlistService(session).merge(current_user.id, body.product_ids)
+    await session.commit()
+    return wishlist
 
 
 @router.post("/items", response_model=WishlistResponse)

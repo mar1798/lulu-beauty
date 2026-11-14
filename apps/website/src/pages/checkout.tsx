@@ -50,7 +50,7 @@ const CheckoutPage: React.FC = () => {
   const router = useRouter()
   const { user, isLoading: isAuthLoading } = useAuth()
   const loginHref = useLoginHref()
-  const { cart, isLoading, reload, addItem, updateItem, settled } = useCart()
+  const { cart, isLoading, error: cartError, reload, addItem, updateItem, settled } = useCart()
   const { notify } = useToast()
   const search = useProductSearch()
   // Дедлайн прошёл, пока страница открыта, — перечитать сбор и корзину, чтобы
@@ -268,7 +268,16 @@ const CheckoutPage: React.FC = () => {
       return (
         <EmptyState
           title="Нужен вход"
-          description="Заявка оформляется на аккаунт - в привязанный к нему чат придёт подтверждение"
+          description={
+            /*
+              Гостевая корзина лежит в браузере и переедет в аккаунт сразу после
+              входа (`CartContext`) — об этом и говорим, иначе вход читается как
+              «начинать заново».
+            */
+            cart !== null && cart.items.length > 0
+              ? 'Заявка оформляется на аккаунт через Telegram - туда придёт подтверждение. Корзина никуда не денется: после входа она перенесётся в аккаунт.'
+              : 'Заявка оформляется на аккаунт - в привязанный к нему чат придёт подтверждение'
+          }
           action={
             <Button link={{ href: loginHref }} isFullWidth="mobile">
               Войти
@@ -282,7 +291,12 @@ const CheckoutPage: React.FC = () => {
       return (
         <EmptyState
           title="Оформлять нечего"
-          description="Соберите корзину - и возвращайтесь сюда"
+          /*
+            Пустота после входа бывает объяснимой: перенос гостевой корзины не
+            удался или корзина прошлого сбора уехала в избранное. Тогда сказать
+            нужно именно это, а не «соберите заново» (`CartContext`, `mergeError`).
+          */
+          description={cartError ?? 'Соберите корзину - и возвращайтесь сюда'}
           action={
             <Button link={{ href: '/catalog' }} isFullWidth="mobile">
               В каталог

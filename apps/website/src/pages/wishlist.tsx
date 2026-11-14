@@ -17,7 +17,6 @@ import { categoriesKey } from '@/services/swrKeys'
 import * as styles from '@/styles/layout.css'
 import { HalloweenEmpty, HalloweenScene } from '@/halloween/HalloweenScene'
 import * as halloween from '@/halloween/halloween.css'
-import { useLoginHref } from '@/hooks/useLoginHref'
 
 /**
  * Избранное. Приватное и целиком клиентское, как корзина: данные идут через
@@ -27,16 +26,15 @@ import { useLoginHref } from '@/hooks/useLoginHref'
  * составом, а не устройством, и вторая раскладка карточки означала бы вторую
  * карточку, которую придётся чинить дважды.
  *
- * Гостя не редиректим, а предлагаем войти: список привязан к аккаунту, и
- * внезапный переход на `/login` из шапки выглядел бы как ошибка.
+ * Гостю — его собственный список из браузера (`WishlistContext`): сохранять
+ * можно без входа, а после входа список переезжает в аккаунт.
  *
  * Врезки «приём заказов закрыт» здесь нет намеренно: её совет — «сохраните в
  * избранное» — на самой странице избранного замыкается сам на себя. Почему
  * «в корзину» недоступна, объясняет подсказка на самой кнопке.
  */
 const WishlistPage: React.FC = () => {
-  const { user, isLoading: isAuthLoading } = useAuth()
-  const loginHref = useLoginHref()
+  const { isLoading: isAuthLoading } = useAuth()
   const { wishlist, isLoading, error } = useWishlist()
 
   // Названия категорий — тем же ключом, что и каталог: список уже в кеше.
@@ -51,32 +49,14 @@ const WishlistPage: React.FC = () => {
 
   const content = (): React.ReactNode => {
     /*
-      Пока сессия не проверена, не показываем ничего.
-
-      «Войдите» тут нельзя: у вошедшего это была бы вспышка чужого экрана
-      вместо его списка. Но и скелетон сетки нельзя — восемь карточек это
-      больше тысячи пикселей, и у гостя они через полсекунды схлопывались в
-      короткое «войдите», втягивая подвал обратно в кадр. Ровно это и есть
-      CLS 0.394 — худший на сайте.
+      Пока сессия не проверена, не показываем ничего: неизвестно, чей список
+      рисовать — из браузера или из аккаунта. Скелетон сетки тут нельзя —
+      восемь карточек это больше тысячи пикселей, и у гостя с пустым списком
+      они через полсекунды схлопывались в короткую заглушку, втягивая подвал
+      обратно в кадр. Ровно это и было CLS 0.394 — худший на сайте.
     */
     if (isAuthLoading) {
       return null
-    }
-
-    if (user === null) {
-      return (
-        <HalloweenEmpty kind="wishlist">
-          <EmptyState
-            title="Избранное у каждого своё"
-            description="Войдите, чтобы сохранять товары - список дождётся следующего сбора"
-            action={
-              <Button link={{ href: loginHref }} isFullWidth="mobile">
-                Войти
-              </Button>
-            }
-          />
-        </HalloweenEmpty>
-      )
     }
 
     return (
@@ -143,7 +123,7 @@ const WishlistPage: React.FC = () => {
         title="Избранное"
         summary={products.length === 0 ? undefined : `Сохранено товаров: ${products.length}`}
       >
-        {user !== null && products.length > 0 && <HalloweenScene variant="list-title" />}
+        {products.length > 0 && <HalloweenScene variant="list-title" />}
         <div className={styles.sessionArea}>{content()}</div>
       </CatalogTemplate>
     </SiteLayout>

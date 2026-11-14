@@ -13,21 +13,20 @@ import { EditableOrderNotice } from '@/components/EditableOrderNotice'
 import { useAuth } from '@/contexts/AuthContext'
 import { useCart } from '@/contexts/CartContext'
 import * as styles from '@/styles/layout.css'
-import { useLoginHref } from '@/hooks/useLoginHref'
 import { useCycleExpiryRefresh } from '@/hooks/useCycleExpiryRefresh'
 
 /**
- * Корзина. Приватная и целиком клиентская: данные идут через прокси,
- * статикой её отдавать нечего.
+ * Корзина. Целиком клиентская: данные идут через прокси, статикой её отдавать
+ * нечего.
  *
- * Гостя не редиректим, а показываем предложение войти: корзина на бэкенде
- * привязана к пользователю, и внезапный переход на `/login` из шапки
- * выглядел бы как ошибка.
+ * Гостю — его собственная корзина из браузера (`CartContext`). Вход нужен
+ * только на «Оформить»: кнопка у гостя так и подписана и ведёт на `/login` с
+ * возвратом на оформление, а корзина переезжает в аккаунт сразу после входа.
  */
 const CartPage: React.FC = () => {
   const router = useRouter()
   const { user, isLoading: isAuthLoading } = useAuth()
-  const loginHref = useLoginHref()
+  const isGuest = user === null && !isAuthLoading
   const { cart, isLoading, isWholeCartBusy, isItemBusy, error, updateItem, removeItem, addItem } =
     useCart()
   const { notify } = useToast()
@@ -114,24 +113,6 @@ const CartPage: React.FC = () => {
   }
 
   const content = (): React.ReactNode => {
-    // Пока сессия не проверена, «войдите» показывать нельзя: у залогиненного
-    // это была бы вспышка чужого экрана вместо его корзины.
-    if (user === null && !isAuthLoading) {
-      return (
-        <HalloweenEmpty kind="cart">
-          <EmptyState
-            title="Корзина у каждого своя"
-            description="Войдите, чтобы собрать заявку - она сохранится до закрытия сбора"
-            action={
-              <Button link={{ href: loginHref }} isFullWidth="mobile">
-                Войти
-              </Button>
-            }
-          />
-        </HalloweenEmpty>
-      )
-    }
-
     return (
       <>
         {/*
@@ -158,8 +139,16 @@ const CartPage: React.FC = () => {
             void remove(variantId)
           }}
           onCheckout={() => {
-            void router.push('/checkout')
+            void router.push(
+              isGuest ? { pathname: '/login', query: { next: '/checkout' } } : '/checkout'
+            )
           }}
+          checkoutLabel={isGuest ? 'Войти и оформить' : undefined}
+          checkoutNote={
+            isGuest
+              ? 'Для отправки заявки войдите через Telegram - корзина перенесётся в аккаунт'
+              : undefined
+          }
           emptyState={
             <HalloweenEmpty kind="cart">
               <EmptyState
@@ -196,9 +185,9 @@ const CartPage: React.FC = () => {
         summary="Оплата не проводится: это заявка, которую мы подтвердим после закрытия сбора"
       >
         {/*
-          Высота под содержимое зарезервирована: «войдите» и корзина отличаются
-          высотой вдвое, и на ответе `/api/auth/me` подвал переезжал (см.
-          `styles/layout.css`).
+          Высота под содержимое зарезервирована: скелетон и пустая корзина
+          отличаются высотой вдвое, и на ответе `/api/auth/me` подвал переезжал
+          (см. `styles/layout.css`).
         */}
         {cart !== null && cart.items.length > 0 && <HalloweenScene variant="list-title" />}
         <div className={styles.sessionArea}>{content()}</div>

@@ -101,6 +101,8 @@ Public and customer-facing:
 | `GET`                         | `/users/me/deletion`                          | Whether the caller may erase, and what blocks it.                                                                                   |
 | `GET`/`POST`/`PATCH`/`DELETE` | `/cart`, `/cart/items[/{variant_id}]`         | 409 `no_active_cycle` without an open cycle. A line is a **volume**: `POST` takes `variantId`, and `PATCH`/`DELETE` address one.    |
 | `GET`/`POST`/`DELETE`         | `/wishlist`, `/wishlist/items[/{product_id}]` | Cycle-independent.                                                                                                                  |
+| `POST`                        | `/cart/preview`, `/wishlist/preview`          | **Public.** A guest's browser cart/wishlist priced from the catalogue; stores nothing.                                              |
+| `POST`                        | `/cart/merge`, `/wishlist/merge`              | After sign-in. Cart: larger quantity wins, 409 `no_active_cycle` / `cart_cycle_changed`. Wishlist: adds the missing.                |
 | `POST`                        | `/wanted-products`                            | A wish for something the catalog lacks. Signed-in (live account); strict rate-limit budget.                                         |
 | `POST`                        | `/orders/checkout`                            |                                                                                                                                     |
 | `GET`                         | `/orders`, `/orders/{id}`                     |                                                                                                                                     |
@@ -239,7 +241,8 @@ Codes currently raised:
 
 ```
 active_cycle_exists       admin_only                auth_session_expired
-auth_session_not_found    cart_is_empty             cart_item_not_found
+auth_session_not_found    cart_cycle_changed        cart_is_empty
+cart_item_not_found
 category_nesting_too_deep category_not_found        category_parent_not_found
 checklist_extra_not_found
 cycle_already_closed      cycle_closed_recently     cycle_has_orders

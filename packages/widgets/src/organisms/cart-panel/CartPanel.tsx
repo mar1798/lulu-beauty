@@ -29,6 +29,8 @@ export const CartPanel: FC<ICartPanelProps & IBasicStyling> = ({
   onQuantityChange,
   onRemove,
   onCheckout,
+  checkoutLabel = 'Оформить заявку',
+  checkoutNote,
   isLoading = false,
   skeletonRows = DEFAULT_SKELETON_ROWS,
   isBusy = false,
@@ -139,11 +141,12 @@ export const CartPanel: FC<ICartPanelProps & IBasicStyling> = ({
           она только изменения состава целиком (`isBusy`, см. тип).
         */}
         <Button isFullWidth={true} disabled={!hasCycle || isBusy} onClick={onCheckout}>
-          Оформить заявку
+          {checkoutLabel}
         </Button>
 
         <Text size="sm" tone="muted">
-          Оплата не проводится: после закрытия сбора мы подтвердим заявку в Telegram
+          {checkoutNote ??
+            'Оплата не проводится: после закрытия сбора мы подтвердим заявку в Telegram'}
         </Text>
       </div>
     </div>

@@ -8,11 +8,26 @@ import React, {
   useState,
 } from 'react'
 import { useRouter } from 'next/router'
-import useSWR from 'swr'
-import type { IWishlist } from 'widgets/types'
-import { messageForError, type ErrorScope } from '@/services/apiErrors'
-import { wishlistKey } from '@/services/swrKeys'
-import { addWishlistItem, getWishlist, removeWishlistItem } from '@/services/endpoints/wishlist'
+import useSWR, { useSWRConfig } from 'swr'
+import type { IProduct, IWishlist } from 'widgets/types'
+import { ApiError, messageForError, type ErrorScope } from '@/services/apiErrors'
+import { guestWishlistKey, wishlistKey } from '@/services/swrKeys'
+import {
+  addWishlistItem,
+  getWishlist,
+  mergeWishlist,
+  previewWishlist,
+  removeWishlistItem,
+  type IGuestWishlistPreview,
+} from '@/services/endpoints/wishlist'
+import {
+  MAX_GUEST_WISHLIST_ITEMS,
+  readGuestState,
+  removeGuestWishlistItems,
+  useGuestState,
+  writeGuestWishlist,
+  type IGuestWishlistItem,
+} from '@/utils/guestStorage'
 import { useAuth } from './AuthContext'
 import { useDemand } from './useDemand'
 
@@ -26,13 +41,63 @@ import { useDemand } from './useDemand'
  *
  * Разница с корзиной ровно одна, но принципиальная: избранное не привязано к
  * сбору. Оно и существует затем, чтобы работать, когда «в корзину» недоступна.
+ *
+ * У гостя список свой, в браузере (`utils/guestStorage`), а карточки к нему
+ * приходят с сервера (`POST /wishlist/preview`). После входа он переливается в
+ * аккаунт (`POST /wishlist/merge`), и перенесённое из хранилища убирается.
  */
 
 /** Область запроса, задевающая список целиком (перезагрузка). */
 const WHOLE_LIST = '*'
 
-/** Избранного у гостя не существует — на бэкенде оно привязано к пользователю. */
-const GUEST_ERROR = 'Избранное привязано к аккаунту - войдите, чтобы сохранять товары'
+/** Сессия ещё проверяется: чей это список — гостя или аккаунта, — пока неизвестно. */
+const UNKNOWN_OWNER_ERROR = 'Проверяем сессию - попробуйте ещё раз через секунду'
+
+const idsOf = (items: readonly IGuestWishlistItem[]): string[] => items.map(item => item.productId)
+
+/**
+ * Товары гостевого списка — ключ предпросмотра хранит их через запятую.
+ *
+ * Снятые с продажи предпросмотр не возвращает, и из хранилища они уходят: иначе
+ * счётчик в шапке считал бы товары, которых в списке не видно, а сами они занимали
+ * бы места под потолком в 200.
+ */
+const loadGuestWishlist = async ([, , joined]: readonly [
+  string,
+  string,
+  string,
+]): Promise<IGuestWishlistPreview> => {
+  const ids = joined === '' ? [] : joined.split(',')
+  const preview = await previewWishlist(ids)
+  const live = new Set(preview.products.map(product => product.id))
+  const gone = ids.filter(id => !live.has(id))
+
+  if (gone.length > 0) {
+    removeGuestWishlistItems(gone)
+  }
+
+  return preview
+}
+
+/**
+ * Список гостя на экране: порядок и даты — из хранилища, карточки — из
+ * предпросмотра. Снятых с продажи предпросмотр не вернёт, и они выпадают, как у
+ * вошедшего.
+ */
+const guestView = (
+  preview: IGuestWishlistPreview,
+  items: readonly IGuestWishlistItem[]
+): IWishlist => {
+  const products = new Map<string, IProduct>(preview.products.map(product => [product.id, product]))
+
+  return {
+    items: items.flatMap(item => {
+      const product = products.get(item.productId)
+
+      return product === undefined ? [] : [{ product, addedAt: item.addedAt }]
+    }),
+  }
+}
 
 export interface IWishlistResult {
   ok: boolean
@@ -68,9 +133,12 @@ export interface IWishlistContextValue {
 const WishlistContext = createContext<IWishlistContextValue | null>(null)
 
 export const WishlistProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { user } = useAuth()
+  const { user, isLoading: isAuthLoading, reload: reloadSession } = useAuth()
   const router = useRouter()
   const userId = user?.id ?? null
+  const isGuest = user === null && !isAuthLoading
+  const guest = useGuestState()
+  const { mutate: globalMutate } = useSWRConfig()
 
   /*
     Запрос уходит только тогда, когда данные кому-то нужны: провайдер живёт в
@@ -86,8 +154,24 @@ export const WishlistProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     data,
     isLoading,
     error: fetchError,
-    mutate: swrMutate,
   } = useSWR<IWishlist>(userId === null || !isWanted ? null : wishlistKey(userId), getWishlist)
+
+  /*
+    Сердцам в каталоге предпросмотр не нужен — им хватает хранилища (`has`). Он
+    нужен списку товаров, поэтому ключ — набор id, а `keepPreviousData` не даёт
+    странице избранного мигать на каждом нажатии.
+  */
+  const guestKey =
+    isGuest && isWanted && guest.wishlist.length > 0
+      ? guestWishlistKey(idsOf(guest.wishlist).join(','))
+      : null
+  const {
+    data: guestPreview,
+    isLoading: isGuestLoading,
+    error: guestFetchError,
+  } = useSWR<IGuestWishlistPreview, unknown, typeof guestKey>(guestKey, loadGuestWishlist, {
+    keepPreviousData: true,
+  })
 
   /**
    * Очередь запросов: каждая ручка отвечает списком целиком, поэтому ответ,
@@ -101,12 +185,15 @@ export const WishlistProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       busyScope: string,
       action: () => Promise<IWishlist>,
       errorScope: ErrorScope,
-      optimistic?: (current: IWishlist) => IWishlist
+      optimistic?: (current: IWishlist) => IWishlist,
+      // Чей список: см. `owner` у `runMutation` в `CartContext` — здесь то же самое.
+      owner: string | null = userId
     ): Promise<IWishlistResult> => {
-      if (userId === null) {
-        setError(GUEST_ERROR)
+      if (owner === null) {
+        // Гостевые правки сюда не приходят (`runGuest`) — значит, сессия ещё не проверена.
+        setError(UNKNOWN_OWNER_ERROR)
 
-        return { ok: false, error: GUEST_ERROR }
+        return { ok: false, error: UNKNOWN_OWNER_ERROR }
       }
 
       setBusy(previous => (previous.includes(busyScope) ? previous : [...previous, busyScope]))
@@ -121,7 +208,7 @@ export const WishlistProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       )
 
       try {
-        await swrMutate(sent, {
+        await globalMutate(wishlistKey(owner), sent, {
           revalidate: false,
           optimisticData:
             optimistic === undefined || data === undefined
@@ -142,24 +229,75 @@ export const WishlistProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           сервер уже принял. После осечки список перечитывается, а не
           восстанавливается по памяти.
         */
-        void swrMutate()
+        void globalMutate(wishlistKey(owner))
 
         return { ok: false, error: message }
       } finally {
         setBusy(previous => previous.filter(item => item !== busyScope))
       }
     },
-    [userId, swrMutate, data]
+    [userId, globalMutate, data]
   )
 
+  /** Правка гостевого списка: синхронная, ошибки — с теми же кодами, что у бэкенда. */
+  const runGuest = useCallback(
+    (action: () => void, errorScope: ErrorScope): Promise<IWishlistResult> => {
+      setError(null)
+
+      try {
+        action()
+
+        return Promise.resolve(OK)
+      } catch (cause: unknown) {
+        const message = messageForError(cause, errorScope)
+
+        setError(message)
+
+        return Promise.resolve({ ok: false, error: message })
+      }
+    },
+    []
+  )
+
+  const addGuest = useCallback((productId: string): void => {
+    const { wishlist: current } = readGuestState()
+
+    // Повторное сохранение — не ошибка, как и у бэкенда.
+    if (current.some(item => item.productId === productId)) {
+      return
+    }
+
+    if (current.length >= MAX_GUEST_WISHLIST_ITEMS) {
+      throw new ApiError(409, 'wishlist_full')
+    }
+
+    writeGuestWishlist([{ productId, addedAt: new Date().toISOString() }, ...current])
+  }, [])
+
+  const removeGuest = useCallback((productId: string): void => {
+    const { wishlist: current } = readGuestState()
+
+    if (!current.some(item => item.productId === productId)) {
+      throw new ApiError(404, 'wishlist_item_not_found')
+    }
+
+    writeGuestWishlist(current.filter(item => item.productId !== productId))
+  }, [])
+
   const add = useCallback(
-    (productId: string) =>
-      /*
-        Без оптимистичного слепка: карточку товара знает только ответ, а
-        рисовать полупустую ради 200 мс хуже, чем показать спиннер на сердце.
-      */
-      runMutation(productId, () => addWishlistItem(productId), 'wishlist.add'),
-    [runMutation]
+    async (productId: string): Promise<IWishlistResult> => {
+      // Сессия ещё проверяется — ждём ответа здесь, как и «в корзину» (`CartContext`).
+      const owner = isAuthLoading ? ((await reloadSession())?.id ?? null) : userId
+
+      return owner === null
+        ? runGuest(() => addGuest(productId), 'wishlist.add')
+        : /*
+              Без оптимистичного слепка: карточку товара знает только ответ, а
+              рисовать полупустую ради 200 мс хуже, чем показать спиннер на сердце.
+            */
+          runMutation(productId, () => addWishlistItem(productId), 'wishlist.add', undefined, owner)
+    },
+    [isAuthLoading, reloadSession, userId, runGuest, addGuest, runMutation]
   )
 
   const remove = useCallback(
@@ -169,22 +307,77 @@ export const WishlistProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         отфильтровать. Без этого товар на странице избранного оставался бы
         висеть до ответа — то есть выглядел бы неудалённым.
       */
-      runMutation(
-        productId,
-        () => removeWishlistItem(productId),
-        'wishlist.remove',
-        current => ({
-          ...current,
-          items: current.items.filter(item => item.product.id !== productId),
-        })
-      ),
-    [runMutation]
+      isGuest
+        ? runGuest(() => removeGuest(productId), 'wishlist.remove')
+        : runMutation(
+            productId,
+            () => removeWishlistItem(productId),
+            'wishlist.remove',
+            current => ({
+              ...current,
+              items: current.items.filter(item => item.product.id !== productId),
+            })
+          ),
+    [isGuest, runGuest, removeGuest, runMutation]
   )
 
-  const reload = useCallback(
-    () => runMutation(WHOLE_LIST, () => getWishlist(), 'wishlist.load'),
-    [runMutation]
-  )
+  const reload = useCallback(async (): Promise<IWishlistResult> => {
+    if (!isGuest) {
+      return runMutation(WHOLE_LIST, () => getWishlist(), 'wishlist.load')
+    }
+
+    const ids = idsOf(readGuestState().wishlist)
+
+    if (ids.length > 0) {
+      await globalMutate(guestWishlistKey(ids.join(',')))
+    }
+
+    return OK
+  }, [isGuest, runMutation, globalMutate])
+
+  /*
+    Перенос гостевого избранного в аккаунт — как и у корзины, сразу после входа и на
+    любой странице. Повтор безвреден: уже сохранённое бэкенд не трогает. Сюда же
+    попадает и гостевая корзина закрывшегося сбора (`rescueGuestCart`), поэтому
+    эффект следит за самим хранилищем, а не только за входом.
+  */
+  const mergingFor = useRef<string | null>(null)
+
+  useEffect(() => {
+    const ids = idsOf(guest.wishlist)
+
+    if (userId === null || ids.length === 0 || mergingFor.current === userId) {
+      return
+    }
+
+    mergingFor.current = userId
+
+    const sent = queue.current.then(() => mergeWishlist(ids))
+
+    queue.current = sent.then(
+      () => undefined,
+      () => undefined
+    )
+
+    /*
+      Флаг снимается до записи в хранилище, а не в `finally`: запись перерисовывает
+      провайдер, и эффект должен увидеть, что перенос кончился, — иначе то, что
+      легло в хранилище за время переноса, ждало бы следующего открытия сайта.
+    */
+    sent
+      .then(merged => {
+        mergingFor.current = null
+        // Только отправленное: пока ответ шёл, сюда могла лечь корзина закрывшегося
+        // сбора (`rescueGuestCart`) — она перенесётся следующим заходом эффекта.
+        removeGuestWishlistItems(ids)
+        void globalMutate(wishlistKey(userId), merged, { revalidate: false })
+      })
+      .catch((cause: unknown) => {
+        mergingFor.current = null
+        // Хранилище не трогаем: перенос повторится при следующем открытии сайта.
+        setError(messageForError(cause, 'wishlist.merge'))
+      })
+  }, [userId, guest.wishlist, globalMutate])
 
   const clearError = useCallback(() => setError(null), [])
 
@@ -201,12 +394,26 @@ export const WishlistProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     return () => router.events.off('routeChangeComplete', clearError)
   }, [router.events, clearError])
 
-  const wishlist = userId === null ? null : (data ?? null)
+  const wishlist = useMemo<IWishlist | null>(
+    () =>
+      userId !== null
+        ? (data ?? null)
+        : !isGuest
+          ? null
+          : guest.wishlist.length === 0
+            ? { items: [] }
+            : guestPreview === undefined
+              ? null
+              : guestView(guestPreview, guest.wishlist),
+    [userId, data, isGuest, guest.wishlist, guestPreview]
+  )
 
   const has = useCallback(
     (productId: string): boolean =>
-      wishlist?.items.some(item => item.product.id === productId) === true,
-    [wishlist]
+      isGuest
+        ? guest.wishlist.some(item => item.productId === productId)
+        : wishlist?.items.some(item => item.product.id === productId) === true,
+    [isGuest, guest.wishlist, wishlist]
   )
 
   const isItemBusy = useCallback(
@@ -219,14 +426,23 @@ export const WishlistProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     [has, add, remove]
   )
 
+  const loadError = userId !== null ? fetchError : isGuest ? guestFetchError : undefined
+
   const visibleError =
-    error ?? (fetchError === undefined ? null : messageForError(fetchError, 'wishlist.load'))
+    error ?? (loadError === undefined ? null : messageForError(loadError, 'wishlist.load'))
 
   const value = useMemo<IWishlistContextValue>(
     () => ({
       wishlist,
-      itemCount: wishlist?.items.length ?? 0,
-      isLoading: userId !== null && isLoading,
+      /*
+        У гостя — по показанному списку, а пока его нет, по хранилищу: счётчику в
+        шапке незачем ждать карточек. Снятые с продажи из хранилища убирает
+        предпросмотр (`loadGuestWishlist`), так что разойтись надолго им негде.
+      */
+      itemCount: isGuest
+        ? (wishlist?.items.length ?? guest.wishlist.length)
+        : (wishlist?.items.length ?? 0),
+      isLoading: userId !== null ? isLoading : isGuest && isGuestLoading,
       has,
       isItemBusy,
       error: visibleError,
@@ -241,6 +457,9 @@ export const WishlistProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       wishlist,
       userId,
       isLoading,
+      isGuest,
+      isGuestLoading,
+      guest.wishlist.length,
       has,
       isItemBusy,
       visibleError,

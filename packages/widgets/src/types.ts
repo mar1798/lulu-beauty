@@ -1727,6 +1727,13 @@ export interface ICartPanelProps {
   onQuantityChange: (variantId: string, quantity: number) => void
   onRemove: (variantId: string) => void
   onCheckout: () => void
+  /** Подпись кнопки оформления. У гостя — «Войти и оформить»: дальше будет вход. */
+  checkoutLabel?: string
+  /**
+   * Строка под кнопкой оформления. По умолчанию — что оплаты нет; у гостя сайт
+   * объясняет здесь, что перед отправкой будет вход и корзина при этом не пропадёт.
+   */
+  checkoutNote?: ReactNode
   /**
    * Первая загрузка корзины: рисуются скелетоны в её раскладке. Отличается
    * от `isBusy` — тот про запрос поверх уже показанной корзины.

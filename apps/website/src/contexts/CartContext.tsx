@@ -8,17 +8,31 @@ import React, {
   useState,
 } from 'react'
 import { useRouter } from 'next/router'
-import useSWR from 'swr'
+import useSWR, { useSWRConfig } from 'swr'
 import type { ICart } from 'widgets/types'
-import { messageForError, type ErrorScope } from '@/services/apiErrors'
-import { cartKey } from '@/services/swrKeys'
+import { ApiError, isApiError, messageForError, type ErrorScope } from '@/services/apiErrors'
+import { cartKey, guestCartKey } from '@/services/swrKeys'
 import {
   addCartItem,
   emptyCart,
   getCart,
+  mergeCart,
+  previewCart,
   removeCartItem,
   updateCartItem,
+  type IGuestCartLineBody,
 } from '@/services/endpoints/cart'
+import {
+  MAX_GUEST_CART_LINES,
+  MAX_ITEM_QUANTITY,
+  clearGuestCart,
+  readGuestState,
+  removeGuestCartLines,
+  rescueGuestCart,
+  useGuestState,
+  writeGuestCart,
+  type IGuestCartLine,
+} from '@/utils/guestStorage'
 import { useAuth } from './AuthContext'
 import { useDemand } from './useDemand'
 
@@ -32,9 +46,12 @@ import { useDemand } from './useDemand'
  * `withQuantity`/`without` ниже): он живёт ровно до ответа и тем же ответом
  * затирается, поэтому разойтись с сервером ему негде.
  *
- * Корзина существует только у авторизованного пользователя: для гостя это
- * `null`, а не пустой объект, — экран должен предложить войти, а не делать
- * вид, что корзина есть.
+ * У гостя корзина своя, в браузере (`utils/guestStorage`): количества лежат
+ * там, а названия, цены и фото приходят с сервера (`POST /cart/preview`) —
+ * поэтому и гость видит текущие цены, а не запомненные. Вход нужен только на
+ * оформлении; сразу после него гостевая корзина переливается в аккаунт
+ * (`POST /cart/merge`) и очищается. `null` корзина только до того, как стало
+ * известно, гость ли это.
  */
 
 /** Область запроса, задевающая корзину целиком (очистка, перезагрузка). */
@@ -80,8 +97,67 @@ export interface ICartResult {
 
 const OK: ICartResult = { ok: true, error: null }
 
-/** Корзины у гостя не существует — на бэкенде она привязана к пользователю. */
-const GUEST_ERROR = 'Корзина привязана к аккаунту - войдите, чтобы собрать заявку'
+/** Сессия ещё проверяется: чья это корзина — гостя или аккаунта, — пока неизвестно. */
+const UNKNOWN_OWNER_ERROR = 'Проверяем сессию - попробуйте ещё раз через секунду'
+
+const toBody = (lines: readonly IGuestCartLine[]): IGuestCartLineBody[] =>
+  lines.map(({ variantId, quantity }) => ({ variantId, quantity }))
+
+/** Объёмы гостевой корзины одной строкой — ключ предпросмотра (`guestCartKey`). */
+const variantSet = (lines: readonly IGuestCartLine[]): string =>
+  lines
+    .map(line => line.variantId)
+    .sort()
+    .join(',')
+
+/**
+ * Предпросмотр гостевой корзины. Сбор сменился или закрылся с тех пор, как она
+ * собиралась, — строки уезжают в избранное, как у вошедшего при закрытии сбора.
+ */
+const loadGuestCart = async (): Promise<ICart> => {
+  const { cart } = readGuestState()
+  const preview = await previewCart(toBody(cart.lines))
+
+  if (cart.lines.length > 0 && cart.cycleId !== null && preview.cycleId !== cart.cycleId) {
+    rescueGuestCart()
+
+    return { ...preview, items: [], totalCents: 0 }
+  }
+
+  return preview
+}
+
+/**
+ * Пустая корзина гостя — без запроса: предпросматривать нечего, а пустой корзине
+ * сбор не нужен (`CartPanel` рисует для неё заглушку). Иначе шапка, которая
+ * подписана на корзину на каждой странице, тратила бы на каждый просмотр запрос из
+ * общего лимита анонимов.
+ */
+const EMPTY_GUEST_CART: ICart = { cycleId: null, cycleDeadlineAt: null, items: [], totalCents: 0 }
+
+/**
+ * Перенос не состоялся из-за сбора: он закрылся или сменился, пока гость входил.
+ * Строки тогда уезжают в избранное — как у вошедшего при закрытии сбора.
+ */
+const isStaleCycle = (cause: unknown): boolean =>
+  isApiError(cause) && (cause.code === 'no_active_cycle' || cause.code === 'cart_cycle_changed')
+
+/**
+ * Гостевая корзина на экране: строки — из предпросмотра (в его порядке и только
+ * живые), количества — из хранилища. Арифметика та же, что у `withQuantity`.
+ */
+const guestView = (preview: ICart, lines: readonly IGuestCartLine[]): ICart => {
+  const quantities = new Map(lines.map(line => [line.variantId, line.quantity]))
+  const items = preview.items.flatMap(item => {
+    const quantity = quantities.get(item.variantId)
+
+    return quantity === undefined
+      ? []
+      : [{ ...item, quantity, lineTotalCents: item.productPriceCents * quantity }]
+  })
+
+  return { ...preview, items, totalCents: totalOf(items) }
+}
 
 export interface ICartContextValue {
   cart: ICart | null
@@ -137,9 +213,12 @@ export interface ICartContextValue {
 const CartContext = createContext<ICartContextValue | null>(null)
 
 export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { user } = useAuth()
+  const { user, isLoading: isAuthLoading, reload: reloadSession } = useAuth()
   const router = useRouter()
   const userId = user?.id ?? null
+  const isGuest = user === null && !isAuthLoading
+  const guest = useGuestState()
+  const { mutate: globalMutate } = useSWRConfig()
 
   /*
     Запрос уходит только тогда, когда данные кому-то нужны: провайдер живёт в
@@ -155,13 +234,35 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
    */
   const [busy, setBusy] = useState<readonly string[]>([])
   const [error, setError] = useState<string | null>(null)
+  /**
+   * Итог переноса гостевой корзины — отдельно от `error`. Перенос начинается ещё на
+   * `/login` и обычно кончается до перехода на оформление, а `error` гаснет на смене
+   * маршрута: «товары перенесены в избранное» пропадало бы, не дойдя до экрана.
+   * Гаснет он со следующим действием с корзиной или по `clearError`.
+   */
+  const [mergeError, setMergeError] = useState<string | null>(null)
 
   const {
     data,
     isLoading,
     error: fetchError,
-    mutate: swrMutate,
   } = useSWR<ICart>(userId === null || !isWanted ? null : cartKey(userId), getCart)
+
+  /*
+    Гостевой предпросмотр — отдельным запросом, а не тем же `useSWR`: у него свой
+    ключ и свой загрузчик, и `keepPreviousData` нужен только ему — ключ меняется с
+    каждым новым товаром, и без него корзина мигала бы скелетоном на каждое
+    добавление.
+  */
+  const guestKey =
+    isGuest && isWanted && guest.cart.lines.length > 0
+      ? guestCartKey(variantSet(guest.cart.lines))
+      : null
+  const {
+    data: guestPreview,
+    isLoading: isGuestLoading,
+    error: guestFetchError,
+  } = useSWR<ICart>(guestKey, loadGuestCart, { keepPreviousData: true })
 
   /**
    * Очередь запросов к корзине.
@@ -181,23 +282,30 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
    * `optimistic` — как должна выглядеть корзина, пока ответ в пути. Без него
    * `−`/`+` в корзине не двигают число до конца запроса, и нажатие выглядит
    * потерянным.
+   *
+   * `owner` — чья корзина. Обычно это вошедший из текущего рендера, но «в корзину»,
+   * нажатая до ответа `/api/auth/me`, узнаёт его сама (`addItem`) — и передаёт сюда:
+   * в замыкании этого рендера `userId` ещё `null`. Поэтому и кеш меняется по ключу
+   * владельца, а не через `mutate` хука, привязанный к ключу рендера.
    */
   const runMutation = useCallback(
     async (
       busyScope: string,
       action: () => Promise<ICart>,
       errorScope: ErrorScope,
-      optimistic?: (current: ICart) => ICart
+      optimistic?: (current: ICart) => ICart,
+      owner: string | null = userId
     ): Promise<ICartResult> => {
-      if (userId === null) {
-        // Не «не получилось»: корзины у гостя нет вовсе, и сказать надо именно это.
-        setError(GUEST_ERROR)
+      if (owner === null) {
+        // Гостевые правки сюда не приходят (`runGuest`) — значит, сессия ещё не проверена.
+        setError(UNKNOWN_OWNER_ERROR)
 
-        return { ok: false, error: GUEST_ERROR }
+        return { ok: false, error: UNKNOWN_OWNER_ERROR }
       }
 
       setBusy(previous => (previous.includes(busyScope) ? previous : [...previous, busyScope]))
       setError(null)
+      setMergeError(null)
 
       // Чужая осечка очередь не рвёт — свой запрос уходит в любом случае.
       const sent = queue.current.then(action, action)
@@ -208,7 +316,7 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
       )
 
       try {
-        await swrMutate(sent, {
+        await globalMutate(cartKey(owner), sent, {
           revalidate: false,
           /*
             Слепок считается от того, что лежит в кеше на момент применения, а
@@ -236,69 +344,318 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
           сервер уже принял. После осечки список перечитывается, а не
           восстанавливается по памяти.
         */
-        void swrMutate()
+        void globalMutate(cartKey(owner))
 
         return { ok: false, error: message }
       } finally {
         setBusy(previous => previous.filter(item => item !== busyScope))
       }
     },
-    [userId, swrMutate, data]
+    [userId, globalMutate, data]
   )
 
-  const addItem = useCallback(
-    (variantId: string, quantity = 1) =>
+  /**
+   * Правка гостевой корзины. Синхронная почти всегда — хранилище в браузере, — и
+   * ошибки её те же, что отдал бы бэкенд, с теми же текстами (`ApiError` с кодом).
+   */
+  const runGuest = useCallback(
+    async (
+      busyScope: string,
+      action: () => Promise<void> | void,
+      errorScope: ErrorScope
+    ): Promise<ICartResult> => {
+      setBusy(previous => (previous.includes(busyScope) ? previous : [...previous, busyScope]))
+      setError(null)
+      setMergeError(null)
+
+      try {
+        await action()
+
+        return OK
+      } catch (cause: unknown) {
+        const message = messageForError(cause, errorScope)
+
+        setError(message)
+
+        return { ok: false, error: message }
+      } finally {
+        setBusy(previous => previous.filter(item => item !== busyScope))
+      }
+    },
+    []
+  )
+
+  /** Сбор открыт — по последнему предпросмотру. Без него менять корзину нельзя. */
+  const requireGuestCycle = useCallback((): void => {
+    if (guestPreview !== undefined && guestPreview.cycleId === null) {
+      throw new ApiError(409, 'no_active_cycle')
+    }
+  }, [guestPreview])
+
+  const addGuestItem = useCallback(
+    async (variantId: string, quantity: number): Promise<void> => {
+      const { cart: current } = readGuestState()
+      const existing = current.lines.find(line => line.variantId === variantId)
+
+      if (existing !== undefined) {
+        requireGuestCycle()
+        writeGuestCart({
+          ...current,
+          lines: current.lines.map(line =>
+            line === existing
+              ? { ...line, quantity: Math.min(line.quantity + quantity, MAX_ITEM_QUANTITY) }
+              : line
+          ),
+        })
+
+        return
+      }
+
       /*
-        Без оптимистичного слепка: состав позиции (название, цена, картинка)
-        знает только ответ, а рисовать полустроку ради 200 мс не стоит. Кнопка
-        в каталоге эти миллисекунды просто не отыгрывает — спиннер на ней
-        читался как мигание (см. `AddToCartButton`).
+        Новый объём сверяется с сервером до того, как лечь в корзину: открыт ли сбор и
+        продаётся ли он ещё, — те же проверки, что у `POST /cart/items`. Иначе гость
+        узнал бы о закрытом сборе только на оформлении, после входа.
       */
-      runMutation(variantId, () => addCartItem(variantId, quantity), 'cart.add'),
-    [runMutation]
+      const preview = await previewCart([{ variantId, quantity }])
+      const item = preview.items.find(line => line.variantId === variantId)
+
+      if (preview.cycleId === null) {
+        throw new ApiError(409, 'no_active_cycle')
+      }
+
+      if (item === undefined) {
+        throw new ApiError(404, 'product_not_found')
+      }
+
+      // Корзина прошлого сбора в новый не переезжает — сначала в избранное.
+      if (current.cycleId !== null && current.cycleId !== preview.cycleId) {
+        rescueGuestCart()
+      }
+
+      /*
+        Хранилище перечитывается после ответа: пока предпросмотр был в пути, тот же
+        объём могло положить второе нажатие или соседняя вкладка — тогда строка
+        одна, и растёт её количество, а не появляется вторая.
+      */
+      const { cart: base } = readGuestState()
+      const twin = base.lines.find(line => line.variantId === variantId)
+
+      if (twin === undefined && base.lines.length >= MAX_GUEST_CART_LINES) {
+        throw new ApiError(422, 'guest_cart_full')
+      }
+
+      const lines =
+        twin === undefined
+          ? [...base.lines, { variantId, productId: item.productId, quantity }]
+          : base.lines.map(line =>
+              line === twin
+                ? { ...line, quantity: Math.min(line.quantity + quantity, MAX_ITEM_QUANTITY) }
+                : line
+            )
+
+      writeGuestCart({ cycleId: preview.cycleId, lines })
+
+      /*
+        Строка нового объёма уже пришла в ответе — кладём её в кеш под новым ключом
+        сразу, иначе она и счётчик в шапке появлялись бы только после следующего
+        предпросмотра. Перечитывается он всё равно: порядок строк и цены остальных
+        задаёт сервер.
+      */
+      const known = (guestPreview?.items ?? []).filter(line => line.variantId !== variantId)
+
+      void globalMutate(
+        guestCartKey(variantSet(lines)),
+        { ...preview, items: [...known, item] },
+        { revalidate: true }
+      )
+    },
+    [requireGuestCycle, guestPreview, globalMutate]
+  )
+
+  const updateGuestItem = useCallback(
+    (variantId: string, quantity: number): void => {
+      requireGuestCycle()
+
+      const { cart: current } = readGuestState()
+
+      if (!current.lines.some(line => line.variantId === variantId)) {
+        throw new ApiError(404, 'cart_item_not_found')
+      }
+
+      writeGuestCart({
+        ...current,
+        lines: current.lines.map(line =>
+          line.variantId === variantId ? { ...line, quantity } : line
+        ),
+      })
+    },
+    [requireGuestCycle]
+  )
+
+  const removeGuestItem = useCallback((variantId: string): void => {
+    const { cart: current } = readGuestState()
+
+    if (!current.lines.some(line => line.variantId === variantId)) {
+      throw new ApiError(404, 'cart_item_not_found')
+    }
+
+    writeGuestCart({
+      ...current,
+      lines: current.lines.filter(line => line.variantId !== variantId),
+    })
+  }, [])
+
+  const addItem = useCallback(
+    async (variantId: string, quantity = 1): Promise<ICartResult> =>
+      /*
+        Пока `/api/auth/me` не ответил, неизвестно, чья корзина. Ждём ответа прямо
+        здесь, а не гасим кнопки на это время: сетка каталога мигала бы
+        приглушёнными «+» сразу после загрузки страницы.
+      */
+      {
+        const owner = isAuthLoading ? ((await reloadSession())?.id ?? null) : userId
+
+        return owner === null
+          ? runGuest(variantId, () => addGuestItem(variantId, quantity), 'cart.add')
+          : /*
+              Без оптимистичного слепка: состав позиции (название, цена, картинка)
+              знает только ответ, а рисовать полустроку ради 200 мс не стоит. Кнопка
+              в каталоге эти миллисекунды просто не отыгрывает — спиннер на ней
+              читался как мигание (см. `AddToCartButton`).
+            */
+            runMutation(
+              variantId,
+              () => addCartItem(variantId, quantity),
+              'cart.add',
+              undefined,
+              owner
+            )
+      },
+    [isAuthLoading, reloadSession, userId, runGuest, addGuestItem, runMutation]
   )
 
   const updateItem = useCallback(
     (variantId: string, quantity: number) =>
-      runMutation(
-        variantId,
-        () => updateCartItem(variantId, quantity),
-        'cart.update',
-        current => withQuantity(current, variantId, quantity)
-      ),
-    [runMutation]
+      isGuest
+        ? runGuest(variantId, () => updateGuestItem(variantId, quantity), 'cart.update')
+        : runMutation(
+            variantId,
+            () => updateCartItem(variantId, quantity),
+            'cart.update',
+            current => withQuantity(current, variantId, quantity)
+          ),
+    [isGuest, runGuest, updateGuestItem, runMutation]
   )
 
   const removeItem = useCallback(
     (variantId: string) =>
-      runMutation(
-        variantId,
-        () => removeCartItem(variantId),
-        'cart.remove',
-        current => without(current, variantId)
-      ),
-    [runMutation]
+      isGuest
+        ? runGuest(variantId, () => removeGuestItem(variantId), 'cart.remove')
+        : runMutation(
+            variantId,
+            () => removeCartItem(variantId),
+            'cart.remove',
+            current => without(current, variantId)
+          ),
+    [isGuest, runGuest, removeGuestItem, runMutation]
   )
 
   const empty = useCallback(
     () =>
-      runMutation(
-        WHOLE_CART,
-        () => emptyCart(),
-        'cart.empty',
-        current => ({
-          ...current,
-          items: [],
-          totalCents: 0,
-        })
-      ),
-    [runMutation]
+      isGuest
+        ? runGuest(WHOLE_CART, clearGuestCart, 'cart.empty')
+        : runMutation(
+            WHOLE_CART,
+            () => emptyCart(),
+            'cart.empty',
+            current => ({
+              ...current,
+              items: [],
+              totalCents: 0,
+            })
+          ),
+    [isGuest, runGuest, runMutation]
   )
 
   const reload = useCallback(
-    () => runMutation(WHOLE_CART, () => getCart(), 'cart.load'),
-    [runMutation]
+    () =>
+      isGuest
+        ? runGuest(
+            WHOLE_CART,
+            async () => {
+              await globalMutate(guestCartKey(variantSet(readGuestState().cart.lines)))
+            },
+            'cart.load'
+          )
+        : runMutation(WHOLE_CART, () => getCart(), 'cart.load'),
+    [isGuest, runGuest, globalMutate, runMutation]
   )
+
+  /*
+    Перенос гостевой корзины в аккаунт — сразу, как только стало известно, кто вошёл,
+    и независимо от того, показывает ли корзину текущая страница: человек входил ради
+    оформления, и корзина должна ждать его там уже своей.
+
+    С корзиной уходит и сбор, в который она собиралась: закрылся или сменился — бэкенд
+    откажет (`cart_cycle_changed`), и строки уедут в избранное. Проверить это здесь,
+    по предпросмотру, нельзя: вход, случившийся до первого предпросмотра (Mini App
+    входит сразу), его так и не увидел бы.
+
+    Через ту же очередь, что и правки: оформление ждёт её (`settled`), поэтому заявка
+    не уйдёт раньше, чем корзина перенесётся. Повтор (вторая вкладка, перезагрузка
+    посреди ответа) безвреден — бэкенд берёт большее из количеств, а не сумму.
+  */
+  const mergingFor = useRef<string | null>(null)
+  /**
+   * Чей перенос не удался. Пока он не удался, корзина считается загружающейся
+   * (`isMergePending`): иначе оформление успевало сказать «оформлять нечего» над
+   * корзиной, которая вот-вот приедет.
+   */
+  const [mergeFailedFor, setMergeFailedFor] = useState<string | null>(null)
+
+  useEffect(() => {
+    const { cycleId, lines } = guest.cart
+
+    if (userId === null || lines.length === 0 || mergingFor.current === userId) {
+      return
+    }
+
+    mergingFor.current = userId
+
+    const sent = queue.current.then(() => mergeCart(toBody(lines), cycleId))
+
+    queue.current = sent.then(
+      () => undefined,
+      () => undefined
+    )
+
+    /*
+      Флаг снимается до записи в хранилище, а не в `finally`: запись перерисовывает
+      провайдер, и эффект должен увидеть, что перенос кончился, — иначе то, что
+      легло в хранилище за время переноса, ждало бы следующего открытия сайта.
+    */
+    sent
+      .then(merged => {
+        mergingFor.current = null
+        setMergeFailedFor(null)
+        // Только отправленное: пока ответ шёл, сюда могло лечь новое (`removeGuestCartLines`).
+        removeGuestCartLines(lines.map(line => line.variantId))
+        void globalMutate(cartKey(userId), merged, { revalidate: false })
+      })
+      .catch((cause: unknown) => {
+        mergingFor.current = null
+        if (isStaleCycle(cause)) {
+          // Строки — в избранное, оно перенесётся следом. Сказать об этом обязательно:
+          // человек входил оформлять и иначе увидел бы пустую корзину без объяснений.
+          rescueGuestCart()
+        } else {
+          // Хранилище не трогаем: перенос повторится при следующем открытии сайта.
+          setMergeFailedFor(userId)
+        }
+
+        setMergeError(messageForError(cause, 'cart.merge'))
+      })
+  }, [userId, guest.cart, globalMutate])
 
   /*
     Очередь не рвётся на осечках (`runMutation` гасит их при постановке), так
@@ -308,7 +665,12 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
     await queue.current
   }, [])
 
-  const clearError = useCallback(() => setError(null), [])
+  const clearError = useCallback(() => {
+    setError(null)
+    setMergeError(null)
+  }, [])
+
+  const clearActionError = useCallback(() => setError(null), [])
 
   /*
     Ошибка последнего действия живёт в провайдере — а он смонтирован в
@@ -318,17 +680,33 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
     загруженным списком. Смена маршрута — конец жизни такой ошибки.
   */
   useEffect(() => {
-    router.events.on('routeChangeComplete', clearError)
+    router.events.on('routeChangeComplete', clearActionError)
 
-    return () => router.events.off('routeChangeComplete', clearError)
-  }, [router.events, clearError])
+    return () => router.events.off('routeChangeComplete', clearActionError)
+  }, [router.events, clearActionError])
 
   const isItemBusy = useCallback(
     (variantId: string): boolean => busy.includes(variantId) || busy.includes(WHOLE_CART),
     [busy]
   )
 
-  const cart = userId === null ? null : (data ?? null)
+  const isMergePending = userId !== null && guest.cart.lines.length > 0 && mergeFailedFor !== userId
+
+  const cart = useMemo<ICart | null>(
+    () =>
+      userId !== null
+        ? (data ?? null)
+        : !isGuest
+          ? null
+          : guest.cart.lines.length === 0
+            ? EMPTY_GUEST_CART
+            : guestPreview === undefined
+              ? null
+              : guestView(guestPreview, guest.cart.lines),
+    [userId, data, isGuest, guestPreview, guest.cart.lines]
+  )
+
+  const loadError = userId !== null ? fetchError : isGuest ? guestFetchError : undefined
 
   /*
    * Осечка последнего действия важнее осечки загрузки: человек только что
@@ -336,13 +714,17 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
    * загрузке нельзя — иначе пустой экран выдаёт себя за пустую корзину.
    */
   const visibleError =
-    error ?? (fetchError === undefined ? null : messageForError(fetchError, 'cart.load'))
+    error ??
+    mergeError ??
+    (loadError === undefined ? null : messageForError(loadError, 'cart.load'))
 
   const value = useMemo<ICartContextValue>(
     () => ({
       cart,
       itemCount: cart?.items.reduce((sum, item) => sum + item.quantity, 0) ?? 0,
-      isLoading: userId !== null && isLoading,
+      // Пока гостевая корзина переносится, показывать корзину аккаунта рано: в ней
+      // ещё нет того, ради чего человек входил.
+      isLoading: userId !== null ? isLoading || isMergePending : isGuest && isGuestLoading,
       isWholeCartBusy: busy.includes(WHOLE_CART),
       isItemBusy,
       error: visibleError,
@@ -359,6 +741,9 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
       cart,
       userId,
       isLoading,
+      isMergePending,
+      isGuest,
+      isGuestLoading,
       busy,
       isItemBusy,
       visibleError,
