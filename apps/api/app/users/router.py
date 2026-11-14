@@ -10,11 +10,11 @@ from app.auth.dependencies import (
     require_super_admin,
 )
 from app.auth.models import User
-from app.common.schemas import PageResponse
 from app.db import get_session
 from app.telegram.notify import notify_account_deleted
 from app.users.schemas import (
     AccountDeletionResponse,
+    AdminUserPageResponse,
     AdminUserResponse,
     UserResponse,
     UserRoleUpdateRequest,
@@ -156,7 +156,7 @@ async def delete_me(
         background_tasks.add_task(notify_account_deleted, withdrawn)
 
 
-@router.get("/admin/users", response_model=PageResponse[AdminUserResponse])
+@router.get("/admin/users", response_model=AdminUserPageResponse)
 async def list_users_admin(
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=100, alias="pageSize"),
@@ -165,13 +165,15 @@ async def list_users_admin(
     search: str | None = Query(default=None, alias="q", max_length=255),
     session: AsyncSession = Depends(get_session),
     _admin: CurrentUser = Depends(require_admin),
-) -> PageResponse[AdminUserResponse]:
-    users, total = await UsersService(session).list_page(page, page_size, search)
-    return PageResponse(
+) -> AdminUserPageResponse:
+    service = UsersService(session)
+    users, total = await service.list_page(page, page_size, search)
+    return AdminUserPageResponse(
         items=[_admin_user_response(user) for user in users],
         total=total,
         page=page,
         page_size=page_size,
+        customers_total=await service.count_customers(),
     )
 
 

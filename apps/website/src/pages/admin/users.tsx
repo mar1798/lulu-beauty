@@ -1,7 +1,8 @@
 import React, { useCallback, useState } from 'react'
 import useSWR, { mutate as globalMutate } from 'swr'
 import type { IAdminUser, Role } from 'widgets/types'
-import { Alert } from 'widgets/atoms'
+import { Alert, Badge } from 'widgets/atoms'
+import { pluralize } from 'widgets/utils'
 import { EmptyState, Pagination, SearchField } from 'widgets/molecules'
 import { AdminUsersTable } from 'widgets/organisms'
 import { useConfirm, useToast } from 'widgets/contexts'
@@ -31,6 +32,8 @@ import { useClampedPage } from '@/hooks/useClampedPage'
  */
 
 const PAGE_SIZE = 20
+
+const CUSTOMER_FORMS = ['покупатель', 'покупателя', 'покупателей'] as const
 
 const SEARCH_DELAY_MS = 300
 
@@ -161,6 +164,15 @@ const AdminUsersPage: React.FC = () => {
         isSuperAdmin
           ? 'Админов может быть несколько: каждый видит админку целиком и получает уведомления о заявках. Аккаунт заводит бот - здесь только роль.'
           : 'Кто имеет доступ к админке. Выдаёт и снимает его super admin магазина.'
+      }
+      actions={
+        /*
+          Число покупателей магазина, а не строк выдачи: от поиска оно не
+          меняется. До первого ответа места не занимает.
+        */
+        data === undefined ? undefined : (
+          <Badge>{pluralize(data.customersTotal, CUSTOMER_FORMS)}</Badge>
+        )
       }
     >
       <div className={styles.stack}>

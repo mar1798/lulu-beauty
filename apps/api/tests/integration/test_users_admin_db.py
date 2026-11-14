@@ -84,6 +84,19 @@ async def test_list_puts_the_super_admin_first_then_admins(db_session: AsyncSess
     ]
 
 
+async def test_count_customers_skips_admins_and_erased_accounts(
+    db_session: AsyncSession,
+) -> None:
+    await make_user(db_session, name="Покупатель")
+    erased = await make_user(db_session, name="Ушедший покупатель")
+    await make_user(db_session, name="Админ", role=Role.ADMIN)
+    await make_user(db_session, name="Супер-админ", role=Role.SUPER_ADMIN)
+    erased.deleted_at = datetime.now(UTC)
+    await db_session.flush()
+
+    assert await UsersService(db_session).count_customers() == 1
+
+
 async def test_search_finds_by_name_and_phone(db_session: AsyncSession) -> None:
     target = await make_user(db_session, name="Айгуль", phone="+996555111222")
     await make_user(db_session, name="Бакыт", phone="+996555333444")

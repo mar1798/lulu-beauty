@@ -220,6 +220,9 @@ camelCase while Python stays snake_case. `PageResponse[T]` is the paging envelop
 (units, summed over `quantity`, not order lines) and `totalCents` across **every** order the filters match, not
 the page — the table's "Итого" row; the order count is the envelope's `total`. Like the
 export, it counts cancelled orders whenever the status filter lets them in.
+`GET /admin/users` extends it too (`AdminUserPageResponse`) with `customersTotal`: every
+registered, non-erased `CUSTOMER`, regardless of the search — the number next to the page
+title. The envelope's `total` is the search's row count, admins included.
 
 > Query parameters are **not** covered by that, and the casing is inconsistent
 > purpose-by-accident: public `GET /products` takes `in_stock` / `page_size`, admin

@@ -156,6 +156,20 @@ class UsersService:
         )
         return list(result.scalars().all()), total
 
+    async def count_customers(self) -> int:
+        """How many customers are registered — the headline number on the accounts page.
+
+        Independent of the list's search on purpose: the owner reads it as the size of the
+        shop's audience, not as the number of rows the box matched. Admins are not counted
+        (they are the shop, not its buyers), and neither are erased accounts.
+        """
+        total = await self._session.scalar(
+            select(func.count())
+            .select_from(User)
+            .where(User.role == Role.CUSTOMER, User.deleted_at.is_(None))
+        )
+        return total or 0
+
     async def set_role(self, user_id: uuid.UUID, role: Role) -> User:
         """Grants or revokes admin rights. Only the caller's rights are not checked here —
         that is the router's `require_super_admin`.

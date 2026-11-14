@@ -2590,6 +2590,15 @@ export interface IAdminUser extends IAuthUser {
   createdAt: string
 }
 
+/**
+ * Страница аккаунтов владельца. `total` — сколько строк нашёл поиск, админы
+ * тоже; `customersTotal` — все зарегистрированные покупатели магазина, от
+ * поиска не зависит.
+ */
+export interface IAdminUserPage extends IPage<IAdminUser> {
+  customersTotal: number
+}
+
 export interface IAdminUsersTableProps {
   users: IAdminUser[]
   /**

@@ -4,7 +4,7 @@ from datetime import datetime
 from pydantic import Field, field_validator
 
 from app.auth.models import DELIVERY_TEXT_MAX_LENGTH, Role
-from app.common.schemas import CamelModel, require_not_null
+from app.common.schemas import CamelModel, PageResponse, require_not_null
 from app.common.text import multi_line, single_line
 
 
@@ -70,6 +70,16 @@ class AdminUserResponse(UserResponse):
     """
 
     created_at: datetime
+
+
+class AdminUserPageResponse(PageResponse[AdminUserResponse]):
+    """The accounts list plus the number of registered customers.
+
+    `total` counts the rows the search matched, admins included; `customers_total` is the
+    shop-wide figure the page shows next to its title, and does not move with the search.
+    """
+
+    customers_total: int
 
 
 class UserRoleUpdateRequest(CamelModel):
