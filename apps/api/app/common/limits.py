@@ -14,6 +14,11 @@ MAX_ITEM_QUANTITY = 999
 # ever-growing response. Well past any real use, low enough to stay one payload.
 MAX_WISHLIST_ITEMS = 200
 
+# Lines a guest's cart may send in one go (`POST /cart/preview`, `/cart/merge`). The
+# guest cart lives in the browser and arrives whole on every look at it, so this is a
+# ceiling on the request rather than on shopping: no real cart holds a hundred volumes.
+MAX_GUEST_CART_LINES = 100
+
 # products.price_cents is a 32-bit INTEGER: anything past this reaches Postgres as an
 # out-of-range value and fails the whole request (a whole catalog import) at flush time.
 MAX_PRICE_CENTS = 2_000_000_000

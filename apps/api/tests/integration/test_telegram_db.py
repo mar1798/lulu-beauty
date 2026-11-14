@@ -17,19 +17,18 @@ from app.orders.service import OrderPriceChange
 from app.telegram import messages, recipients
 from app.telegram.handlers import (
     handle_contact,
+    handle_help,
     handle_login_action,
     handle_menu_action,
     handle_order_action,
-    handle_orders,
+    handle_reply_menu,
     handle_start,
     handle_unlink,
-    handle_wishlist,
 )
 from app.telegram.keyboards import LoginAction, MenuAction, OrderAction
 from app.telegram.notify import notify_orders_repriced
 from app.telegram.service import BroadcastResult
-from app.wishlist.models import WishlistItem
-from tests.integration.factories import make_cycle, make_product, make_user
+from tests.integration.factories import make_cycle, make_user
 
 
 @pytest.fixture
@@ -233,12 +232,16 @@ async def test_rejecting_ends_the_sessions_the_tab_already_claimed(
     await handle_login_action(query, _reject_button(message))
 
     live = (
-        await bot_session.execute(
-            select(RefreshToken).where(
-                RefreshToken.user_id == user.id, RefreshToken.revoked_at.is_(None)
+        (
+            await bot_session.execute(
+                select(RefreshToken).where(
+                    RefreshToken.user_id == user.id, RefreshToken.revoked_at.is_(None)
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     assert live == []
     query.message.edit_text.assert_awaited_once()
 
@@ -262,12 +265,16 @@ async def test_rejecting_survives_a_cleanup_tick(bot_session: AsyncSession) -> N
     await handle_login_action(query, _reject_button(message))
 
     live = (
-        await bot_session.execute(
-            select(RefreshToken).where(
-                RefreshToken.user_id == user.id, RefreshToken.revoked_at.is_(None)
+        (
+            await bot_session.execute(
+                select(RefreshToken).where(
+                    RefreshToken.user_id == user.id, RefreshToken.revoked_at.is_(None)
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     assert live == []
 
 
@@ -291,12 +298,16 @@ async def test_a_reject_from_another_chat_ends_nobodys_sessions(
     await handle_login_action(query, _reject_button(message))
 
     live = (
-        await bot_session.execute(
-            select(RefreshToken).where(
-                RefreshToken.user_id == user.id, RefreshToken.revoked_at.is_(None)
+        (
+            await bot_session.execute(
+                select(RefreshToken).where(
+                    RefreshToken.user_id == user.id, RefreshToken.revoked_at.is_(None)
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     assert len(live) == 1
     assert query.answer.await_args.kwargs["show_alert"] is True
 
@@ -382,30 +393,27 @@ async def test_the_typed_unlink_alias_asks_the_same_question(bot_session: AsyncS
 async def test_buttons_from_an_unlinked_chat_offer_the_way_to_link(
     bot_session: AsyncSession,
 ) -> None:
-    """The five menu buttons are all useless without an account, so the answer is not a
-    sentence about /start but the one button that does something."""
+    """Writing to the shop needs an account, so the answer is not a sentence about
+    /start but the one button that does something."""
     message = _command_message(999)
 
-    await handle_orders(message)
+    await handle_reply_menu(message)
 
     assert "не привязан" in message.answer.await_args.args[0]
     markup = message.answer.await_args.kwargs["reply_markup"]
     assert markup.keyboard[0][0].request_contact is True
 
 
-async def test_wishlist_button_lists_saved_products(bot_session: AsyncSession) -> None:
-    """The sweep has been moving abandoned carts into the wishlist for a while; until
-    the menu there was no way to look at one from the chat."""
-    user = await make_user(bot_session, phone="+996700111222")
-    user.telegram_chat_id = 555
-    product = await make_product(bot_session, name="Крем для рук")
-    bot_session.add(WishlistItem(user_id=user.id, product_id=product.id))
+async def test_help_names_the_open_cycle(bot_session: AsyncSession) -> None:
+    """The cycle's date moved from its own button to the top of the help screen, and it
+    is read from the database on every press — not cached from the last one."""
+    cycle = await make_cycle(bot_session)
     await bot_session.commit()
 
-    message = _command_message(555)
-    await handle_wishlist(message)
+    message = _command_message(999)
+    await handle_help(message)
 
-    assert "Крем для рук" in message.answer.await_args.args[0]
+    assert message.answer.await_args.args[0].startswith(messages.current_deadline(cycle))
 
 
 async def test_find_user_by_chat_id_is_the_bots_only_way_in(db_session: AsyncSession) -> None:

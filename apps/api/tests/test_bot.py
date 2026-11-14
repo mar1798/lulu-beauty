@@ -18,7 +18,7 @@ from app.telegram.handlers import (
     handle_customer_reply,
     handle_fallback,
     handle_help,
-    handle_links,
+    handle_legacy_menu,
     handle_owner_reply,
     handle_reply_button,
     handle_reply_menu,
@@ -99,7 +99,7 @@ async def test_handle_fallback_hands_a_linked_chat_the_menu(
     markup = message.answer.await_args.kwargs["reply_markup"]
     assert isinstance(markup, ReplyKeyboardMarkup)
     labels = {button.text for row in markup.keyboard for button in row}
-    assert messages.MENU_CART in labels
+    assert labels == {messages.MENU_REPLY, messages.MENU_HELP}
 
 
 async def test_handle_fallback_offers_an_unlinked_chat_the_only_button_that_works(
@@ -151,9 +151,70 @@ async def test_every_menu_button_reaches_a_handler_of_its_own() -> None:
 
 def test_help_documents_every_button_on_the_menu() -> None:
     """The menu is the interface now; a button missing from /help is a button whose
-    meaning has to be guessed from four words on a pill."""
+    meaning has to be guessed from four words on a pill. «Помощь» itself is the screen
+    being read, and needs no line of its own."""
+    text = messages.help_text(None, None)
     for label in _menu_labels():
-        assert label in messages.HELP
+        if label != messages.MENU_HELP:
+            assert label in text
+
+
+async def test_every_old_menu_button_gets_the_new_menu_and_the_help() -> None:
+    """The old six-button keyboard stays in a chat until the bot sends another one, so
+    its labels keep arriving. Each must swap the keyboard and show where the button
+    went — not fall through to «не понял», which is what an unmatched label gets."""
+    chat = Chat(id=555, type="private")
+
+    for label in messages.LEGACY_MENU_LABELS:
+        message = Message.model_construct(message_id=1, date=None, chat=chat, text=label)
+        matched = [
+            handler
+            for handler in router.message.handlers
+            if (await handler.check(message, bot=MagicMock()))[0]
+        ]
+
+        assert matched, f"старая кнопка {label!r} не совпала ни с одним хендлером"
+        assert matched[0].callback is handle_legacy_menu, label
+
+
+async def test_an_old_menu_button_swaps_the_keyboard_then_shows_the_help(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("app.config.settings.website_base_url", "https://lulu.example.com")
+    _stub_cycle(monkeypatch, None)
+    message = MagicMock()
+    message.answer = AsyncMock()
+
+    await handle_legacy_menu(message)
+
+    notice, help_screen = message.answer.await_args_list
+    assert notice.args[0] == messages.MENU_SIMPLIFIED
+    assert isinstance(notice.kwargs["reply_markup"], ReplyKeyboardMarkup)
+    assert help_screen.args[0] == messages.help_text(None, None)
+
+
+async def test_old_commands_answer_with_the_help() -> None:
+    """/cart, /orders and the rest were never published, but whoever learned them still
+    types them — and the help screen is where what they showed lives now."""
+    chat = Chat(id=555, type="private")
+
+    for command in handlers_module.LEGACY_COMMANDS:
+        message = Message.model_construct(message_id=1, date=None, chat=chat, text=f"/{command}")
+        matched = [
+            handler
+            for handler in router.message.handlers
+            if (await handler.check(message, bot=MagicMock()))[0]
+        ]
+
+        assert matched, f"/{command} не совпала ни с одним хендлером"
+        assert matched[0].callback is handle_help, command
+
+
+def _stub_cycle(monkeypatch: pytest.MonkeyPatch, cycle: object) -> None:
+    _stub_session(monkeypatch)
+    service = MagicMock()
+    service.get_active_cycle = AsyncMock(return_value=cycle)
+    monkeypatch.setattr("app.telegram.handlers.CyclesService", MagicMock(return_value=service))
 
 
 def test_polling_subscribes_to_button_presses() -> None:
@@ -166,9 +227,12 @@ def test_polling_subscribes_to_button_presses() -> None:
     assert "callback_query" in dispatcher.resolve_used_update_types()
 
 
-async def test_handle_help_lists_every_published_command() -> None:
+async def test_handle_help_lists_every_published_command(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """The "/" menu and /help are two copies of the same list; one drifting from the
     other leaves a command nobody can discover."""
+    _stub_cycle(monkeypatch, None)
     message = MagicMock()
     message.answer = AsyncMock()
 
@@ -265,42 +329,52 @@ async def test_a_webhook_telegram_refuses_falls_back_to_polling_instead_of_crash
     instance.delete_webhook.assert_not_awaited()
 
 
-async def test_handle_links_sends_both_buttons_when_the_site_is_addressable(
+async def test_handle_help_links_every_page_when_the_site_is_addressable(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Кнопка «Ссылки» — единственный ответ бота, который существует ради ухода из чата."""
+    """«Помощь» is the only way from the chat to the site's pages now that their menu
+    buttons are gone — each of them has to be there."""
     monkeypatch.setattr("app.config.settings.website_base_url", "https://lulu.example.com")
+    _stub_cycle(monkeypatch, None)
     message = MagicMock()
     message.answer = AsyncMock()
 
-    await handle_links(message)
+    await handle_help(message)
 
     text, kwargs = message.answer.await_args[0], message.answer.await_args[1]
-    assert text[0] == messages.LINKS_PROMPT
+    assert text[0] == messages.help_text(None, None)
     urls = [
         keyboards.button_target(b) for row in kwargs["reply_markup"].inline_keyboard for b in row
     ]
-    assert urls == ["https://lulu.example.com", keyboards.INSTAGRAM_URL]
+    assert urls[:-1] == [
+        "https://lulu.example.com/catalog",
+        "https://lulu.example.com/cart",
+        "https://lulu.example.com/orders",
+        "https://lulu.example.com/wishlist",
+        "https://lulu.example.com/account",
+        keyboards.INSTAGRAM_URL,
+    ]
 
 
-async def test_handle_links_falls_back_to_the_address_in_words(
+async def test_handle_help_falls_back_to_the_address_in_words(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """На локальном хосте кнопки на сайт нет — Telegram отверг бы всё сообщение
-    целиком, — и тогда адрес обязан быть в тексте, иначе ответ не отвечает ни на что.
-    Instagram при этом остаётся кнопкой: его хост публичен при любой конфигурации."""
+    """На локальном хосте кнопок на сайт нет — Telegram отверг бы всё сообщение
+    целиком, — и тогда адрес обязан быть в тексте. Instagram при этом остаётся
+    кнопкой: его хост публичен при любой конфигурации."""
     monkeypatch.setattr("app.config.settings.website_base_url", "http://localhost:3000")
+    _stub_cycle(monkeypatch, None)
     message = MagicMock()
     message.answer = AsyncMock()
 
-    await handle_links(message)
+    await handle_help(message)
 
     text, kwargs = message.answer.await_args[0], message.answer.await_args[1]
     assert "http://localhost:3000" in text[0]
     urls = [
         keyboards.button_target(b) for row in kwargs["reply_markup"].inline_keyboard for b in row
     ]
-    assert urls == [keyboards.INSTAGRAM_URL]
+    assert urls[:-1] == [keyboards.INSTAGRAM_URL]
 
 
 def _reply_to_owner_message(*, text: str | None = "Да, заменить", photo: bool = False) -> MagicMock:

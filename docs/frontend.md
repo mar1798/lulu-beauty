@@ -24,14 +24,15 @@ vanilla-extract plugin wired in here is the webpack one. **Don't drop that flag.
 
 ## Pages
 
-| Group        | Pages                                                                                                                                                  | Rendering                          |
-| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------- |
-| Public       | `index`, `catalog/index`, `catalog/[slug]`, `privacy`                                                                                                  | SSG + ISR (`privacy` is plain SSG) |
-| Behind login | `cart`, `checkout`, `orders/index`, `orders/[id]`, `account`, `wishlist`                                                                               | Static shell, client-rendered data |
-| Auth         | `login` — **this is the registration too**                                                                                                             | Static                             |
-| Owner-only   | `admin/index`, `admin/products/{index,add,[id]}`, `admin/categories`, `admin/import`, `admin/cycles`, `admin/orders`, `admin/checklist`, `admin/users` | Static, gated on the client        |
-| Errors       | `404`, `500`                                                                                                                                           | Static                             |
-| Crawlers     | `sitemap.xml`                                                                                                                                          | `getServerSideProps`, per request  |
+| Group         | Pages                                                                                                                                                  | Rendering                          |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------- |
+| Public        | `index`, `catalog/index`, `catalog/[slug]`, `privacy`                                                                                                  | SSG + ISR (`privacy` is plain SSG) |
+| Behind login  | `checkout`, `orders/index`, `orders/[id]`, `account`                                                                                                   | Static shell, client-rendered data |
+| Guest or user | `cart`, `wishlist` — a guest's lives in the browser (`utils/guestStorage`)                                                                             | Static shell, client-rendered data |
+| Auth          | `login` — **this is the registration too**                                                                                                             | Static                             |
+| Owner-only    | `admin/index`, `admin/products/{index,add,[id]}`, `admin/categories`, `admin/import`, `admin/cycles`, `admin/orders`, `admin/checklist`, `admin/users` | Static, gated on the client        |
+| Errors        | `404`, `500`                                                                                                                                           | Static                             |
+| Crawlers      | `sitemap.xml`                                                                                                                                          | `getServerSideProps`, per request  |
 
 Every page a person can open is static, which is why `next build` reports `/admin/*` as
 `○ (Static)`. The one `getServerSideProps` in the app is `sitemap.xml`, which nobody visits:
@@ -214,6 +215,34 @@ key)` answers "prefilled on this page and rendered less than 60 s ago" — `useA
   **`CartContext` addresses everything by `variantId`** — `addItem`, `updateItem`,
   `removeItem`, `isItemBusy` — because a cart line is a volume, not a product, and two
   volumes of one serum are two lines. The wishlist stays product-level.
+  **A guest has a cart and a wishlist too**, kept in `localStorage` by
+  `src/utils/guestStorage.ts`: ids and quantities only, with names, prices and photos read
+  each time from the public `POST /cart/preview` / `POST /wishlist/preview`, so a guest sees
+  today's prices exactly like a signed-in customer. Neither «В корзину» nor the heart sends
+  a guest to `/login` any more; the only door is «Войти и оформить» on `/cart`
+  (`/login?next=/checkout`). The moment a user appears, both providers pour the guest's
+  lists into the account (`POST /cart/merge`, `POST /wishlist/merge`) through their own
+  mutation queues — checkout's `settled()` therefore waits for the merge. On success they
+  remove **only what was sent** (`removeGuestCartLines`, `removeGuestWishlistItems`), never
+  the whole storage: while a merge is in flight another tab, or the cart rescue below, can
+  add to it, and the effect picks that up with a second merge. A repeat is harmless (the
+  cart keeps the larger quantity, the wishlist adds only what is missing); a failure keeps
+  the storage and retries on the next load. While a signed-in user still has guest lines
+  waiting, the cart reports `isLoading`, so checkout cannot say «Оформлять нечего» over a
+  cart that is about to arrive. The cart merge sends the guest cart's `cycleId`; a cart
+  from a cycle that has since closed or changed is refused (`no_active_cycle` /
+  `cart_cycle_changed`), moved into the guest wishlist (`rescueGuestCart`, mirroring the
+  scheduler's rescue of real carts) and said so in the cart's error. That message is kept
+  apart from the action error (`mergeError`) because the merge usually ends on `/login`,
+  and a route change clears action errors.
+  The guest preview's SWR key is the **set** of ids (`guestCartKey`, `guestWishlistKey`,
+  tagged `cart`/`wishlist` so `isCartKey`/`isLiveStateKey` cover them), so «−»/«+» are
+  computed on the spot and only a new or removed product refetches; an empty guest cart
+  makes no request at all, and a newly added volume is put into the cache from the preview
+  that checked it. The guest wishlist preview drops withdrawn products from the storage,
+  so the header count matches the list. Signed-in actions pressed before
+  `/api/auth/me` answered resolve the owner themselves (`reloadSession`) and pass it to
+  `runMutation`, whose render-time `userId` is still `null`.
   `/api/auth/me` returning 401 means "guest", not an error. A 401 from any **other** endpoint
   does mean the session expired, and `AuthProvider` signs the visitor out and sends them to
   `/login` — see `src/services/session.ts` above.

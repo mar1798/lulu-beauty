@@ -1,4 +1,4 @@
-import type { IWishlist } from 'widgets/types'
+import type { IProduct, IWishlist } from 'widgets/types'
 import { api } from '../api'
 
 /**
@@ -18,3 +18,16 @@ export const addWishlistItem = (productId: string): Promise<IWishlist> =>
 
 export const removeWishlistItem = (productId: string): Promise<IWishlist> =>
   api.remove(`/wishlist/items/${encodeURIComponent(productId)}`)
+
+/** Избранное гостя: только товары, без дат — когда что сохранено, знает браузер. */
+export interface IGuestWishlistPreview {
+  products: IProduct[]
+}
+
+/** Товары гостевого избранного, в присланном порядке. Публичная, ничего не хранит. */
+export const previewWishlist = (productIds: string[]): Promise<IGuestWishlistPreview> =>
+  api.post('/wishlist/preview', { body: { productIds } })
+
+/** Перенос гостевого избранного в аккаунт после входа. Уже сохранённое не трогается. */
+export const mergeWishlist = (productIds: string[]): Promise<IWishlist> =>
+  api.post('/wishlist/merge', { body: { productIds } })

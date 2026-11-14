@@ -248,8 +248,11 @@ contact still has to be shared once with the new bot, since binding happens ther
 webhook mode exists, and why webhook registration failure falls back to polling rather than
 raising (a bad bot setting must not take `/health` down).
 
-**Telegram's Mini App signature excludes both `hash` and `signature`** from the hashed string.
-Leaving `signature` in makes every Mini App login fail.
+**Only `hash` is excluded from the string Telegram's Mini App HMAC covers** — `signature`
+(the Ed25519 field for third-party validation) is hashed with the rest. Excluding it made
+every real Mini App login a 401 `telegram_auth_invalid`, and a test that appends
+`signature` after signing will agree with that bug. aiogram's `check_webapp_signature`
+is the reference.
 
 ## Docker and data
 

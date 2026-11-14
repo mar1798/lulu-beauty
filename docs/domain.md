@@ -492,6 +492,32 @@ one product into one wishlist row.
 Quantities are capped at `MAX_ITEM_QUANTITY = 999`, enforced on both the cart and the order
 edit endpoints — a ceiling on one side only just moves where the overflow lands.
 
+### A guest's cart
+
+A guest gathers a cart and a wishlist **without an account**, in the browser; the server
+stores nothing until sign-in. Telegram is the only way in, and asking for it on the first
+«В корзину» lost people who had not chosen anything yet — so sign-in waits until checkout.
+
+- `POST /cart/preview` and `POST /wishlist/preview` are public and read-only: the browser
+  sends ids (and quantities), the server answers with today's names, prices and photos,
+  dropping what is no longer orderable by the same `_orderable` rule a stored cart uses.
+  Up to `MAX_GUEST_CART_LINES = 100` lines and `MAX_WISHLIST_ITEMS` products per call.
+- Adding a new volume as a guest is checked against a preview first (open cycle, still on
+  sale), so a guest meets `no_active_cycle` at the button, not after signing in.
+- `POST /cart/merge` (after sign-in, `require_live_user`, needs an open cycle) gives each
+  line the **larger** of the two quantities, not the sum: a second tab or a retry can send
+  the same cart twice, and a sum would silently double it. Lines no longer orderable are
+  skipped rather than refused. `POST /wishlist/merge` adds only what is missing; past the
+  cap the guest's newest picks get the room.
+- A guest cart whose cycle closed or changed goes into the guest wishlist, as real carts do
+  at a close. The site checks this against each preview, and the merge checks it again:
+  the browser sends the cycle the cart was gathered in (`cycleId`), and a different open
+  cycle answers `409 cart_cycle_changed` — a sign-in that lands before any preview (the
+  Mini App signs in at once) would otherwise pour last cycle's cart into this one.
+- Merged wishlist rows get explicit `created_at` values a microsecond apart, newest pick
+  on top: the column default is the transaction's start, which would give every merged
+  row the same time and the list no order.
+
 ## Orders
 
 Checkout turns a cart into an `Order` with denormalized `OrderItem` lines (name, slug, price,

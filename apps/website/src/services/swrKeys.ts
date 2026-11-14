@@ -21,8 +21,21 @@ export const accountDeletionKey = (userId: string) => ['account-deletion', userI
 
 export const cartKey = (userId: string) => ['cart', userId] as const
 
+/**
+ * Корзина гостя (`utils/guestStorage`). Тот же тег `cart`, что и у вошедшего, —
+ * поэтому `isCartKey` и `isLiveStateKey` перечитывают и её: закрывшийся сбор гостю
+ * нужно показать так же, как и покупателю. С id не пересекается: id — это UUID.
+ *
+ * В ключе — набор объёмов, а не количества: предпросмотр нужен заново, только когда
+ * в корзине появился или пропал товар, а `−`/`+` гостя считаются на месте.
+ */
+export const guestCartKey = (variantIds: string) => ['cart', 'guest', variantIds] as const
+
 /** С `userId`, как и корзина: чужое избранное не должно достаться из кеша после смены аккаунта. */
 export const wishlistKey = (userId: string) => ['wishlist', userId] as const
+
+/** Избранное гостя — тем же тегом, что и у вошедшего (см. `guestCartKey`). */
+export const guestWishlistKey = (productIds: string) => ['wishlist', 'guest', productIds] as const
 
 export const categoriesKey = ['categories'] as const
 

@@ -40,25 +40,21 @@ OrderActionName = Literal["confirm", "cancel"]
 # Cost of the choice: a reply keyboard occupies the message's single `reply_markup`
 # slot, so a message carrying it cannot also carry inline buttons. Hence the split
 # below — the menu ships with the framing replies (linked / login / menu / fallback),
-# while content replies (cart, orders, wishlist) carry their own inline link buttons
-# and simply leave the persistent menu standing underneath.
+# while the help screen carries its own inline link buttons and simply leaves the
+# persistent menu standing underneath.
 
 
 def main_menu() -> ReplyKeyboardMarkup:
-    """Everything the bot can show, two taps deep at most.
+    """Two buttons: a person to write to, and the help screen that answers the rest.
 
-    Pairs per row so the labels stay readable on a narrow phone; `is_persistent` keeps
-    it up instead of collapsing back to the letter keyboard after every tap.
+    It used to hold six — cart, orders, the current cycle and links besides these — and
+    read as a control panel for a bot whose real job is notifications. Everything those
+    four showed is one tap into «Помощь» now (`help_actions`), as the site itself.
+    `is_persistent` keeps it up instead of collapsing back to the letter keyboard after
+    every tap.
     """
     return ReplyKeyboardMarkup(
         keyboard=[
-            [KeyboardButton(text=messages.MENU_CART), KeyboardButton(text=messages.MENU_ORDERS)],
-            [
-                KeyboardButton(text=messages.MENU_LINKS),
-                KeyboardButton(text=messages.MENU_DEADLINE),
-            ],
-            # The one button that reaches a person rather than the bot. The wishlist has
-            # no button of its own: the site shows it, and `/wishlist` still answers.
             [KeyboardButton(text=messages.MENU_REPLY), KeyboardButton(text=messages.MENU_HELP)],
         ],
         resize_keyboard=True,
@@ -274,6 +270,8 @@ class MenuAction(CallbackData, prefix="menu"):
 INSTAGRAM_URL = "https://www.instagram.com/sululu_kg"
 
 CHECKOUT_PATH = "/checkout"
+CART_PATH = "/cart"
+ACCOUNT_PATH = "/account"
 WISHLIST_PATH = "/wishlist"
 CATALOG_PATH = "/catalog"
 ORDERS_PATH = "/orders"
@@ -288,25 +286,37 @@ def instagram_button() -> InlineKeyboardButton:
 
 
 def help_actions() -> InlineKeyboardMarkup:
-    """Under the help text: the site, the Instagram, and the way out of the binding.
+    """Under the help text: every page a customer comes to the bot for, the Instagram,
+    and the way out of the binding.
 
-    Unlink lives here rather than in the menu on purpose — it is used once, if ever,
-    and a permanent button for it would sit next to «Корзина» being mistyped. Instagram
-    sits above it and below the site, in the order the three are actually wanted.
+    The catalog alone on top — it is where an order starts, and with the cycle's date
+    right above it in the text it is the obvious next tap. Then the customer's own pages
+    in pairs (cart and orders, wishlist and account), Instagram, and unlink last: it is
+    used once, if ever, and the bottom is where a stray thumb lands least.
+
+    The site buttons drop out on a host Telegram won't link to (`_site_button`); the
+    text then gives the address in words (`messages.help_text`). Instagram and unlink
+    stay in any case, so the markup is never empty.
     """
-    rows = [
+    pages = [
+        (CATALOG_PATH, messages.HELP_CATALOG_BUTTON),
+        (CART_PATH, messages.HELP_CART_BUTTON),
+        (ORDERS_PATH, messages.HELP_ORDERS_BUTTON),
+        (WISHLIST_PATH, messages.HELP_WISHLIST_BUTTON),
+        (ACCOUNT_PATH, messages.HELP_ACCOUNT_BUTTON),
+    ]
+    links = [b for path, text in pages if (b := _site_button(path, text)) is not None]
+    rows = [links[:1], links[1:3], links[3:5]]
+    rows += [
+        [instagram_button()],
         [
             InlineKeyboardButton(
                 text=messages.UNLINK_BUTTON,
                 callback_data=MenuAction(action="unlink").pack(),
             )
-        ]
+        ],
     ]
-    rows.insert(0, [instagram_button()])
-    site = _site_button(path="", text=messages.SITE_BUTTON)
-    if site is not None:
-        rows.insert(0, [site])
-    return InlineKeyboardMarkup(inline_keyboard=rows)
+    return InlineKeyboardMarkup(inline_keyboard=[row for row in rows if row])
 
 
 def unlink_confirm() -> InlineKeyboardMarkup:
@@ -329,12 +339,12 @@ def unlink_confirm() -> InlineKeyboardMarkup:
 
 
 def catalog_link() -> InlineKeyboardMarkup | None:
-    """Under an empty cart — the only useful thing to do about one."""
+    """Under the news that a cycle has opened — the only useful thing to do about it."""
     return _site_link(CATALOG_PATH, messages.CATALOG_BUTTON)
 
 
 def orders_link() -> InlineKeyboardMarkup | None:
-    """Under the order list, which the bot deliberately truncates to five."""
+    """Under every message about an order: the full list and each order's details."""
     return _site_link(ORDERS_PATH, messages.ORDERS_BUTTON)
 
 
@@ -358,7 +368,7 @@ def owner_contact_actions() -> InlineKeyboardMarkup:
     Instagram is the point of this keyboard — the cancellations tell the customer to
     write in Instagram if it is a mistake, the thanks asks for impressions, and without
     the button either means finding the shop's account by hand. Never `None` for the same reason as
-    `site_links`: on a non-addressable host the orders row drops out and Instagram
+    `help_actions`: on a non-addressable host the orders row drops out and Instagram
     still stands.
     """
     rows = []
@@ -402,30 +412,9 @@ def privacy_link() -> InlineKeyboardMarkup | None:
     return _site_link(PRIVACY_PATH, messages.PRIVACY_BUTTON)
 
 
-def site_link() -> InlineKeyboardMarkup | None:
-    """The site itself — wherever there is nowhere more specific to point."""
-    return _site_link("", messages.SITE_BUTTON)
-
-
-def site_links() -> InlineKeyboardMarkup:
-    """Both ways out of the chat, under the «Ссылки» reply: the shop and the Instagram.
-
-    Two rows, not two buttons side by side — they are different places, and a pair of
-    equal pills reads as a choice between halves of one thing. The markup is never
-    empty, so this one returns a keyboard rather than `None`: on a non-addressable host
-    the shop button drops out (`_site_button`) and Instagram is still there.
-    """
-    rows = []
-    site = _site_button(path="", text=messages.SITE_BUTTON)
-    if site is not None:
-        rows.append([site])
-    rows.append([instagram_button()])
-    return InlineKeyboardMarkup(inline_keyboard=rows)
-
-
 def site_is_linkable() -> bool:
-    """Whether the «Сайт» reply gets to point at the shop with a button, or has to
-    spell the address out in words (`messages.site_unavailable`)."""
+    """Whether the help screen's page buttons are there, or the text has to spell the
+    address out in words (`messages.help_text`)."""
     return _site_button(path="", text=messages.SITE_BUTTON) is not None
 
 

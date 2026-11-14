@@ -3,7 +3,7 @@ from datetime import datetime
 
 from pydantic import Field
 
-from app.common.limits import MAX_ITEM_QUANTITY
+from app.common.limits import MAX_GUEST_CART_LINES, MAX_ITEM_QUANTITY
 from app.common.schemas import CamelModel
 
 
@@ -18,6 +18,26 @@ class AddCartItemRequest(CamelModel):
 
 class UpdateCartItemRequest(CamelModel):
     quantity: int = Field(ge=1, le=MAX_ITEM_QUANTITY)
+
+
+class GuestCartLine(CamelModel):
+    variant_id: uuid.UUID
+    quantity: int = Field(ge=1, le=MAX_ITEM_QUANTITY)
+
+
+class GuestCartRequest(CamelModel):
+    """A cart kept in a guest's browser, sent whole.
+
+    Only ids and quantities: names, prices and photos are read from the catalogue on
+    every look, so a price changed since the guest added the line shows the new one —
+    exactly as it would in a signed-in cart.
+    """
+
+    items: list[GuestCartLine] = Field(default_factory=list, max_length=MAX_GUEST_CART_LINES)
+    # The cycle the guest gathered the cart in. Read by the merge only: a cart from a
+    # cycle that has since closed must not flow into the next one (`merge`). Optional,
+    # because the preview has no use for it.
+    cycle_id: uuid.UUID | None = None
 
 
 class CartItemResponse(CamelModel):

@@ -6,6 +6,7 @@ import type {
   IAdminProductSort,
   IAdminProductSortField,
   IAdminUser,
+  IAdminUserPage,
   DiscountKind,
   ICategory,
   IChecklistExtraInput,
@@ -66,7 +67,7 @@ export interface IAdminUserListParams {
  * Аккаунты магазина. Владельцы идут первыми — за этим список и открывают;
  * дальше по дате регистрации, новые сверху.
  */
-export const listAdminUsers = (params: IAdminUserListParams = {}): Promise<IPage<IAdminUser>> =>
+export const listAdminUsers = (params: IAdminUserListParams = {}): Promise<IAdminUserPage> =>
   api.get('/admin/users', {
     query: { q: params.q, page: params.page, pageSize: params.pageSize },
   })

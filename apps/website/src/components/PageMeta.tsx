@@ -24,7 +24,7 @@ import { absoluteUrl, SITE_DESCRIPTION, SITE_NAME, SITE_TITLE } from '@/utils/se
  */
 const SITE_IMAGE = {
   path: '/og-image.png',
-  alt: 'Sululu - косметика и уход по самым низким ценам',
+  alt: 'Sululu - косметика и уход по выгодным ценам',
 } as const
 
 /** Постоянная часть превью. Только для `_app`. */

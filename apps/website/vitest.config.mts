@@ -12,6 +12,12 @@ export default defineConfig({
   resolve: {
     alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) },
   },
+  /*
+    Провайдеры контекстов — `.tsx`, а `tsconfig` сайта держит `jsx: preserve` для
+    Next. Тестам их тоже надо собирать: перенос гостевой корзины живёт именно там
+    (`contexts/guestMerge.test.ts`).
+  */
+  oxc: { jsx: { runtime: 'automatic' } },
   test: {
     include: ['src/**/*.test.ts'],
     environment: 'jsdom',

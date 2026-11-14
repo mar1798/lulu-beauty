@@ -24,3 +24,12 @@ Default.args = feedCartPanel()
 export const Loading = Template.bind({})
 Loading.parameters = Default.parameters
 Loading.args = { ...feedCartPanel(), cart: null, isLoading: true }
+
+/** Гость: корзина в браузере, перед отправкой будет вход через Telegram. */
+export const Guest = Template.bind({})
+Guest.parameters = Default.parameters
+Guest.args = {
+  ...feedCartPanel(),
+  checkoutLabel: 'Войти и оформить',
+  checkoutNote: 'Для отправки заявки войдите через Telegram - корзина перенесётся в аккаунт',
+}

@@ -2,7 +2,8 @@ import clsx from 'clsx'
 import React from 'react'
 import Head from 'next/head'
 import { useRouter } from 'next/router'
-import { AppLink, Spinner, Text } from 'widgets/atoms'
+import { Alert, AppLink, Spinner, Text } from 'widgets/atoms'
+import { pluralize } from 'widgets/utils'
 import { TelegramLoginPanel } from 'widgets/organisms'
 import { AuthTemplate } from 'widgets/templates'
 import { SiteLayout } from '@/layouts/SiteLayout'
@@ -12,6 +13,8 @@ import { useQrCode } from '@/hooks/useQrCode'
 import { useTelegramLogin } from '@/hooks/useTelegramLogin'
 import { useMediaQuery } from '@/hooks/useMediaQuery'
 import { safeRedirectPath } from '@/utils/redirect'
+import { useGuestState } from '@/utils/guestStorage'
+import { INSTAGRAM_URL } from '@/utils/contacts'
 import * as layout from '@/styles/layout.css'
 import * as styles from '@/styles/login.css'
 import { HalloweenScene } from '@/halloween/HalloweenScene'
@@ -28,6 +31,13 @@ import * as halloween from '@/halloween/halloween.css'
  * Вошедшего уводит `useRedirectIfAuthenticated` — тем же способом, что и
  * раньше: опрос кладёт профиль в кеш сессии, и редирект случается сам.
  */
+/**
+ * Где взять Telegram. Страница самого Telegram, а не магазины приложений по
+ * отдельности: она сама отправит в нужный — App Store, Google Play или версию для
+ * компьютера.
+ */
+const TELEGRAM_APPS_URL = 'https://telegram.org/apps'
+
 /** Тач-экран или узкое окно — ширина `md` из `widgets/breakpoints`. */
 const HANDHELD_QUERY = '(pointer: coarse), (max-width: 767px)'
 
@@ -47,6 +57,13 @@ const LoginPage: React.FC = () => {
   */
   const isHandheld = useMediaQuery(HANDHELD_QUERY)
   const { dataUrl: qrDataUrl, isFailed: isQrFailed } = useQrCode(isHandheld ? null : botUrl)
+
+  /*
+    Гость пришёл сюда с «Войти и оформить» — со своей корзиной в браузере. Сказать,
+    что она не пропадёт, нужно здесь, до Telegram: иначе вход читается как «начинать
+    заново», и это ровно тот момент, когда его бросают.
+  */
+  const guestItemCount = useGuestState().cart.lines.reduce((sum, line) => sum + line.quantity, 0)
 
   return (
     <SiteLayout>
@@ -101,6 +118,37 @@ const LoginPage: React.FC = () => {
             status={status}
             error={error}
             onRetry={retry}
+            notice={
+              guestItemCount > 0 ? (
+                <Alert tone="info">
+                  В корзине {pluralize(guestItemCount, ['товар', 'товара', 'товаров'])} - после
+                  входа они перенесутся в аккаунт, и заявку можно будет отправить
+                </Alert>
+              ) : null
+            }
+            /*
+              Обход для тех, кого вход через Telegram отсеивал молча: у человека нет
+              приложения или он застрял в боте. Instagram — единственный канал
+              владельца вне бота (`utils/contacts.ts`); обещаем там помощь, а не
+              заявку «вручную» — заявка живёт на аккаунте.
+            */
+            help={
+              <>
+                <Text size="sm" tone="secondary">
+                  Нет Telegram? Он бесплатный и ставится за пару минут -{' '}
+                  <AppLink href={TELEGRAM_APPS_URL} target="_blank" className={styles.inlineLink}>
+                    скачать Telegram
+                  </AppLink>
+                </Text>
+                <Text size="sm" tone="secondary">
+                  Не получается войти?{' '}
+                  <AppLink href={INSTAGRAM_URL} target="_blank" className={styles.inlineLink}>
+                    Напишите нам в Instagram
+                  </AppLink>{' '}
+                  - поможем
+                </Text>
+              </>
+            }
             /*
               Виджета нет вовсе, пока домен не прописан боту в BotFather: там он
               нарисуется и откажет, а сломанная кнопка рядом с рабочей хуже, чем

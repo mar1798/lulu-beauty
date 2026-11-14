@@ -4,7 +4,6 @@ import type { IControlSize } from 'widgets/types'
 import { IconButton, Tooltip } from 'widgets/atoms'
 import { useToast } from 'widgets/contexts'
 import { IconHeart, IconHeartFilled } from 'widgets/svg'
-import { useAuth } from '@/contexts/AuthContext'
 import { useWishlist } from '@/contexts/WishlistContext'
 
 /**
@@ -13,8 +12,8 @@ import { useWishlist } from '@/contexts/WishlistContext'
  * Живёт в `apps/website`, а не в `widgets`, по той же причине, что и
  * `AddToCartButton`: ей нужны и сессия, и состояние избранного, и роутер.
  *
- * Гостя отправляем на вход, а не показываем ошибку: избранное на бэкенде
- * привязано к пользователю, анонимного не существует.
+ * Гость сохраняет без входа: его избранное живёт в браузере и переезжает в
+ * аккаунт после входа (`WishlistContext`, `utils/guestStorage`).
  *
  * Кнопка есть всегда, а не только когда сбор закрыт: сохранить понравившееся
  * «на потом» человек хочет и при открытом приёме заказов.
@@ -48,7 +47,6 @@ export const WishlistButton: React.FC<{
   withTooltip?: boolean
 }> = ({ productId, productName, variant = 'solid', size = 'md', withTooltip = false }) => {
   const router = useRouter()
-  const { user, isLoading: isAuthLoading, reload: reloadSession } = useAuth()
   const { wishlist, has, toggle, add, isItemBusy } = useWishlist()
   const { notify } = useToast()
 
@@ -102,19 +100,7 @@ export const WishlistButton: React.FC<{
     isRunning.current = true
 
     try {
-      /*
-        Пока `/api/auth/me` не ответил, `user === null` ещё не значит «гость» —
-        дожидаемся ответа прямо в обработчике, а не гасим кнопку на это время
-        (иначе вся сетка каталога мигала бы приглушёнными сердцами).
-      */
-      const current = isAuthLoading ? await reloadSession() : user
-
-      if (current === null) {
-        void router.push({ pathname: '/login', query: { next: router.asPath } })
-
-        return
-      }
-
+      // Гость сохраняет в браузер — вход для этого не нужен (`WishlistContext`).
       const result = await toggle(productId)
 
       if (!result.ok) {
@@ -167,19 +153,7 @@ export const WishlistButton: React.FC<{
     } finally {
       isRunning.current = false
     }
-  }, [
-    user,
-    isAuthLoading,
-    reloadSession,
-    router,
-    toggle,
-    isItemBusy,
-    productId,
-    isSaved,
-    name,
-    notify,
-    restore,
-  ])
+  }, [router, toggle, isItemBusy, productId, isSaved, name, notify, restore])
 
   const onClick = (): void => {
     void run()

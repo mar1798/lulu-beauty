@@ -7,11 +7,11 @@ Each handler opens its own short-lived session, the way the scheduler jobs do: t
 outside any request, so there is no session to inherit.
 
 **Buttons first, commands as aliases.** Everything reachable here is reachable by tapping
-a label on the persistent menu (`keyboards.main_menu`); the slash commands that used to
-be the only way in still work — people who learned them shouldn't find them gone — but
-they are no longer published or explained. Hence the `or_f(Command(...), F.text == ...)`
-on every handler: one behaviour, two ways to trigger it, and no chance of the tap and the
-command drifting apart into two implementations.
+a label on the persistent menu (`keyboards.main_menu`) or a button on the help screen; the
+slash commands that used to be the only way in still work — people who learned them
+shouldn't find them gone — but they are no longer published or explained. Hence the
+`or_f(Command(...), F.text == ...)`: one behaviour, two ways to trigger it, and no chance of
+the tap and the command drifting apart into two implementations.
 """
 
 import logging
@@ -27,7 +27,6 @@ from aiogram.filters import Command, CommandObject, CommandStart, or_f
 from aiogram.types import (
     CallbackQuery,
     ForceReply,
-    InlineKeyboardMarkup,
     Message,
     ReplyKeyboardRemove,
 )
@@ -37,13 +36,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth.models import ADMIN_ROLES, User
 from app.auth.service import AuthService
 from app.auth.telegram_login import TelegramLoginService
-from app.cart.schemas import CartResponse
-from app.cart.service import CartService
 from app.common.phone import normalize_phone
 from app.common.text import single_line
 from app.cycles.service import CyclesService
 from app.db import async_session
-from app.orders.models import OPEN_STATUSES
 from app.orders.service import OrderNotFoundError, OrdersService, StatusTransitionError
 from app.payments.models import ReceiptKind
 from app.payments.service import (
@@ -74,7 +70,6 @@ from app.telegram.notify import (
 )
 from app.telegram.service import Delivery
 from app.telegram.throttling import ThrottlingMiddleware
-from app.wishlist.service import WishlistService
 
 logger = logging.getLogger("app.telegram.bot")
 
@@ -254,126 +249,40 @@ async def handle_menu(message: Message) -> None:
     await message.answer(messages.MENU_PROMPT, reply_markup=keyboards.main_menu())
 
 
-@router.message(or_f(Command("help"), F.text == messages.MENU_HELP))
+# The commands of the four buttons the menu no longer has. Unpublished, like they were
+# before, but typed out of habit by whoever learned them — and the help screen is where
+# everything they used to show now lives.
+LEGACY_COMMANDS = ("cart", "orders", "deadline", "links", "site", "wishlist")
+
+
+@router.message(or_f(Command("help", *LEGACY_COMMANDS), F.text == messages.MENU_HELP))
 async def handle_help(message: Message) -> None:
-    """The help screen, which is also where unlinking lives (see keyboards.help_actions)."""
-    await message.answer(messages.HELP, reply_markup=keyboards.help_actions())
+    """The help screen: the cycle, how ordering works, links to every page, and unlinking.
 
-
-@router.message(or_f(Command("orders"), F.text == messages.MENU_ORDERS))
-async def handle_orders(message: Message) -> None:
-    async with async_session() as session:
-        user = await _linked_user(message, session)
-        if user is None:
-            return
-        # Only the page the message shows: the bot never listed more than
-        # MAX_LISTED_ORDERS, and `total` is what the "…и ещё N" line needs.
-        #
-        # OPEN_STATUSES because five lines is not a history: someone who has ordered in
-        # every cycle for a year has the five newest all finished, and the one order they
-        # are actually waiting on ends up hidden behind "…и ещё N". Cancelled and handed
-        # over orders are still on the site, which is what the button underneath is for.
-        orders, total = await OrdersService(session).list_for_user(
-            user.id, page=1, page_size=messages.MAX_LISTED_ORDERS, statuses=OPEN_STATUSES
-        )
-        # Only asked for when there are no orders: the button under an empty list is an
-        # invitation to make one, and inviting into a catalog that can't take an order
-        # (no cycle open) is the same mistake `_cart_actions` avoids.
-        cycle = None if orders else await CyclesService(session).get_active_cycle()
-
-    # "Все заявки на сайте" only when there is a list to be a truncation of — under
-    # "у вас пока нет заявок" it would point at the same nothing.
-    await message.answer(
-        messages.my_orders(orders, total),
-        reply_markup=keyboards.orders_link()
-        if orders
-        else (keyboards.catalog_link() if cycle is not None else None),
-    )
-
-
-@router.message(or_f(Command("cart"), F.text == messages.MENU_CART))
-async def handle_cart(message: Message) -> None:
-    async with async_session() as session:
-        user = await _linked_user(message, session)
-        if user is None:
-            return
-        cart = await CartService(session).get_cart(user.id)
-
-    await message.answer(messages.my_cart(cart), reply_markup=_cart_actions(cart))
-
-
-def _cart_actions(cart: CartResponse) -> InlineKeyboardMarkup | None:
-    """Which button a cart deserves — and the empty-with-no-cycle case deserves none.
-
-    Same distinction `messages.my_cart` draws between its two empties: with no cycle
-    open there is nothing to add to, so «Открыть каталог» would lead to a catalog that
-    can't take the order anyway.
+    Open to unlinked chats: the cycle's date and the storefront are public, and asking for
+    a phone number first would be a step in front of the answers that need no account.
     """
-    if cart.items:
-        return keyboards.checkout_link()
-    if cart.cycle_deadline_at is None:
-        return None
-    return keyboards.catalog_link()
-
-
-@router.message(Command("wishlist"))
-async def handle_wishlist(message: Message) -> None:
-    """Saved products. New with the menu: the sweep has been moving abandoned carts into
-    the wishlist for a while, and until now the bot could only mention it, never show it.
-
-    Typed only: its menu button gave way to «Ссылки», and the site shows the same list.
-    """
-    async with async_session() as session:
-        user = await _linked_user(message, session)
-        if user is None:
-            return
-        wishlist = await WishlistService(session).get_wishlist(user.id)
-
-    await message.answer(
-        messages.my_wishlist(wishlist),
-        reply_markup=keyboards.wishlist_link() if wishlist.items else keyboards.catalog_link(),
-    )
-
-
-@router.message(or_f(Command("deadline"), F.text == messages.MENU_DEADLINE))
-async def handle_deadline(message: Message) -> None:
-    # Deliberately open to unlinked chats: when the next cycle closes is public
-    # information, and it's the one question worth answering before linking.
     async with async_session() as session:
         cycle = await CyclesService(session).get_active_cycle()
 
-    # An open cycle is an invitation, not a fact: a deadline with no way into the catalog
-    # leaves someone holding a date and nothing to do about it. Between cycles the
-    # catalog is still worth opening — saving to the wishlist works with no cycle at all —
-    # but the wording there is about the shop, not about ordering, so the button is too.
-    await message.answer(
-        messages.current_deadline(cycle),
-        reply_markup=keyboards.catalog_link() if cycle is not None else keyboards.site_link(),
-    )
+    # Telegram refuses a button pointing at a non-addressable host (local dev) — and
+    # refuses the whole message, not just the button. The page buttons drop out then, and
+    # the text spells the address out instead.
+    site_url = None if keyboards.site_is_linkable() else keyboards.site_url()
+    await message.answer(messages.help_text(cycle, site_url), reply_markup=keyboards.help_actions())
 
 
-@router.message(or_f(Command("links"), Command("site"), F.text == messages.MENU_LINKS))
-async def handle_links(message: Message) -> None:
-    """Both ways out of the chat — the shop and the Instagram — and deliberately a whole
-    reply rather than keyboard buttons, because a reply keyboard cannot carry a url and
-    an inline one cannot stay.
+@router.message(F.text.in_(messages.LEGACY_MENU_LABELS))
+async def handle_legacy_menu(message: Message) -> None:
+    """A tap on the old six-button menu, still on screen in chats that haven't been sent
+    a keyboard since it shrank.
 
-    `/site` still answers next to `/links`: it is what the button used to be called, it
-    is published nowhere (`BOT_COMMANDS` lists only /menu and /help), and keeping it
-    costs one filter against a chat where someone typed it once out of habit.
-
-    Open to unlinked chats too: the storefront is public, and asking for a phone number
-    first would be a step in front of the one action that needs no account at all.
+    Two messages, because one has room for a single `reply_markup`: the first swaps the
+    keyboard for the new one and says where the button went, the second is the help
+    screen with the links that took its place.
     """
-    keyboard = keyboards.site_links()
-    if not keyboards.site_is_linkable():
-        # Telegram refuses a button pointing at a non-addressable host (local dev) — and
-        # refuses the whole message, not just the button. The Instagram button survives
-        # that (its host is public either way), so only the shop moves into the text.
-        await message.answer(messages.site_unavailable(keyboards.site_url()), reply_markup=keyboard)
-        return
-
-    await message.answer(messages.LINKS_PROMPT, reply_markup=keyboard)
+    await message.answer(messages.MENU_SIMPLIFIED, reply_markup=keyboards.main_menu())
+    await handle_help(message)
 
 
 @router.message(F.text == messages.MENU_REPLY)
@@ -1060,7 +969,7 @@ async def handle_fallback(message: Message) -> None:
     )
 
     # Costs a lookup, and earns it: offering the menu to a chat that has no account
-    # behind it is offering five buttons that all answer "вы не привязаны". The
+    # behind it is offering «Написать Sululu», which answers "вы не привязаны". The
     # unlinked chat gets the one button that works instead.
     async with async_session() as session:
         if await _linked_user(message, session) is None:

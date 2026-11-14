@@ -1679,6 +1679,16 @@ export interface ITelegramLoginPanelProps {
   /** Текст сбоя; показывается только при `status: 'error'`. */
   error?: string | null
   onRetry: () => void
+  /**
+   * Сообщение над шагами — например, что собранная гостем корзина после входа
+   * не пропадёт. Слотом: что именно сказать, знает сайт.
+   */
+  notice?: ReactNode
+  /**
+   * Запасной путь под всем остальным: что делать без Telegram или если вход не
+   * получается. Слотом — ссылки на магазин приложений и на контакты знает сайт.
+   */
+  help?: ReactNode
 }
 
 export interface ITelegramLinkPromptProps {
@@ -1727,6 +1737,13 @@ export interface ICartPanelProps {
   onQuantityChange: (variantId: string, quantity: number) => void
   onRemove: (variantId: string) => void
   onCheckout: () => void
+  /** Подпись кнопки оформления. У гостя — «Войти и оформить»: дальше будет вход. */
+  checkoutLabel?: string
+  /**
+   * Строка под кнопкой оформления. По умолчанию — что оплаты нет; у гостя сайт
+   * объясняет здесь, что перед отправкой будет вход и корзина при этом не пропадёт.
+   */
+  checkoutNote?: ReactNode
   /**
    * Первая загрузка корзины: рисуются скелетоны в её раскладке. Отличается
    * от `isBusy` — тот про запрос поверх уже показанной корзины.
@@ -2588,6 +2605,15 @@ export interface IAdminCycleCalendarProps {
  */
 export interface IAdminUser extends IAuthUser {
   createdAt: string
+}
+
+/**
+ * Страница аккаунтов владельца. `total` — сколько строк нашёл поиск, админы
+ * тоже; `customersTotal` — все зарегистрированные покупатели магазина, от
+ * поиска не зависит.
+ */
+export interface IAdminUserPage extends IPage<IAdminUser> {
+  customersTotal: number
 }
 
 export interface IAdminUsersTableProps {
