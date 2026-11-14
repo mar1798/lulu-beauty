@@ -5,16 +5,12 @@ from unittest.mock import MagicMock
 import pytest
 
 from app.auth.models import User
-from app.cart.schemas import CartItemResponse, CartResponse
-from app.catalog.schemas import ProductResponse
-from app.catalog.shades import ShadeLabel
 from app.common.limits import MAX_WISHLIST_ITEMS
 from app.cycles.models import OrderCycle
 from app.orders.models import DiscountKind, Order, OrderItem, OrderStatus
 from app.orders.service import DiscountLoss, OrderItemDrop, OrderPriceChange
 from app.telegram import messages
 from app.wanted.models import WantedProduct
-from app.wishlist.schemas import WishlistItemResponse, WishlistResponse
 
 
 def _normalize(text: str) -> str:
@@ -404,115 +400,32 @@ def test_order_edited_names_the_discounts_it_took_off() -> None:
     assert "—" not in text
 
 
-def test_my_orders_truncates_and_says_so() -> None:
-    orders = [_order() for _ in range(messages.MAX_LISTED_ORDERS + 3)]
+def test_help_opens_with_the_cycle_and_explains_the_whole_order() -> None:
+    """The help screen took over from four buttons; it has to answer what they did —
+    the cycle's date first — and how an order goes from the cart to the receipt."""
+    cycle = OrderCycle(deadline_at=datetime(2030, 6, 12, 14, tzinfo=UTC), label="Июнь")
 
-    text = messages.my_orders(orders)
+    text = messages.help_text(cycle, None)
 
-    assert text.count("#a1b2c3d4") == messages.MAX_LISTED_ORDERS
-    assert "ещё 3" in text
-
-
-def test_my_orders_on_an_empty_list() -> None:
-    # «Активных», not «нет заявок»: the caller filters to OPEN_STATUSES, so someone
-    # whose orders are all handed over lands here too.
-    assert messages.my_orders([]) == "Активных заявок нет - всё, что было раньше, осталось на сайте"
+    assert text.startswith(messages.current_deadline(cycle))
+    for word in ("корзин", "заявк", "счёт", "чек", "Instagram", messages.MENU_REPLY, "/menu"):
+        assert word in text
+    assert "—" not in text
 
 
-def _cart(*, items: list[CartItemResponse], deadline: datetime | None) -> CartResponse:
-    return CartResponse(
-        cycle_id=uuid.uuid4() if deadline else None,
-        cycle_deadline_at=deadline,
-        items=items,
-        total_cents=sum(item.line_total_cents for item in items),
-    )
+def test_help_between_cycles_says_the_shop_is_closed() -> None:
+    assert messages.help_text(None, None).startswith(messages.current_deadline(None))
 
 
-def test_my_cart_distinguishes_empty_cart_from_closed_shop() -> None:
-    """Both are empty carts; only one of them is worth telling someone to check out."""
-    between_cycles = messages.my_cart(_cart(items=[], deadline=None))
-    open_but_empty = messages.my_cart(_cart(items=[], deadline=datetime(2030, 6, 12, tzinfo=UTC)))
+def test_help_spells_the_site_out_when_its_buttons_cannot_be_sent() -> None:
+    """On a host Telegram won't link to, the page buttons are missing — the address in
+    words is then the only way to the site, and «кнопками ниже» would be a lie."""
+    with_buttons = messages.help_text(None, None)
+    without = messages.help_text(None, "http://localhost:3000")
 
-    assert between_cycles != open_but_empty
-    assert "закрыт" in between_cycles
-    assert "пуста" in open_but_empty
-
-
-def test_my_cart_lists_items_total_and_deadline() -> None:
-    item = CartItemResponse(
-        variant_id=uuid.uuid4(),
-        product_id=uuid.uuid4(),
-        product_name="Крем для рук",
-        product_slug="krem",
-        product_image_url=None,
-        product_price_cents=62_500,
-        product_volume_ml=50,
-        quantity=2,
-        line_total_cents=125_000,
-    )
-
-    cart = _cart(items=[item], deadline=datetime(2030, 6, 12, tzinfo=UTC))
-    text = _normalize(messages.my_cart(cart))
-
-    # The volume is part of the line: a cart may hold two of them under one name.
-    assert "Крем для рук, 50 мл × 2" in text
-    assert "1 250 сом" in text
-    assert "12.06.2030" in text
-
-
-def _wishlist(names: list[str]) -> WishlistResponse:
-    return WishlistResponse(
-        items=[
-            WishlistItemResponse(
-                product=ProductResponse(
-                    id=uuid.uuid4(),
-                    name=name,
-                    slug=f"slug-{index}",
-                    description=None,
-                    description_html=None,
-                    brand=None,
-                    price_cents=125_000,
-                    volume_ml=None,
-                    category_id=None,
-                    in_stock=True,
-                    is_featured=False,
-                    shade_label=ShadeLabel.TONE,
-                    images=[],
-                    deleted_at=None,
-                    created_at=datetime(2030, 5, 1, tzinfo=UTC),
-                    updated_at=datetime(2030, 5, 1, tzinfo=UTC),
-                ),
-                added_at=datetime(2030, 6, 1, tzinfo=UTC),
-            )
-            for index, name in enumerate(names)
-        ]
-    )
-
-
-def test_my_wishlist_empty_says_how_things_get_there() -> None:
-    """Nobody arrives at an empty wishlist knowing how to fill it — the heart on a
-    product card is the only way in, and it isn't in this chat."""
-    text = messages.my_wishlist(_wishlist([]))
-
-    assert "♥" in text
-
-
-def test_my_wishlist_lists_products_with_prices() -> None:
-    text = _normalize(messages.my_wishlist(_wishlist(["Крем для рук"])))
-
-    assert "Крем для рук" in text
-    assert "1 250 сом" in text
-
-
-def test_my_wishlist_truncates_like_every_other_list_here() -> None:
-    """A wishlist holds up to MAX_WISHLIST_ITEMS; a chat message that printed all of
-    them would be scrolled past rather than read."""
-    names = [f"Товар {index}" for index in range(messages.MAX_LISTED_WISHLIST_ITEMS + 3)]
-
-    text = messages.my_wishlist(_wishlist(names))
-
-    assert "ещё 3" in text
-    assert names[-1] not in text
+    assert "кнопками ниже" in with_buttons
+    assert "http://localhost:3000" in without
+    assert "кнопками ниже" not in without
 
 
 def test_current_deadline_between_cycles_is_not_an_error() -> None:

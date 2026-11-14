@@ -18,7 +18,6 @@ from datetime import datetime
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from app.auth.models import User
-from app.cart.schemas import CartItemResponse, CartResponse
 from app.catalog.labels import product_label
 from app.common.limits import MAX_WISHLIST_ITEMS
 from app.config import settings
@@ -33,7 +32,6 @@ from app.orders.service import (
     OrderPriceChange,
 )
 from app.wanted.models import WantedProduct
-from app.wishlist.schemas import WishlistResponse
 
 logger = logging.getLogger("app.telegram.messages")
 
@@ -44,12 +42,6 @@ THOUSANDS_SEPARATOR = " "
 # The shop says "сом", not the ISO code in settings.currency (KGS) — that one is for
 # the Excel export's column headers, where a machine-readable code is the point.
 CURRENCY_LABEL = "сом"
-
-# A Telegram message is not a dashboard: past a handful of rows nobody reads it, and
-# the customer has the full list on the site.
-MAX_LISTED_ORDERS = 5
-MAX_LISTED_CART_ITEMS = 10
-MAX_LISTED_WISHLIST_ITEMS = 10
 
 
 def format_price(cents: int, *, grouped: bool = True) -> str:
@@ -472,9 +464,7 @@ def order_edited(order: Order, lost: Sequence[LostDiscount] = ()) -> str:
 
 # Where the money goes. Written into the text rather than kept in settings: it is part
 # of the wording, and the owner reads and changes it the same way as the rest of it.
-PAYMENT_DETAILS = (
-    "💳 996509817818\n(доступны переводы по номеру телефона на обанк, симбу и бакай)"
-)
+PAYMENT_DETAILS = "💳 996509817818\n(доступны переводы по номеру телефона на обанк, симбу и бакай)"
 
 
 def _bill_line(item: OrderItem) -> str:
@@ -1147,15 +1137,22 @@ CONSENT = (
 # The emoji is part of the label, not decoration around it: a menu of five identical
 # grey pills is read one word at a time, whereas the picture is found by shape.
 
-MENU_CART = "🛒 Корзина"
-MENU_ORDERS = "📦 Мои заявки"
-MENU_DEADLINE = "📅 Текущий сбор"
-# Не «Сайт»: ответ ведёт и в магазин, и в Instagram, а подпись, обещающая одно
-# место из двух, врёт ровно тому, кто ищет второе.
-MENU_LINKS = "🌐 Ссылки"
 MENU_HELP = "ℹ️ Помощь"
 # Написать магазину: бот просит текст (`reply_prompt`) и передаёт его владельцу.
 MENU_REPLY = "✍️ Написать Sululu"
+
+# Labels of the menu as it was before it shrank to two buttons. A reply keyboard belongs
+# to the chat and stays there until the bot sends another one, so customers who were
+# shown the old menu still have these on screen and still tap them. They are answered
+# with the new menu and the help screen (`handlers.handle_legacy_menu`) — never with
+# «не понял», which is what an unmatched tap of the bot's own button would get.
+LEGACY_MENU_LABELS = ("🛒 Корзина", "📦 Мои заявки", "📅 Текущий сбор", "🌐 Ссылки")
+
+# Above the help screen for whoever tapped a button of the old menu: says where the
+# button went, and travels with the new keyboard, which replaces the old one.
+MENU_SIMPLIFIED = (
+    f"Кнопок стало меньше: корзина, заявки, текущий сбор и ссылки теперь в «{MENU_HELP}»"
+)
 
 # Sent with the keyboard itself, when there is nothing else to say — after linking, or
 # when someone asks for the menu back.
@@ -1176,6 +1173,15 @@ WISHLIST_BUTTON = "Посмотреть избранное"
 CATALOG_BUTTON = "Открыть каталог"
 ORDERS_BUTTON = "Все заявки на сайте"
 SITE_BUTTON = "Открыть сайт"
+# The help screen is the one place in the bot that links to the site's pages, so these
+# are short and carry an emoji like the menu labels: five of them sit together, and the
+# right one is found by shape rather than read word by word.
+HELP_CATALOG_BUTTON = "🛍 Каталог"
+HELP_CART_BUTTON = "🛒 Корзина"
+HELP_ORDERS_BUTTON = "📦 Мои заявки"
+HELP_WISHLIST_BUTTON = "♥ Избранное"
+# «Профиль», as the `/account` page titles itself on the site.
+HELP_ACCOUNT_BUTTON = "👤 Профиль"
 # В боте магазин называется по имени — «Sululu», а не «магазин».
 INSTAGRAM_BUTTON = "Instagram Sululu"
 # Под благодарностью после выдачи. «В Google» прямо в подписи: кнопка уводит из
@@ -1283,22 +1289,39 @@ FOREIGN_CONTACT = (
 
 NOT_LINKED = (
     "Этот чат не привязан к аккаунту. Нажмите «Поделиться номером телефона» - "
-    "тогда я смогу показать ваши заявки, корзину и избранное"
+    "тогда я смогу присылать уведомления о заявках и передавать ваши сообщения Sululu"
 )
 
-HELP = (
-    "Кнопки под полем ввода:\n"
-    f"{MENU_CART} - что лежит в корзине и до какого числа её нужно оформить\n"
-    f"{MENU_ORDERS} - ваши заявки и их статусы\n"
-    f"{MENU_DEADLINE} - когда закрывается текущий сбор\n"
-    f"{MENU_LINKS} - сайт Sululu и наш Instagram\n"
-    f"{MENU_REPLY} - я передам ваше сообщение Sululu\n"
-    f"{MENU_HELP} - этот экран; отсюда же можно отвязать чат\n\n"
-    "Сам напишу, когда откроется новый сбор, когда до дедлайна останутся сутки "
-    "и когда изменится статус вашей заявки.\n\n"
-    "Чек об оплате присылайте сюда - фотографией или PDF-файлом, я передам его Sululu.\n\n"
-    "Кнопки пропали? /menu вернёт их, /help - эта справка"
-)
+
+def help_text(cycle: OrderCycle | None, site_url: str | None) -> str:
+    """The «Помощь» screen — everything the bot shows on its own, apart from the chat
+    with the shop.
+
+    It answers what the four removed buttons used to: whether a cycle is open and until
+    when (first, since it is asked most), how an order goes from the cart to the receipt,
+    what the bot will write about unprompted, and how to reach Sululu. The cart, orders,
+    wishlist and account are buttons under the message (`keyboards.help_actions`).
+
+    `site_url` is the address in words for when Telegram won't take a button to the site
+    (local development): without it the text would point at buttons that aren't there.
+    """
+    parts = [
+        current_deadline(cycle),
+        "Как заказать: соберите корзину в каталоге и оформите заявку до дедлайна. "
+        "Когда Sululu подтвердит заявку, я пришлю счёт и реквизиты - оплатите "
+        "переводом и пришлите чек сюда, фотографией или PDF-файлом.",
+        "Сам напишу, когда откроется новый сбор, когда до дедлайна останутся сутки "
+        "и когда изменится статус вашей заявки.",
+        f"Вопрос к Sululu - нажмите «{MENU_REPLY}», я передам сообщение. "
+        "Новинки и анонсы - в Instagram.",
+    ]
+    if site_url is None:
+        parts.append("Каталог, корзина, заявки, избранное и профиль - кнопками ниже.")
+    else:
+        parts.append(f"Каталог, корзина, заявки, избранное и профиль - на сайте:\n{site_url}")
+    parts.append("Кнопки пропали? /menu вернёт их, /help - эта справка")
+    return "\n\n".join(parts)
+
 
 # Ответ на любой текст, который не совпал с кнопкой. Приходит вместе с клавиатурой:
 # чаще всего это как раз человек, у которого кнопки свёрнуты и который поэтому пишет
@@ -1315,119 +1338,14 @@ FALLBACK = (
 # что это сделал.
 CUSTOMER_REPLY_NOT_DELIVERED = (
     f"Не получилось передать сообщение Sululu. Попробуйте позже или напишите "
-    f"в Instagram - он в «{MENU_LINKS}»"
+    f"в Instagram - он в «{MENU_HELP}»"
 )
-
-# Ответ кнопки «Ссылки». Обе ссылки приходят кнопками под сообщением — в тексте их
-# дублировать незачем; а если сайт по конфигурации не адресуем из Telegram (локальная
-# разработка), его кнопки не будет, и тогда сообщение обязано назвать адрес словами.
-# Instagram кнопкой остаётся в любом случае, поэтому его адрес текст не повторяет.
-LINKS_PROMPT = "Магазин, корзина и заявки - на сайте. Новинки и анонсы - в Instagram:"
-
-
-def site_unavailable(url: str) -> str:
-    """Кнопку на сайт Telegram не примет — остаётся адрес текстом.
-
-    Со своим текстом, а не `LINKS_PROMPT` плюс адрес: там одно предложение вводит обе
-    кнопки сразу, и стоит приписать к нему адрес, как он достаётся ближайшему —
-    «Новинки и анонсы — в Instagram: http://localhost:3000». Здесь адрес сайта стоит
-    вплотную к своему предложению, а двоеточие в конце вводит кнопку Instagram,
-    которая приходит под сообщением и на локальном хосте.
-    """
-    return f"Магазин, корзина и заявки - на сайте:\n{url}\n\nНовинки и анонсы - в Instagram:"
-
 
 UNLINKED = "Чат отвязан. Подтверждения заявок и напоминания сюда больше не придут"
 
 # Отдельным сообщением, а не хвостом UNLINKED: клавиатура принадлежит чату, а не
 # сообщению, и снять её редактированием старого сообщения нельзя — нужно новое.
 UNLINK_NEXT = "Захотите вернуть - нажмите «Поделиться номером телефона» после /start"
-
-
-def my_orders(orders: list[Order], total: int | None = None) -> str:
-    """`total` is how many the customer has in all, not how many were passed in.
-
-    The caller now fetches only the page it shows, so the count of what is hidden can no
-    longer be derived from the list itself. It defaults to the number given, which keeps
-    the message honest if a caller does hand over everything.
-
-    The wording says «активные» because the caller (`handle_orders`) asks only for
-    `OPEN_STATUSES`: «у вас пока нет заявок» would be a plain lie to someone whose
-    orders are all handed over, and a bare «Ваши заявки» would read as the full history.
-    """
-    if not orders:
-        return "Активных заявок нет - всё, что было раньше, осталось на сайте"
-
-    shown = orders[:MAX_LISTED_ORDERS]
-    lines = ["Ваши активные заявки:"]
-    lines += [
-        f"{order_reference(order.id)} - {_items_count(order)}, "
-        f"{format_price(order.total_cents)} - {ORDER_STATUS_LABEL[order.status]}"
-        for order in shown
-    ]
-    hidden = (total if total is not None else len(orders)) - len(shown)
-    if hidden > 0:
-        lines.append(f"…и ещё {hidden} - весь список на сайте")
-    return "\n".join(lines)
-
-
-def cart_item_label(item: CartItemResponse) -> str:
-    """The product, and the variant when it has one — "Сыворотка Centella, 50 мл"."""
-    return product_label(item.product_name, item.product_volume_ml, item.product_shade)
-
-
-def my_cart(cart: CartResponse) -> str:
-    if not cart.items:
-        # Two different empties, and the difference matters: with no cycle open there is
-        # nothing to put a cart under, and "оформите заявку" would be a dead end.
-        if cart.cycle_deadline_at is None:
-            return "Сейчас сбор заказов закрыт - как только откроется новый, я напишу"
-        return "Корзина пуста"
-
-    lines = ["В корзине:"]
-    shown = cart.items[:MAX_LISTED_CART_ITEMS]
-    # The volume goes in the line: a cart may hold two volumes of one product, and
-    # without it they read as the same line listed twice at different prices.
-    lines += [
-        f"• {cart_item_label(item)} × {item.quantity} - {format_price(item.line_total_cents)}"
-        for item in shown
-    ]
-    if len(cart.items) > len(shown):
-        lines.append(f"…и ещё {len(cart.items) - len(shown)}")
-    lines.append(f"Итого: {format_price(cart.total_cents)}")
-    if cart.cycle_deadline_at is not None:
-        lines.append(f"Оформить заявку нужно до {format_deadline(cart.cycle_deadline_at)}")
-    return "\n".join(lines)
-
-
-def my_wishlist(wishlist: WishlistResponse) -> str:
-    """Saved products — the one list here that outlives a cycle.
-
-    It earns a button of its own because the sweep now empties abandoned carts *into*
-    it (`cart_moved_to_wishlist`), and a message pointing at a place with no way to
-    open it is only half an answer.
-    """
-    if not wishlist.items:
-        return (
-            "В избранном пусто. Нажмите ♥ на товаре в каталоге - он сохранится здесь "
-            "и не пропадёт, когда закроется сбор"
-        )
-
-    shown = wishlist.items[:MAX_LISTED_WISHLIST_ITEMS]
-    lines = ["В избранном:"]
-    # "от" when the product's variants cost different amounts: `price_cents` is the
-    # cheapest of them, and printing it flat would quote a price the bigger volume is not
-    # sold at. Shades alone do not make it "от" — they share their volume's price.
-    lines += [
-        f"• {item.product.name} - "
-        f"{'от ' if len({v.price_cents for v in item.product.variants}) > 1 else ''}"
-        f"{format_price(item.product.price_cents)}"
-        for item in shown
-    ]
-    hidden = len(wishlist.items) - len(shown)
-    if hidden > 0:
-        lines.append(f"…и ещё {hidden} - весь список на сайте")
-    return "\n".join(lines)
 
 
 def current_deadline(cycle: OrderCycle | None) -> str:

@@ -16,8 +16,8 @@ dispatcher.include_router(handlers_router)
 
 # Populates the "/" menu in the Telegram client. Two entries, because the bot is driven
 # by the keyboard under the input field (`keyboards.main_menu`) and not by typing: the
-# content commands still work as aliases (see handlers.py) but publishing them here would
-# advertise a second, worse way to do the same five things.
+# old content commands still work as aliases of /help (see handlers.py) but publishing
+# them here would advertise commands for buttons the menu no longer has.
 #
 # What stays is what the keyboard itself can't answer: /menu brings it back when it has
 # been collapsed, and /help explains it. /start is absent for the older reason — Telegram

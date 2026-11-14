@@ -50,31 +50,46 @@ def test_unlink_is_confirmed_before_it_happens() -> None:
     assert [action.action for action in actions] == ["unlink_cancel", "unlink_confirm"]
 
 
-def test_help_offers_unlink_the_site_and_the_instagram(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_main_menu_is_the_two_buttons_left() -> None:
+    labels = [button.text for row in keyboards.main_menu().keyboard for button in row]
+
+    assert labels == [messages.MENU_REPLY, messages.MENU_HELP]
+
+
+def test_help_offers_every_page_the_instagram_and_unlink(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("app.config.settings.website_base_url", "https://lulu.example.com")
 
-    buttons = [b for row in keyboards.help_actions().inline_keyboard for b in row]
+    rows = keyboards.help_actions().inline_keyboard
 
-    assert [keyboards.button_target(b) for b in buttons if keyboards.button_target(b)] == [
-        "https://lulu.example.com",
+    # Catalog alone on top, the customer's own pages in pairs, then Instagram and unlink.
+    assert [len(row) for row in rows] == [1, 2, 2, 1, 1]
+    assert [keyboards.button_target(b) for row in rows[:-1] for b in row] == [
+        "https://lulu.example.com/catalog",
+        "https://lulu.example.com/cart",
+        "https://lulu.example.com/orders",
+        "https://lulu.example.com/wishlist",
+        "https://lulu.example.com/account",
         keyboards.INSTAGRAM_URL,
     ]
-    assert MenuAction.unpack(buttons[-1].callback_data or "").action == "unlink"
+    assert MenuAction.unpack(rows[-1][0].callback_data or "").action == "unlink"
 
 
 def test_help_keeps_the_unlink_button_when_the_site_is_not_linkable(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The url button disarms itself on localhost (BUTTON_URL_INVALID would fail the
-    whole message) — but the way out of a binding must not disappear with it."""
+    """The url buttons disarm themselves on localhost (BUTTON_URL_INVALID would fail the
+    whole message) — but the way out of a binding must not disappear with them, and no
+    empty row may be left behind: Telegram rejects those too."""
     monkeypatch.setattr("app.config.settings.website_base_url", "http://localhost:3000")
 
-    buttons = [b for row in keyboards.help_actions().inline_keyboard for b in row]
+    rows = keyboards.help_actions().inline_keyboard
 
-    assert [keyboards.button_target(b) for b in buttons if keyboards.button_target(b)] == [
-        keyboards.INSTAGRAM_URL
+    assert all(rows)
+    assert [keyboards.button_target(b) for row in rows for b in row] == [
+        keyboards.INSTAGRAM_URL,
+        None,
     ]
-    assert MenuAction.unpack(buttons[-1].callback_data or "").action == "unlink"
+    assert MenuAction.unpack(rows[-1][0].callback_data or "").action == "unlink"
 
 
 def test_order_action_round_trips_through_callback_data() -> None:
@@ -174,16 +189,13 @@ def test_local_development_publishes_no_mini_app_button(
     assert keyboards.mini_app_url() is None
 
 
-def test_site_and_admin_links_point_where_they_say(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Кнопка «Сайт» ведёт на корень, владельческая сводка — сразу в заявки админки."""
+def test_admin_link_points_where_it_says(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Владельческая сводка ведёт сразу в заявки админки."""
     monkeypatch.setattr("app.config.settings.website_base_url", "https://lulu.example.com/")
 
-    site = keyboards.site_link()
     admin = keyboards.admin_orders_link()
 
-    assert site is not None
     assert admin is not None
-    assert keyboards.button_target(site.inline_keyboard[0][0]) == "https://lulu.example.com"
     assert (
         keyboards.button_target(admin.inline_keyboard[0][0])
         == "https://lulu.example.com/admin/orders"
@@ -192,39 +204,12 @@ def test_site_and_admin_links_point_where_they_say(monkeypatch: pytest.MonkeyPat
 
 def test_site_link_disarms_itself_on_a_non_public_host(monkeypatch: pytest.MonkeyPatch) -> None:
     """Telegram отказывает всему сообщению, а не одной кнопке, — поэтому её и нет;
-    адрес в этом случае договаривает текст (`messages.site_unavailable`)."""
+    адрес в этом случае договаривает текст (`messages.help_text`)."""
     monkeypatch.setattr("app.config.settings.website_base_url", "http://localhost:3000")
 
-    assert keyboards.site_link() is None
+    assert keyboards.catalog_link() is None
     assert keyboards.site_is_linkable() is False
     assert keyboards.site_url() == "http://localhost:3000"
-
-
-def test_site_links_keep_the_instagram_when_the_site_is_not_linkable(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Instagram не зависит от WEBSITE_BASE_URL: его адрес публичен всегда, поэтому
-    ответ «Сайт» не остаётся совсем без кнопок даже на localhost."""
-    monkeypatch.setattr("app.config.settings.website_base_url", "http://localhost:3000")
-
-    rows = keyboards.site_links().inline_keyboard
-
-    assert [[keyboards.button_target(b) for b in row] for row in rows] == [
-        [keyboards.INSTAGRAM_URL]
-    ]
-
-
-def test_site_links_put_the_shop_above_the_instagram(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Разными строками, а не двумя кнопками в ряд: это разные места, и пара
-    одинаковых пилюль читалась бы как выбор между половинами одного."""
-    monkeypatch.setattr("app.config.settings.website_base_url", "https://lulu.example.com/")
-
-    rows = keyboards.site_links().inline_keyboard
-
-    assert [[keyboards.button_target(b) for b in row] for row in rows] == [
-        ["https://lulu.example.com"],
-        [keyboards.INSTAGRAM_URL],
-    ]
 
 
 def test_owner_contact_actions_always_offer_the_instagram(

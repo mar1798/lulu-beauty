@@ -118,14 +118,30 @@ renders and then refuses, which is worse than not offering it.
 `keyboards.py`, `messages.py` (**all Russian copy**), `notify.py`, `recipients.py`,
 `throttling.py`, `webhook.py`, `client.py`, `service.py`.
 
-Menu buttons, each also a command: 🛒 Корзина (`/cart`), 📦 Мои заявки (`/orders`),
-📅 Текущий сбор (`/deadline`), 🌐 Ссылки (`/links`, and `/site` for the older name),
-ℹ️ Помощь (`/help`), plus `/start`, `/menu` and unlinking. `/wishlist` has no button any
-more: it still answers with the saved products to whoever types it.
-✍️ Написать Sululu is the one without a command: it asks for a message to the shop (see
-"The owner writing to a customer" below).
+The menu is **two buttons**: ✍️ Написать Sululu, which asks for a message to the shop (see
+"The owner writing to a customer" below) and has no command, and ℹ️ Помощь (`/help`).
+Commands besides: `/start`, `/menu` (puts the keyboard back) and `/unlink`.
 
-🌐 Ссылки and ℹ️ Помощь carry an **Instagram** button, and so do the two notifications
+ℹ️ Помощь is the one screen that answers everything else (`messages.help_text`,
+`keyboards.help_actions`). The text opens with the current cycle and its deadline (read
+on every press, open to unlinked chats), then how an order goes from the cart to the
+receipt, what the bot writes about unprompted, and how to reach the shop. Under it:
+«🛍 Каталог» alone, then «🛒 Корзина» + «📦 Мои заявки», «♥ Избранное» + «👤 Профиль» —
+links to `/catalog`, `/cart`, `/orders`, `/wishlist`, `/account` — then Instagram and
+«🔌 Отвязать чат». On a host Telegram won't link to, the page buttons drop out and the
+text spells the site's address instead; Instagram and unlink stay.
+
+The menu used to have four more buttons — 🛒 Корзина, 📦 Мои заявки, 📅 Текущий сбор,
+🌐 Ссылки — that listed the cart, the open orders, the cycle and the links in the chat.
+They were cut in November 2026: the bot read as a control panel, and the site shows all
+of it better. A reply keyboard stays in a chat until the bot sends another, so those
+labels still arrive from chats that have the old one: `handle_legacy_menu` answers each
+with `messages.MENU_SIMPLIFIED` carrying the new keyboard, then the help screen. Their
+commands (`/cart`, `/orders`, `/deadline`, `/links`, `/site`, `/wishlist` —
+`handlers.LEGACY_COMMANDS`) are aliases of `/help`. Keep `messages.LEGACY_MENU_LABELS`
+until nobody can still have the old keyboard; it costs one filter.
+
+ℹ️ Помощь carries an **Instagram** button, and so do the two notifications
 that send the customer to the owner — an order deleted and one the owner cancelled, both
 through `keyboards.owner_contact_actions`. The shop's account is the only place the owner
 speaks outside the bot. Its address is hardcoded in `keyboards.INSTAGRAM_URL`
