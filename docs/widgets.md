@@ -131,10 +131,14 @@ Admin:
   Numbers live as strings in the builders and become numbers in `buildConditions`/`buildRewards`.
   The mobile banner is labelled «Нужен для карусели» but does not block saving.
 - `PromotionTargetField` — products, categories and brands; reads as «any of», so the label says so.
-  There is **no category picker**: categories are a `Select` plus a label list, brands a
-  `Combobox` plus «Добавить».
+  There is **no category picker**: categories and brands are each a `Select` plus a label
+  list (a brand comes from the catalogue's list, picking adds it). The product search is open
+  from the start — no «Добавить товар» / «Готово».
 - `PromotionProductSearch` — a thin wrapper over `ProductPicker`; the search itself is a
-  callback (`searchProducts`) from the page, so the widget has no data fetching.
+  callback (`searchProducts`) from the page, so the widget has no data fetching. Already
+  picked rows are marked in the results (`addedMode="selected"`: highlighted, a disabled
+  «Выбран» instead of the button); a target passes `pickedProductIds`, so every variant of a
+  picked product is marked.
 - `AdminPromotionParticipantsDialog` — who joined, through which order, what they got;
   released participations stay, marked. A table (cards below `md`) with `Pagination` under it.
 - `PromotionBannerField` (molecule) — a file slot that states the recommended size and previews

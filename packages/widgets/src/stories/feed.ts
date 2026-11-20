@@ -1751,8 +1751,9 @@ export const feedAdminPromotionsTable = (): IAdminPromotionsTableProps => ({
 export const feedPromotionCatalog = (): IPromotionCatalog => ({
   categories: feedCategorySet(),
   brands: ['Anua', 'COSRX', 'Laneige', 'Round Lab'],
+  // Первый результат - `p-1`, уже выбранный в `feedPromotionTargetField`: в истории видна пометка «Выбран».
   searchProducts: async query => [
-    feedProduct({ name: `Сыворотка ${query}` }),
+    feedProduct({ id: 'p-1', name: `Сыворотка ${query}` }),
     feedProduct({ name: `Тонер ${query}` }),
   ],
   labels: {},

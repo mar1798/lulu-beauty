@@ -1,12 +1,10 @@
 import { style } from '@vanilla-extract/css'
 import { border, color, font, rem } from '../../styling/lib'
-import { media } from '../../styling/lib/media'
 import { flexColumn, flexRow, truncate } from '../../styling/mixin'
 import { vars } from '../../styling/themes/contract.css'
 
 /**
- * Mobile first: группы друг под другом, метки на всю ширину колонки, а
- * поле бренда и кнопка стоят рядом только с `sm`.
+ * Mobile first: группы друг под другом, метки на всю ширину колонки.
  */
 export const container = style({
   ...flexColumn(16),
@@ -63,16 +61,4 @@ export const tagLabel = style({
   ...truncate(),
   font: font('14/20'),
   color: color.text('primary'),
-})
-
-export const search = style({
-  ...flexColumn(8),
-  alignItems: 'stretch',
-})
-
-export const brandRow = style({
-  ...flexColumn(8),
-  ...media({
-    sm: { flexDirection: 'row', alignItems: 'flex-start' },
-  }),
 })

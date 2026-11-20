@@ -38,6 +38,28 @@ describe('PromotionTargetField', () => {
     expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ brands: [] }))
   })
 
+  it('добавляет бренд выбором из списка, без уже выбранных', async () => {
+    const onChange = vi.fn()
+    const props = feedPromotionTargetField()
+
+    renderWidget(<PromotionTargetField {...props} onChange={onChange} />)
+    await userEvent.click(screen.getByRole('combobox', { name: 'Добавить бренд' }))
+
+    expect(screen.queryByRole('option', { name: 'Anua' })).toBeNull()
+
+    await userEvent.click(screen.getByRole('option', { name: 'COSRX' }))
+
+    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ brands: ['Anua', 'COSRX'] }))
+  })
+
+  it('поиск товара открыт сразу, без «Готово»', () => {
+    renderWidget(<PromotionTargetField {...feedPromotionTargetField()} />)
+
+    expect(screen.getByRole('searchbox')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Готово' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Добавить товар' })).toBeNull()
+  })
+
   it('объясняет, что списки складываются через «любой»', () => {
     renderWidget(<PromotionTargetField {...feedPromotionTargetField()} />)
 

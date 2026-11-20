@@ -1,7 +1,7 @@
 import clsx from 'clsx'
 import { type FC, type ReactNode } from 'react'
 import type { IBasicStyling, IProduct, IProductPickerProps } from '../../types'
-import { IconBox, IconPlus } from '../../svg/icons'
+import { IconBox, IconCheck, IconPlus } from '../../svg/icons'
 import { AppImage } from '../../atoms/app-image'
 import { Badge } from '../../atoms/badge'
 import { Button } from '../../atoms/button'
@@ -67,6 +67,7 @@ export const ProductPicker: FC<IProductPickerProps & IBasicStyling> = ({
   isSearching = false,
   addedVariantIds = [],
   addedLabel = 'Уже в заявке',
+  addedMode = 'repeat',
   onAdd,
   isBusy = false,
   error = null,
@@ -164,6 +165,7 @@ export const ProductPicker: FC<IProductPickerProps & IBasicStyling> = ({
         {products.flatMap(product =>
           product.variants.map(variant => {
             const isAdded = addedVariantIds.includes(variant.id)
+            const isSelected = isAdded && addedMode === 'selected'
             const label = formatVariant(variant.volumeMl, variant.shade)
             // Вариант в названии — только когда их несколько: у обычного товара
             // объём и так стоит меткой в каталоге, а тут занял бы место зря.
@@ -173,7 +175,7 @@ export const ProductPicker: FC<IProductPickerProps & IBasicStyling> = ({
                 : product.name
 
             return (
-              <div key={variant.id} className={styles.row}>
+              <div key={variant.id} className={clsx(styles.row, isSelected && styles.rowSelected)}>
                 <ProductThumb product={product} />
 
                 <div className={styles.body}>
@@ -183,7 +185,7 @@ export const ProductPicker: FC<IProductPickerProps & IBasicStyling> = ({
 
                   <div className={styles.meta}>
                     <Price priceCents={variant.priceCents} size="sm" />
-                    {isAdded && <Badge tone="neutral">{addedLabel}</Badge>}
+                    {isAdded && !isSelected && <Badge tone="neutral">{addedLabel}</Badge>}
                   </div>
                 </div>
 
@@ -197,49 +199,78 @@ export const ProductPicker: FC<IProductPickerProps & IBasicStyling> = ({
                 Нет в наличии — не повод прятать строку: человек ищет по
                 названию и должен увидеть, что товар нашёлся, но недоступен.
               */}
-                <span className={styles.addCompact}>
-                  <IconButton
-                    icon={<IconPlus />}
-                    label={
-                      variant.inStock ? `${addLabel(isAdded)}: ${title}` : `Нет в наличии: ${title}`
-                    }
-                    variant="primary"
-                    size="md"
-                    disabled={isBusy || !variant.inStock}
-                    onClick={() => {
-                      onAdd(variant.id)
-                    }}
-                  />
-                </span>
+                {isSelected ? (
+                  <>
+                    <span className={styles.addCompact}>
+                      <IconButton
+                        icon={<IconCheck />}
+                        label={`Выбран: ${title}`}
+                        variant="ghost"
+                        size="md"
+                        disabled={true}
+                      />
+                    </span>
+                    <span className={styles.addWide}>
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        iconStart={<IconCheck />}
+                        disabled={true}
+                      >
+                        <span aria-hidden={true}>Выбран</span>
+                        <VisuallyHidden>{`Выбран: ${title}`}</VisuallyHidden>
+                      </Button>
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <span className={styles.addCompact}>
+                      <IconButton
+                        icon={<IconPlus />}
+                        label={
+                          variant.inStock
+                            ? `${addLabel(isAdded)}: ${title}`
+                            : `Нет в наличии: ${title}`
+                        }
+                        variant="primary"
+                        size="md"
+                        disabled={isBusy || !variant.inStock}
+                        onClick={() => {
+                          onAdd(variant.id)
+                        }}
+                      />
+                    </span>
 
-                <span className={styles.addWide}>
-                  <Button
-                    size="sm"
-                    /*
+                    <span className={styles.addWide}>
+                      <Button
+                        size="sm"
+                        /*
                     Акцентная, а не вторичная: добавление — единственное
                     действие в строке, и спорить ей тут не с чем.
                   */
-                    variant="primary"
-                    disabled={isBusy || !variant.inStock}
-                    onClick={() => {
-                      onAdd(variant.id)
-                    }}
-                  >
-                    {variant.inStock ? (
-                      /*
+                        variant="primary"
+                        disabled={isBusy || !variant.inStock}
+                        onClick={() => {
+                          onAdd(variant.id)
+                        }}
+                      >
+                        {variant.inStock ? (
+                          /*
                       Кнопок в списке много, и вне своей строки «Добавить» ни о чём
                       не говорит: подпись для скринридера несёт и название. Видимая
                       при этом скрыта от него — иначе слово прозвучало бы дважды.
                     */
-                      <>
-                        <span aria-hidden={true}>{addLabel(isAdded)}</span>
-                        <VisuallyHidden>{`${addLabel(isAdded)}: ${title}`}</VisuallyHidden>
-                      </>
-                    ) : (
-                      'Нет в наличии'
-                    )}
-                  </Button>
-                </span>
+                          <>
+                            <span aria-hidden={true}>{addLabel(isAdded)}</span>
+                            <VisuallyHidden>{`${addLabel(isAdded)}: ${title}`}</VisuallyHidden>
+                          </>
+                        ) : (
+                          'Нет в наличии'
+                        )}
+                      </Button>
+                    </span>
+                  </>
+                )}
               </div>
             )
           })

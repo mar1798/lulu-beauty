@@ -2010,6 +2010,13 @@ export interface IProductPickerProps {
    * заявке» там было бы неправдой.
    */
   addedLabel?: string
+  /**
+   * Что значит «уже добавлен». `repeat` (заявка, корзина) — можно добавить ещё
+   * один, строка лишь помечена бейджем. `selected` (цели и подарки акций) —
+   * повторный выбор ничего не даёт: строка подсвечена, а вместо кнопки стоит
+   * неактивное «Выбран» с галочкой.
+   */
+  addedMode?: 'repeat' | 'selected'
   onAdd: (variantId: string) => void
   isBusy?: boolean
   /** Поиск не отдался. Отличается от пустого ответа: искать стоит ещё раз. */
@@ -3016,8 +3023,13 @@ export interface IPromotionProductSearchProps {
   searchProducts: (query: string) => Promise<IProduct[]>
   /** Выбран вариант: товар приходит целиком, чтобы запомнить его название. */
   onPick: (product: IProduct, variantId: string) => void
-  /** Уже выбранные варианты — строка подписывается «Уже выбран». */
+  /** Уже выбранные варианты — строка помечается выбранной. */
   pickedVariantIds?: string[]
+  /**
+   * Уже выбранные товары целиком (цель акции хранит товары, а не объёмы): все их
+   * варианты в выдаче помечаются выбранными.
+   */
+  pickedProductIds?: string[]
   label?: string
   hint?: string
 }

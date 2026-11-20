@@ -2,7 +2,7 @@ import { screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import { PromotionProductSearch } from '.'
-import { feedPromotionProductSearch } from '../../stories/feed'
+import { feedProduct, feedPromotionProductSearch } from '../../stories/feed'
 import { renderWidget } from '../../testing/render'
 
 describe('PromotionProductSearch', () => {
@@ -28,6 +28,26 @@ describe('PromotionProductSearch', () => {
 
     expect(searchProducts).toHaveBeenCalledWith('крем')
     expect(onPick).toHaveBeenCalledOnce()
+  })
+
+  it('уже выбранный товар помечен «Выбран» и не выбирается повторно', async () => {
+    const props = feedPromotionProductSearch()
+    const picked = feedProduct({ id: 'picked', name: 'Сыворотка крем' })
+    const other = feedProduct({ id: 'other', name: 'Тонер крем' })
+
+    renderWidget(
+      <PromotionProductSearch
+        {...props}
+        searchProducts={async () => [picked, other]}
+        pickedProductIds={['picked']}
+      />
+    )
+    await userEvent.type(screen.getByRole('searchbox'), 'крем')
+
+    const selected = await screen.findAllByRole('button', { name: /^Выбран: Сыворотка крем/ })
+
+    expect(selected[0]).toBeDisabled()
+    expect(screen.getAllByRole('button', { name: /^Добавить: Тонер крем/ })[0]).not.toBeDisabled()
   })
 
   it('сбой поиска — сообщение, а не «ничего не нашлось»', async () => {

@@ -18,6 +18,10 @@ import * as styles from './PromotionProductSearch.css'
  *
  * Строка в выдаче — вариант (объём или тон) товара, как в подборщике заявки:
  * подарком и целью бывает конкретный флакон, а не «сыворотка вообще».
+ *
+ * Уже выбранное помечено прямо в выдаче (`addedMode="selected"`): подсветка и
+ * «Выбран» вместо кнопки. Цель акции хранит товары, поэтому у неё выбранными
+ * становятся все объёмы товара (`pickedProductIds`).
  */
 
 const DEBOUNCE_MS = 300
@@ -26,6 +30,7 @@ export const PromotionProductSearch: FC<IPromotionProductSearchProps & IBasicSty
   searchProducts,
   onPick,
   pickedVariantIds = [],
+  pickedProductIds = [],
   label = 'Найти товар',
   hint = 'Введите слово из названия товара',
   className,
@@ -75,6 +80,13 @@ export const PromotionProductSearch: FC<IPromotionProductSearchProps & IBasicSty
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [debounced])
 
+  const pickedVariants = [
+    ...pickedVariantIds,
+    ...(products ?? [])
+      .filter(product => pickedProductIds.includes(product.id))
+      .flatMap(product => product.variants.map(variant => variant.id)),
+  ]
+
   return (
     <div className={clsx(styles.container, className)}>
       <ProductPicker
@@ -83,8 +95,8 @@ export const PromotionProductSearch: FC<IPromotionProductSearchProps & IBasicSty
         products={products}
         // Скелетон стоит весь дебаунс — как у подборщика в заявке.
         isSearching={query.trim() !== '' && (debounced !== query.trim() || isLoading)}
-        addedVariantIds={pickedVariantIds}
-        addedLabel="Уже выбран"
+        addedVariantIds={pickedVariants}
+        addedMode="selected"
         label={label}
         hint={hint}
         error={error}

@@ -1,14 +1,12 @@
 import clsx from 'clsx'
-import { type FC, useState } from 'react'
+import { type FC } from 'react'
 import type {
   IBasicStyling,
   IProduct,
   IPromotionTargetFieldProps,
   ISelectOption,
 } from '../../types'
-import { IconClose, IconPlus } from '../../svg/icons'
-import { Button } from '../../atoms/button'
-import { Combobox } from '../../atoms/combobox'
+import { IconClose } from '../../svg/icons'
 import { IconButton } from '../../atoms/icon-button'
 import { Select } from '../../atoms/select'
 import { categoryOptions } from '../../utils/categories'
@@ -23,13 +21,16 @@ import * as styles from './PromotionTargetField.css'
  * вся корзина (у условий-«содержит» пустая цель не принимается, это проверяет
  * родитель).
  *
+ * Поиск товара открыт сразу, без «Добавить товар» / «Готово»: выбор - клик
+ * по строке выдачи, уже выбранные в ней помечены.
+ *
  * Названия выбранных товаров приходят из `catalog.labels`: в акции хранятся
  * только id, а страница дочитывает названия сама. Товар, чьё название
  * неизвестно (удалён из каталога), подписан «Товар удалён» — такая ссылка на
  * чтении просто перестаёт совпадать, а при сохранении сервер её не примет.
  *
- * Бренд вводится полем с подсказками и добавляется кнопкой: у `Combobox` нет
- * «подтверждения», значение меняется на каждый знак.
+ * Бренд выбирается из брендов каталога тем же селектом, что и категория: выбор
+ * сразу добавляет его в список.
  */
 
 const UNKNOWN_PRODUCT = 'Товар удалён'
@@ -61,14 +62,15 @@ export const PromotionTargetField: FC<IPromotionTargetFieldProps & IBasicStyling
   legend = 'Что учитывается',
   className,
 }) => {
-  const [isSearching, setIsSearching] = useState(false)
-  const [brandDraft, setBrandDraft] = useState('')
-
   const categoryNames = new Map(catalog.categories.map(category => [category.id, category.name]))
   const freeCategories: ISelectOption[] = categoryOptions(
     catalog.categories.filter(category => !value.categoryIds.includes(category.id)),
     category => category.id
   )
+  const chosenBrands = new Set(value.brands.map(brand => brand.trim().toLowerCase()))
+  const freeBrands: ISelectOption[] = catalog.brands
+    .filter(brand => !chosenBrands.has(brand.trim().toLowerCase()))
+    .map(brand => ({ value: brand, label: brand }))
 
   const addProduct = (product: IProduct): void => {
     catalog.onLabel(product.id, product.name)
@@ -76,22 +78,6 @@ export const PromotionTargetField: FC<IPromotionTargetFieldProps & IBasicStyling
     if (!value.productIds.includes(product.id)) {
       onChange({ ...value, productIds: [...value.productIds, product.id] })
     }
-  }
-
-  const addBrand = (): void => {
-    const brand = brandDraft.trim()
-
-    if (brand === '') {
-      return
-    }
-
-    const exists = value.brands.some(known => known.toLowerCase() === brand.toLowerCase())
-
-    if (!exists) {
-      onChange({ ...value, brands: [...value.brands, brand] })
-    }
-
-    setBrandDraft('')
   }
 
   return (
@@ -119,36 +105,13 @@ export const PromotionTargetField: FC<IPromotionTargetFieldProps & IBasicStyling
           </ul>
         )}
 
-        {isSearching ? (
-          <div className={styles.search}>
-            <PromotionProductSearch
-              searchProducts={catalog.searchProducts}
-              label="Найти товар"
-              hint="Выберите любой объём - в цель попадёт товар целиком"
-              onPick={addProduct}
-            />
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => {
-                setIsSearching(false)
-              }}
-            >
-              Готово
-            </Button>
-          </div>
-        ) : (
-          <Button
-            variant="secondary"
-            size="sm"
-            iconStart={<IconPlus />}
-            onClick={() => {
-              setIsSearching(true)
-            }}
-          >
-            Добавить товар
-          </Button>
-        )}
+        <PromotionProductSearch
+          searchProducts={catalog.searchProducts}
+          label="Найти товар"
+          hint="Выберите любой объём - в цель попадёт товар целиком"
+          pickedProductIds={value.productIds}
+          onPick={addProduct}
+        />
       </div>
 
       <div className={styles.group}>
@@ -202,25 +165,17 @@ export const PromotionTargetField: FC<IPromotionTargetFieldProps & IBasicStyling
           </ul>
         )}
 
-        <div className={styles.brandRow}>
-          <Combobox
-            ariaLabel="Бренд"
-            value={brandDraft}
-            options={catalog.brands}
-            maxLength={255}
-            placeholder="Название бренда"
-            emptyLabel="Такого бренда пока нет в каталоге"
-            onChange={setBrandDraft}
-          />
-          <Button
-            variant="secondary"
-            size="md"
-            disabled={brandDraft.trim() === ''}
-            onClick={addBrand}
-          >
-            Добавить
-          </Button>
-        </div>
+        <Select
+          ariaLabel="Добавить бренд"
+          value=""
+          options={freeBrands}
+          placeholder="Добавить бренд"
+          onChange={brand => {
+            if (brand !== '') {
+              onChange({ ...value, brands: [...value.brands, brand] })
+            }
+          }}
+        />
       </div>
     </fieldset>
   )
