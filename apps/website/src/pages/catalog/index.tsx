@@ -326,14 +326,21 @@ const CatalogPage: React.FC<ICatalogPageProps> = ({
         // Точка отсчёта для хэллоуинских сцен: у заголовка, над фильтрами и по бокам сетки.
         className={clsx(halloween.host, halloween.catalogPage)}
         title="Каталог"
-        // Акции над заголовком: без баннеров (нет акций, нет мобильного баннера) слота нет вовсе.
+        /*
+          Над заголовком: акции, под ними врезка «Приём заказов закрыт». Без
+          баннеров (нет акций, нет мобильного баннера) карусели нет вовсе, а
+          врезка при открытом сборе сама рисует `null`.
+        */
         banner={
-          promotions.some(promotion => promotion.bannerMobileUrl !== null) ? (
-            <PromoCarousel
-              promotions={promotions}
-              buildPromotionHref={slug => `/promotions/${slug}`}
-            />
-          ) : undefined
+          <>
+            {promotions.some(promotion => promotion.bannerMobileUrl !== null) && (
+              <PromoCarousel
+                promotions={promotions}
+                buildPromotionHref={slug => `/promotions/${slug}`}
+              />
+            )}
+            <ClosedCycleNotice decor={<HalloweenScene variant="catalog-banner" />} />
+          </>
         }
         summary={isFirstLoad ? undefined : `Найдено товаров: ${total}`}
         focusKey={pageNumber}
@@ -397,8 +404,6 @@ const CatalogPage: React.FC<ICatalogPageProps> = ({
         */}
         <HalloweenScene variant="catalog-title" />
         <HalloweenScene variant="catalog-sides" />
-
-        <ClosedCycleNotice decor={<HalloweenScene variant="catalog-banner" />} />
 
         {error === null ? (
           <ProductGrid

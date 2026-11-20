@@ -231,10 +231,11 @@ Rules: [domain.md](domain.md#promotions). The site side:
   It is in the account navigation (`layouts/accountNavigation.ts`, between «Мои заявки» and
   «Профиль») and the footer, but not the header menu.
 - `pages/catalog/index.tsx` — the `PromoCarousel` goes into `CatalogTemplate`'s `banner` slot,
-  above the title. The promotions come from `getStaticProps` (`GET /promotions`, an API failure
+  above the title, with the «Приём заказов закрыт» notice (`ClosedCycleNotice`) right under it
+  in the same slot. The promotions come from `getStaticProps` (`GET /promotions`, an API failure
   means an empty list), so the carousel is part of the ISR page and refreshed by `/catalog`
   revalidation. The page drops promotions without a mobile banner on the client; with none
-  left, the slot is not rendered. The API returns every running promotion.
+  left, there is no carousel. The API returns every running promotion.
 - `pages/admin/promotions/{index,add,[id]}.tsx` — owner-only, like the rest of `admin/`, with
   «Акции» in `AdminShell`. The table (`AdminPromotionsTable`) has icon buttons with tooltips only;
   the form (`AdminPromotionForm`) holds two banner fields, the condition and reward builders

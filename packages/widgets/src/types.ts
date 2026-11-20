@@ -1624,7 +1624,7 @@ export interface IProductDetailsProps {
 
 export interface ICatalogTemplateProps {
   title: string
-  /** Над заголовком: карусель акций. Без неё витрина начинается с заголовка. */
+  /** Над заголовком: карусель акций и врезки о состоянии сбора. Пустой — витрина начинается с заголовка. */
   banner?: ReactNode
   /** «Найдено товаров: N» — объявляется скринридером при каждой смене. */
   summary?: string
