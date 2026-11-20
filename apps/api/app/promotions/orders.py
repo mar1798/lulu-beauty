@@ -43,7 +43,7 @@ from app.orders.discounts import (
     promo_item_discounts,
     promo_order_discounts,
 )
-from app.orders.models import Order, OrderStatus
+from app.orders.models import CANCELLED_STATUSES, Order, OrderStatus
 from app.promotions.code_errors import PromoCodeConditionsNotMetError
 from app.promotions.engine import (
     Evaluation,
@@ -488,21 +488,93 @@ class OrderPromotionsService:
         for gift in [g for g in order.gifts if g.order_promotion_id == participation.id]:
             order.gifts.remove(gift)
 
-    async def _free_code(self, participation: OrderPromotion) -> None:
-        """A participation through a code ended: the code goes back to the customer."""
+    async def _free_code(self, participation: OrderPromotion, *, spent: bool = True) -> None:
+        """A participation through a code ended: the code goes back to the customer.
+
+        A RESERVED code is freed; with `spent` so is a USED one that this very order spent:
+        the order is cancelled, so the money that paid for the discount is the owner's to
+        settle and the code is the customer's again. A deleted order never gives a spent
+        code back (`spent=False`). An expired one simply comes back as an unused expired
+        code (`ACTIVE` past `expires_at`, shown as EXPIRED). A code whose earning order is
+        cancelled is not given back at all: it is `REVOKED`, whichever order the two
+        cancellations came in. The row is locked, like every other write to a code.
+        """
         if participation.promo_code_id is None:
             return
-        code = await self._session.get(PromoCode, participation.promo_code_id)
-        if code is not None and code.status is PromoCodeStatus.RESERVED:
-            code.status = PromoCodeStatus.ACTIVE
-            code.used_order_id = None
+        code = await self._session.scalar(
+            select(PromoCode)
+            .where(PromoCode.id == participation.promo_code_id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+        if code is None:
+            return
+        held_here = code.used_order_id == participation.order_id
+        is_reserved = code.status is PromoCodeStatus.RESERVED and held_here
+        is_spent_here = spent and code.status is PromoCodeStatus.USED and held_here
+        if not (is_reserved or is_spent_here):
+            return
+        earner_status = (
+            None
+            if code.source_order_id is None
+            else await self._session.scalar(
+                select(Order.status).where(Order.id == code.source_order_id)
+            )
+        )
+        code.status = (
+            PromoCodeStatus.REVOKED
+            if earner_status in CANCELLED_STATUSES
+            else PromoCodeStatus.ACTIVE
+        )
+        code.used_order_id = None
+
+    async def reattach_codes(self, order: Order) -> list[OrderPromotion]:
+        """The owner walked a cancellation back: take again the codes the cancel let go of.
+
+        Only the participations released together by the cancellation (the latest
+        `released_at`) are looked at, and a code is taken again only if it is still the
+        customer's, free (`ACTIVE`), inside its dates and its conditions hold for the order's
+        lines. Anything else is dropped quietly: the order simply has no code, and the total
+        the recount that follows gives is the plain one. Call it with the order already
+        PENDING and before the recount. Needs `order.items`.
+        """
+        released = [p for p in order.promotions if p.released_at is not None]
+        if not released:
+            return []
+        last = max(p.released_at for p in released if p.released_at is not None)
+        attached: list[OrderPromotion] = []
+        for participation in released:
+            if participation.released_at != last or participation.promo_code_id is None:
+                continue
+            code = await self._session.scalar(
+                select(PromoCode)
+                .where(
+                    PromoCode.id == participation.promo_code_id,
+                    PromoCode.user_id == order.user_id,
+                )
+                .with_for_update()
+                .execution_options(populate_existing=True)
+            )
+            now = datetime.now(UTC)
+            if (
+                code is None
+                or code.status is not PromoCodeStatus.ACTIVE
+                or not code.valid_from <= now < code.expires_at
+            ):
+                continue
+            try:
+                attached.append(await self.attach_code(order, code))
+            except PromoCodeConditionsNotMetError:
+                continue
+        return attached
 
     async def release_codes_of(self, order: Order) -> None:
         """Give back the codes this order holds, without ending its participations — for an
-        order that is about to be deleted outright."""
+        order that is about to be deleted outright. Only a reserved code goes back: a spent
+        one stays spent, deleting is not cancelling."""
         for participation in order.promotions:
             if participation.released_at is None:
-                await self._free_code(participation)
+                await self._free_code(participation, spent=False)
 
     async def _code_offer_for(self, order: Order, code: PromoCode) -> tuple[Offer, list[Line]]:
         """The code as an offer, and the order's lines — or `PromoCodeConditionsNotMetError`."""

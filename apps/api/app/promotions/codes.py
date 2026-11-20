@@ -34,7 +34,7 @@ from sqlalchemy import exists, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.orders.models import Order, OrderStatus
+from app.orders.models import CANCELLED_STATUSES, Order, OrderStatus
 from app.promotions.code_errors import (
     PromoCodeAlreadyUsedError,
     PromoCodeExpiredError,
@@ -285,6 +285,40 @@ class PromoCodesService:
                 and code.status in (PromoCodeStatus.RESERVED, PromoCodeStatus.USED)
             ):
                 used[code.used_order_id] = code
+        # A cancelled order no longer holds its code (it went back to the customer). When
+        # the order had been billed or paid its total was kept (`release_all`: only a PENDING
+        # order is recounted), so it still carries the discount: show the code the cancel
+        # released, as history, with the code's own status. A PENDING order was recounted
+        # without it, and shows none. `confirmed_at`/`paid_at` are what tell the two apart:
+        # both are cleared whenever the order goes back to PENDING.
+        cancelled = {
+            order.id
+            for order in orders
+            if order.status in CANCELLED_STATUSES
+            and order.id not in used
+            and (order.confirmed_at is not None or order.paid_at is not None)
+        }
+        if cancelled:
+            released = await self._session.execute(
+                select(OrderPromotion.order_id, OrderPromotion.released_at, PromoCode)
+                .join(PromoCode, PromoCode.id == OrderPromotion.promo_code_id)
+                .where(
+                    OrderPromotion.order_id.in_(cancelled),
+                    OrderPromotion.released_at.is_not(None),
+                )
+                .order_by(OrderPromotion.released_at, OrderPromotion.id)
+                .execution_options(populate_existing=True)
+            )
+            rows = released.tuples().all()
+            # Only what the cancel released: the latest `released_at` of each order, not a
+            # code an earlier edit let go of.
+            latest: dict[uuid.UUID, datetime] = {}
+            for order_id, released_at, _ in rows:
+                if released_at is not None:
+                    latest[order_id] = max(released_at, latest.get(order_id, released_at))
+            for order_id, released_at, code in rows:
+                if released_at == latest.get(order_id):
+                    used[order_id] = code
         return {
             order_id: OrderCodes(used=used.get(order_id), issued=issued.get(order_id, []))
             for order_id in ids

@@ -35,6 +35,7 @@ from app.promotions.codes import (
     issue_missing_promo_codes,
 )
 from app.promotions.models import OrderPromotion, PromoCode, PromoCodeStatus, Promotion
+from app.promotions.orders import OrderPromotionsService
 from app.promotions.rules import (
     AnyCodeReward,
     AnyCondition,
@@ -677,6 +678,294 @@ async def test_cancelling_a_billed_promotion_order_keeps_the_billed_total(
 
     assert order.total_cents == 9_000
     assert all(p.released_at is not None for p in order.promotions)
+
+
+async def test_the_owner_cancelling_a_paid_order_gives_the_spent_code_back(
+    db_session: AsyncSession,
+) -> None:
+    user_id, product, code = await _customer_with_code(db_session)
+    order = await _checkout(db_session, user_id, (product, 1), promo_code=code.code)
+    service = await _pay(db_session, order)
+    assert code.status is PromoCodeStatus.USED
+
+    await service.update_status(order.id, OrderStatus.CANCELLED_BY_OWNER)
+
+    assert code.status is PromoCodeStatus.ACTIVE and code.used_order_id is None
+    assert _live(order) == []
+    # The sum that was paid is the owner's to settle: the total is not rewritten.
+    assert order.total_cents == 9_000
+    again = await _checkout(db_session, user_id, (product, 1), promo_code=code.code)
+    assert again.total_cents == 9_000 and code.used_order_id == again.id
+
+
+async def test_a_spent_code_that_has_expired_comes_back_as_an_expired_one(
+    db_session: AsyncSession,
+) -> None:
+    user_id, product, code = await _customer_with_code(db_session)
+    order = await _checkout(db_session, user_id, (product, 1), promo_code=code.code)
+    service = await _pay(db_session, order)
+    _expire(code)
+
+    await service.update_status(order.id, OrderStatus.CANCELLED_BY_OWNER)
+
+    assert code.status is PromoCodeStatus.ACTIVE
+    assert code_status(code, datetime.now(UTC)) is PromoCodeView.EXPIRED
+    with pytest.raises(PromoCodeExpiredError):
+        await PromoCodesService(db_session).usable(user_id, code.code)
+
+
+async def test_undoing_the_cancellation_of_a_paid_order_takes_the_code_again(
+    db_session: AsyncSession,
+) -> None:
+    user_id, product, code = await _customer_with_code(db_session)
+    order = await _checkout(db_session, user_id, (product, 1), promo_code=code.code)
+    service = await _pay(db_session, order)
+    await service.update_status(order.id, OrderStatus.CANCELLED_BY_OWNER)
+
+    await service.update_status(order.id, OrderStatus.PENDING)
+
+    [participation] = _live(order)
+    assert participation.promo_code_id == code.id
+    assert code.status is PromoCodeStatus.RESERVED and code.used_order_id == order.id
+    assert order.total_cents == 9_000
+    # Paying again spends it again.
+    await service.update_status(order.id, OrderStatus.AWAITING_PAYMENT)
+    await service.update_status(order.id, OrderStatus.CONFIRMED)
+    assert code.status is PromoCodeStatus.USED
+
+
+async def test_undoing_the_cancellation_after_the_code_went_elsewhere_drops_it(
+    db_session: AsyncSession,
+) -> None:
+    user_id, product, code = await _customer_with_code(db_session)
+    order = await _checkout(db_session, user_id, (product, 1), promo_code=code.code)
+    service = await _pay(db_session, order)
+    await service.update_status(order.id, OrderStatus.CANCELLED_BY_OWNER)
+    other = await _checkout(db_session, user_id, (product, 1), promo_code=code.code)
+    await _pay(db_session, other)
+    assert code.status is PromoCodeStatus.USED and code.used_order_id == other.id
+
+    await service.update_status(order.id, OrderStatus.PENDING)
+
+    assert _live(order) == []
+    assert order.total_cents == 10_000
+    assert code.status is PromoCodeStatus.USED and code.used_order_id == other.id
+
+
+async def test_undoing_the_cancellation_after_the_code_expired_drops_it(
+    db_session: AsyncSession,
+) -> None:
+    user_id, product, code = await _customer_with_code(db_session)
+    order = await _checkout(db_session, user_id, (product, 1), promo_code=code.code)
+    service = await _pay(db_session, order)
+    await service.update_status(order.id, OrderStatus.CANCELLED_BY_OWNER)
+    _expire(code)
+
+    await service.update_status(order.id, OrderStatus.PENDING)
+
+    assert _live(order) == [] and order.total_cents == 10_000
+    assert code.status is PromoCodeStatus.ACTIVE and code.used_order_id is None
+
+
+async def test_deleting_a_paid_order_does_not_give_the_spent_code_back(
+    db_session: AsyncSession,
+) -> None:
+    for final in (OrderStatus.CONFIRMED, OrderStatus.READY, OrderStatus.COMPLETED):
+        user_id, product, code = await _customer_with_code(db_session)
+        order = await _checkout(db_session, user_id, (product, 1), promo_code=code.code)
+        service = await _pay(db_session, order)
+        for step in (OrderStatus.READY, OrderStatus.COMPLETED):
+            if final is not OrderStatus.CONFIRMED and order.status is not final:
+                await service.update_status(order.id, step)
+        assert code.status is PromoCodeStatus.USED
+
+        await service.delete(order.id)
+        await db_session.flush()
+        await db_session.refresh(code)
+
+        assert code.status is PromoCodeStatus.USED
+
+
+async def test_deleting_a_billed_order_gives_its_reserved_code_back(
+    db_session: AsyncSession,
+) -> None:
+    user_id, product, code = await _customer_with_code(db_session)
+    order = await _checkout(db_session, user_id, (product, 1), promo_code=code.code)
+    service = OrdersService(db_session)
+    await service.update_status(order.id, OrderStatus.AWAITING_PAYMENT)
+    assert code.status is PromoCodeStatus.RESERVED
+
+    await service.delete(order.id)
+    await db_session.flush()
+    await db_session.refresh(code)
+
+    assert code.status is PromoCodeStatus.ACTIVE and code.used_order_id is None
+
+
+async def test_cancelling_a_paid_order_from_ready_gives_the_code_back(
+    db_session: AsyncSession,
+) -> None:
+    user_id, product, code = await _customer_with_code(db_session)
+    order = await _checkout(db_session, user_id, (product, 1), promo_code=code.code)
+    service = await _pay(db_session, order)
+    await service.update_status(order.id, OrderStatus.READY)
+
+    await service.update_status(order.id, OrderStatus.CANCELLED_BY_OWNER)
+
+    assert code.status is PromoCodeStatus.ACTIVE and code.used_order_id is None
+
+
+async def test_undoing_a_cancellation_made_from_a_billed_order_takes_the_code_again(
+    db_session: AsyncSession,
+) -> None:
+    user_id, product, code = await _customer_with_code(db_session)
+    order = await _checkout(db_session, user_id, (product, 1), promo_code=code.code)
+    service = OrdersService(db_session)
+    await service.update_status(order.id, OrderStatus.AWAITING_PAYMENT)
+    await service.update_status(order.id, OrderStatus.CANCELLED_BY_OWNER)
+    assert code.status is PromoCodeStatus.ACTIVE
+
+    await service.update_status(order.id, OrderStatus.PENDING)
+
+    assert code.status is PromoCodeStatus.RESERVED and code.used_order_id == order.id
+    assert order.total_cents == 9_000
+
+
+async def test_an_earned_code_never_comes_back_once_its_earner_is_cancelled(
+    db_session: AsyncSession,
+) -> None:
+    user = await make_user(db_session)
+    await make_cycle(db_session)
+    product = await make_product(db_session, price_cents=10_000)
+    for earner_first in (True, False):
+        earning, code = await _earn_code(db_session, user.id, product)
+        await db_session.execute(
+            Promotion.__table__.update().values(is_enabled=False)  # type: ignore[attr-defined]
+        )
+        spent = await _checkout(db_session, user.id, (product, 1), promo_code=code.code)
+        service = await _pay(db_session, spent)
+        order_ids = [earning.id, spent.id] if earner_first else [spent.id, earning.id]
+
+        for order_id in order_ids:
+            await service.update_status(order_id, OrderStatus.CANCELLED_BY_OWNER)
+
+        assert code.status is PromoCodeStatus.REVOKED and code.used_order_id is None
+        with pytest.raises(PromoCodeNotFoundError):
+            await PromoCodesService(db_session).usable(user.id, code.code)
+
+
+async def test_an_earned_code_in_a_billed_order_is_revoked_when_both_are_cancelled(
+    db_session: AsyncSession,
+) -> None:
+    user = await make_user(db_session)
+    await make_cycle(db_session)
+    product = await make_product(db_session, price_cents=10_000)
+    earning, code = await _earn_code(db_session, user.id, product)
+    await db_session.execute(
+        Promotion.__table__.update().values(is_enabled=False)  # type: ignore[attr-defined]
+    )
+    holder = await _checkout(db_session, user.id, (product, 1), promo_code=code.code)
+    service = OrdersService(db_session)
+    await service.update_status(holder.id, OrderStatus.AWAITING_PAYMENT)
+    await service.update_status(earning.id, OrderStatus.CANCELLED_BY_OWNER)
+
+    await service.update_status(holder.id, OrderStatus.CANCELLED_BY_OWNER)
+
+    assert code.status is PromoCodeStatus.REVOKED
+
+
+async def test_a_code_of_an_uncancelled_earner_goes_back_active(
+    db_session: AsyncSession,
+) -> None:
+    user = await make_user(db_session)
+    await make_cycle(db_session)
+    product = await make_product(db_session, price_cents=10_000)
+    _, code = await _earn_code(db_session, user.id, product)
+    await db_session.execute(
+        Promotion.__table__.update().values(is_enabled=False)  # type: ignore[attr-defined]
+    )
+    spent = await _checkout(db_session, user.id, (product, 1), promo_code=code.code)
+    service = await _pay(db_session, spent)
+
+    await service.update_status(spent.id, OrderStatus.CANCELLED_BY_OWNER)
+
+    assert code.status is PromoCodeStatus.ACTIVE
+
+
+async def test_a_reserved_code_held_by_another_order_is_not_freed_by_this_one(
+    db_session: AsyncSession,
+) -> None:
+    user_id, product, code = await _customer_with_code(db_session)
+    order = await _checkout(db_session, user_id, (product, 1), promo_code=code.code)
+    other = await _checkout(db_session, user_id, (product, 1))
+    code.used_order_id = other.id
+    await db_session.flush()
+    [participation] = _live(order)
+
+    await OrderPromotionsService(db_session)._free_code(participation)
+
+    assert code.status is PromoCodeStatus.RESERVED and code.used_order_id == other.id
+
+
+async def test_a_cancelled_paid_order_still_shows_the_code_that_gave_its_discount(
+    db_session: AsyncSession,
+) -> None:
+    user_id, product, code = await _customer_with_code(db_session)
+    order = await _checkout(db_session, user_id, (product, 1), promo_code=code.code)
+    service = await _pay(db_session, order)
+    await service.update_status(order.id, OrderStatus.CANCELLED_BY_OWNER)
+
+    shown = (await PromoCodesService(db_session).for_orders([order]))[order.id]
+
+    assert shown.used is not None and shown.used.id == code.id
+
+
+async def test_a_cancelled_pending_order_shows_no_code_even_after_it_is_reused(
+    db_session: AsyncSession,
+) -> None:
+    user_id, product, code = await _customer_with_code(db_session)
+    order = await _checkout(db_session, user_id, (product, 1), promo_code=code.code)
+    await OrdersService(db_session).cancel(user_id, order.id)
+    other = await _checkout(db_session, user_id, (product, 1), promo_code=code.code)
+    await _pay(db_session, other)
+    assert code.status is PromoCodeStatus.USED and code.used_order_id == other.id
+
+    shown = await PromoCodesService(db_session).for_orders([order, other])
+
+    assert shown[order.id].used is None
+    assert shown[other.id].used is not None and shown[other.id].used.id == code.id
+
+
+async def test_a_cancelled_paid_order_shows_the_codes_current_status(
+    db_session: AsyncSession,
+) -> None:
+    user_id, product, code = await _customer_with_code(db_session)
+    order = await _checkout(db_session, user_id, (product, 1), promo_code=code.code)
+    service = await _pay(db_session, order)
+    await service.update_status(order.id, OrderStatus.CANCELLED_BY_OWNER)
+    other = await _checkout(db_session, user_id, (product, 1), promo_code=code.code)
+
+    shown = (await PromoCodesService(db_session).for_orders([order]))[order.id]
+
+    assert shown.used is not None and shown.used.id == code.id
+    assert shown.used.status is PromoCodeStatus.RESERVED and code.used_order_id == other.id
+
+
+async def test_a_code_dropped_by_an_edit_is_not_shown_after_the_cancel(
+    db_session: AsyncSession,
+) -> None:
+    user_id, product, code = await _customer_with_code(
+        db_session, reward=_code_reward(conditions=[_subtotal(15_000)])
+    )
+    order = await _checkout(db_session, user_id, (product, 2), promo_code=code.code)
+    service = OrdersService(db_session)
+    await service.set_item_quantity(user_id, order.id, order.items[0].id, 1)
+    assert _live(order) == []
+    await service.cancel(user_id, order.id)
+
+    shown = (await PromoCodesService(db_session).for_orders([order]))[order.id]
+
+    assert shown.used is None
 
 
 async def test_restoring_does_not_put_the_code_back(db_session: AsyncSession) -> None:

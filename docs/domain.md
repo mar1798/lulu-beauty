@@ -1114,14 +1114,36 @@ every participation and then:
 
 - **The total is recounted without the promotions only when the order was `PENDING`.** An
   order with a bill keeps the billed sum.
-- **The code it held (`RESERVED`) goes back to `ACTIVE`.** An owner's `DELETE` of the order
-  does the same, since the participation disappears with it.
+- **The code it held goes back to `ACTIVE`** — a `RESERVED` one, and a `USED` one too when
+  this very order spent it (an owner cancelling a paid order: the customer gets the code
+  back, the money is settled by hand). A code past `expires_at` comes back as any unused
+  expired code does: `ACTIVE` in the database, `EXPIRED` as shown, not usable. The code row
+  is locked (`FOR UPDATE`) while it is given back. An owner's `DELETE` of the order returns
+  only a `RESERVED` code; a spent one stays `USED` (deleting is not cancelling, and a cycle
+  delete leaves it `USED` too). Whatever the path, a code whose _earning_ order is cancelled
+  never comes back: it ends `REVOKED` instead of `ACTIVE`, whichever of the two orders was
+  cancelled first.
 - **Codes the order earned** and nobody has used (`ACTIVE`) become `REVOKED`; a `USED` one
   stays. A `RESERVED` earned code: if a `PENDING` order holds it, that participation is
   released (sum recounted, `revision` +1) and the code revoked; if an order with a bill holds
   it, it is left alone — the bill already promised it.
-- A **restore** of a cancelled order is a plain recount. It does not give a code back (it is
-  already `ACTIVE` and free for the next checkout).
+- A **customer's restore** of a cancelled order is a plain recount. It does not give a code
+  back (it is already `ACTIVE` and free for the next checkout).
+- **The owner undoing a cancellation** (`CANCELLED_BY_OWNER` → `PENDING`) first tries to take
+  again the codes that cancel let go of (`OrderPromotionsService.reattach_codes`, before the
+  recount): the code is locked and attached again — `RESERVED` by the order — only if it is
+  still the customer's, `ACTIVE`, inside its dates and its conditions hold for the order's
+  lines. Otherwise (used by another order, expired, conditions gone) it is dropped quietly:
+  the order simply has no code and its total is the plain one. A paid order that comes back
+  to `PENDING` is unpaid again, so the code is `RESERVED` and is spent once more when it is
+  paid. Codes the order _earned_ are not restored: one revoked by the cancellation stays
+  `REVOKED`, a `USED` one stays `USED`. Known limit: "released together by the cancel" is
+  the participations with the latest `released_at`, so when the cancel released nothing, the
+  undo may take again a code the order had dropped earlier through an edit, if it is still free.
+  A cancelled order shows the code its cancellation released only if it had been billed or
+  paid (`confirmed_at`/`paid_at` set), since only then its total keeps the discount
+  (`release_all` recounts a `PENDING` order without it); the code carries its own current
+  status, so it may read as used by another order. A cancelled `PENDING` order shows no code.
 
 ### Promo codes
 

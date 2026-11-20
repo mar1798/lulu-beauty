@@ -1832,7 +1832,9 @@ class OrdersService:
         if changed and new_status in CANCELLED_STATUSES:
             await self._promos.release_all(order, was_status=was_status)
         if changed and new_status is OrderStatus.PENDING:
-            # Undoing the owner's cancellation: the promotions are asked again.
+            # Undoing the owner's cancellation: the code the cancel gave back is taken
+            # again if it is still free and valid, then the promotions are asked again.
+            await self._promos.reattach_codes(order)
             await self._recount(order)
         await self._session.flush()
         return order, changed
