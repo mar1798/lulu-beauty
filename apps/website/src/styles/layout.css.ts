@@ -51,6 +51,16 @@ export const inlineIcon = style({
  * фоном, — поэтому отличать ссылку от текста приходится подчёркиванием и
  * насыщенностью: одного цвета там нет вовсе, и без них она сливается.
  */
+/** Маркированный список внутри `Alert`: акции в заявке - по пункту на скидку и подарок. */
+export const alertList = style({
+  display: 'flex',
+  flexDirection: 'column',
+  gap: rem(4),
+  margin: 0,
+  paddingLeft: rem(20),
+  listStyle: 'disc',
+})
+
 export const alertLink = style([
   {
     fontWeight: 500,

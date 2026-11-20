@@ -48,6 +48,18 @@ import { useCycleExpiryRefresh } from '@/hooks/useCycleExpiryRefresh'
 /** Номер поданной заявки в адресе — чтобы экран успеха пережил перезагрузку. */
 const ORDER_PARAM = 'order'
 
+/** Что дали акции: по строке на скидку и подарок; если ни того ни другого - названия акций. */
+const promotionLines = (order: IOrder): string[] => {
+  const lines = [
+    ...order.promotions
+      .filter(entry => entry.discountCents > 0)
+      .map(entry => `${entry.title}: скидка ${formatPrice(entry.discountCents)}`),
+    ...order.gifts.map(gift => `Подарок: ${gift.title}`),
+  ]
+
+  return lines.length > 0 ? lines : order.promotions.map(entry => entry.title)
+}
+
 const CheckoutPage: React.FC = () => {
   const router = useRouter()
   const { user, isLoading: isAuthLoading } = useAuth()
@@ -261,12 +273,14 @@ const CheckoutPage: React.FC = () => {
           {/* Что дали акции: подарки кладёт владелец вместе с товарами, скидка уже в сумме заявки. */}
           {(order.gifts.length > 0 || order.promotions.length > 0) && (
             <Alert tone="info" title="Акции в вашей заявке">
-              {[
-                ...order.promotions
-                  .filter(entry => entry.discountCents > 0)
-                  .map(entry => `${entry.title}: скидка ${formatPrice(entry.discountCents)}`),
-                ...order.gifts.map(gift => `Подарок: ${gift.title}`),
-              ].join('. ') || order.promotions.map(entry => entry.title).join('. ')}
+              {/* Списком, а не строкой через точку: по пункту на скидку и подарок. */}
+              <ul className={styles.alertList}>
+                {promotionLines(order).map((line, index) => (
+                  // Строки могут совпасть (два одинаковых подарка), поэтому ключ с индексом.
+                  // eslint-disable-next-line react/no-array-index-key
+                  <li key={`${index}-${line}`}>{line}</li>
+                ))}
+              </ul>
             </Alert>
           )}
 
