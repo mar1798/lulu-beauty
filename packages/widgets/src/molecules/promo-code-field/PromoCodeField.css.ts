@@ -1,7 +1,7 @@
 import { style } from '@vanilla-extract/css'
-import { border, color, font, transition } from '../../styling/lib'
-import { media } from '../../styling/lib/media'
+import { border, color, font, rem, transition } from '../../styling/lib'
 import { flexColumn, flexRow, focusVisibleRing } from '../../styling/mixin'
+import { FIELD_HEIGHT } from '../../styling/mixin/field'
 import { vars } from '../../styling/themes/contract.css'
 
 export const container = style({
@@ -9,12 +9,13 @@ export const container = style({
   minWidth: 0,
 })
 
-/** Телефон: кнопка под полем во всю ширину; с `sm` - в одну строку с ним. */
+/**
+ * Поле и иконочная кнопка в одну строку на любой ширине. `flex-start`: под полем
+ * может появиться текст ошибки, и кнопка остаётся вровень с самим полем.
+ */
 export const inputRow = style({
-  ...flexColumn(8),
-  ...media({
-    sm: { flexDirection: 'row', alignItems: 'flex-start' },
-  }),
+  ...flexRow(8),
+  alignItems: 'flex-start',
 })
 
 export const input = style({
@@ -22,10 +23,11 @@ export const input = style({
   minWidth: 0,
 })
 
+/** Квадрат высотой с поле: `lg` у `IconButton` на 4px выше и выбивался бы из строки. */
 export const apply = style({
-  ...media({
-    sm: { flexShrink: 0 },
-  }),
+  flexShrink: 0,
+  width: rem(FIELD_HEIGHT),
+  height: rem(FIELD_HEIGHT),
 })
 
 export const appliedBox = style({
