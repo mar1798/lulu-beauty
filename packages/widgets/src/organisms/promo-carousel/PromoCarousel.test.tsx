@@ -112,21 +112,13 @@ describe('PromoCarousel', () => {
     expect(scrollTo).not.toHaveBeenCalled()
   })
 
-  it('кнопка паузы останавливает автопрокрутку', async () => {
-    vi.useFakeTimers({ shouldAdvanceTime: true })
+  it('кнопки паузы нет - карусель листается сама', () => {
+    renderWidget(<PromoCarousel {...feedPromoCarousel()} />)
 
-    renderWidget(<PromoCarousel {...feedPromoCarousel()} intervalMs={1000} />)
-    await userEvent.click(screen.getByRole('button', { name: 'Остановить прокрутку акций' }))
-
-    act(() => {
-      vi.advanceTimersByTime(5000)
-    })
-
-    expect(scrollTo).not.toHaveBeenCalled()
-    expect(screen.getByRole('button', { name: 'Запустить прокрутку акций' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /прокрутку акций/ })).toBeNull()
   })
 
-  it('одна акция - без точек и паузы', () => {
+  it('одна акция - без точек', () => {
     renderWidget(
       <PromoCarousel
         {...feedPromoCarousel()}

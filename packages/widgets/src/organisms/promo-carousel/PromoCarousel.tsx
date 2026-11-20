@@ -3,7 +3,6 @@ import { type FC, useCallback, useEffect, useRef, useState } from 'react'
 import { m, useInView, useReducedMotion } from 'motion/react'
 import type { IBasicStyling, IPromoCarouselProps } from '../../types'
 import { breakpoints } from '../../breakpoints'
-import { IconPause, IconPlay } from '../../svg/icons'
 import { AppLink } from '../../atoms/app-link'
 import {
   PROMO_CAROUSEL_INTERVAL_MS,
@@ -19,13 +18,13 @@ import * as styles from './PromoCarousel.css'
  * Листает не скрипт, а сам браузер: слайды лежат в ряду с `scroll-snap`, поэтому
  * свайп на телефоне нативный (инерция, остановка ровно на слайде), клавиатура и
  * колесо работают без кода, а до гидрации и при сбое чанка motion карусель
- * остаётся рабочей прокруткой. Скрипт делает три вещи: автопрокрутку, точки и
- * кнопку паузы.
+ * остаётся рабочей прокруткой. Скрипт делает две вещи: автопрокрутку и точки.
  *
- * Автопрокрутка стоит, пока на карусель наведена мышь, на ней стоит фокус, к ней
- * прикасаются, она вне экрана или её остановили кнопкой (WCAG 2.2.2: движущееся
- * дольше пяти секунд нужно уметь остановить). При `prefers-reduced-motion`
- * автопрокрутки нет вовсе, а листание мгновенное.
+ * Кнопки паузы нет - карусель всегда листается сама. Автопрокрутка только
+ * переждёт, пока на карусель наведена мышь, на ней стоит фокус, к ней
+ * прикасаются или она вне экрана: слайд не должен уезжать из-под курсора или
+ * пальца. При `prefers-reduced-motion` автопрокрутки нет вовсе, а листание
+ * мгновенное.
  *
  * Пропорции фиксированы и общие для всех слайдов (3:2 на телефоне, 3:1 с `md`,
  * как `BANNER_SPECS`), поэтому страница не прыгает ни при загрузке картинок, ни
@@ -54,11 +53,9 @@ export const PromoCarousel: FC<IPromoCarouselProps & IBasicStyling> = ({
   const [isHovered, setIsHovered] = useState(false)
   const [isFocused, setIsFocused] = useState(false)
   const [isTouching, setIsTouching] = useState(false)
-  /** Остановка кнопкой - выбор человека, он держится, пока тот не нажмёт ещё раз. */
-  const [isStopped, setIsStopped] = useState(false)
 
   const canAutoplay = count > 1 && !isReduced
-  const isPaused = isStopped || isHovered || isFocused || isTouching || !isInView
+  const isPaused = isHovered || isFocused || isTouching || !isInView
 
   const goTo = useCallback(
     (target: number): void => {
@@ -189,19 +186,6 @@ export const PromoCarousel: FC<IPromoCarouselProps & IBasicStyling> = ({
 
       {count > 1 && (
         <div className={styles.controls}>
-          {canAutoplay && (
-            <button
-              type="button"
-              className={styles.control}
-              aria-label={isStopped ? 'Запустить прокрутку акций' : 'Остановить прокрутку акций'}
-              onClick={() => {
-                setIsStopped(current => !current)
-              }}
-            >
-              {isStopped ? <IconPlay /> : <IconPause />}
-            </button>
-          )}
-
           {slides.map((promotion, position) => {
             const isCurrent = position === index
 
@@ -221,7 +205,7 @@ export const PromoCarousel: FC<IPromoCarouselProps & IBasicStyling> = ({
                   initial={false}
                   animate={{
                     scaleX: isCurrent ? PROMO_DOT_ACTIVE_SCALE : 1,
-                    opacity: isCurrent ? 1 : 0.6,
+                    opacity: isCurrent ? 0.95 : 0.5,
                   }}
                   transition={isReduced ? { duration: 0 } : PROMO_DOT_TRANSITION}
                 />

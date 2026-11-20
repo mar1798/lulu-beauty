@@ -4,12 +4,30 @@ import { media } from '../../styling/lib/media'
 import { focusVisibleRing } from '../../styling/mixin'
 import { vars } from '../../styling/themes/contract.css'
 
-/** Рамка карусели; позиционирование - для плашки управления поверх баннера. */
+/**
+ * Рамка карусели; позиционирование - для точек поверх баннера.
+ *
+ * Тень и тонкая линия по краю отделяют любой слайд от страницы: баннер на светлом
+ * холсте иначе сливается с фоном каталога. Линия - внутренняя тень на `::after`
+ * поверх картинок (у самой рамки она ушла бы под них) и полупрозрачная, чтобы
+ * одинаково ложиться и на светлый, и на насыщенный баннер.
+ */
 export const container = style({
   position: 'relative',
   overflow: 'hidden',
   borderRadius: vars.radius.xxl,
   backgroundColor: color.surface('sunken'),
+  boxShadow: vars.shadow.sm,
+  selectors: {
+    '&::after': {
+      content: '""',
+      position: 'absolute',
+      inset: 0,
+      borderRadius: 'inherit',
+      boxShadow: 'inset 0 0 0 1px rgba(0, 0, 0, 0.08)',
+      pointerEvents: 'none',
+    },
+  },
 })
 
 /**
@@ -65,11 +83,13 @@ export const image = style({
 })
 
 /**
- * Плашка управления поверх баннера: полупрозрачная подложка, потому что баннер
- * под ней может быть любого цвета, а белые точки на светлом не читались бы.
+ * Точки поверх баннера на тонкой полупрозрачной подложке: баннер под ними может
+ * быть любого цвета, а белые точки на светлом без неё не читались бы. Подложка
+ * нарочно лёгкая - индикатор не должен спорить с баннером.
  */
 export const controls = style({
   position: 'absolute',
+  zIndex: 1,
   insetInline: 0,
   bottom: vars.space.sm,
   marginInline: 'auto',
@@ -77,22 +97,24 @@ export const controls = style({
   maxWidth: 'calc(100% - 24px)',
   display: 'flex',
   alignItems: 'center',
-  paddingInline: vars.space.xxs,
-  backgroundColor: 'rgba(0, 0, 0, 0.38)',
+  paddingInline: rem(4),
+  backgroundColor: 'rgba(0, 0, 0, 0.18)',
   borderRadius: vars.radius.pill,
-  backdropFilter: 'blur(6px)',
+  backdropFilter: 'blur(4px)',
 })
 
-/** Кнопка плашки - зона нажатия 44x44, как требует палец; видимый знак внутри мельче. */
+/**
+ * Кнопка-точка: зона нажатия 24x24 (минимум WCAG 2.5.8) - тоньше прежних 44, чтобы
+ * плашка не была толстой. Точки дублируют свайп, поэтому меньшая зона допустима.
+ */
 export const control = style([
   {
     display: 'inline-flex',
     alignItems: 'center',
     justifyContent: 'center',
-    minWidth: rem(44),
-    minHeight: rem(44),
+    minWidth: rem(20),
+    minHeight: rem(24),
     padding: 0,
-    fontSize: rem(18),
     color: '#ffffff',
     background: 'none',
     border: 0,
@@ -103,8 +125,8 @@ export const control = style([
 
 export const dot = style({
   display: 'block',
-  width: rem(8),
-  height: rem(8),
+  width: rem(6),
+  height: rem(6),
   borderRadius: vars.radius.circle,
   backgroundColor: '#ffffff',
 })

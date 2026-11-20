@@ -24,7 +24,7 @@ export const Mobile = Template.bind({})
 Mobile.parameters = { layout: 'fullscreen', viewport: { defaultViewport: 'mobile1' } }
 Mobile.args = Default.args
 
-/** Одна акция: ни точек, ни паузы, ни автопрокрутки. */
+/** Одна акция: ни точек, ни автопрокрутки. */
 export const Single = Template.bind({})
 Single.parameters = Default.parameters
 Single.args = { ...feedPromoCarousel(), promotions: feedPromoCarousel().promotions.slice(0, 1) }

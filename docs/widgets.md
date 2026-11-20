@@ -94,11 +94,13 @@ Storefront:
 
 - `PromoCarousel` (organism) — one banner per slide, **a slide is 100% of the width on every
   screen**. The browser does the scrolling (`scroll-snap`, so a swipe is native and works
-  before hydration); `motion` only moves the dots (`scaleX`). Autoplay stops on hover, focus,
-  touch, off-screen, and by the pause button, and does not exist under
-  `prefers-reduced-motion`. A slide uses `<picture>`: the desktop banner from `md` up when
-  there is one, otherwise the mobile one, cropped (`cover`). Ratios are fixed so the layout
-  does not jump: 3:2 on a phone, 3:1 from `md`. It goes into `CatalogTemplate`'s optional
+  before hydration); `motion` only moves the dots (`scaleX`). **There is no pause button** —
+  the carousel always plays; autoplay only waits while it is hovered, focused, touched or
+  off-screen, and does not exist under `prefers-reduced-motion`. The frame has a soft shadow
+  and a translucent inset hairline (`::after`), so a light banner does not melt into the page;
+  the dots are 6px on a thin, light pill, with 20×24 hit areas. A slide uses `<picture>`: the
+  desktop banner from `md` up when there is one, otherwise the mobile one, cropped (`cover`).
+  Ratios are fixed so the layout does not jump: 3:2 on a phone, 3:1 from `md`. It goes into `CatalogTemplate`'s optional
   **`banner`** slot.
 - `PromotionDetails` (organism) — a promotion's page: banner, term, the owner's text
   (`RichText`), conditions and rewards in words.
@@ -140,7 +142,7 @@ Admin:
 ratios, so a banner the form previews is the one the visitor sees. Accepted files: JPEG, PNG,
 WebP, up to 15 MB (`BANNER_ALLOWED_TYPES`, `BANNER_MAX_BYTES`, mirroring the API).
 
-Smaller additions: icons `IconCopy`, `IconUsers`, `IconGift`, `IconPause`, `IconPlay`;
+Smaller additions: icons `IconCopy`, `IconUsers`, `IconGift`, `IconPause`, `IconPlay` (the last two no longer used by the carousel);
 `Input` takes `type="date"`; shared timings for the carousel in `utils/motion.ts`; types
 `IPromotion`, `IPublicPromotion`, `IPromoCode`, `IPromoCodeCheck`, `IOrderPromotion`, `IOrderGift`, `ICartGift`,
 `IPromotionCondition`/`IPromotionReward` and friends in `types.ts`; `IAdminChecklist` has
