@@ -13,9 +13,11 @@ from app.promotions.rules import (
     GiftReward,
     PromoCodeReward,
     PromotionRules,
+    RewardType,
     Target,
     dump_conditions,
     dump_rewards,
+    load_code_rewards,
     load_conditions,
     load_rewards,
     promo_code_expiry,
@@ -113,6 +115,28 @@ def test_gift_image_must_come_from_the_shop_storage() -> None:
         GiftReward.model_validate({"type": "GIFT", "gift": "CUSTOM", "imageUrl": url}).image_url
         == url
     )
+
+
+def test_stored_gift_images_stay_readable_after_the_base_url_changes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    raw = [
+        {
+            "type": "GIFT",
+            "gift": "CUSTOM",
+            "imageUrl": f"{settings.public_files_base_url}/box.webp",
+        }
+    ]
+    assert load_rewards(raw)[0].type is RewardType.GIFT
+    monkeypatch.setattr(settings, "public_files_base_url", "https://new.example/files")
+    # Stored rules and snapshots are read back as they were saved...
+    assert load_rewards(raw)[0].type is RewardType.GIFT
+    assert load_code_rewards(raw)[0].type is RewardType.GIFT
+    # ...while a write with the old host is now refused.
+    with pytest.raises(ValidationError):
+        GiftReward.model_validate(raw[0])
+    with pytest.raises(ValidationError):
+        PromotionWriteRequest.model_validate(_request(rewards=raw))
 
 
 def test_only_one_promo_code_per_promotion() -> None:

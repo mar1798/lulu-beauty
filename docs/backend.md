@@ -322,6 +322,8 @@ Rules and meaning: [domain.md](domain.md#promotions). What lives where in
 `app/common/uploads.py` (`read_image`, `read_within`) is the shared way an upload is read and
 re-encoded; catalogue photos, banners and gift pictures all go through it.
 
+API responses carrying rewards must be built from the model instances `load_*` returns, never from raw dicts: response validation runs without the trusted context.
+
 **Tables** (migrations `310c104e5d85_add_promotions` and `5b1d7c93a0e4_order_promotions_scopes`,
 both expanding: new tables and a column with a default or nullable):
 
@@ -362,7 +364,10 @@ than a relationship, which would go stale inside the transaction.
 - `POST /admin/promotions/gift-image` — stores a picture for a free gift and returns `{url}`.
   **Writes nothing to the database**: the form holds a gift as a row before the promotion
   exists, and the address goes into `GIFT.imageUrl` on save, where only our own storage is
-  accepted. An abandoned picture stays in storage.
+  accepted. That host check is **write-time only**: stored rules and the order / promo-code
+  snapshots are read through `load_*` with a `trusted` validation context that skips it, so
+  changing `PUBLIC_FILES_BASE_URL` later does not make saved promotions unreadable. An abandoned
+  picture stays in storage.
 - `GET /admin/promotions/{id}/participants` — who took part (live and released), through which
   order and status, and what they were promised (the snapshot).
 - `GET /admin/orders/{id}`, `GET /admin/orders` rows and the customer's own order responses

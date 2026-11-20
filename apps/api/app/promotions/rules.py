@@ -21,6 +21,7 @@ from pydantic import (
     AwareDatetime,
     Field,
     TypeAdapter,
+    ValidationInfo,
     field_validator,
     model_validator,
 )
@@ -190,9 +191,12 @@ class GiftReward(CamelModel):
 
     @field_validator("image_url")
     @classmethod
-    def _own_storage_only(cls, value: str | None) -> str | None:
-        if value is None:
-            return None
+    def _own_storage_only(cls, value: str | None, info: ValidationInfo) -> str | None:
+        # A write-time rule only. Stored rules and snapshots are read with the `trusted`
+        # context (`load_*`): the base URL may change after a gift was saved, and stored
+        # data must stay readable then.
+        if value is None or (info.context or {}).get("trusted"):
+            return value
         if not value.startswith(f"{settings.public_files_base_url.rstrip('/')}/"):
             raise ValueError("картинка подарка должна быть загружена в магазин")
         return value
@@ -262,21 +266,25 @@ _conditions_adapter: TypeAdapter[list[Condition]] = TypeAdapter(list[Condition])
 _rewards_adapter: TypeAdapter[list[Reward]] = TypeAdapter(list[Reward])
 _code_rewards_adapter: TypeAdapter[list[CodeReward]] = TypeAdapter(list[CodeReward])
 
+# Validation context for reading what is already stored: skips the write-time-only checks.
+# Responses with rewards: build from load_* instances, not raw dicts (no trusted context there).
+_TRUSTED = {"trusted": True}
+
 AnyCondition = SubtotalCondition | QuantityCondition | ContainsCondition
 AnyReward = DiscountReward | GiftReward | PromoCodeReward
 AnyCodeReward = DiscountReward | GiftReward
 
 
 def load_conditions(raw: Any) -> list[AnyCondition]:
-    return _conditions_adapter.validate_python(raw or [])
+    return _conditions_adapter.validate_python(raw or [], context=_TRUSTED)
 
 
 def load_rewards(raw: Any) -> list[AnyReward]:
-    return _rewards_adapter.validate_python(raw or [])
+    return _rewards_adapter.validate_python(raw or [], context=_TRUSTED)
 
 
 def load_code_rewards(raw: Any) -> list[AnyCodeReward]:
-    return _code_rewards_adapter.validate_python(raw or [])
+    return _code_rewards_adapter.validate_python(raw or [], context=_TRUSTED)
 
 
 def dump_conditions(conditions: list[AnyCondition]) -> list[dict[str, Any]]:
