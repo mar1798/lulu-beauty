@@ -53,4 +53,35 @@ describe('PromotionBannerField', () => {
     rerender(<PromotionBannerField {...feedPromotionBannerField()} url={null} />)
     expect(screen.queryByRole('button', { name: 'Убрать баннер' })).toBeNull()
   })
+
+  it('кнопка выбора стоит в рамке и отдаёт подходящий файл', async () => {
+    const onSelect = vi.fn()
+
+    renderWidget(
+      <PromotionBannerField {...feedPromotionBannerField()} url={null} onSelect={onSelect} />
+    )
+
+    const file = new File(['x'], 'banner.png', { type: 'image/png' })
+
+    expect(screen.getByRole('button', { name: 'Выбрать файл' })).toBeInTheDocument()
+    await userEvent.upload(screen.getByLabelText(/баннер$/), file)
+
+    expect(onSelect).toHaveBeenCalledWith(file)
+  })
+
+  it('неподходящий формат не уходит наверх, ошибка под рамкой', async () => {
+    const onSelect = vi.fn()
+
+    renderWidget(
+      <PromotionBannerField {...feedPromotionBannerField()} url={null} onSelect={onSelect} />
+    )
+    await userEvent.upload(
+      screen.getByLabelText(/баннер$/),
+      new File(['x'], 'banner.gif', { type: 'image/gif' }),
+      { applyAccept: false }
+    )
+
+    expect(onSelect).not.toHaveBeenCalled()
+    expect(screen.getByRole('alert')).toHaveTextContent('Подойдёт JPG, PNG или WebP')
+  })
 })

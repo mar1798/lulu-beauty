@@ -147,7 +147,8 @@ Admin:
 - `AdminPromotionParticipantsDialog` — who joined, through which order, what they got;
   released participations stay, marked. A table (cards below `md`) with `Pagination` under it.
 - `PromotionBannerField` (molecule) — a file slot that states the recommended size and previews
-  the frame in the right ratio.
+  the frame in the right ratio. No drag-and-drop: the «Выбрать файл» / «Заменить» button sits
+  inside the frame itself, and the type and size are checked there before `onSelect`.
 
 **`BANNER_SPECS`** (`utils/promotion.ts`) is the one place the banner sizes are written: mobile
 **1080×720 (3:2)**, desktop **1920×640 (3:1)**. The carousel and the details page keep the same
