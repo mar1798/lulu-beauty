@@ -3139,8 +3139,13 @@ export interface IAdminPromotionParticipantsDialogProps {
   isOpen: boolean
   onClose: () => void
   promotionTitle: string
-  /** `null` — список ещё грузится. */
+  /** Текущая страница участников; `null` — она ещё грузится. */
   participants: IPromotionParticipant[] | null
+  /** Пагинация — из конверта `IPage`: страница с 1, размер и всего участников. */
+  page: number
+  pageSize: number
+  total: number
+  onPageChange: (page: number) => void
   error?: string | null
   buildOrderHref: (orderId: string) => string
 }

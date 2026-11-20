@@ -277,7 +277,7 @@ promotions, gifts and hints). It is `PromoCodeField`, driven by `usePromoCode`.
   the names of products already chosen (the promotion stores ids only; names are read with
   one `GET /admin/products/{id}` each, since there is no "products by ids" endpoint).
 - `usePromotionParticipants` (admin) — the «Участники» dialog, shared by the list and the
-  card; reloaded on every open.
+  card; reloaded on every open, paged by 20 and back to page 1 each time.
 
 **Data layer.** `services/endpoints/promotions.ts` holds the admin calls, the public
 `listPublicPromotions`/`getPublicPromotion` (also used by `sitemap.xml`) and

@@ -84,8 +84,14 @@ export const removePromotionBanner = (
     query: { variant },
   })
 
-export const listPromotionParticipants = (promotionId: string): Promise<IPromotionParticipant[]> =>
-  api.get(`/admin/promotions/${encodeURIComponent(promotionId)}/participants`)
+export const listPromotionParticipants = (
+  promotionId: string,
+  page: number,
+  pageSize: number
+): Promise<IPage<IPromotionParticipant>> =>
+  api.get(`/admin/promotions/${encodeURIComponent(promotionId)}/participants`, {
+    query: { page, pageSize },
+  })
 
 /**
  * Картинка свободного подарка. Акция может быть ещё не сохранена, поэтому

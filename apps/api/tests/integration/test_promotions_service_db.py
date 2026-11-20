@@ -321,8 +321,22 @@ async def test_participant_counts_skip_released(db_session: AsyncSession) -> Non
     await db_session.flush()
 
     assert await service.participant_counts([promotion.id]) == {promotion.id: 1}
-    participants = await service.participants(promotion.id)
-    assert len(participants) == 2
+    participants, total = await service.participants(promotion.id)
+    assert (len(participants), total) == (2, 2)
+
+
+async def test_participants_are_paginated(db_session: AsyncSession) -> None:
+    service = PromotionsService(db_session)
+    promotion = await service.create(_draft())
+    for _ in range(3):
+        await _join(db_session, promotion)
+
+    first, total = await service.participants(promotion.id, page=1, page_size=2)
+    second, _ = await service.participants(promotion.id, page=2, page_size=2)
+
+    assert total == 3
+    assert (len(first), len(second)) == (2, 1)
+    assert not {row.participation.id for row in first} & {row.participation.id for row in second}
 
 
 async def test_once_per_customer_is_held_by_the_database(db_session: AsyncSession) -> None:

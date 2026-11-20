@@ -136,7 +136,7 @@ Admin:
 - `PromotionProductSearch` — a thin wrapper over `ProductPicker`; the search itself is a
   callback (`searchProducts`) from the page, so the widget has no data fetching.
 - `AdminPromotionParticipantsDialog` — who joined, through which order, what they got;
-  released participations stay, marked.
+  released participations stay, marked. A table (cards below `md`) with `Pagination` under it.
 - `PromotionBannerField` (molecule) — a file slot that states the recommended size and previews
   the frame in the right ratio.
 

@@ -252,19 +252,37 @@ class PromotionsService:
         await self._session.flush()
         return promotion, previous
 
-    async def participants(self, promotion_id: uuid.UUID) -> list[Participant]:
+    async def participants(
+        self, promotion_id: uuid.UUID, page: int = 1, page_size: int = 20
+    ) -> tuple[list[Participant], int]:
+        """One page of participations, newest first, and how many there are in all.
+
+        Paginated because nothing bounds it: "no cap on participants" means a popular
+        promotion collects one row per customer, and the dialog would otherwise load
+        every one of them to show the first screen.
+        """
         await self.get(promotion_id)
+        total = (
+            await self._session.scalar(
+                select(func.count())
+                .select_from(OrderPromotion)
+                .where(OrderPromotion.promotion_id == promotion_id)
+            )
+            or 0
+        )
         rows = await self._session.execute(
             select(OrderPromotion, Order, User)
             .join(Order, Order.id == OrderPromotion.order_id)
             .join(User, User.id == OrderPromotion.user_id)
             .where(OrderPromotion.promotion_id == promotion_id)
             .order_by(OrderPromotion.created_at.desc(), OrderPromotion.id)
+            .offset((page - 1) * page_size)
+            .limit(page_size)
         )
         return [
             Participant(participation=participation, order=order, user=user)
             for participation, order, user in rows.tuples()
-        ]
+        ], total
 
     # --- internals ----------------------------------------------------------------------
 

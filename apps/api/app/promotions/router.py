@@ -14,6 +14,7 @@ from fastapi import (
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import CurrentUser, require_super_admin
+from app.common.schemas import PageResponse
 from app.common.uploads import read_image
 from app.db import get_session
 from app.promotions.models import Promotion, promotion_status
@@ -315,28 +316,37 @@ async def remove_promotion_banner(
 
 @router.get(
     "/admin/promotions/{promotion_id}/participants",
-    response_model=list[PromotionParticipantResponse],
+    response_model=PageResponse[PromotionParticipantResponse],
 )
 async def list_promotion_participants(
     promotion_id: uuid.UUID,
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=20, ge=1, le=100, alias="pageSize"),
     session: AsyncSession = Depends(get_session),
     _admin: CurrentUser = Depends(require_super_admin),
-) -> list[PromotionParticipantResponse]:
+) -> PageResponse[PromotionParticipantResponse]:
     try:
-        participants = await PromotionsService(session).participants(promotion_id)
+        participants, total = await PromotionsService(session).participants(
+            promotion_id, page, page_size
+        )
     except PromotionNotFoundError as error:
         raise _write_error(error) from error
-    return [
-        PromotionParticipantResponse(
-            order_promotion_id=row.participation.id,
-            order_id=row.order.id,
-            user_id=row.user.id,
-            user_name=row.user.name,
-            order_status=row.order.status,
-            order_total_cents=row.order.total_cents,
-            rewards=load_rewards(row.participation.rewards),
-            released_at=row.participation.released_at,
-            created_at=row.participation.created_at,
-        )
-        for row in participants
-    ]
+    return PageResponse[PromotionParticipantResponse](
+        items=[
+            PromotionParticipantResponse(
+                order_promotion_id=row.participation.id,
+                order_id=row.order.id,
+                user_id=row.user.id,
+                user_name=row.user.name,
+                order_status=row.order.status,
+                order_total_cents=row.order.total_cents,
+                rewards=load_rewards(row.participation.rewards),
+                released_at=row.participation.released_at,
+                created_at=row.participation.created_at,
+            )
+            for row in participants
+        ],
+        total=total,
+        page=page,
+        page_size=page_size,
+    )

@@ -1815,6 +1815,10 @@ export const feedAdminPromotionParticipantsDialog = (): IAdminPromotionParticipa
     onClose: noop,
     promotionTitle: 'Весенняя распродажа',
     participants,
+    page: 1,
+    pageSize: 20,
+    total: 46,
+    onPageChange: noop,
     buildOrderHref: orderId => `/admin/orders?order=${orderId}`,
   }
 }

@@ -1,38 +1,57 @@
 import { style } from '@vanilla-extract/css'
-import { border, color, font } from '../../styling/lib'
+import { color, font } from '../../styling/lib'
 import { media } from '../../styling/lib/media'
 import { flexColumn, flexRow } from '../../styling/mixin'
-import { vars } from '../../styling/themes/contract.css'
+import {
+  tableCardBase,
+  tableCardBody,
+  tableCardCell,
+  tableCardHead,
+  tableCardRow,
+  tableHeadCell,
+  tableWrap,
+} from '../../styling/mixin/table'
 
-/** Mobile first: карточки друг под другом, внутри — всё в столбик, с переносом. */
-export const list = style({
-  ...flexColumn(12),
-  listStyle: 'none',
-  margin: 0,
-  padding: 0,
-})
+export const content = style(flexColumn(16))
 
-export const item = style({
-  ...flexColumn(6),
-  padding: vars.space.md,
-  backgroundColor: color.surface('muted'),
-  border: border(1, color.border('subtle')),
-  borderRadius: vars.radius.xl,
-})
+export const wrap = style(tableWrap())
+
+export const table = style(tableCardBase())
+
+export const head = style(tableCardHead())
+
+export const body = style(tableCardBody())
+
+export const row = style(tableCardRow())
 
 /** Снятое участие приглушено цветом текста, а не прозрачностью: контраст остаётся читаемым. */
-export const itemReleased = style({
-  backgroundColor: color.surface('base'),
+export const rowReleased = style({
+  color: color.text('muted'),
 })
 
-export const top = style({
+export const headCell = style(tableHeadCell())
+
+/** Суммы прижаты вправо: в столбце их сравнивают по разрядам. */
+export const headAmountCell = style([tableHeadCell(), { textAlign: 'right' }])
+
+export const cell = style(tableCardCell())
+
+export const amountCell = style([
+  tableCardCell(),
+  {
+    whiteSpace: 'nowrap',
+    ...media({ md: { textAlign: 'right' } }),
+  },
+])
+
+export const customer = style({
   ...flexRow(8),
   flexWrap: 'wrap',
   alignItems: 'center',
 })
 
 export const name = style({
-  font: font('16/24', 600),
+  font: font('15/22', 600),
   color: color.text('primary'),
   overflowWrap: 'anywhere',
 })
@@ -49,6 +68,7 @@ export const orderLink = style({
   minHeight: '44px',
   display: 'inline-flex',
   alignItems: 'center',
+  whiteSpace: 'nowrap',
 })
 
 export const rewards = style({
@@ -57,8 +77,9 @@ export const rewards = style({
 })
 
 export const date = style({
-  font: font('12/18'),
+  font: font('13/20'),
   color: color.text('muted'),
+  whiteSpace: 'nowrap',
 })
 
 export const footer = style({

@@ -116,7 +116,7 @@ async def test_stored_gift_images_are_readable_after_the_base_url_changes(
         assert (await client.get(f"/admin/promotions/{promotion_id}")).status_code == 200
         participants = await client.get(f"/admin/promotions/{promotion_id}/participants")
         assert participants.status_code == 200, participants.text
-        assert len(participants.json()) == 2
+        assert len(participants.json()["items"]) == 2
 
         _as(pending_buyer_id, Role.CUSTOMER)
         mine = await client.get(f"/orders/{pending_id}")

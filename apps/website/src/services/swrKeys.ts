@@ -181,8 +181,8 @@ export const isAdminPromotionsKey = (key: unknown): boolean =>
 
 export const adminPromotionKey = (id: string) => ['admin-promotion', id] as const
 
-export const adminPromotionParticipantsKey = (id: string) =>
-  ['admin-promotion-participants', id] as const
+export const adminPromotionParticipantsKey = (id: string, page: number) =>
+  ['admin-promotion-participants', id, page] as const
 
 /**
  * Названия товаров, на которые ссылается акция: в ней лежат только id. Ключ —

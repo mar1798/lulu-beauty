@@ -370,8 +370,9 @@ than a relationship, which would go stale inside the transaction.
   snapshots are read through `load_*` with a `trusted` validation context that skips it, so
   changing `PUBLIC_FILES_BASE_URL` later does not make saved promotions unreadable. An abandoned
   picture stays in storage.
-- `GET /admin/promotions/{id}/participants` — who took part (live and released), through which
-  order and status, and what they were promised (the snapshot).
+- `GET /admin/promotions/{id}/participants?page=&pageSize=` — who took part (live and
+  released), through which order and status, and what they were promised (the snapshot).
+  A `PageResponse` (newest first, `pageSize` ≤ 100): participants are uncapped.
 - `GET /admin/orders/{id}`, `GET /admin/orders` rows and the customer's own order responses
   carry the new fields below.
 

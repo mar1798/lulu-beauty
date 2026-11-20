@@ -1,5 +1,6 @@
 import { screen } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
+import userEvent from '@testing-library/user-event'
+import { describe, expect, it, vi } from 'vitest'
 import { AdminPromotionParticipantsDialog } from '.'
 import { feedAdminPromotionParticipantsDialog } from '../../stories/feed'
 import { renderWidget } from '../../testing/render'
@@ -11,6 +12,35 @@ describe('AdminPromotionParticipantsDialog', () => {
     expect(screen.getByText('Айгуль')).toBeInTheDocument()
     expect(screen.getByText('Нурзат')).toBeInTheDocument()
     expect(screen.getByText('Снято')).toBeInTheDocument()
+  })
+
+  it('участники - строками таблицы', () => {
+    renderWidget(<AdminPromotionParticipantsDialog {...feedAdminPromotionParticipantsDialog()} />)
+
+    expect(screen.getByRole('table')).toBeInTheDocument()
+    expect(screen.getByRole('columnheader', { name: 'Покупатель' })).toBeInTheDocument()
+  })
+
+  it('листает страницы, когда участников больше одной страницы', async () => {
+    const onPageChange = vi.fn()
+
+    renderWidget(
+      <AdminPromotionParticipantsDialog
+        {...feedAdminPromotionParticipantsDialog()}
+        onPageChange={onPageChange}
+      />
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'Страница 2' }))
+
+    expect(onPageChange).toHaveBeenCalledWith(2)
+  })
+
+  it('на одной странице пагинации нет', () => {
+    renderWidget(
+      <AdminPromotionParticipantsDialog {...feedAdminPromotionParticipantsDialog()} total={2} />
+    )
+
+    expect(screen.queryByRole('navigation')).toBeNull()
   })
 
   it('пока список грузится — скелетон, без «никто не участвовал»', () => {
