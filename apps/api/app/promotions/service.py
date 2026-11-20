@@ -9,8 +9,10 @@ import enum
 import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
+from zoneinfo import ZoneInfo
 
+from pydantic import ValidationError
 from sqlalchemy import ColumnElement, exists, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -19,13 +21,16 @@ from app.auth.models import User
 from app.catalog.models import Category, Product, ProductVariant
 from app.catalog.rich_text import description_from_html
 from app.catalog.service import UNIQUE_VIOLATION
+from app.config import settings
 from app.orders.models import Order
 from app.promotions.models import OrderPromotion, PromoCode, Promotion
 from app.promotions.rules import (
     AnyCondition,
     AnyReward,
+    PromoCodeReward,
     dump_conditions,
     dump_rewards,
+    load_rewards,
     referenced_ids,
 )
 
@@ -46,8 +51,35 @@ class PromotionEndsBeforeStartError(Exception):
     pass
 
 
+class PromotionCodeWindowPastError(Exception):
+    """A code template's fixed validity window has already ended: every code it issued would
+    be born expired."""
+
+
 class PromotionInvalidRulesError(Exception):
     """The rules name a product, category or variant the catalogue does not have live."""
+
+
+def _day(moment: datetime | None) -> date | None:
+    """The calendar day of a moment in the shop's timezone, which is how the dialog's
+    date fields count."""
+    return None if moment is None else moment.astimezone(ZoneInfo(settings.cycle_timezone)).date()
+
+
+def _stored_windows(current: Promotion | None) -> set[tuple[date | None, date | None]]:
+    """The fixed code windows a promotion already has stored, as shop-timezone days; none
+    for a new one or an unreadable snapshot (which then simply gives no pass)."""
+    if current is None:
+        return set()
+    try:
+        rewards = load_rewards(current.rewards)
+    except ValidationError:
+        return set()
+    return {
+        (_day(reward.valid_from), _day(reward.valid_until))
+        for reward in rewards
+        if isinstance(reward, PromoCodeReward)
+    }
 
 
 class BannerVariant(enum.StrEnum):
@@ -241,6 +273,20 @@ class PromotionsService:
             raise PromotionEndsBeforeStartError
         if (current is None or current.slug != draft.slug) and await self._slug_taken(draft.slug):
             raise PromotionSlugTakenError
+        # Only on write, like the references: a stored template whose window has since
+        # passed must still load (`load_rewards` does not know the clock). On an update only
+        # a window that is new or changed is refused, so an ended promotion's typo can still
+        # be fixed: a window passes when the same pair of shop-timezone days is stored.
+        now = datetime.now(UTC)
+        stored = _stored_windows(current)
+        for reward in draft.rewards:
+            if (
+                isinstance(reward, PromoCodeReward)
+                and reward.valid_until is not None
+                and reward.valid_until <= now
+                and (_day(reward.valid_from), _day(reward.valid_until)) not in stored
+            ):
+                raise PromotionCodeWindowPastError
         await self._check_references(draft)
 
     async def _check_references(self, draft: PromotionDraft) -> None:

@@ -13,6 +13,7 @@ from app.db import get_session
 from app.main import app
 from app.promotions.models import Promotion
 from app.promotions.service import (
+    PromotionCodeWindowPastError,
     PromotionEndsBeforeStartError,
     PromotionInvalidRulesError,
     PromotionNotFoundError,
@@ -100,6 +101,7 @@ async def test_list_derives_status_and_counts(owner: AsyncClient) -> None:
         (PromotionSlugTakenError(), 409, "promotion_slug_taken"),
         (PromotionEndsBeforeStartError(), 422, "promotion_ends_before_start"),
         (PromotionInvalidRulesError(), 409, "promotion_invalid_rules"),
+        (PromotionCodeWindowPastError(), 422, "promotion_code_window_past"),
     ],
 )
 async def test_create_refusals_are_codes(

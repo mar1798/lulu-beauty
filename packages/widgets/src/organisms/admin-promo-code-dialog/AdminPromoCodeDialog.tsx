@@ -12,7 +12,11 @@ import { Button } from '../../atoms/button'
 import { Input } from '../../atoms/input'
 import { Select } from '../../atoms/select'
 import { Text } from '../../atoms/text'
-import { buildPromoCode, MAX_PROMO_CODE_VALID_DAYS } from '../../utils/promotion'
+import {
+  buildPromoCode,
+  isNewPastCodeWindow,
+  MAX_PROMO_CODE_VALID_DAYS,
+} from '../../utils/promotion'
 import { Modal } from '../modal'
 import { PromotionConditionBuilder } from '../promotion-condition-builder'
 import { PromotionRewardBuilder } from '../promotion-reward-builder'
@@ -70,6 +74,12 @@ export const AdminPromoCodeDialog: FC<IAdminPromoCodeDialogProps & IBasicStyling
 
     if (built.value === null) {
       setError(built.error ?? 'Исправьте отмеченные поля: у некоторых строк есть ошибки')
+
+      return
+    }
+
+    if (isNewPastCodeWindow(draft, value)) {
+      setError('Срок действия промокода уже закончился - укажите дату в будущем')
 
       return
     }

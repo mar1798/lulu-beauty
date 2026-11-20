@@ -276,6 +276,7 @@ telegram_auth_invalid     telegram_webhook_forbidden
 unsupported_image_type    user_not_found            wishlist_full
 wishlist_item_not_found
 promotion_not_found       promotion_slug_taken      promotion_ends_before_start
+promotion_code_window_past
 promotion_invalid_rules   promo_code_not_found      promo_code_expired
 promo_code_not_yet_valid  promo_code_already_used   promo_code_conditions_not_met
 ```
@@ -389,17 +390,18 @@ too (a guest has joined nothing, so "once per customer" only shows after sign-in
 
 **Error codes**
 
-| Code                            | Status | Raised                                                                     |
-| ------------------------------- | ------ | -------------------------------------------------------------------------- |
-| `promotion_not_found`           | 404    | Unknown id/slug, or on the public read a promotion that is not running.    |
-| `promotion_slug_taken`          | 409    | Another promotion has the slug (a lost race at flush too).                 |
-| `promotion_ends_before_start`   | 422    | `endsAt` is not after `startsAt`.                                          |
-| `promotion_invalid_rules`       | 409    | A rule names a product, category or gift variant the catalogue lacks.      |
-| `promo_code_not_found`          | 404    | No such code, someone else's, or `REVOKED` — indistinguishable on purpose. |
-| `promo_code_expired`            | 409    |                                                                            |
-| `promo_code_not_yet_valid`      | 409    |                                                                            |
-| `promo_code_already_used`       | 409    | `USED`, or `RESERVED` by another order.                                    |
-| `promo_code_conditions_not_met` | 409    | Including an empty cart.                                                   |
+| Code                            | Status | Raised                                                                      |
+| ------------------------------- | ------ | --------------------------------------------------------------------------- |
+| `promotion_not_found`           | 404    | Unknown id/slug, or on the public read a promotion that is not running.     |
+| `promotion_slug_taken`          | 409    | Another promotion has the slug (a lost race at flush too).                  |
+| `promotion_ends_before_start`   | 422    | `endsAt` is not after `startsAt`.                                           |
+| `promotion_code_window_past`    | 422    | A promo-code reward's fixed window ended; on update only a new/changed one. |
+| `promotion_invalid_rules`       | 409    | A rule names a product, category or gift variant the catalogue lacks.       |
+| `promo_code_not_found`          | 404    | No such code, someone else's, or `REVOKED` — indistinguishable on purpose.  |
+| `promo_code_expired`            | 409    |                                                                             |
+| `promo_code_not_yet_valid`      | 409    |                                                                             |
+| `promo_code_already_used`       | 409    | `USED`, or `RESERVED` by another order.                                     |
+| `promo_code_conditions_not_met` | 409    | Including an empty cart.                                                    |
 
 Structural mistakes in the rules (an unknown type, a percent over 100, two `PROMO_CODE`
 rewards, a bad code term) are plain pydantic `422`s without a code. The website has Russian

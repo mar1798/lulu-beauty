@@ -1,6 +1,8 @@
 import uuid
 from collections.abc import Sequence
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
+from zoneinfo import ZoneInfo
 
 import pytest
 from sqlalchemy import select
@@ -16,11 +18,15 @@ from app.promotions.rules import (
     ContainsCondition,
     GiftKind,
     GiftReward,
+    PromoCodeReward,
     RewardType,
     Target,
+    dump_rewards,
+    load_rewards,
 )
 from app.promotions.service import (
     BannerVariant,
+    PromotionCodeWindowPastError,
     PromotionDraft,
     PromotionEndsBeforeStartError,
     PromotionInvalidRulesError,
@@ -123,6 +129,111 @@ async def test_an_update_may_keep_its_own_slug(db_session: AsyncSession) -> None
 async def test_window_must_end_after_it_starts(db_session: AsyncSession) -> None:
     with pytest.raises(PromotionEndsBeforeStartError):
         await PromotionsService(db_session).create(_draft(ends_at=NOW - timedelta(days=1)))
+
+
+def _code_window(valid_from: datetime, valid_until: datetime) -> PromoCodeReward:
+    return PromoCodeReward(
+        type=RewardType.PROMO_CODE,
+        valid_from=valid_from,
+        valid_until=valid_until,
+        rewards=[MYSTERY],
+    )
+
+
+async def test_a_code_template_whose_window_has_ended_is_refused(
+    db_session: AsyncSession,
+) -> None:
+    past = _code_window(NOW - timedelta(days=10), NOW - timedelta(days=1))
+    future = _code_window(NOW - timedelta(days=1), NOW + timedelta(days=5))
+    service = PromotionsService(db_session)
+
+    with pytest.raises(PromotionCodeWindowPastError):
+        await service.create(_draft(rewards=[past]))
+    with pytest.raises(PromotionCodeWindowPastError):
+        await service.create(_draft(rewards=[MYSTERY, past]))
+
+    promotion = await service.create(_draft(rewards=[future]))
+    with pytest.raises(PromotionCodeWindowPastError):
+        await service.update(promotion.id, _draft(rewards=[past]))
+    # Days, or a window that is still open, are fine on update too.
+    await service.update(promotion.id, _draft(rewards=[future]))
+
+
+async def test_an_unchanged_past_window_does_not_block_an_update(
+    db_session: AsyncSession,
+) -> None:
+    service = PromotionsService(db_session)
+    past = _code_window(NOW - timedelta(days=10), NOW - timedelta(days=1))
+    promotion = await service.create(
+        _draft(rewards=[_code_window(NOW - timedelta(days=1), NOW + timedelta(days=1))])
+    )
+    await db_session.execute(
+        Promotion.__table__.update()  # type: ignore[attr-defined]
+        .where(Promotion.id == promotion.id)
+        .values(rewards=dump_rewards([past]))
+    )
+    await db_session.flush()
+    await db_session.refresh(promotion)
+
+    # The same window, another title: saved.
+    updated = await service.update(
+        promotion.id, replace(_draft(rewards=[past]), title="Исправлено")
+    )
+    assert updated.title == "Исправлено"
+    # A different past window is a change, and refused.
+    other = _code_window(NOW - timedelta(days=20), NOW - timedelta(days=2))
+    with pytest.raises(PromotionCodeWindowPastError):
+        await service.update(promotion.id, _draft(rewards=[other]))
+
+
+async def test_a_stored_window_with_other_times_counts_as_unchanged_by_day(
+    db_session: AsyncSession,
+) -> None:
+    """The dialog writes 00:00 / 23:59 in the shop's timezone; a window stored with other
+    times, on the same days, is not a change when the form sends it back."""
+    service = PromotionsService(db_session)
+    bishkek = ZoneInfo("Asia/Bishkek")
+    day = (NOW - timedelta(days=10)).astimezone(bishkek).replace(hour=0, minute=0, second=0)
+    stored = _code_window(day.replace(hour=9, minute=30), day.replace(hour=14, minute=15))
+    sent = _code_window(day, day.replace(hour=23, minute=59))
+    promotion = await service.create(
+        _draft(rewards=[_code_window(NOW - timedelta(days=1), NOW + timedelta(days=1))])
+    )
+    await db_session.execute(
+        Promotion.__table__.update()  # type: ignore[attr-defined]
+        .where(Promotion.id == promotion.id)
+        .values(rewards=dump_rewards([stored]))
+    )
+    await db_session.flush()
+    await db_session.refresh(promotion)
+
+    updated = await service.update(promotion.id, replace(_draft(rewards=[sent]), title="Опечатка"))
+    assert updated.title == "Опечатка"
+    next_day = _code_window(day + timedelta(days=1), day + timedelta(days=1, hours=23))
+    with pytest.raises(PromotionCodeWindowPastError):
+        await service.update(promotion.id, _draft(rewards=[next_day]))
+
+
+async def test_a_stored_past_window_still_reads(db_session: AsyncSession) -> None:
+    """The check is a write-time one: a template that ran out since is read as before."""
+    service = PromotionsService(db_session)
+    promotion = await service.create(
+        _draft(rewards=[_code_window(NOW - timedelta(days=1), NOW + timedelta(days=1))])
+    )
+    past = _code_window(NOW - timedelta(days=10), NOW - timedelta(days=1))
+    await db_session.execute(
+        Promotion.__table__.update()  # type: ignore[attr-defined]
+        .where(Promotion.id == promotion.id)
+        .values(rewards=dump_rewards([past]))
+    )
+    await db_session.flush()
+    await db_session.refresh(promotion)
+
+    stored = await service.get(promotion.id)
+    [reward] = load_rewards(stored.rewards)
+    assert isinstance(reward, PromoCodeReward) and reward.valid_until is not None
+    assert reward.valid_until < datetime.now(UTC)
+    assert [p.id for p in await service.list_all()] == [promotion.id]
 
 
 async def test_rules_must_name_what_the_catalogue_sells(db_session: AsyncSession) -> None:

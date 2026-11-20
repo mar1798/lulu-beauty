@@ -1010,7 +1010,10 @@ A reference to a product or category that has since gone does not break the prom
 — it just stops matching. Only a write checks the ids exist (`409 promotion_invalid_rules`:
 live products, existing categories, a gift variant that is still on sale). Structural errors
 (unknown type, a percent above 100, two `PROMO_CODE` rewards, a bad code term) are an ordinary
-`422` from pydantic. Limits are in `app/common/limits.py` (`MAX_PROMOTION_CONDITIONS`,
+`422` from pydantic. A `PROMO_CODE` template whose fixed window has already ended is refused on
+write (`422 promotion_code_window_past`): on create always, on update only for a window that is
+new or changed against what the promotion stores (compared as days in the shop timezone, like the dialog), so an ended promotion's other fields stay
+editable. Reads never check it. Limits are in `app/common/limits.py` (`MAX_PROMOTION_CONDITIONS`,
 `MAX_PROMOTION_REWARDS`, `MAX_PROMOTION_TARGET_ENTRIES`, `MAX_GIFT_QUANTITY`,
 `MAX_PROMO_CODE_VALID_DAYS`).
 

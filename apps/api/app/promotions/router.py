@@ -28,6 +28,7 @@ from app.promotions.schemas import (
 )
 from app.promotions.service import (
     BannerVariant,
+    PromotionCodeWindowPastError,
     PromotionDraft,
     PromotionEndsBeforeStartError,
     PromotionInvalidRulesError,
@@ -108,6 +109,8 @@ def _write_error(error: Exception) -> HTTPException:
         return HTTPException(status.HTTP_409_CONFLICT, "promotion_slug_taken")
     if isinstance(error, PromotionEndsBeforeStartError):
         return HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "promotion_ends_before_start")
+    if isinstance(error, PromotionCodeWindowPastError):
+        return HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "promotion_code_window_past")
     assert isinstance(error, PromotionInvalidRulesError)
     return HTTPException(status.HTTP_409_CONFLICT, "promotion_invalid_rules")
 
@@ -115,6 +118,7 @@ def _write_error(error: Exception) -> HTTPException:
 _WRITE_ERRORS = (
     PromotionNotFoundError,
     PromotionSlugTakenError,
+    PromotionCodeWindowPastError,
     PromotionEndsBeforeStartError,
     PromotionInvalidRulesError,
 )

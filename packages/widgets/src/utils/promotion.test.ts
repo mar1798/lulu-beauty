@@ -3,6 +3,7 @@ import type { IPromotionReward } from '../types'
 import {
   buildConditions,
   buildPromoCode,
+  isNewPastCodeWindow,
   buildRewards,
   conditionToDraft,
   describeRewards,
@@ -161,12 +162,24 @@ describe('промокод', () => {
 
     const built = buildPromoCode({
       ...base,
-      validFromDate: '2026-05-01',
-      validUntilDate: '2026-05-31',
+      validFromDate: '2099-05-01',
+      validUntilDate: '2099-05-31',
     })
 
     expect(built.value?.validDays).toBeNull()
     expect(built.value?.validFrom).not.toBeNull()
+  })
+
+  it('новое окно в прошлом отклоняется, нетронутое - нет', () => {
+    const dates = { ...newPromoCodeDraft(), validity: 'DATES' as const }
+    const past = { ...dates, validFromDate: '2020-05-01', validUntilDate: '2020-05-31' }
+    const future = { ...dates, validFromDate: '2099-05-01', validUntilDate: '2099-05-31' }
+
+    expect(isNewPastCodeWindow(past, newPromoCodeDraft())).toBe(true)
+    expect(isNewPastCodeWindow(past, future)).toBe(true)
+    expect(isNewPastCodeWindow(past, past)).toBe(false)
+    expect(isNewPastCodeWindow(future, past)).toBe(false)
+    expect(isNewPastCodeWindow({ ...past, validity: 'DAYS' }, past)).toBe(false)
   })
 
   it('внутри промокода промокода быть не может', () => {

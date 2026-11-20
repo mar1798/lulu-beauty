@@ -472,6 +472,25 @@ const codeRewardsFrom = (drafts: IPromotionRewardDraft[]): IBuiltList<IPromotion
   return { value, errors }
 }
 
+/**
+ * Окно промокода уже закончилось, и это новое окно: в окне настроек оно не такое, каким
+ * открылось. Как и на сервере, прошедшее окно, которое не трогали, не мешает сохранить
+ * остальное (опечатку в названии акции, например). Только для окна настроек: общая
+ * проверка формы (`buildPromoCode`) сроков не знает, какими они были.
+ */
+export const isNewPastCodeWindow = (draft: IPromoCodeDraft, initial: IPromoCodeDraft): boolean => {
+  if (draft.validity !== 'DATES' || draft.validUntilDate === '') {
+    return false
+  }
+
+  const isChanged =
+    initial.validity !== 'DATES' ||
+    initial.validFromDate !== draft.validFromDate ||
+    initial.validUntilDate !== draft.validUntilDate
+
+  return isChanged && Date.parse(storeIso(draft.validUntilDate, '23:59')) <= Date.now()
+}
+
 /** Настройки промокода: срок, условия, награды — или первая найденная ошибка. */
 export const buildPromoCode = (
   draft: IPromoCodeDraft
