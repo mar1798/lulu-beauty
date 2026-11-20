@@ -26,8 +26,10 @@ export const cartKey = (userId: string) => ['cart', userId] as const
  * поэтому `isCartKey` и `isLiveStateKey` перечитывают и её: закрывшийся сбор гостю
  * нужно показать так же, как и покупателю. С id не пересекается: id — это UUID.
  *
- * В ключе — набор объёмов, а не количества: предпросмотр нужен заново, только когда
- * в корзине появился или пропал товар, а `−`/`+` гостя считаются на месте.
+ * В ключе — объёмы **с количествами**: от них зависят акции (порог суммы или штук
+ * пересекается нажатием «+»), поэтому предпросмотр читается заново на каждое
+ * изменение. Строки и итог при этом считаются на месте, не дожидаясь ответа
+ * (`keepPreviousData`), а блок акций обновляется, когда ответ придёт.
  */
 export const guestCartKey = (variantIds: string) => ['cart', 'guest', variantIds] as const
 
@@ -166,3 +168,37 @@ export const searchSuggestKey = (q: string) => ['search-suggest', q] as const
 /** Инвалидация всех вариантов фильтров/страниц списка админ-товаров разом. */
 export const isAdminProductsKey = (key: unknown): boolean =>
   Array.isArray(key) && key[0] === ADMIN_PRODUCTS_TAG
+
+export const ADMIN_PROMOTIONS_TAG = 'admin-promotions'
+
+/** Список акций — с архивными или без, это разные выборки. */
+export const adminPromotionsKey = (includeDeleted: boolean) =>
+  [ADMIN_PROMOTIONS_TAG, includeDeleted] as const
+
+/** Оба варианта списка разом — после создания, правки, включения и удаления. */
+export const isAdminPromotionsKey = (key: unknown): boolean =>
+  Array.isArray(key) && key[0] === ADMIN_PROMOTIONS_TAG
+
+export const adminPromotionKey = (id: string) => ['admin-promotion', id] as const
+
+export const adminPromotionParticipantsKey = (id: string) =>
+  ['admin-promotion-participants', id] as const
+
+/**
+ * Названия товаров, на которые ссылается акция: в ней лежат только id. Ключ —
+ * сами id, чтобы правка набора перечитывала названия, а повтор брался из кеша.
+ */
+export const adminPromotionProductLabelsKey = (ids: string) =>
+  ['admin-promotion-product-labels', ids] as const
+
+export const PROMO_CODES_TAG = 'promo-codes'
+
+/** Свои промокоды: с `userId`, как корзина, - ответ про конкретного человека. */
+export const promoCodesKey = (userId: string) => [PROMO_CODES_TAG, userId] as const
+
+/**
+ * Любые промокоды: после оформления код уходит в резерв, после оплаты выдаются
+ * новые, так что страница «Промокоды» и подсказки на оформлении устаревают разом.
+ */
+export const isPromoCodesKey = (key: unknown): boolean =>
+  Array.isArray(key) && key[0] === PROMO_CODES_TAG

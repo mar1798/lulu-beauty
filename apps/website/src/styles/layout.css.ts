@@ -1,5 +1,5 @@
 import { style } from '@vanilla-extract/css'
-import { rem } from 'widgets/styling/lib'
+import { media, rem } from 'widgets/styling/lib'
 import { flexRow, focusVisibleRing } from 'widgets/styling/mixin'
 import { vars } from 'widgets/styling/theme'
 
@@ -72,4 +72,17 @@ export const alertLink = style([
 export const flushPicker = style({
   padding: 0,
   backgroundColor: 'transparent',
+})
+
+/**
+ * Карточки промокодов: на телефоне одна колонка во всю ширину, с `md` - две.
+ * Длинный код и условия переносятся внутри карточки, а не растягивают сетку (`minmax(0, 1fr)`).
+ */
+export const promoCodeGrid = style({
+  display: 'grid',
+  gridTemplateColumns: 'minmax(0, 1fr)',
+  gap: vars.space.md,
+  ...media({
+    md: { gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: vars.space.lg },
+  }),
 })

@@ -1,5 +1,6 @@
 import type { GetServerSideProps } from 'next'
 import { listProducts } from '@/services/endpoints/catalog'
+import { listPublicPromotions } from '@/services/endpoints/promotions'
 import { publicConfig } from '@/сonfig'
 
 /**
@@ -19,6 +20,8 @@ import { publicConfig } from '@/сonfig'
  * жива и отвечает 200, а вычеркнуть адрес из карты — сказать поисковику, что
  * его больше нет (`SEO_PLAN.md`, задача 2.4). Уходят из неё только снятые
  * товары, которых нет и в самом каталоге.
+ *
+ * Страницы идущих акций (`/promotions/<slug>`) стоят между статикой и товарами.
  *
  * `<lastmod>` берётся из `updatedAt` товара — значения из базы, а не из даты
  * сборки: выдуманному `lastmod` Google перестаёт верить сразу по всей карте.
@@ -97,6 +100,27 @@ async function collectProductEntries(): Promise<ISitemapEntry[]> {
   return entries
 }
 
+/**
+ * Идущие сейчас акции. Только они: страница не начавшейся, закончившейся или
+ * выключенной акции отвечает 404, а в карте сайта такому адресу не место.
+ *
+ * Отказ списка акций карту не роняет, в отличие от каталога: акции - временная
+ * добавка, и поисковик, не увидевший их в этот раз, не примет их за снятые
+ * товары - он просто перечитает карту через час.
+ */
+async function collectPromotionEntries(): Promise<ISitemapEntry[]> {
+  try {
+    const promotions = await listPublicPromotions()
+
+    return promotions.map(promotion => ({
+      path: `/promotions/${promotion.slug}`,
+      // У акции нет собственной даты правки в публичной выдаче: честнее без `lastmod`.
+    }))
+  } catch {
+    return []
+  }
+}
+
 const XML_ESCAPES: Record<string, string> = {
   '&': '&amp;',
   '<': '&lt;',
@@ -151,7 +175,9 @@ export const getServerSideProps: GetServerSideProps = async ({ res }) => {
 
   res.setHeader('Content-Type', 'application/xml; charset=utf-8')
   res.setHeader('Cache-Control', CACHE_CONTROL)
-  res.end(buildSitemap([...STATIC_ENTRIES, ...productEntries]))
+  res.end(
+    buildSitemap([...STATIC_ENTRIES, ...(await collectPromotionEntries()), ...productEntries])
+  )
 
   return { props: {} }
 }

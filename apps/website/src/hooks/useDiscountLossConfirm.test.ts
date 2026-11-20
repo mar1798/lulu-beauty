@@ -1,6 +1,12 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { IOrder, IOrderItem } from 'widgets/types'
-import { discountLoss, linesOfVariants } from './useDiscountLossConfirm'
+import { previewMyOrderEdit } from '@/services/endpoints/orders'
+import {
+  discountLoss,
+  linesOfVariants,
+  lostPromotions,
+  promotionLoss,
+} from './useDiscountLossConfirm'
 
 /*
   Контексты и `widgets/utils` тянут за собой компоненты widgets, а их этот
@@ -9,6 +15,7 @@ import { discountLoss, linesOfVariants } from './useDiscountLossConfirm'
   заменяет простая копия, и проверяется только текст предупреждения.
 */
 vi.mock('widgets/contexts', () => ({ useConfirm: vi.fn() }))
+vi.mock('@/services/endpoints/orders', () => ({ previewMyOrderEdit: vi.fn() }))
 vi.mock('widgets/utils', () => {
   const label = (kind: string, value: number): string =>
     kind === 'PERCENT' ? `${value}%` : `${value / 100} сом`
@@ -59,6 +66,12 @@ const order = (overrides: Partial<IOrder> = {}): IOrder => ({
   totalCents: 200_000,
   subtotalCents: 200_000,
   revision: 1,
+  promotions: [],
+  gifts: [],
+  promoItemsDiscountCents: 0,
+  promoOrderDiscountCents: 0,
+  promoCode: null,
+  issuedPromoCodes: [],
   ...NO_DISCOUNT,
   note: null,
   createdAt: '2026-11-01T00:00:00Z',
@@ -104,5 +117,71 @@ describe('discountLoss', () => {
 describe('linesOfVariants', () => {
   it('находит строки, к которым прибавятся объёмы', () => {
     expect(linesOfVariants(order(), ['variant-b', 'variant-new'])).toEqual(['b'])
+  })
+})
+
+describe('promotionLoss', () => {
+  it('молчит, когда акции не теряются', () => {
+    expect(promotionLoss([])).toBeNull()
+  })
+
+  it('называет одну акцию в единственном числе', () => {
+    expect(promotionLoss([{ title: 'Весна' }])).toBe(
+      'Акция «Весна» перестанет действовать - условия больше не выполняются'
+    )
+  })
+
+  it('перечисляет несколько акций через запятую и «и»', () => {
+    expect(promotionLoss([{ title: 'Весна' }, { title: 'Лето' }, { title: 'Осень' }])).toBe(
+      'Акции «Весна», «Лето» и «Осень» перестанут действовать - условия больше не выполняются'
+    )
+  })
+})
+
+describe('lostPromotions', () => {
+  const preview = vi.mocked(previewMyOrderEdit)
+  const withPromotion = (): IOrder =>
+    order({
+      promotions: [
+        { id: 'op', promotionId: 'p1', promoCodeId: null, title: 'Весна', discountCents: 100 },
+      ],
+    })
+
+  it('заявку без акций не спрашивает', async () => {
+    preview.mockReset()
+
+    expect(await lostPromotions(order(), [{ itemId: 'a', quantity: 0 }])).toEqual([])
+    expect(preview).not.toHaveBeenCalled()
+  })
+
+  it('спрашивает сервер про каждую правку и объединяет потери по акции', async () => {
+    preview.mockReset()
+    preview
+      .mockResolvedValueOnce({
+        lostPromotions: [{ promotionId: 'p1', title: 'Весна' }],
+        gainedPromotions: [],
+        totalCents: 0,
+      })
+      .mockResolvedValueOnce({
+        lostPromotions: [{ promotionId: 'p1', title: 'Весна' }],
+        gainedPromotions: [],
+        totalCents: 0,
+      })
+
+    const lost = await lostPromotions(withPromotion(), [
+      { itemId: 'a', quantity: 0 },
+      { variantId: 'variant-x', quantity: 1 },
+    ])
+
+    expect(preview).toHaveBeenCalledWith('order', 1, { itemId: 'a', quantity: 0 })
+    expect(preview).toHaveBeenCalledWith('order', 1, { variantId: 'variant-x', quantity: 1 })
+    expect(lost).toEqual([{ promotionId: 'p1', title: 'Весна' }])
+  })
+
+  it('осечка предпросмотра не мешает правке: предупреждения просто нет', async () => {
+    preview.mockReset()
+    preview.mockRejectedValue(new Error('network'))
+
+    expect(await lostPromotions(withPromotion(), [{ itemId: 'a', quantity: 0 }])).toEqual([])
   })
 })

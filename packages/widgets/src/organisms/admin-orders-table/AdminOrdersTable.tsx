@@ -10,8 +10,9 @@ import { Skeleton } from '../../atoms/skeleton'
 import { orderNumber } from '../../molecules/order-card'
 import { isAdminEditable, isDiscountable } from '../../molecules/order-status-badge'
 import { StatusSelect } from '../../molecules/status-select'
-import { formatDateTime } from '../../utils/datetime'
+import { formatDate, formatDateTime } from '../../utils/datetime'
 import { formatDiscount } from '../../utils/discount'
+import { PROMO_CODE_STATUS_LABELS } from '../../utils/promotion'
 import { formatVariant } from '../../utils/variants'
 import { type IPluralForms, pluralize } from '../../utils/plural'
 import * as styles from './AdminOrdersTable.css'
@@ -160,6 +161,11 @@ export const AdminOrdersTable: FC<IAdminOrdersTableProps & IBasicStyling> = ({
                         <div className={styles.order}>
                           <span className={styles.number}>№ {adminOrderNumber(order.id)}</span>
                           <span className={styles.date}>{formatDateTime(order.createdAt)}</span>
+                          {(order.promotions.length > 0 || order.gifts.length > 0) && (
+                            <span className={styles.promoBadge}>
+                              <Badge tone="brand">Акция</Badge>
+                            </span>
+                          )}
                           {order.createdById !== null && (
                             <span className={styles.origin}>
                               {order.createdByName === null
@@ -361,6 +367,61 @@ export const AdminOrdersTable: FC<IAdminOrdersTableProps & IBasicStyling> = ({
                               {`Скидка на заявку ${formatDiscount(order.discountKind, order.discountValue)}: -${formatPrice(order.discountCents)}`}
                               {order.discountNote === null ? '' : ` - ${order.discountNote}`}
                             </p>
+                          )}
+
+                          {order.promotions.length > 0 && (
+                            <div className={styles.promoBlock}>
+                              <span className={styles.promoTitle}>Акции</span>
+                              <ul className={styles.promoList}>
+                                {order.promotions.map(promotion => (
+                                  <li key={promotion.id} className={styles.promoItem}>
+                                    {promotion.title}
+                                    {promotion.discountCents > 0 &&
+                                      `: -${formatPrice(promotion.discountCents)}`}
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+
+                          {/*
+                            Подарки — то, что нужно положить в посылку: названия и
+                            количество. Свободный подарок (Mystery box) отличается от
+                            товара пометкой: его нет в закупке, он лежит отдельным
+                            блоком чек-листа.
+                          */}
+                          {order.gifts.length > 0 && (
+                            <div className={styles.promoBlock}>
+                              <span className={styles.promoTitle}>Подарки к заявке</span>
+                              <ul className={styles.promoList}>
+                                {order.gifts.map(gift => (
+                                  <li key={gift.id} className={styles.promoItem}>
+                                    {gift.title}
+                                    {gift.quantity > 1 && ` × ${gift.quantity}`}
+                                    {gift.kind === 'CUSTOM' && ' (свободный подарок)'}
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+
+                          {order.promoCode !== null && (
+                            <p className={styles.discount}>
+                              {`Промокод ${order.promoCode.code} (${PROMO_CODE_STATUS_LABELS[order.promoCode.status]})`}
+                            </p>
+                          )}
+
+                          {order.issuedPromoCodes.length > 0 && (
+                            <div className={styles.promoBlock}>
+                              <span className={styles.promoTitle}>Выданные промокоды</span>
+                              <ul className={styles.promoList}>
+                                {order.issuedPromoCodes.map(code => (
+                                  <li key={code.id} className={styles.promoItem}>
+                                    {`${code.code} - ${PROMO_CODE_STATUS_LABELS[code.status]}, до ${formatDate(code.expiresAt)}`}
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
                           )}
 
                           {order.note !== null && order.note !== '' && (

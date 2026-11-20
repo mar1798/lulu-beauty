@@ -2,10 +2,10 @@ import clsx from 'clsx'
 import React, { useCallback, useMemo } from 'react'
 import useSWR from 'swr'
 import type { GetStaticProps } from 'next'
-import type { ICategory, IPage, IProduct, ISelectOption } from 'widgets/types'
+import type { ICategory, IPage, IProduct, IPublicPromotion, ISelectOption } from 'widgets/types'
 import { Alert, Button, Select } from 'widgets/atoms'
 import { CategoryFilter, Pagination, SearchField } from 'widgets/molecules'
-import { ProductGrid } from 'widgets/organisms'
+import { ProductGrid, PromoCarousel } from 'widgets/organisms'
 import { CatalogTemplate } from 'widgets/templates'
 import { SiteLayout } from '@/layouts/SiteLayout'
 import { AddToCartButton } from '@/components/AddToCartButton'
@@ -33,6 +33,7 @@ import {
   type ICatalogSort,
 } from '@/services/endpoints/catalog'
 import { getActiveCycleOrNull } from '@/services/endpoints/cycles'
+import { listPublicPromotions } from '@/services/endpoints/promotions'
 import { activeCycleFallback, isFreshRender, type ISwrFallback } from '@/services/swrFallback'
 import { productListLd } from '@/utils/jsonLd'
 import { scrollToTop } from '@/utils/scroll'
@@ -95,12 +96,19 @@ interface ICatalogPageProps {
   initial: IPage<IProduct> | null
   /** Состояние сбора для кеша SWR — чтобы витрина сразу встала правильной. */
   fallback: ISwrFallback
+  /**
+   * Идущие акции для карусели. Пусто и при недоступном API: карусель - украшение
+   * витрины, и каталог из-за неё не падает.
+   */
+  promotions: IPublicPromotion[]
 }
 
 export const getStaticProps: GetStaticProps<ICatalogPageProps> = async () => {
   // Со своим `catch`: отсутствие сбора — штатное состояние, и оно не должно
   // ни ронять сборку, ни утаскивать за собой каталог.
   const cycle = await getActiveCycleOrNull().catch(() => null)
+  // Так же молча: нет акций - нет карусели, а каталог остаётся каталогом.
+  const promotions = await listPublicPromotions().catch((): IPublicPromotion[] => [])
 
   try {
     const [categories, brands, initial] = await Promise.all([
@@ -110,13 +118,19 @@ export const getStaticProps: GetStaticProps<ICatalogPageProps> = async () => {
     ])
 
     return {
-      props: { categories, brands, initial, fallback: activeCycleFallback(cycle) },
+      props: { categories, brands, initial, fallback: activeCycleFallback(cycle), promotions },
       revalidate: REVALIDATE_SECONDS,
     }
   } catch {
     // Ронять `next build` из-за недоступного API нельзя — ISR подхватит позже.
     return {
-      props: { categories: [], brands: [], initial: null, fallback: activeCycleFallback(cycle) },
+      props: {
+        categories: [],
+        brands: [],
+        initial: null,
+        fallback: activeCycleFallback(cycle),
+        promotions,
+      },
       revalidate: REVALIDATE_SECONDS,
     }
   }
@@ -154,7 +168,13 @@ const SORT_OPTIONS: Array<ISelectOption & { value: ICatalogSort }> = [
 
 const sortParam = enumParam(CATALOG_SORTS, CATALOG_SORT_DEFAULT)
 
-const CatalogPage: React.FC<ICatalogPageProps> = ({ categories, brands, initial, fallback }) => {
+const CatalogPage: React.FC<ICatalogPageProps> = ({
+  categories,
+  brands,
+  initial,
+  fallback,
+  promotions,
+}) => {
   const [{ category: categorySlug, brand, q, sort, page: pageNumber }, setParams] = useQueryParams({
     category: optionalTextParam,
     brand: optionalTextParam,
@@ -306,6 +326,15 @@ const CatalogPage: React.FC<ICatalogPageProps> = ({ categories, brands, initial,
         // Точка отсчёта для хэллоуинских сцен: у заголовка, над фильтрами и по бокам сетки.
         className={clsx(halloween.host, halloween.catalogPage)}
         title="Каталог"
+        // Акции над заголовком: без баннеров (нет акций, нет мобильного баннера) слота нет вовсе.
+        banner={
+          promotions.some(promotion => promotion.bannerMobileUrl !== null) ? (
+            <PromoCarousel
+              promotions={promotions}
+              buildPromotionHref={slug => `/promotions/${slug}`}
+            />
+          ) : undefined
+        }
         summary={isFirstLoad ? undefined : `Найдено товаров: ${total}`}
         focusKey={pageNumber}
         // Срок сбора виден и здесь, а не только в герое главной: на витрину

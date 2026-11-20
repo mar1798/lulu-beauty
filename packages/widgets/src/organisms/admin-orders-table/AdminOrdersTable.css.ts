@@ -259,3 +259,33 @@ export const delivery = style({
   color: color.text('secondary'),
   whiteSpace: 'pre-line',
 })
+
+/** Метка «Акция» под номером заявки: видна и в свёрнутой строке. */
+export const promoBadge = style({
+  display: 'inline-flex',
+})
+
+/** Блок акций, подарков или кодов в раскрытой заявке: заголовок и список под ним. */
+export const promoBlock = style({
+  ...flexColumn(2),
+  marginTop: vars.space.xs,
+})
+
+export const promoTitle = style({
+  font: font('12/18', 600),
+  letterSpacing: vars.tracking.wide,
+  textTransform: 'uppercase',
+  color: color.text('muted'),
+})
+
+export const promoList = style({
+  ...flexColumn(2),
+  listStyle: 'none',
+  margin: 0,
+  padding: 0,
+})
+
+export const promoItem = style({
+  font: font('13/20'),
+  color: color.text('secondary'),
+})

@@ -297,7 +297,10 @@ export interface ICart {
   cycleId: string | null
   cycleDeadlineAt: string | null
   items: ICartItem[]
+  /** Цена × количество, без акций; сколько заплатить с ними - `promotions.payableCents`. */
   totalCents: number
+  /** Что оформление дало бы этой корзине: акции, скидки, подарки, подсказки до порога. */
+  promotions: ICartPromotions
 }
 
 /**
@@ -406,6 +409,16 @@ export interface IOrder extends IDiscountFields {
    * (например, скидку, о снятии которой правка не предупредила).
    */
   revision: number
+  /** Акции, в которых заявка участвует (живые участия), и подарки к ней. */
+  promotions: IOrderPromotion[]
+  gifts: IOrderGift[]
+  /** Скидки акций на строки и на всю заявку, в тыйынах (уже вычтены из `totalCents`). */
+  promoItemsDiscountCents: number
+  promoOrderDiscountCents: number
+  /** Промокод, который заявка держит (резерв) или потратила; `null` — без кода. */
+  promoCode: IOrderPromoCode | null
+  /** Коды, выданные за эту заявку, — в том числе отозванные. */
+  issuedPromoCodes: IOrderPromoCode[]
 }
 
 /**
@@ -630,7 +643,7 @@ export interface IInputProps {
   hint?: string
   /** Непустая строка включает состояние ошибки и `aria-invalid`. */
   error?: string | null
-  type?: 'text' | 'tel' | 'email' | 'password' | 'number' | 'search' | 'time'
+  type?: 'text' | 'tel' | 'email' | 'password' | 'number' | 'search' | 'time' | 'date'
   placeholder?: string
   autoComplete?: string
   inputMode?: 'text' | 'tel' | 'email' | 'numeric' | 'decimal' | 'search' | 'url'
@@ -1611,6 +1624,8 @@ export interface IProductDetailsProps {
 
 export interface ICatalogTemplateProps {
   title: string
+  /** Над заголовком: карусель акций. Без неё витрина начинается с заголовка. */
+  banner?: ReactNode
   /** «Найдено товаров: N» — объявляется скринридером при каждой смене. */
   summary?: string
   /**
@@ -1732,6 +1747,8 @@ export interface IQuantityStepperProps {
 export interface ICartPanelProps {
   cart: ICart | null
   buildProductHref: (productSlug: string) => string
+  /** Страница акции: на неё ведёт название в подсказке «ещё N сом до …». */
+  buildPromotionHref?: (promotionSlug: string) => string
   /* Позиция адресуется объёмом: двух объёмов одного товара в корзине может
      быть две строки, и товар их уже не различает. */
   onQuantityChange: (variantId: string, quantity: number) => void
@@ -1769,8 +1786,18 @@ export interface ICartPanelProps {
 }
 
 export interface ICheckoutFormProps {
+  /** Цена × количество до акций: строка «Товаров: N». */
   totalCents: number
   itemCount: number
+  /**
+   * Акции и промокод оформления - ответ сервера. Скидки рисуются строками под
+   * «Товаров», а «К оплате» берётся из `promotions.payableCents`: форма ничего не считает.
+   */
+  promotions?: ICartPromotions
+  code?: { code: string; discountCents: number } | null
+  buildPromotionHref?: (slug: string) => string
+  /** Поле промокода: над комментарием. Слот, потому что проверку кода ведёт страница. */
+  promoCode?: ReactNode
   deadlineAt?: string | null
   /** `null` — комментарий не заполнен; ровно это ждёт `CheckoutRequest`. */
   onSubmit: (note: string | null) => void
@@ -1817,6 +1844,8 @@ export interface ICheckoutPanelProps {
   /** Первая загрузка корзины: скелетоны в раскладке состава. */
   isLoading?: boolean
   skeletonRows?: number
+  /** Подарки применённого промокода: идут за подарками акций с пометкой кода. */
+  code?: { code: string; gifts: ICartGift[] } | null
 }
 
 export interface ICartTemplateProps {
@@ -1931,6 +1960,8 @@ export interface IOrderDetailsProps {
    * заявки в API не ходит.
    */
   addItem?: ReactNode
+  /** Страница «Промокоды»: на неё ведёт строка о выданном коде. Без адреса - просто текст. */
+  promoCodesHref?: string
   /**
    * Сохранение комментария. `null` очищает его. Ответ `false` — не сохранилось:
    * редактор остаётся открытым с набранным текстом, а не выбрасывает его.
@@ -2671,6 +2702,15 @@ export interface IAdminChecklist {
    * называть строки, которых в `items` уже нет (заявку отменили): такие не в счёт.
    */
   checkedKeys: string[]
+  /** Свободные подарки (Mystery box и т. п.): их не покупают, а упаковывают. */
+  customGifts: IChecklistCustomGift[]
+}
+
+/** Свободный подарок к упаковке: название, картинка и сколько штук по всем заявкам. */
+export interface IChecklistCustomGift {
+  title: string
+  imageUrl: string | null
+  quantity: number
 }
 
 export interface IAdminChecklistProps {
@@ -2690,6 +2730,8 @@ export interface IAdminChecklistProps {
    */
   hideChecked?: boolean
   onHideCheckedChange?: (hideChecked: boolean) => void
+  /** Свободные подарки: отдельным блоком под списком, не частью закупки. */
+  customGifts?: IChecklistCustomGift[]
   isLoading?: boolean
   skeletonRows?: number
   emptyState?: ReactNode
@@ -2747,4 +2789,513 @@ export interface IAdminOrdersTableProps {
    * говорит. Без неё строки итогов нет.
    */
   summary?: IAdminOrdersSummary & { orderCount: number }
+}
+
+/* --- Акции и промокоды (админка) --- */
+
+/** Статус акции в таблице. Вычисляет бэкенд (`promotion_status`), не хранит. */
+export type PromotionStatus = 'DISABLED' | 'SCHEDULED' | 'ACTIVE' | 'FINISHED' | 'ARCHIVED'
+
+/**
+ * Какие строки заявки подходят: подходит строка, попавшая под любой из списков.
+ * Все три пусты — вся корзина.
+ */
+export interface IPromotionTarget {
+  productIds: string[]
+  categoryIds: string[]
+  brands: string[]
+}
+
+export type PromotionConditionType = 'SUBTOTAL' | 'QUANTITY' | 'CONTAINS'
+
+export type PromotionContainsMode = 'ANY' | 'ALL'
+
+export interface IPromotionSubtotalCondition {
+  type: 'SUBTOTAL'
+  minCents: number
+  target?: IPromotionTarget | null
+}
+
+export interface IPromotionQuantityCondition {
+  type: 'QUANTITY'
+  minQuantity: number
+  target?: IPromotionTarget | null
+}
+
+export interface IPromotionContainsCondition {
+  type: 'CONTAINS'
+  target: IPromotionTarget
+  mode: PromotionContainsMode
+}
+
+export type IPromotionCondition =
+  IPromotionSubtotalCondition | IPromotionQuantityCondition | IPromotionContainsCondition
+
+export type PromotionRewardType = 'DISCOUNT' | 'GIFT' | 'PROMO_CODE'
+
+/** Свободный подарок (название и картинка) или товар из каталога (вариант бесплатно). */
+export type PromotionGiftKind = 'CUSTOM' | 'PRODUCT'
+
+export interface IPromotionDiscountReward {
+  type: 'DISCOUNT'
+  kind: DiscountKind
+  /** Процент (1-100) или сумма в тыйынах. */
+  value: number
+  /** Нет цели — скидка на корзину; есть — на подходящие строки. */
+  target?: IPromotionTarget | null
+}
+
+export interface IPromotionGiftReward {
+  type: 'GIFT'
+  gift: PromotionGiftKind
+  title: string
+  /** Адрес картинки из нашего хранилища (`POST /admin/promotions/gift-image`). */
+  imageUrl: string | null
+  variantId: string | null
+  quantity: number
+}
+
+/** Что может дать сам промокод: промокод, выдающий промокод, был бы цепочкой без конца. */
+export type IPromotionCodeReward = IPromotionDiscountReward | IPromotionGiftReward
+
+export interface IPromotionPromoCodeReward {
+  type: 'PROMO_CODE'
+  /** Срок в днях с выдачи — либо `validFrom`/`validUntil`, не оба сразу. */
+  validDays: number | null
+  validFrom: string | null
+  validUntil: string | null
+  conditions: IPromotionCondition[]
+  rewards: IPromotionCodeReward[]
+}
+
+export type IPromotionReward =
+  IPromotionDiscountReward | IPromotionGiftReward | IPromotionPromoCodeReward
+
+/** Акция, как её отдаёт `GET /admin/promotions`. */
+export interface IPromotion {
+  id: string
+  slug: string
+  title: string
+  descriptionHtml: string | null
+  bannerMobileUrl: string | null
+  bannerDesktopUrl: string | null
+  startsAt: string
+  endsAt: string
+  isEnabled: boolean
+  announce: boolean
+  announcedAt: string | null
+  sortOrder: number
+  conditions: IPromotionCondition[]
+  rewards: IPromotionReward[]
+  status: PromotionStatus
+  /** Живые участия: заявки, не отменённые и не снятые с акции. */
+  participantsCount: number
+  deletedAt: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+/** Участие одной заявки в акции — строка списка «Участники». */
+export interface IPromotionParticipant {
+  orderPromotionId: string
+  orderId: string
+  userId: string
+  userName: string
+  orderStatus: OrderStatus
+  orderTotalCents: number
+  /** Снимок наград на момент участия. */
+  rewards: IPromotionReward[]
+  /** Заявку отменили или условия перестали выполняться — участие снято. */
+  releasedAt: string | null
+  createdAt: string
+}
+
+/** Участие заявки в акции или промокоде, как его показывает заявка. */
+export interface IOrderPromotion {
+  id: string
+  promotionId: string | null
+  promoCodeId: string | null
+  title: string
+  discountCents: number
+}
+
+export interface IOrderGift {
+  id: string
+  orderPromotionId: string
+  kind: PromotionGiftKind
+  title: string
+  imageUrl: string | null
+  productId: string | null
+  variantId: string | null
+  quantity: number
+}
+
+export type PromoCodeView = 'ACTIVE' | 'RESERVED' | 'USED' | 'REVOKED' | 'EXPIRED'
+
+export interface IOrderPromoCode {
+  id: string
+  code: string
+  status: PromoCodeView
+  conditions: IPromotionCondition[]
+  rewards: IPromotionCodeReward[]
+  validFrom: string
+  expiresAt: string
+}
+
+/** Рекомендованные размеры баннеров: подписи в форме и пропорции превью. */
+export type PromotionBannerVariant = 'mobile' | 'desktop'
+
+/* ---- Черновики строк конструктора: числа здесь строками, как их набирает человек ---- */
+
+export interface IPromotionConditionDraft {
+  /** Ключ строки в списке — только для React, на сервер не уходит. */
+  key: string
+  type: PromotionConditionType
+  /** Сумма в сомах (`SUBTOTAL`). */
+  amount: string
+  /** Штук (`QUANTITY`). */
+  quantity: string
+  mode: PromotionContainsMode
+  /** У `SUBTOTAL`/`QUANTITY` цель необязательна, у `CONTAINS` — нужна. */
+  hasTarget: boolean
+  target: IPromotionTarget
+}
+
+export interface IPromotionRewardDraft {
+  key: string
+  type: PromotionRewardType
+  /** `DISCOUNT`. */
+  kind: DiscountKind
+  /** Процент или сумма в сомах. */
+  value: string
+  hasTarget: boolean
+  target: IPromotionTarget
+  /** `GIFT`. */
+  gift: PromotionGiftKind
+  giftTitle: string
+  giftImageUrl: string | null
+  giftVariantId: string | null
+  giftQuantity: string
+  /** `PROMO_CODE`: настройки кода; в остальных строках — `null`. */
+  promoCode: IPromoCodeDraft | null
+}
+
+export interface IPromoCodeDraft {
+  validity: 'DAYS' | 'DATES'
+  validDays: string
+  /** `YYYY-MM-DD` по магазину. */
+  validFromDate: string
+  validUntilDate: string
+  conditions: IPromotionConditionDraft[]
+  rewards: IPromotionRewardDraft[]
+}
+
+/** Ошибки строк конструктора по `key` строки. */
+export type IPromotionRowErrors = Record<string, string>
+
+/**
+ * Каталог для конструктора условий и наград. Данные приходят снаружи, а запросы
+ * делает страница: виджет только вызывает `searchProducts` и `uploadGiftImage`.
+ */
+export interface IPromotionCatalog {
+  categories: ICategory[]
+  /** Заведённые бренды — подсказки для поля брендов. */
+  brands: string[]
+  /** Поиск товаров по слову, с вариантами; пустая выдача — `[]`. */
+  searchProducts: (query: string) => Promise<IProduct[]>
+  /** Названия уже выбранных товаров и вариантов по id (страница дочитывает неизвестные). */
+  labels: Record<string, string>
+  /** Виджет запоминает название только что выбранного товара или варианта. */
+  onLabel: (id: string, label: string) => void
+  /** Загрузка картинки подарка; ответ — адрес из нашего хранилища. Отказ — `Error` с текстом. */
+  uploadGiftImage: (file: File) => Promise<string>
+}
+
+export interface IPromotionProductSearchProps {
+  searchProducts: (query: string) => Promise<IProduct[]>
+  /** Выбран вариант: товар приходит целиком, чтобы запомнить его название. */
+  onPick: (product: IProduct, variantId: string) => void
+  /** Уже выбранные варианты — строка подписывается «Уже выбран». */
+  pickedVariantIds?: string[]
+  label?: string
+  hint?: string
+}
+
+export interface IPromotionTargetFieldProps {
+  value: IPromotionTarget
+  onChange: (target: IPromotionTarget) => void
+  catalog: IPromotionCatalog
+  /** Заголовок группы полей — скринридер читает его с каждым полем. */
+  legend?: string
+}
+
+export interface IPromotionConditionBuilderProps {
+  value: IPromotionConditionDraft[]
+  onChange: (conditions: IPromotionConditionDraft[]) => void
+  catalog: IPromotionCatalog
+  errors?: IPromotionRowErrors
+  /** Не больше стольких строк (`MAX_PROMOTION_CONDITIONS`). */
+  maxRows?: number
+}
+
+export interface IPromotionRewardBuilderProps {
+  value: IPromotionRewardDraft[]
+  onChange: (rewards: IPromotionRewardDraft[]) => void
+  catalog: IPromotionCatalog
+  errors?: IPromotionRowErrors
+  /** В награде промокода нельзя ни другой промокод, ни выбор «промокод» в списке типов. */
+  allowPromoCode?: boolean
+  /** Уже есть строка-промокод: второго в акции быть не может. */
+  maxRows?: number
+  /** «Настроить» у строки-промокода: окно живёт выше, в форме. */
+  onEditPromoCode?: (key: string) => void
+}
+
+export interface IPromotionBannerFieldProps {
+  variant: PromotionBannerVariant
+  /** Сохранённый баннер (адрес) или локальный выбор (blob-адрес до сохранения акции). */
+  url: string | null
+  onSelect: (file: File) => void
+  onRemove: () => void
+  isBusy?: boolean
+  error?: string | null
+  /** Показывает, что без этого баннера акция не попадёт в карусель. */
+  isRequired?: boolean
+}
+
+export interface IAdminPromotionsTableProps {
+  promotions: IPromotion[]
+  buildEditHref: (promotion: IPromotion) => string
+  /** «Дублировать» — ссылка на форму добавления, предзаполненную этой акцией. */
+  buildDuplicateHref: (promotion: IPromotion) => string
+  onToggleEnabled: (promotion: IPromotion) => void
+  onShowParticipants: (promotion: IPromotion) => void
+  /** Решает страница: удаление или архив (если есть участники) — по `participantsCount`. */
+  onDelete: (promotion: IPromotion) => void
+  isLoading?: boolean
+  skeletonRows?: number
+  busyId?: string | null
+  emptyState?: ReactNode
+}
+
+/** Начальные значения формы: сохранённая акция или копия для «дублировать». */
+export type IAdminPromotionInitialValues = Pick<
+  IPromotion,
+  | 'title'
+  | 'slug'
+  | 'descriptionHtml'
+  | 'startsAt'
+  | 'endsAt'
+  | 'isEnabled'
+  | 'announce'
+  | 'sortOrder'
+  | 'conditions'
+  | 'rewards'
+>
+
+/** Значения формы акции, готовые к отправке. Баннеры — файлами, их грузят отдельно. */
+export interface IAdminPromotionValues extends Omit<
+  IAdminPromotionInitialValues,
+  'descriptionHtml'
+> {
+  /** Пустая строка — описания нет. */
+  descriptionHtml: string
+  /** Выбранные при создании баннеры; у сохранённой акции они грузятся сразу и тут пусты. */
+  banners: Record<PromotionBannerVariant, File | null>
+}
+
+export interface IAdminPromotionFormProps {
+  catalog: IPromotionCatalog
+  initialValues?: IAdminPromotionInitialValues
+  /**
+   * Баннеры сохранённой акции. Их наличие включает режим правки: загрузка и снятие
+   * идут сразу (`onBannerUpload`, `onBannerRemove`). Без него (создание) файлы
+   * копятся в форме и уходят после создания акции.
+   */
+  savedBanners?: Record<PromotionBannerVariant, string | null>
+  onBannerUpload?: (variant: PromotionBannerVariant, file: File) => void
+  onBannerRemove?: (variant: PromotionBannerVariant) => void
+  isBannerBusy?: boolean
+  bannerError?: string | null
+  onSubmit: (values: IAdminPromotionValues) => void
+  isSubmitting?: boolean
+  error?: string | null
+  /** Слот под удаление акции. */
+  footer?: ReactNode
+}
+
+export interface IAdminPromoCodeDialogProps {
+  isOpen: boolean
+  onClose: () => void
+  /** Настройки кода, с которыми окно открылось (черновик строки `PROMO_CODE`). */
+  value: IPromoCodeDraft
+  /** Сохранить — вернуть правленный черновик; закрытие без него отбрасывает правки. */
+  onSave: (draft: IPromoCodeDraft) => void
+  catalog: IPromotionCatalog
+}
+
+export interface IAdminPromotionParticipantsDialogProps {
+  isOpen: boolean
+  onClose: () => void
+  promotionTitle: string
+  /** `null` — список ещё грузится. */
+  participants: IPromotionParticipant[] | null
+  error?: string | null
+  buildOrderHref: (orderId: string) => string
+}
+
+/* --- Акции и промокоды (витрина) --- */
+
+/** Подарок в корзине или в проверке кода: виртуальная строка, в `cart_items` её нет. */
+export interface ICartGift {
+  kind: PromotionGiftKind
+  /** Подпись товара («Тушь, 10 мл») или слова владельца («Mystery box»). */
+  title: string
+  /** Свободный подарок без картинки рисуется заглушкой. */
+  imageUrl: string | null
+  productId: string | null
+  variantId: string | null
+  quantity: number
+}
+
+/** Акция, которую корзина уже берёт, и что она снимает с суммы. */
+export interface ICartPromotion {
+  promotionId: string
+  slug: string
+  title: string
+  discountCents: number
+  gifts: ICartGift[]
+}
+
+/** «Ещё 300 сом до подарка»: корзина не добирает до акции одной суммой. */
+export interface ICartPromotionHint {
+  promotionId: string
+  slug: string
+  title: string
+  missingCents: number
+}
+
+export interface ICartPromotions {
+  applied: ICartPromotion[]
+  hints: ICartPromotionHint[]
+  gifts: ICartGift[]
+  itemsDiscountCents: number
+  orderDiscountCents: number
+  discountCents: number
+  /** Сколько заплатить с учётом всех акций (и кода, если он учтён). Считает сервер. */
+  payableCents: number
+}
+
+/** Акция в публичной выдаче `GET /promotions`: без флагов и счётчиков владельца. */
+export interface IPublicPromotion {
+  id: string
+  slug: string
+  title: string
+  descriptionHtml: string | null
+  bannerMobileUrl: string | null
+  bannerDesktopUrl: string | null
+  startsAt: string
+  endsAt: string
+  conditions: IPromotionCondition[]
+  rewards: IPromotionReward[]
+}
+
+/** Код покупателя на странице «Промокоды». */
+export interface IPromoCode extends IOrderPromoCode {
+  promotionTitle: string | null
+  sourceOrderId: string | null
+  /** Заявка, которая держит код (в заявке) или потратила его (использован). */
+  usedOrderId: string | null
+  createdAt: string
+}
+
+/** Ответ `POST /cart/promo-code/check`: код работает, и вот что будет с суммой. */
+export interface IPromoCodeCheck {
+  code: IOrderPromoCode
+  discountCents: number
+  gifts: ICartGift[]
+  cartTotalCents: number
+  payableCents: number
+  promotions: ICartPromotions
+}
+
+/** Потеря или приобретение акции от правки заявки (`POST /orders/{id}/edit-preview`). */
+export interface IPromotionRef {
+  promotionId: string
+  title: string
+}
+
+export interface IOrderEditPreview {
+  lostPromotions: IPromotionRef[]
+  gainedPromotions: IPromotionRef[]
+  totalCents: number
+}
+
+export interface IGiftLineProps {
+  gift: Pick<ICartGift, 'title' | 'imageUrl' | 'quantity'>
+  /** Строка под названием: откуда подарок («Акция «Чёрная пятница»»). */
+  note?: string
+}
+
+export interface IPromotionLinesProps {
+  promotions: ICartPromotions
+  /**
+   * `discounts` - строки «Акция - сумма» для блока итогов, `hints` - «ещё N сом до …»
+   * над ним. Обе рисуются из одного ответа сервера, суммы здесь не считаются.
+   */
+  kind: 'discounts' | 'hints'
+  /** Адрес страницы акции для названия в подсказке; без него - просто текст. */
+  buildPromotionHref?: (slug: string) => string
+  /** Применённый промокод: своя строка скидки среди акций (`discounts`). */
+  code?: { code: string; discountCents: number } | null
+}
+
+export interface IPromoCodeCardProps {
+  code: IPromoCode
+  /** Куда ведёт «Использовать»: оформление. Без адреса кнопки нет. */
+  useHref?: string
+  /** Копирование уходит наружу: буфер обмена и тост - дело сайта. */
+  onCopy?: (code: string) => void
+  /** Адрес заявки, которая держит или потратила код. */
+  buildOrderHref?: (orderId: string) => string
+}
+
+/** Код из «Моих промокодов» в списке выбора на оформлении. */
+export interface IPromoCodeOption {
+  code: string
+  /** «Скидка 10% · от 3 000 сом» - что даёт, по-русски. */
+  label: string
+}
+
+export interface IPromoCodeFieldProps {
+  /** Введённый, но не применённый код. */
+  value: string
+  onChange: (value: string) => void
+  onApply: () => void
+  /** Применённый и проверенный код: показывается вместо поля. */
+  applied: { code: string; discountCents: number; description: string } | null
+  onRemove: () => void
+  /** Идёт проверка (`POST /cart/promo-code/check`). */
+  isChecking?: boolean
+  error?: string | null
+  /** Коды покупателя, которые можно применить одним нажатием. */
+  options?: IPromoCodeOption[]
+  onPickOption?: (code: string) => void
+  /** Ссылка «Все промокоды» под списком. */
+  allCodesHref?: string
+  disabled?: boolean
+}
+
+export interface IPromoCarouselProps {
+  promotions: IPublicPromotion[]
+  /** Адрес страницы акции: слайд - ссылка на неё. */
+  buildPromotionHref: (slug: string) => string
+  /** Пауза между слайдами, мс. */
+  intervalMs?: number
+}
+
+export interface IPromotionDetailsProps {
+  promotion: IPublicPromotion
+  /** Куда ведёт кнопка под условиями: каталог, где акция и работает. */
+  catalogHref: string
 }

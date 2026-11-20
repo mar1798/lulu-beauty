@@ -1,6 +1,12 @@
 import { style } from '@vanilla-extract/css'
 import { border, color, font, media, rem, transition } from '../../styling/lib'
-import { flexColumn, focusVisibleRing, tableHeadCell, tableWrap } from '../../styling/mixin'
+import {
+  flexColumn,
+  flexRow,
+  focusVisibleRing,
+  tableHeadCell,
+  tableWrap,
+} from '../../styling/mixin'
 import { vars } from '../../styling/themes/contract.css'
 
 /**
@@ -220,4 +226,51 @@ export const allDone = style({
   padding: vars.space.lg,
   textAlign: 'center',
   color: color.text('secondary'),
+})
+
+/** Блок свободных подарков под таблицей: отдельная полка с верхней линией. */
+export const gifts = style({
+  ...flexColumn(8),
+  padding: vars.space.md,
+  borderTop: border(1, color.border('subtle')),
+})
+
+export const giftsTitle = style({
+  margin: 0,
+  font: font('14/20', 600),
+  color: color.text('primary'),
+})
+
+export const giftList = style({
+  ...flexColumn(8),
+  listStyle: 'none',
+  margin: 0,
+  padding: 0,
+})
+
+export const gift = style({
+  ...flexRow(12),
+  alignItems: 'center',
+  minHeight: rem(48),
+})
+
+export const giftImage = style({
+  flexShrink: 0,
+  width: rem(48),
+  height: rem(48),
+  objectFit: 'cover',
+  borderRadius: vars.radius.md,
+})
+
+export const giftName = style({
+  flex: 1,
+  minWidth: 0,
+  font: font('14/20'),
+  color: color.text('primary'),
+  overflowWrap: 'anywhere',
+})
+
+export const giftQuantity = style({
+  font: font('14/20', 600),
+  fontVariantNumeric: 'tabular-nums',
 })

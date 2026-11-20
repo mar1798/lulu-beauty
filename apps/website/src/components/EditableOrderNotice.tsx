@@ -62,7 +62,9 @@ export const EditableOrderNotice: React.FC = () => {
       items.map(item => item.variantId)
     )
 
-    if (!(await confirmDiscountLoss(order, touched))) {
+    const edits = items.map(item => ({ variantId: item.variantId, quantity: item.quantity }))
+
+    if (!(await confirmDiscountLoss(order, touched, edits))) {
       return
     }
 

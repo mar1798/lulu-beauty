@@ -19,6 +19,7 @@ import * as styles from './CatalogTemplate.css'
  */
 export const CatalogTemplate: FC<ICatalogTemplateProps & IBasicStyling> = ({
   title,
+  banner,
   summary,
   focusKey,
   aside,
@@ -43,6 +44,8 @@ export const CatalogTemplate: FC<ICatalogTemplateProps & IBasicStyling> = ({
 
   return (
     <Container as="section" className={clsx(styles.container, className)}>
+      {banner}
+
       <div className={styles.head}>
         <div ref={headingRef} className={styles.heading} tabIndex={-1}>
           <Heading level={1}>{title}</Heading>

@@ -159,4 +159,34 @@ describe('AdminChecklist', () => {
 
     expect(screen.queryByRole('switch')).toBeNull()
   })
+
+  it('свободные подарки стоят отдельным блоком, без отметок', () => {
+    renderWidget(<AdminChecklist {...feedAdminChecklist()} />)
+
+    expect(screen.getByRole('heading', { name: 'Подарки к упаковке' })).toBeInTheDocument()
+    expect(screen.getByText('Mystery box')).toBeInTheDocument()
+    expect(screen.getByText('× 3')).toBeInTheDocument()
+  })
+
+  it('заявки с одним Mystery box не прячет за «пусто»', () => {
+    renderWidget(
+      <AdminChecklist {...feedAdminChecklist()} items={[]} emptyState={<p>Список пуст</p>} />
+    )
+
+    expect(screen.queryByText('Список пуст')).toBeNull()
+    expect(screen.getByText('Mystery box')).toBeInTheDocument()
+  })
+
+  it('без подарков и без закупки показывает пустое состояние', () => {
+    renderWidget(
+      <AdminChecklist
+        {...feedAdminChecklist()}
+        items={[]}
+        customGifts={[]}
+        emptyState={<p>Список пуст</p>}
+      />
+    )
+
+    expect(screen.getByText('Список пуст')).toBeInTheDocument()
+  })
 })
