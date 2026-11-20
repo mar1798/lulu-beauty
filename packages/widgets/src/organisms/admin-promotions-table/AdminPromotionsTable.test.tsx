@@ -12,7 +12,7 @@ describe('AdminPromotionsTable', () => {
     expect(container.firstElementChild).not.toBeNull()
   })
 
-  it('все действия строки — иконки: у каждой подсказка с тем же текстом, что и aria-label', () => {
+  it('все действия строки — иконки: подсказка называет действие, aria-label — ещё и акцию', () => {
     renderWidget(<AdminPromotionsTable {...feedAdminPromotionsTable()} />)
 
     const rows = screen.getAllByRole('row').slice(1)
@@ -23,7 +23,10 @@ describe('AdminPromotionsTable', () => {
     for (const tooltip of actions) {
       const control = tooltip.parentElement?.querySelector('[aria-label]')
 
-      expect(control?.getAttribute('aria-label')).toBe(tooltip.textContent)
+      const action = tooltip.textContent ?? ''
+
+      expect(action).not.toContain('«')
+      expect(control?.getAttribute('aria-label')).toMatch(new RegExp(`^${action} «.+»$`))
     }
   })
 

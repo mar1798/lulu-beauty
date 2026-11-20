@@ -24,12 +24,12 @@ import * as styles from './AdminPromotionsTable.css'
  * `data-label`, роли проставлены явно: `display: block` снимает встроенные роли
  * таблицы, и без них строка перестала бы объявляться строкой.
  *
- * **Все действия строки — только иконки.** Каждая обёрнута в `Tooltip` с тем же
- * текстом, что и `aria-label` кнопки: подсказка скрыта от скринридера, поэтому
- * доступное имя несёт сама кнопка, а подсказка повторяет его для зрячих.
- * Тексты названы с акцией («Изменить «Весна»»): иконок столько же, сколько строк,
- * и безымянное «Изменить» скринридер читал бы у всех одинаково. Размер `lg`
- * (48px) — зона нажатия не меньше 44px на телефоне.
+ * **Все действия строки — только иконки.** Каждая обёрнута в `Tooltip`, который
+ * называет одно действие («Изменить»): зрячий и так видит, в какой он строке.
+ * `aria-label` кнопки длиннее — с акцией («Изменить «Весна»»): подсказка скрыта
+ * от скринридера, а безымянное «Изменить» он читал бы у всех строк одинаково.
+ * Размер `sm` (32px, как у товаров): ряд из пяти иконок не должен раздвигать
+ * таблицу до горизонтального скролла, а зону нажатия до 44px `sm` расширяет сам.
  *
  * «Изменить» и «Дублировать» — ссылки: это навигация, она открывается в новой
  * вкладке и остаётся в истории. Архивной акции вместо «Включить» и «Удалить»
@@ -44,11 +44,12 @@ const COLUMN_COUNT = 6
 const isArchived = (promotion: IPromotion): boolean => promotion.deletedAt !== null
 
 interface IActionProps {
+  /** Действие без акции — текст подсказки. */
   label: string
   children: React.ReactNode
 }
 
-/** Иконка и подсказка с тем же текстом: подпись одна, чтобы не разойтись. */
+/** Иконка и подсказка: подсказка называет только действие, имя кнопки — ещё и акцию. */
 const Action: FC<IActionProps> = ({ label, children }) => (
   <Tooltip content={label}>{children}</Tooltip>
 )
@@ -110,9 +111,8 @@ export const AdminPromotionsTable: FC<IAdminPromotionsTableProps & IBasicStyling
                 const archived = isArchived(promotion)
                 const isBusy = busyId === promotion.id
                 const name = `«${promotion.title}»`
-                const toggleLabel = `${promotion.isEnabled ? 'Выключить' : 'Включить'} ${name}`
-                const deleteLabel =
-                  promotion.participantsCount > 0 ? `В архив ${name}` : `Удалить ${name}`
+                const toggleAction = promotion.isEnabled ? 'Выключить' : 'Включить'
+                const deleteAction = promotion.participantsCount > 0 ? 'В архив' : 'Удалить'
 
                 return (
                   <tr
@@ -164,22 +164,22 @@ export const AdminPromotionsTable: FC<IAdminPromotionsTableProps & IBasicStyling
 
                     <td className={styles.actionsCell} role="cell">
                       <div className={styles.actions}>
-                        <Action label={`Изменить ${name}`}>
+                        <Action label="Изменить">
                           <IconButton
                             icon={<IconPencil />}
                             label={`Изменить ${name}`}
-                            size="lg"
+                            size="sm"
                             variant="ghost"
                             link={{ href: buildEditHref(promotion) }}
                           />
                         </Action>
 
                         {!archived && (
-                          <Action label={toggleLabel}>
+                          <Action label={toggleAction}>
                             <IconButton
                               icon={promotion.isEnabled ? <IconEyeOff /> : <IconEye />}
-                              label={toggleLabel}
-                              size="lg"
+                              label={`${toggleAction} ${name}`}
+                              size="sm"
                               variant="ghost"
                               disabled={isBusy}
                               onClick={() => {
@@ -189,21 +189,21 @@ export const AdminPromotionsTable: FC<IAdminPromotionsTableProps & IBasicStyling
                           </Action>
                         )}
 
-                        <Action label={`Дублировать ${name}`}>
+                        <Action label="Дублировать">
                           <IconButton
                             icon={<IconCopy />}
                             label={`Дублировать ${name}`}
-                            size="lg"
+                            size="sm"
                             variant="ghost"
                             link={{ href: buildDuplicateHref(promotion) }}
                           />
                         </Action>
 
-                        <Action label={`Участники ${name}`}>
+                        <Action label="Участники">
                           <IconButton
                             icon={<IconUsers />}
                             label={`Участники ${name}`}
-                            size="lg"
+                            size="sm"
                             variant="ghost"
                             onClick={() => {
                               onShowParticipants(promotion)
@@ -212,11 +212,11 @@ export const AdminPromotionsTable: FC<IAdminPromotionsTableProps & IBasicStyling
                         </Action>
 
                         {!archived && (
-                          <Action label={deleteLabel}>
+                          <Action label={deleteAction}>
                             <IconButton
                               icon={<IconTrash />}
-                              label={deleteLabel}
-                              size="lg"
+                              label={`${deleteAction} ${name}`}
+                              size="sm"
                               variant="danger"
                               disabled={isBusy}
                               onClick={() => {

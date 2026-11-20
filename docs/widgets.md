@@ -119,8 +119,11 @@ Storefront:
 Admin:
 
 - `AdminPromotionsTable` — a real `<table>` that turns into cards below `xl`
-  (`styling/mixin/table.ts`). **Every row action is an `IconButton size="lg"` inside a
-  `Tooltip`** whose text equals the `aria-label` and names the promotion; no text buttons, no
+  (`styling/mixin/table.ts`). **Every row action is an `IconButton size="sm"` inside a
+  `Tooltip`** (32px, the products table's size, so the row of five does not push the table
+  into a horizontal scroll). The tooltip names only the action («Изменить»); the
+  `aria-label` adds the promotion («Изменить «Весна»»), since a screen reader hears every
+  row's buttons alike; no text buttons, no
   menus. An archived promotion has no «Включить» and no «Удалить».
 - `AdminPromotionForm` — the whole promotion in one PUT/POST: fields, two `PromotionBannerField`s,
   `PromotionConditionBuilder`, `PromotionRewardBuilder` and `AdminPromoCodeDialog` (a
