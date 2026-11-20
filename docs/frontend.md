@@ -229,7 +229,7 @@ Rules: [domain.md](domain.md#promotions). The site side:
 - `pages/promocodes.tsx` — the customer's codes (`GET /me/promo-codes`, key `promoCodesKey(userId)`),
   usable ones first, as `PromoCodeCard`s with copy-to-clipboard. `noindex`, in `robots.txt`.
   It is in the account navigation (`layouts/accountNavigation.ts`, between «Мои заявки» and
-  «Профиль»), the header menu and the footer.
+  «Профиль») and the footer, but not the header menu.
 - `pages/catalog/index.tsx` — the `PromoCarousel` goes into `CatalogTemplate`'s `banner` slot,
   above the title. The promotions come from `getStaticProps` (`GET /promotions`, an API failure
   means an empty list), so the carousel is part of the ISR page and refreshed by `/catalog`
