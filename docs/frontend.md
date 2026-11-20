@@ -236,6 +236,9 @@ Rules: [domain.md](domain.md#promotions). The site side:
   means an empty list), so the carousel is part of the ISR page and refreshed by `/catalog`
   revalidation. The page drops promotions without a mobile banner on the client; with none
   left, there is no carousel. The API returns every running promotion.
+- `pages/index.tsx` — the same `PromoCarousel`, fetched the same way, in its own compact
+  `HomeSection` right after the «Заявка вместо оплаты» section and before the fresh picks;
+  refreshed by `/` revalidation. No promotion with a mobile banner — no section.
 - `pages/admin/promotions/{index,add,[id]}.tsx` — owner-only, like the rest of `admin/`, with
   «Акции» in `AdminShell`. The table (`AdminPromotionsTable`) has icon buttons with tooltips only;
   the form (`AdminPromotionForm`) holds two banner fields, the condition and reward builders
