@@ -24,15 +24,15 @@ vanilla-extract plugin wired in here is the webpack one. **Don't drop that flag.
 
 ## Pages
 
-| Group         | Pages                                                                                                                                                  | Rendering                          |
-| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------- |
-| Public        | `index`, `catalog/index`, `catalog/[slug]`, `privacy`                                                                                                  | SSG + ISR (`privacy` is plain SSG) |
-| Behind login  | `checkout`, `orders/index`, `orders/[id]`, `account`                                                                                                   | Static shell, client-rendered data |
-| Guest or user | `cart`, `wishlist` — a guest's lives in the browser (`utils/guestStorage`)                                                                             | Static shell, client-rendered data |
-| Auth          | `login` — **this is the registration too**                                                                                                             | Static                             |
-| Owner-only    | `admin/index`, `admin/products/{index,add,[id]}`, `admin/categories`, `admin/import`, `admin/cycles`, `admin/orders`, `admin/checklist`, `admin/users` | Static, gated on the client        |
-| Errors        | `404`, `500`                                                                                                                                           | Static                             |
-| Crawlers      | `sitemap.xml`                                                                                                                                          | `getServerSideProps`, per request  |
+| Group         | Pages                                                                                                                                                                                       | Rendering                          |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------- |
+| Public        | `index`, `catalog/index`, `catalog/[slug]`, `promotions/[slug]`, `privacy`                                                                                                                  | SSG + ISR (`privacy` is plain SSG) |
+| Behind login  | `checkout`, `orders/index`, `orders/[id]`, `promocodes`, `account`                                                                                                                          | Static shell, client-rendered data |
+| Guest or user | `cart`, `wishlist` — a guest's lives in the browser (`utils/guestStorage`)                                                                                                                  | Static shell, client-rendered data |
+| Auth          | `login` — **this is the registration too**                                                                                                                                                  | Static                             |
+| Owner-only    | `admin/index`, `admin/products/{index,add,[id]}`, `admin/categories`, `admin/import`, `admin/cycles`, `admin/orders`, `admin/checklist`, `admin/users`, `admin/promotions/{index,add,[id]}` | Static, gated on the client        |
+| Errors        | `404`, `500`                                                                                                                                                                                | Static                             |
+| Crawlers      | `sitemap.xml`                                                                                                                                                                               | `getServerSideProps`, per request  |
 
 Every page a person can open is static, which is why `next build` reports `/admin/*` as
 `○ (Static)`. The one `getServerSideProps` in the app is `sitemap.xml`, which nobody visits:
@@ -65,7 +65,7 @@ the old one and concluded it had not saved.
 So the admin invalidates explicitly. `pages/api/revalidate.ts` takes `{"paths": [...]}`,
 checks the caller's role through `/users/me` (the route sits on the public domain, and a
 logged-in customer is not enough), resets `staticData`, and calls `res.revalidate` on each
-path. Paths are checked against a closed list — `/`, `/catalog`, `/catalog/<slug>` — because
+path. Paths are checked against a closed list — `/`, `/catalog`, `/catalog/<slug>`, `/promotions/<slug>` — because
 revalidating costs a fetch and a render, and the slug shape matches the backend's
 `SLUG_PATTERN`. The paths are rebuilt in parallel, and a failure on one doesn't stop the rest;
 only a real one lands in `failed`, since a page that isn't in the cache yet is simply
@@ -82,7 +82,8 @@ throws and returns nothing on purpose — the save has already succeeded, and `r
 is still there as the backstop, so a failed rebuild belongs in the console, not in a toast.
 Every admin mutation that changes what a visitor sees calls it: product create/update/delete/
 restore and its photo (plus the **previous** slug when the slug changed — old links still
-point at it), categories, cycles, and the xlsx import. The import names only `/` and
+point at it), categories, cycles, promotions (save, switch, delete — `/`, `/catalog` for the
+carousel and `promotionPath(slug)`, the old slug too) and the xlsx import. The import names only `/` and
 `/catalog`: it can touch hundreds of products at once, and their pages are left to the
 60-second backstop.
 
@@ -179,7 +180,7 @@ Client-side fetching is [SWR](https://swr.vercel.app/), configured globally in `
   subscription only exists while a user is cached) and so is `/login` itself, and `/api/auth/*`
   (`target: 'next'`) never signals: a 401 from `/api/auth/me` means "guest", not an expiry.
 - `src/services/endpoints/*` — one module per domain (`catalog`, `auth`, `cart`, `wishlist`,
-  `orders`, `admin`, `cycles`, `export`). **All API calls go through these** — never a raw
+  `orders`, `admin`, `cycles`, `export`, `promotions`). **All API calls go through these** — never a raw
   `fetch` in a page.
 - `src/services/swrKeys.ts` — **every** SWR key is defined here as a tuple tagged with a string
   first element. Tags exist so all filter/page variants can be invalidated at once:
@@ -208,6 +209,82 @@ key)` answers "prefilled on this page and rendered less than 60 s ago" — `useA
   `no_active_cycle` means "сбор ещё не открыт" when adding to the cart and "сбор закрылся,
   пока вы собирали заявку" at checkout. UI branches on `error.code`, never on message text.
   422 bodies are unpacked into `fields` for per-input errors.
+
+## Promotions
+
+Rules: [domain.md](domain.md#promotions). The site side:
+
+**Pages**
+
+- `pages/promotions/[slug].tsx` — one promotion, rendered by `PromotionDetails` inside
+  `ProductTemplate`. **ISR with `fallback: 'blocking'`** and `revalidate: 60`, the same shape as
+  a product page: the production image is built without the API, so `getStaticPaths` returns
+  nothing and each page is born on its first visit — finished, or a real 404. A promotion that
+  is not running (not started, finished, switched off, archived) is a `404` from the API
+  and `notFound` here. A copy already built outlives that until it is rebuilt, which is why
+  the admin calls `/api/revalidate` on **every** save, switch and delete (and for the previous
+  slug when it changed). The title is «<name> - акция Sululu», the description is the owner's
+  text stripped of tags and clamped to 160 characters (`utils/promotionSeo.ts`), the preview
+  image is the desktop banner or else the mobile one. See [seo.md](seo.md).
+- `pages/promocodes.tsx` — the customer's codes (`GET /me/promo-codes`, key `promoCodesKey(userId)`),
+  usable ones first, as `PromoCodeCard`s with copy-to-clipboard. `noindex`, in `robots.txt`.
+  It is in the account navigation (`layouts/accountNavigation.ts`, between «Мои заявки» and
+  «Профиль»), the header menu and the footer.
+- `pages/catalog/index.tsx` — the `PromoCarousel` goes into `CatalogTemplate`'s `banner` slot,
+  above the title. The promotions come from `getStaticProps` (`GET /promotions`, an API failure
+  means an empty list), so the carousel is part of the ISR page and refreshed by `/catalog`
+  revalidation. The page drops promotions without a mobile banner on the client; with none
+  left, the slot is not rendered. The API returns every running promotion.
+- `pages/admin/promotions/{index,add,[id]}.tsx` — owner-only, like the rest of `admin/`, with
+  «Акции» in `AdminShell`. The table (`AdminPromotionsTable`) has icon buttons with tooltips only;
+  the form (`AdminPromotionForm`) holds two banner fields, the condition and reward builders
+  and the promo-code dialog. After `POST` the banners are uploaded in follow-up requests and
+  the page moves to the promotion's own card, so a failed banner can be retried at once.
+  «Duplicate» is `/admin/promotions/add?from=<id>`: conditions and rewards are copied, dates
+  are not, the copy is switched off, unannounced, with a `-copy` slug and no banners. The API
+  refuses non-`SUPER_ADMIN` accounts, while the menu entry shows for any admin.
+
+**Cart, checkout and orders.** `CartPanel`, `CheckoutPanel`/`CheckoutForm` and `OrderDetails`
+show the promotions' discount lines, gift cards (`GiftLine`) and «ещё N сом» hints; they take
+every figure from the API (`promotions.payableCents` is «К оплате») and add nothing up. The
+guest's cart-preview SWR key includes **quantities**, since a threshold is
+crossed by pressing «+»; until the answer arrives the block keeps its previous state and the
+total is the optimistic `totalCents` (`cartPayableCents` in `widgets/utils`). `ICart.promotions` is required —
+`utils/cartPromotions.ts` has the empty `NO_PROMOTIONS`.
+
+**The code field exists only at checkout** (checking needs a sign-in; the guest's `/cart` shows
+promotions, gifts and hints). It is `PromoCodeField`, driven by `usePromoCode`.
+
+**Hooks worth knowing**
+
+- `usePromoCode(signature, waitForCart)` — input, `POST /cart/promo-code/check`, and a re-check
+  whenever the cart's composition (`signature`) changes, so the customer never sees a discount
+  the order will not give. The accepted answer is kept whole (`applied`); a code that stops
+  fitting is dropped and the reason stays in `error`. It reserves nothing — only `checkout`
+  does. The «Ваши промокоды» picker passes a code to `apply(code)`.
+- `useDiscountLossConfirm` — asks before an edit that would lose the owner's discount or a
+  promotion. Discounts are counted by the client mirror (`discountLoss`); promotions come from
+  the server: `lostPromotions` calls `previewMyOrderEdit` (`POST /orders/{id}/edit-preview`)
+  for each edit described by `edits` (`{itemId|variantId, quantity}`, `0` removes), merges the
+  results by promotion and `promotionLoss` words them. A failed preview is silent — it is a
+  warning, not a decision — and an order with no promotions asks nothing. Without `edits`,
+  only discounts are checked (the pre-promotion behaviour). It says nothing about promo codes.
+- `usePromotionCatalog` (admin) — categories, brands, product search, gift image upload and
+  the names of products already chosen (the promotion stores ids only; names are read with
+  one `GET /admin/products/{id}` each, since there is no "products by ids" endpoint).
+- `usePromotionParticipants` (admin) — the «Участники» dialog, shared by the list and the
+  card; reloaded on every open.
+
+**Data layer.** `services/endpoints/promotions.ts` holds the admin calls, the public
+`listPublicPromotions`/`getPublicPromotion` (also used by `sitemap.xml`) and
+`listMyPromoCodes`; `checkPromoCode` is in `endpoints/cart.ts` and `previewMyOrderEdit` in
+`endpoints/orders.ts`. SWR keys: `adminPromotionsKey(includeDeleted)` (with
+`isAdminPromotionsKey` for both variants), `adminPromotionKey`, `adminPromotionParticipantsKey`,
+`adminPromotionProductLabelsKey`, `promoCodesKey(userId)` and `isPromoCodesKey` (a checkout
+reserves a code and a payment issues new ones, so the page and the checkout picker go stale
+together). `apiErrors.ts` has the five `promo_code_*` codes under checkout and the scopes
+`promoCode.check` and `promoCodes.load`, the four `promotion_*` codes under seven
+`admin.promotion.*` error-map scopes (`create`, `update`, `toggle`, `delete`, `banner`, `giftImage`, `participants`; the title map adds `admin.promotions.load`), and teaches the 422 parser the nested rule fields.
 
 ## State and layout
 
@@ -312,7 +389,8 @@ key)` answers "prefilled on this page and rendered less than 60 s ago" — `useA
 - `src/hooks/` — `useAdminGate`, `useActiveCycle`, `useEditableOrder`, `useProductSearch`,
   `useTelegramLogin`, `useTelegramMiniApp`, `useTelegramBackButton`, `useQrCode`,
   `useQueryParams`, `usePrefetchRoutes`, `useRedirectIfAuthenticated`, `useLoginHref`,
-  `useRefreshOnReturn`, `useClampedPage`, `useMediaQuery`.
+  `useRefreshOnReturn`, `useClampedPage`, `useMediaQuery`, and the promotion ones in
+  [Promotions](#promotions).
 - **Every link to `/login` goes through `useLoginHref()`**, which adds `?next=` with the current
   path, so the person returns to checkout or their order instead of the catalogue.
 - **Scroll and history.** `<Html data-scroll-behavior="smooth">` tells Next to switch the global

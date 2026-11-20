@@ -9,7 +9,9 @@ planned.
 
 `apps/website/public/robots.txt`, static. Public: the home page, the catalogue, product
 pages and `/privacy`. Everything behind sign-in is disallowed (`/cart`, `/checkout`,
-`/account`, `/orders`, `/wishlist`, `/login`), and so are `/admin` and `/api/`.
+`/account`, `/orders`, `/wishlist`, `/promocodes`, `/login`), and so are `/admin` and `/api/`.
+`/promocodes` also carries `<meta name="robots" content="noindex">`, like the other account pages.
+Promotion pages (`/promotions/<slug>`) are public and not disallowed.
 
 `/privacy` is deliberately **not** disallowed. The bot links it in its first message and
 people look for it by name; a policy hidden from search is a policy that cannot do the one
@@ -26,7 +28,7 @@ route.
 XML into `res` and closes the response; the default export is a component that renders `null`
 and is never reached.
 
-It lists the home page, `/catalog`, `/privacy`, and one URL per product, walking `GET /products` in pages
+It lists the home page, `/catalog`, `/privacy`, one URL per **running promotion**, and one URL per product, walking `GET /products` in pages
 of 100 (the endpoint's ceiling) until `total` is reached, with a 50-page stop so a bad `total`
 cannot spin forever. Cached for an hour at the edge (`s-maxage=3600`), the same staleness the
 catalogue's ISR already accepts.
@@ -43,6 +45,14 @@ Two decisions worth keeping:
 - **API failure answers `503`, not a short sitemap.** A map missing half the catalogue reads
   as "those URLs are gone". A `503` with `Retry-After` is re-fetched; a truncated list is
   believed.
+
+**Promotions** (`collectPromotionEntries`) come from the public `GET /promotions`, which returns
+only what is running now, so a page that answers 404 (not started, finished, switched off,
+archived) is never in the map. They sit between the static entries and the products and carry
+**no `<lastmod>`**: the public response has no honest modification date. Unlike the catalogue,
+a failure of that list does **not** return `503` — promotions are a temporary extra, and a
+crawler that misses them once simply re-reads the map in an hour; a short map costs nothing,
+because nothing was ever "removed from" it as far as a crawler can tell.
 
 Categories and brands are not in the map because they are not pages yet — they live in query
 parameters (`/catalog?category=…`). They join it when they become real routes.
@@ -96,6 +106,20 @@ catalogue changes: that the four sections are face care, hair care, sets and gad
 used to call the whole catalogue Korean; it no longer does, because the range isn't only Korean
 any more.
 
+### Promotion pages
+
+`/promotions/[slug]` is self-canonical like every public page. The `<title>` is «<название> -
+акция Sululu»; the description is the owner's text with the tags stripped (block ends become
+spaces) and cut to 160 characters at a word boundary, and without any text it is the title
+and the end date — nothing is invented (`utils/promotionSeo.ts`, the only copy of these
+formulas, kept apart from `seo.ts` so it stays pure and tested). The preview image is the
+desktop banner, otherwise the mobile one, and no image when there is no banner. The page emits
+a `BreadcrumbList` (Главная > Каталог > the promotion), built from the same array as the
+visible `Breadcrumbs`; there is no `Offer`/`Event` markup, since a promotion's terms are not
+a product price. A promotion that stops running becomes a 404 as soon as the admin's save
+triggers revalidation (`/api/revalidate`), not after the 60-second backstop. See
+[frontend.md](frontend.md#promotions).
+
 ## Structured data (JSON-LD)
 
 Nodes are built in `apps/website/src/utils/jsonLd.ts` and rendered by
@@ -106,12 +130,13 @@ not apply: `ld+json` is a data block, the browser never executes it.
 
 What each page carries:
 
-| Page                | Nodes                                                                     |
-| ------------------- | ------------------------------------------------------------------------- |
-| every page (`_app`) | `OnlineStore`: `logo`/`image`, and `sameAs` to the Instagram and the bot  |
-| `/`                 | `FAQPage`, built from the same `FAQ_ITEMS` array that renders the section |
-| `/catalog`          | `ItemList` of the products currently on screen                            |
-| `/catalog/[slug]`   | `Product` + `Offer` (or `AggregateOffer`), `BreadcrumbList`               |
+| Page                 | Nodes                                                                     |
+| -------------------- | ------------------------------------------------------------------------- |
+| every page (`_app`)  | `OnlineStore`: `logo`/`image`, and `sameAs` to the Instagram and the bot  |
+| `/`                  | `FAQPage`, built from the same `FAQ_ITEMS` array that renders the section |
+| `/catalog`           | `ItemList` of the products currently on screen                            |
+| `/catalog/[slug]`    | `Product` + `Offer` (or `AggregateOffer`), `BreadcrumbList`               |
+| `/promotions/[slug]` | `BreadcrumbList`                                                          |
 
 The rule the whole file is written around: **markup states only what the same page shows a
 visitor.** So there is no `aggregateRating` or `review` (the shop has no real reviews), no

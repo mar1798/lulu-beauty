@@ -55,23 +55,24 @@ placeholders. Full list: [environment.md](environment.md).
 Each domain module under `app/` is roughly `router.py` / `service.py` / `schemas.py` /
 `models.py`:
 
-| Module       | Contents                                                                                                                                                                        |
-| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `auth/`      | Telegram sign-in (session/claim/widget/mini-app), refresh, logout, JWT issuing, `telegram_identity.py` HMAC verification, role dependencies.                                    |
-| `users/`     | `/users/me`, admin user list and role changes.                                                                                                                                  |
-| `catalog/`   | Categories, products and their variants (volumes), images, xlsx/csv import, serializers, `rich_text.py` (description HTML cleaning).                                            |
-| `cart/`      | Cart and lines — one per variant. Every mutation needs an open cycle.                                                                                                           |
-| `orders/`    | Checkout, customer edit/cancel/restore, admin status changes, repricing.                                                                                                        |
-| `cycles/`    | Cycle CRUD, `reminders.py` (stage definitions), `scheduler_service.py` (sweeps).                                                                                                |
-| `wishlist/`  | Saved products, cycle-independent.                                                                                                                                              |
-| `wanted/`    | Wishes for products the catalog does not stock, written under an empty search. Write-only.                                                                                      |
-| `payments/`  | Payment receipts sent to the bot and the owner's verdict on them; accepting one moves the order to CONFIRMED and stamps `orders.paid_at`. No router — the bot is its only door. |
-| `checklist/` | Lines the owner adds to a cycle's purchase list by hand (`checklist_extras`) and the shared "bought" ticks (`checklist_marks`); `GET /admin/checklist` itself is in `export/`.  |
-| `export/`    | xlsx purchase list (`service.py`) and the catalogue export (`products.py`).                                                                                                     |
-| `telegram/`  | Bot, handlers, keyboards, Russian messages, notifications, throttling, webhook.                                                                                                 |
-| `storage/`   | Local disk file storage for images.                                                                                                                                             |
-| `common/`    | `CamelModel`, `PageResponse`, phone normalization, model mixins, limits, rate limit, body limit.                                                                                |
-| `health/`    | `GET /health` with a real `SELECT 1`; `503` when the DB is unreachable.                                                                                                         |
+| Module        | Contents                                                                                                                                                                        |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `auth/`       | Telegram sign-in (session/claim/widget/mini-app), refresh, logout, JWT issuing, `telegram_identity.py` HMAC verification, role dependencies.                                    |
+| `users/`      | `/users/me`, admin user list and role changes.                                                                                                                                  |
+| `catalog/`    | Categories, products and their variants (volumes), images, xlsx/csv import, serializers, `rich_text.py` (description HTML cleaning).                                            |
+| `cart/`       | Cart and lines — one per variant. Every mutation needs an open cycle.                                                                                                           |
+| `orders/`     | Checkout, customer edit/cancel/restore, admin status changes, repricing.                                                                                                        |
+| `cycles/`     | Cycle CRUD, `reminders.py` (stage definitions), `scheduler_service.py` (sweeps).                                                                                                |
+| `promotions/` | Promotions, their rules and the order/cart side of them — see "Promotions and promo codes" below.                                                                               |
+| `wishlist/`   | Saved products, cycle-independent.                                                                                                                                              |
+| `wanted/`     | Wishes for products the catalog does not stock, written under an empty search. Write-only.                                                                                      |
+| `payments/`   | Payment receipts sent to the bot and the owner's verdict on them; accepting one moves the order to CONFIRMED and stamps `orders.paid_at`. No router — the bot is its only door. |
+| `checklist/`  | Lines the owner adds to a cycle's purchase list by hand (`checklist_extras`) and the shared "bought" ticks (`checklist_marks`); `GET /admin/checklist` itself is in `export/`.  |
+| `export/`     | xlsx purchase list (`service.py`) and the catalogue export (`products.py`).                                                                                                     |
+| `telegram/`   | Bot, handlers, keyboards, Russian messages, notifications, throttling, webhook.                                                                                                 |
+| `storage/`    | Local disk file storage for images.                                                                                                                                             |
+| `common/`     | `CamelModel`, `PageResponse`, phone normalization, model mixins, limits, rate limit, body limit.                                                                                |
+| `health/`     | `GET /health` with a real `SELECT 1`; `503` when the DB is unreachable.                                                                                                         |
 
 Two files that are easy to forget:
 
@@ -84,31 +85,35 @@ Two files that are easy to forget:
 
 Public and customer-facing:
 
-| Method                        | Path                                          | Notes                                                                                                                               |
-| ----------------------------- | --------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| `GET`                         | `/health`                                     | Real DB check; `503` if unreachable. Rate-limit exempt.                                                                             |
-| `POST`                        | `/auth/telegram/session`                      | Opens a sign-in session, returns the bot link + poll secret.                                                                        |
-| `POST`                        | `/auth/telegram/claim`                        | Claims a session the bot confirmed.                                                                                                 |
-| `POST`                        | `/auth/telegram/widget`                       | Trades a Telegram Login Widget signature for tokens.                                                                                |
-| `POST`                        | `/auth/telegram/mini-app`                     | Same, for Mini App `initData`.                                                                                                      |
-| `POST`                        | `/auth/refresh`, `/auth/logout`               |                                                                                                                                     |
-| `GET`                         | `/categories`, `/brands`                      |                                                                                                                                     |
-| `GET`                         | `/products`                                   | Paged. Query params **snake_case**: `in_stock`, `page_size`. `sort`: `new` (default), `price_asc`, `price_desc`.                    |
-| `GET`                         | `/products/{slug}`                            |                                                                                                                                     |
-| `GET`                         | `/search/suggest`                             | Header search: categories + brands + 5 products. `q` 1–255.                                                                         |
-| `GET`                         | `/cycles/active`                              |                                                                                                                                     |
-| `GET`/`PATCH`/`DELETE`        | `/users/me`                                   | `PATCH`: `name`, `deliveryAddress`, `deliveryNote` (the last two nullable). `DELETE` erases the account — see "Erasing an account". |
-| `GET`                         | `/users/me/deletion`                          | Whether the caller may erase, and what blocks it.                                                                                   |
-| `GET`/`POST`/`PATCH`/`DELETE` | `/cart`, `/cart/items[/{variant_id}]`         | 409 `no_active_cycle` without an open cycle. A line is a **volume**: `POST` takes `variantId`, and `PATCH`/`DELETE` address one.    |
-| `GET`/`POST`/`DELETE`         | `/wishlist`, `/wishlist/items[/{product_id}]` | Cycle-independent.                                                                                                                  |
-| `POST`                        | `/cart/preview`, `/wishlist/preview`          | **Public.** A guest's browser cart/wishlist priced from the catalogue; stores nothing.                                              |
-| `POST`                        | `/cart/merge`, `/wishlist/merge`              | After sign-in. Cart: larger quantity wins, 409 `no_active_cycle` / `cart_cycle_changed`. Wishlist: adds the missing.                |
-| `POST`                        | `/wanted-products`                            | A wish for something the catalog lacks. Signed-in (live account); strict rate-limit budget.                                         |
-| `POST`                        | `/orders/checkout`                            |                                                                                                                                     |
-| `GET`                         | `/orders`, `/orders/{id}`                     |                                                                                                                                     |
-| `PATCH`                       | `/orders/{id}`                                | Note only.                                                                                                                          |
-| `POST`/`PATCH`/`DELETE`       | `/orders/{id}/items[/{item_id}]`              | Add / change quantity / remove. `POST` takes `variantId`.                                                                           |
-| `POST`                        | `/orders/{id}/cancel`, `/orders/{id}/restore` |                                                                                                                                     |
+| Method                        | Path                                          | Notes                                                                                                                                                          |
+| ----------------------------- | --------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET`                         | `/health`                                     | Real DB check; `503` if unreachable. Rate-limit exempt.                                                                                                        |
+| `POST`                        | `/auth/telegram/session`                      | Opens a sign-in session, returns the bot link + poll secret.                                                                                                   |
+| `POST`                        | `/auth/telegram/claim`                        | Claims a session the bot confirmed.                                                                                                                            |
+| `POST`                        | `/auth/telegram/widget`                       | Trades a Telegram Login Widget signature for tokens.                                                                                                           |
+| `POST`                        | `/auth/telegram/mini-app`                     | Same, for Mini App `initData`.                                                                                                                                 |
+| `POST`                        | `/auth/refresh`, `/auth/logout`               |                                                                                                                                                                |
+| `GET`                         | `/categories`, `/brands`                      |                                                                                                                                                                |
+| `GET`                         | `/products`                                   | Paged. Query params **snake_case**: `in_stock`, `page_size`. `sort`: `new` (default), `price_asc`, `price_desc`.                                               |
+| `GET`                         | `/products/{slug}`                            |                                                                                                                                                                |
+| `GET`                         | `/search/suggest`                             | Header search: categories + brands + 5 products. `q` 1–255.                                                                                                    |
+| `GET`                         | `/cycles/active`                              |                                                                                                                                                                |
+| `GET`/`PATCH`/`DELETE`        | `/users/me`                                   | `PATCH`: `name`, `deliveryAddress`, `deliveryNote` (the last two nullable). `DELETE` erases the account — see "Erasing an account".                            |
+| `GET`                         | `/users/me/deletion`                          | Whether the caller may erase, and what blocks it.                                                                                                              |
+| `GET`/`POST`/`PATCH`/`DELETE` | `/cart`, `/cart/items[/{variant_id}]`         | 409 `no_active_cycle` without an open cycle. A line is a **volume**: `POST` takes `variantId`, and `PATCH`/`DELETE` address one.                               |
+| `GET`/`POST`/`DELETE`         | `/wishlist`, `/wishlist/items[/{product_id}]` | Cycle-independent.                                                                                                                                             |
+| `POST`                        | `/cart/preview`, `/wishlist/preview`          | **Public.** A guest's browser cart/wishlist priced from the catalogue; stores nothing.                                                                         |
+| `POST`                        | `/cart/merge`, `/wishlist/merge`              | After sign-in. Cart: larger quantity wins, 409 `no_active_cycle` / `cart_cycle_changed`. Wishlist: adds the missing.                                           |
+| `POST`                        | `/wanted-products`                            | A wish for something the catalog lacks. Signed-in (live account); strict rate-limit budget.                                                                    |
+| `POST`                        | `/cart/promo-code/check`                      | Signed-in. Validates a code against the cart (`{code}`), writes nothing. Refusals: see "Promotions and promo codes".                                           |
+| `POST`                        | `/orders/checkout`                            | Body `note`, optional `promoCode` (checked and reserved with the order; a refusal creates nothing).                                                            |
+| `GET`                         | `/promotions`, `/promotions/{slug}`           | **Public.** Running promotions only (carousel, sitemap, the page); anything else, archived or not started included, is a 404.                                  |
+| `GET`                         | `/me/promo-codes`                             | Every code the caller was ever given, newest first, `REVOKED` included.                                                                                        |
+| `POST`                        | `/orders/{id}/edit-preview`                   | The customer's edit run and rolled back: which promotions it would take off or bring. Body `revision`, `itemId` or `variantId`, `quantity` (0 removes a line). |
+| `GET`                         | `/orders`, `/orders/{id}`                     |                                                                                                                                                                |
+| `PATCH`                       | `/orders/{id}`                                | Note only.                                                                                                                                                     |
+| `POST`/`PATCH`/`DELETE`       | `/orders/{id}/items[/{item_id}]`              | Add / change quantity / remove. `POST` takes `variantId`.                                                                                                      |
+| `POST`                        | `/orders/{id}/cancel`, `/orders/{id}/restore` |                                                                                                                                                                |
 
 The three item edits take the order's `revision` as the page read it (`DELETE` in the query
 string): one stale by a discount given since is `409 order_changed`, so a discount never
@@ -124,6 +129,12 @@ Owner-only (`ADMIN` or `SUPER_ADMIN`, checked on the API — the frontend gate i
 | `PUT`    | `/admin/products/{id}/images` (the gallery's order and photo tags, whole), `/admin/orders/{id}/items` (an order's composition, whole), `/admin/orders/{id}/discount` (a line's or the order's discount; `null` removes it), `/admin/checklist/marks` (one tick, idempotent)  |
 | `POST`   | `/admin/categories`, `/admin/products`, `/admin/products/{id}/restore`, `/admin/products/{id}/images`, `/admin/catalog/import`, `/admin/cycles`, `/admin/cycles/{id}/close`, `/admin/export/links`, `/admin/orders`, `/admin/orders/{id}/message`, `/admin/checklist/extras` |
 | `DELETE` | `/admin/categories/{id}`, `/admin/products/{id}` (soft), `/admin/products/{id}/images/{image_id}`, `/admin/cycles/{id}`, `/admin/orders/{id}`, `/admin/checklist/extras/{id}`, `/admin/checklist/marks?cycleId=`                                                             |
+
+**Promotions are `SUPER_ADMIN` only** (`require_super_admin`), unlike the rows above:
+`GET`/`POST /admin/promotions` (`GET` takes `includeDeleted`), `GET`/`PUT`/`DELETE
+/admin/promotions/{id}`, `PATCH /admin/promotions/{id}/enabled`, `POST`/`DELETE
+/admin/promotions/{id}/banner?variant=mobile|desktop`, `GET /admin/promotions/{id}/participants`
+and `POST /admin/promotions/gift-image`. Details below.
 
 `POST /admin/orders/{id}/discount/preview` is the `PUT .../discount` above with the same
 body, rolled back instead of committed: it answers with the sum the order would come to, or
@@ -264,6 +275,9 @@ telegram_account_not_linked                         telegram_auth_expired
 telegram_auth_invalid     telegram_webhook_forbidden
 unsupported_image_type    user_not_found            wishlist_full
 wishlist_item_not_found
+promotion_not_found       promotion_slug_taken      promotion_ends_before_start
+promotion_invalid_rules   promo_code_not_found      promo_code_expired
+promo_code_not_yet_valid  promo_code_already_used   promo_code_conditions_not_met
 ```
 
 (plus `image_unreadable`, `image_too_large`, `image_too_many_pixels`, `import_file_too_large`,
@@ -287,6 +301,108 @@ partial unique index at flush.
 
 **Money** is integer `*_cents`. **Products are soft-deleted**, and so are their variants.
 See [domain.md](domain.md).
+
+## Promotions and promo codes
+
+Rules and meaning: [domain.md](domain.md#promotions). What lives where in
+`apps/api/app/promotions/`:
+
+| File                                                   | Contents                                                                                                                                     |
+| ------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `models.py`                                            | `Promotion`, `OrderPromotion`, `OrderGift`, `PromoCode`; `promotion_status` (derived).                                                       |
+| `rules.py`                                             | Conditions, rewards and `Target` as pydantic discriminated unions; `load_*`/`dump_*` for the JSONB columns; `promo_code_expiry`.             |
+| `engine.py`                                            | `evaluate(lines, offers, already_joined=…)` — pure, no session, no clock. Returns `applied` and `shortfalls`.                                |
+| `service.py`, `router.py`                              | The owner's CRUD, banners, participants, plus the two public reads. `schemas.py` holds the request/response shapes (`GiftImageResponse`, …). |
+| `orders.py`                                            | `OrderPromotionsService` (`refresh`, `release_all`, `attach_code`/`check_code`), `preview_cart`, `resolve_gifts`, `item_scopes`.             |
+| `order_schemas.py`                                     | What orders and the cart say about promotions (`OrderPromotionResponse`, `OrderGiftResponse`, `CartPromotionsResponse`).                     |
+| `codes.py`                                             | `PromoCodesService` (issue, `usable`, list), `code_status`, `issue_missing_promo_codes` (the sweep's call).                                  |
+| `code_errors.py`, `code_schemas.py`, `codes_router.py` | The five `PromoCodeError` subclasses (each carries its `code` and `status_code`, routers return them as is); `GET /me/promo-codes`.          |
+| `sweep.py`                                             | The read-only queries of `_run_promotion_sweep`: `unannounced_promotions`, `expiring_promo_codes`.                                           |
+
+`app/common/uploads.py` (`read_image`, `read_within`) is the shared way an upload is read and
+re-encoded; catalogue photos, banners and gift pictures all go through it.
+
+**Tables** (migrations `310c104e5d85_add_promotions` and `5b1d7c93a0e4_order_promotions_scopes`,
+both expanding: new tables and a column with a default or nullable):
+
+- `promotions` — `conditions`/`rewards` JSONB, a CHECK `ends_at > starts_at`, a partial index
+  on `(starts_at, ends_at)` for "enabled and not archived".
+- `order_promotions` — CHECK that exactly one of `promotion_id`/`promo_code_id` is set;
+  **partial unique** `uq_order_promotions_live_participant (promotion_id, user_id) WHERE
+released_at IS NULL AND promotion_id IS NOT NULL` (once per customer) and
+  `uq_order_promotions_live_code (promo_code_id) WHERE released_at IS NULL AND promo_code_id IS
+NOT NULL` (one live order per code). The promotion FK has **no `ON DELETE`** — that is why a
+  promotion with history is archived. `sort_order` and `item_scopes` came with the second
+  migration.
+- `order_gifts` — cascades from the order and from its `order_promotion`; the product and
+  variant FKs are `SET NULL`.
+- `promo_codes` — `code` unique, CHECK `expires_at > valid_from`; **partial unique**
+  `uq_promo_codes_live_owner (promotion_id, user_id) WHERE status <> 'REVOKED'` (idempotent
+  issue, but a revoked code can be earned again) and a partial index on `expires_at WHERE
+status = 'ACTIVE'` for the reminder sweep. `source_order_id`/`used_order_id` are `SET NULL`.
+- Enums `gift_kind` and `promo_code_status`; `EXPIRED` is not in the database.
+
+`Order.promotions` and `Order.gifts` are `lazy="selectin"`, so any response about an order
+sees the live participations and the gifts; `orders/models.py` imports
+`app.promotions.models` at its very end so the relationships resolve in unit tests that do not
+import `app.models`. Codes are read with a separate query (`OrdersService.load_codes`) rather
+than a relationship, which would go stale inside the transaction.
+
+**Owner endpoints**
+
+- `POST /admin/promotions`, `PUT /admin/promotions/{id}` — `PromotionWriteRequest`: `slug`,
+  `title`, `descriptionHtml`, `startsAt`, `endsAt`, `isEnabled`, `announce`, `sortOrder`,
+  `conditions`, `rewards`. `PUT` replaces everything but the banners. Responses carry
+  the derived `status`, `participantsCount` (live participations) and `announcedAt`.
+- `DELETE /admin/promotions/{id}` — `204`; deleted or archived, the caller is not told which.
+  Files of a deleted promotion's banners are removed after the commit.
+- `POST /admin/promotions/{id}/banner?variant=mobile|desktop` (multipart `file`) puts a banner up
+  and removes the file it replaced from disk after the commit; `DELETE` takes it down. The
+  mobile banner is what puts a promotion in the carousel; the API does not demand it.
+- `POST /admin/promotions/gift-image` — stores a picture for a free gift and returns `{url}`.
+  **Writes nothing to the database**: the form holds a gift as a row before the promotion
+  exists, and the address goes into `GIFT.imageUrl` on save, where only our own storage is
+  accepted. An abandoned picture stays in storage.
+- `GET /admin/promotions/{id}/participants` — who took part (live and released), through which
+  order and status, and what they were promised (the snapshot).
+- `GET /admin/orders/{id}`, `GET /admin/orders` rows and the customer's own order responses
+  carry the new fields below.
+
+"Duplicate" in the admin table has no endpoint: the form is opened prefilled from the
+existing promotion (`?from=<id>`).
+
+**New fields.** `OrderResponse`/`AdminOrderResponse`: `promotions` (live participations, each
+with `discountCents`), `gifts`, `promoItemsDiscountCents`, `promoOrderDiscountCents`,
+`promoCode` (the code the order holds or spent) and `issuedPromoCodes` (codes it earned,
+revoked ones too). `CartResponse.promotions`: `applied`, `hints` («ещё N сом»), `gifts`,
+`itemsDiscountCents`, `orderDiscountCents`, `discountCents`, `payableCents`; `totalCents`
+stays price × quantity. The block is in every cart answer, the guest `POST /cart/preview`
+too (a guest has joined nothing, so "once per customer" only shows after sign-in).
+`POST /cart/promo-code/check` answers `code`, `discountCents`, `gifts`, `cartTotalCents`,
+`payableCents` and `promotions` counted with the code. `GET /admin/checklist` gets
+`customGifts`.
+
+**Error codes**
+
+| Code                            | Status | Raised                                                                     |
+| ------------------------------- | ------ | -------------------------------------------------------------------------- |
+| `promotion_not_found`           | 404    | Unknown id/slug, or on the public read a promotion that is not running.    |
+| `promotion_slug_taken`          | 409    | Another promotion has the slug (a lost race at flush too).                 |
+| `promotion_ends_before_start`   | 422    | `endsAt` is not after `startsAt`.                                          |
+| `promotion_invalid_rules`       | 409    | A rule names a product, category or gift variant the catalogue lacks.      |
+| `promo_code_not_found`          | 404    | No such code, someone else's, or `REVOKED` — indistinguishable on purpose. |
+| `promo_code_expired`            | 409    |                                                                            |
+| `promo_code_not_yet_valid`      | 409    |                                                                            |
+| `promo_code_already_used`       | 409    | `USED`, or `RESERVED` by another order.                                    |
+| `promo_code_conditions_not_met` | 409    | Including an empty cart.                                                   |
+
+Structural mistakes in the rules (an unknown type, a percent over 100, two `PROMO_CODE`
+rewards, a bad code term) are plain pydantic `422`s without a code. The website has Russian
+text for each code, per scope, in `apiErrors.ts` (`promoCode.check`, `promoCodes.load`, and the
+`admin.promotion*` areas).
+
+**Known limitations**: no brute-force limit on `POST /cart/promo-code/check` beyond the global
+rate limit; `edit-preview` says nothing about promo codes.
 
 ## Catalogue order
 
