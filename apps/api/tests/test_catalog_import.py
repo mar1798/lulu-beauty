@@ -211,7 +211,7 @@ def test_category_name_from_slug_is_readable_in_the_admin_list() -> None:
 
 
 def test_normalize_header_accepts_the_camel_case_spelling_the_admin_panel_documents() -> None:
-    """"inStock" has no space or dash to normalize, so it used to land as "instock" and
+    """ "inStock" has no space or dash to normalize, so it used to land as "instock" and
     miss `row["in_stock"]` entirely — every row silently imported as in stock."""
     assert normalize_header("inStock") == "in_stock"
     assert normalize_header("InStock") == "in_stock"

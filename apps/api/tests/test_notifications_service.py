@@ -784,9 +784,9 @@ async def test_send_owner_reply_repeats_the_header_on_every_part_of_a_long_text(
         part = call.args[1]
         assert part.startswith(f"{messages.OWNER_MESSAGE_HEADER} по заявке #a1b2c3d4:")
         assert len(part.encode("utf-16-le")) // 2 <= MAX_MESSAGE_LENGTH
-    assert [call.kwargs["reply_markup"] is None for call in calls] == [True] * (
-        len(calls) - 1
-    ) + [False]
+    assert [call.kwargs["reply_markup"] is None for call in calls] == [True] * (len(calls) - 1) + [
+        False
+    ]
 
 
 async def test_send_customer_reply_repeats_the_header_on_every_part_of_a_long_text() -> None:

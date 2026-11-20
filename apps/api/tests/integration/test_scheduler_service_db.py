@@ -407,9 +407,7 @@ async def test_notify_carts_rescued_resolves_chats_and_drops_the_dead_ones(
     send = AsyncMock(return_value=BroadcastResult(sent=0, blocked_chat_ids=[555]))
     monkeypatch.setattr("app.telegram.notify.notifications_service.send_cart_rescued", send)
 
-    await notify_carts_rescued(
-        db_session, cycle, [CartRescue(user_id=user.id, saved=2, dropped=1)]
-    )
+    await notify_carts_rescued(db_session, cycle, [CartRescue(user_id=user.id, saved=2, dropped=1)])
 
     notices, title = send.await_args.args
     assert [(notice.user.id, notice.saved, notice.dropped) for notice in notices] == [
@@ -533,9 +531,7 @@ async def test_close_now_does_everything_the_deadline_would_have(
 
 
 @pytest.fixture
-def announcement_session(
-    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
-) -> AsyncSession:
+def announcement_session(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch) -> AsyncSession:
     """`notify_cycle_opened` opens its own session (it runs outside any request); point
     that at the test's session so the stamp it writes is visible to the assertions."""
 
