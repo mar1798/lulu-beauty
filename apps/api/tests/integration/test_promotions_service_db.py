@@ -1,0 +1,271 @@
+import uuid
+from collections.abc import Sequence
+from datetime import UTC, datetime, timedelta
+
+import pytest
+from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.orders.models import Order
+from app.promotions.models import OrderPromotion, Promotion
+from app.promotions.rules import (
+    AnyCondition,
+    AnyReward,
+    ConditionType,
+    ContainsCondition,
+    GiftKind,
+    GiftReward,
+    RewardType,
+    Target,
+)
+from app.promotions.service import (
+    BannerVariant,
+    PromotionDraft,
+    PromotionEndsBeforeStartError,
+    PromotionInvalidRulesError,
+    PromotionNotFoundError,
+    PromotionSlugTakenError,
+    PromotionsService,
+)
+from tests.integration.factories import (
+    make_category,
+    make_cycle,
+    make_product,
+    make_user,
+    variant_id,
+)
+
+NOW = datetime.now(UTC)
+MYSTERY = GiftReward(type=RewardType.GIFT, gift=GiftKind.CUSTOM)
+
+
+def _draft(
+    *,
+    slug: str = "black-friday",
+    conditions: Sequence[AnyCondition] = (),
+    rewards: Sequence[AnyReward] = (MYSTERY,),
+    starts_at: datetime = NOW - timedelta(days=1),
+    ends_at: datetime = NOW + timedelta(days=1),
+    description_html: str | None = None,
+) -> PromotionDraft:
+    return PromotionDraft(
+        slug=slug,
+        title="Чёрная пятница",
+        description_html=description_html,
+        starts_at=starts_at,
+        ends_at=ends_at,
+        is_enabled=True,
+        announce=False,
+        sort_order=0,
+        conditions=list(conditions),
+        rewards=list(rewards),
+    )
+
+
+async def _join(session: AsyncSession, promotion: Promotion) -> OrderPromotion:
+    """An order taking part — what checkout will do from stage two on."""
+    user = await make_user(session)
+    cycle = await make_cycle(session)
+    order = Order(user_id=user.id, cycle_id=cycle.id, total_cents=0)
+    session.add(order)
+    await session.flush()
+    participation = OrderPromotion(
+        order_id=order.id,
+        user_id=user.id,
+        promotion_id=promotion.id,
+        title=promotion.title,
+        rewards=promotion.rewards,
+    )
+    session.add(participation)
+    await session.flush()
+    return participation
+
+
+async def test_create_stores_rules_and_cleans_the_description(db_session: AsyncSession) -> None:
+    product = await make_product(db_session)
+    draft = _draft(
+        conditions=[
+            ContainsCondition(type=ConditionType.CONTAINS, target=Target(product_ids=[product.id]))
+        ],
+        description_html="<p>Подарок<script>alert(1)</script></p>",
+    )
+    promotion = await PromotionsService(db_session).create(draft)
+    await db_session.commit()
+
+    stored = await db_session.get(Promotion, promotion.id)
+    assert stored is not None
+    assert stored.conditions[0]["target"]["product_ids"] == [str(product.id)]
+    assert stored.rewards[0]["title"] == "Mystery box"
+    assert stored.description_html is not None and "script" not in stored.description_html
+
+
+async def test_slug_is_unique_even_against_the_archive(db_session: AsyncSession) -> None:
+    service = PromotionsService(db_session)
+    promotion = await service.create(_draft())
+    await _join(db_session, promotion)
+    await service.delete(promotion.id)  # archived, it has a participant
+
+    with pytest.raises(PromotionSlugTakenError):
+        await service.create(_draft())
+
+
+async def test_an_update_may_keep_its_own_slug(db_session: AsyncSession) -> None:
+    service = PromotionsService(db_session)
+    promotion = await service.create(_draft())
+    other = await service.create(_draft(slug="other"))
+
+    await service.update(promotion.id, _draft())
+    with pytest.raises(PromotionSlugTakenError):
+        await service.update(other.id, _draft())
+
+
+async def test_window_must_end_after_it_starts(db_session: AsyncSession) -> None:
+    with pytest.raises(PromotionEndsBeforeStartError):
+        await PromotionsService(db_session).create(_draft(ends_at=NOW - timedelta(days=1)))
+
+
+async def test_rules_must_name_what_the_catalogue_sells(db_session: AsyncSession) -> None:
+    service = PromotionsService(db_session)
+    gone = await make_product(db_session, deleted_at=NOW)
+    live = await make_product(db_session)
+    category = await make_category(db_session)
+
+    def contains(target: Target) -> list[AnyCondition]:
+        return [ContainsCondition(type=ConditionType.CONTAINS, target=target)]
+
+    with pytest.raises(PromotionInvalidRulesError):
+        await service.create(_draft(conditions=contains(Target(product_ids=[gone.id]))))
+    with pytest.raises(PromotionInvalidRulesError):
+        await service.create(_draft(conditions=contains(Target(category_ids=[uuid.uuid4()]))))
+    with pytest.raises(PromotionInvalidRulesError):
+        await service.create(
+            _draft(
+                rewards=[
+                    GiftReward(
+                        type=RewardType.GIFT, gift=GiftKind.PRODUCT, variant_id=variant_id(gone)
+                    )
+                ]
+            )
+        )
+
+    promotion = await service.create(
+        _draft(
+            conditions=contains(Target(product_ids=[live.id], category_ids=[category.id])),
+            rewards=[
+                GiftReward(type=RewardType.GIFT, gift=GiftKind.PRODUCT, variant_id=variant_id(live))
+            ],
+        )
+    )
+    assert promotion.id is not None
+
+
+async def test_delete_without_participants_removes_the_row(db_session: AsyncSession) -> None:
+    service = PromotionsService(db_session)
+    promotion = await service.create(_draft())
+    await service.set_banner(promotion.id, BannerVariant.MOBILE, "http://files/m.webp")
+
+    deletion = await service.delete(promotion.id)
+    await db_session.commit()
+
+    assert deletion.deleted
+    assert deletion.orphaned_urls == ["http://files/m.webp"]
+    assert await db_session.get(Promotion, promotion.id) is None
+
+
+async def test_delete_with_participants_archives(db_session: AsyncSession) -> None:
+    service = PromotionsService(db_session)
+    promotion = await service.create(_draft())
+    participation = await _join(db_session, promotion)
+    participation.released_at = NOW  # history still counts
+
+    deletion = await service.delete(promotion.id)
+    await db_session.commit()
+
+    assert not deletion.deleted and deletion.orphaned_urls == []
+    archived = await db_session.get(Promotion, promotion.id)
+    assert archived is not None and archived.deleted_at is not None
+    assert [p.id for p in await service.list_all()] == []
+    assert [p.id for p in await service.list_all(include_deleted=True)] == [promotion.id]
+
+
+async def test_banner_replacement_hands_back_the_old_address(db_session: AsyncSession) -> None:
+    service = PromotionsService(db_session)
+    promotion = await service.create(_draft())
+
+    _, first = await service.set_banner(promotion.id, BannerVariant.DESKTOP, "http://files/a.webp")
+    _, second = await service.set_banner(promotion.id, BannerVariant.DESKTOP, "http://files/b.webp")
+    updated, removed = await service.remove_banner(promotion.id, BannerVariant.DESKTOP)
+
+    assert (first, second, removed) == (None, "http://files/a.webp", "http://files/b.webp")
+    assert updated.banner_desktop_url is None and updated.banner_mobile_url is None
+
+
+async def test_participant_counts_skip_released(db_session: AsyncSession) -> None:
+    service = PromotionsService(db_session)
+    promotion = await service.create(_draft())
+    await _join(db_session, promotion)
+    released = await _join(db_session, promotion)
+    released.released_at = NOW
+    await db_session.flush()
+
+    assert await service.participant_counts([promotion.id]) == {promotion.id: 1}
+    participants = await service.participants(promotion.id)
+    assert len(participants) == 2
+
+
+async def test_once_per_customer_is_held_by_the_database(db_session: AsyncSession) -> None:
+    promotion = await PromotionsService(db_session).create(_draft())
+    first = await _join(db_session, promotion)
+    cycle = await make_cycle(db_session)
+    second_order = Order(user_id=first.user_id, cycle_id=cycle.id, total_cents=0)
+    db_session.add(second_order)
+    await db_session.flush()
+
+    duplicate = OrderPromotion(
+        order_id=second_order.id,
+        user_id=first.user_id,
+        promotion_id=promotion.id,
+        title="x",
+        rewards=[],
+    )
+    with pytest.raises(IntegrityError):
+        async with db_session.begin_nested():
+            db_session.add(duplicate)
+            await db_session.flush()
+
+    # Released, the customer may join again.
+    first.released_at = NOW
+    await db_session.flush()
+    again = OrderPromotion(
+        order_id=second_order.id,
+        user_id=first.user_id,
+        promotion_id=promotion.id,
+        title="x",
+        rewards=[],
+    )
+    db_session.add(again)
+    await db_session.flush()
+    live = await db_session.scalars(
+        select(OrderPromotion).where(OrderPromotion.released_at.is_(None))
+    )
+    assert [row.id for row in live] == [again.id]
+
+
+async def test_only_running_promotions_are_public(db_session: AsyncSession) -> None:
+    service = PromotionsService(db_session)
+    running = await service.create(_draft(slug="running"))
+    await service.create(
+        _draft(slug="later", starts_at=NOW + timedelta(days=1), ends_at=NOW + timedelta(days=2))
+    )
+    await service.create(
+        _draft(slug="over", starts_at=NOW - timedelta(days=3), ends_at=NOW - timedelta(days=2))
+    )
+    off = await service.create(_draft(slug="off"))
+    await service.set_enabled(off.id, False)
+
+    assert [p.slug for p in await service.list_active()] == ["running"]
+    assert (await service.get_active("running")).id == running.id
+    for slug in ("later", "over", "off", "missing"):
+        with pytest.raises(PromotionNotFoundError):
+            await service.get_active(slug)

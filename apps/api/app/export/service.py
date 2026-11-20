@@ -13,10 +13,12 @@ from sqlalchemy import func, literal, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.catalog.labels import product_label
-from app.catalog.models import Product
+from app.catalog.models import Product, ProductVariant
 from app.config import settings
 from app.cycles.models import OrderCycle
 from app.orders.models import CANCELLED_STATUSES, Order, OrderItem, OrderStatus
+from app.promotions.models import OrderGift
+from app.promotions.rules import GiftKind
 
 HEADER = [
     "Наименование товара",
@@ -45,6 +47,15 @@ MAX_TEXT_WIDTH = 60
 TEXT_COLUMNS = (0, 1)
 
 CellValue = str | float | None
+
+
+@dataclass(frozen=True)
+class CustomGiftRow:
+    """A free gift to put in the parcels — nothing to buy, a box to pack."""
+
+    title: str
+    image_url: str | None
+    quantity: int
 
 
 @dataclass(frozen=True)
@@ -340,9 +351,99 @@ class ExportService:
         """The purchase list of one cycle as the admin checklist shows it.
 
         The same rows as the xlsx with prices, minus cancelled orders: the checklist has no
-        status filter of its own, and a withdrawn request is nothing to buy.
+        status filter of its own, and a withdrawn request is nothing to buy. Catalogue gifts
+        (`order_gifts`) are on it too — the shop buys them like anything else — summed into
+        the row of the same variant when an order asks for it as well, priced at the
+        catalogue's price for it (what the shop pays is the shop's own number, and the
+        nearest the order knows). The xlsx is not changed: it is the customers' orders.
         """
-        return await self._export_rows(cycle_id, exclude_cancelled=True)
+        rows = await self._export_rows(cycle_id, exclude_cancelled=True)
+
+        gift_result = await self._session.execute(
+            select(
+                OrderGift.title,
+                OrderGift.quantity,
+                Product.name,
+                Product.brand,
+                Product.slug,
+                ProductVariant.volume_ml,
+                ProductVariant.shade,
+                ProductVariant.price_cents,
+            )
+            .join(Order, Order.id == OrderGift.order_id)
+            .outerjoin(ProductVariant, ProductVariant.id == OrderGift.variant_id)
+            .outerjoin(Product, Product.id == ProductVariant.product_id)
+            .where(
+                Order.cycle_id == cycle_id,
+                Order.status.not_in(CANCELLED_STATUSES),
+                OrderGift.kind == GiftKind.PRODUCT,
+            )
+        )
+        gifts = gift_result.all()
+        if not gifts:
+            return rows
+        merged: dict[tuple[str, int | None, str | None, str, int], OrderExportRow] = {
+            (r.product_name, r.volume_ml, r.shade, r.brand, r.unit_price_cents): r for r in rows
+        }
+        for title, quantity, name, brand, slug, volume_ml, shade, price_cents in gifts:
+            # The variant is gone: the gift is still to be handed out, under the name it
+            # was given with.
+            row = OrderExportRow(
+                product_name=name if name is not None else title,
+                volume_ml=volume_ml,
+                brand=brand if brand else "-",
+                quantity=quantity,
+                unit_price_cents=price_cents if price_cents is not None else 0,
+                shade=shade,
+                product_slug=slug,
+            )
+            key = (row.product_name, row.volume_ml, row.shade, row.brand, row.unit_price_cents)
+            known = merged.get(key)
+            merged[key] = (
+                row
+                if known is None
+                else OrderExportRow(
+                    product_name=known.product_name,
+                    volume_ml=known.volume_ml,
+                    brand=known.brand,
+                    quantity=known.quantity + row.quantity,
+                    unit_price_cents=known.unit_price_cents,
+                    shade=known.shade,
+                    product_slug=known.product_slug,
+                )
+            )
+        return sorted(
+            merged.values(),
+            key=lambda r: (
+                r.brand == "-",
+                r.brand,
+                r.product_name,
+                r.volume_ml is not None,
+                r.volume_ml or 0,
+                r.shade is not None,
+                r.shade or "",
+                r.unit_price_cents,
+            ),
+        )
+
+    async def checklist_custom_gifts(self, cycle_id: uuid.UUID) -> list[CustomGiftRow]:
+        """The free gifts of the cycle's live orders, the same one summed — a separate block
+        on the checklist, since there is nothing to buy for them."""
+        result = await self._session.execute(
+            select(OrderGift.title, OrderGift.image_url, func.sum(OrderGift.quantity))
+            .join(Order, Order.id == OrderGift.order_id)
+            .where(
+                Order.cycle_id == cycle_id,
+                Order.status.not_in(CANCELLED_STATUSES),
+                OrderGift.kind == GiftKind.CUSTOM,
+            )
+            .group_by(OrderGift.title, OrderGift.image_url)
+            .order_by(OrderGift.title)
+        )
+        return [
+            CustomGiftRow(title=title, image_url=image_url, quantity=int(total))
+            for title, image_url, total in result.tuples()
+        ]
 
     async def _filename(self, cycle_id: uuid.UUID | None) -> str:
         if cycle_id is None:

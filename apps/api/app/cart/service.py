@@ -1,5 +1,6 @@
 import uuid
 from collections.abc import Sequence
+from datetime import UTC, datetime
 
 from sqlalchemy import ColumnElement, and_, delete, select
 from sqlalchemy.exc import IntegrityError
@@ -13,6 +14,11 @@ from app.catalog.models import Category, Product, ProductVariant
 from app.common.limits import MAX_ITEM_QUANTITY
 from app.cycles.models import OrderCycle
 from app.cycles.service import CyclesService
+from app.promotions.code_errors import PromoCodeConditionsNotMetError
+from app.promotions.code_schemas import PromoCodeCheckResponse, order_promo_code_response
+from app.promotions.codes import PromoCodesService
+from app.promotions.order_schemas import cart_promotions_response, gift_response
+from app.promotions.orders import CartLine, preview_cart
 
 
 class NoActiveCycleError(Exception):
@@ -85,7 +91,7 @@ class CartService:
         cycle = await self._cycles.get_active_cycle()
         quantities = _guest_quantities(lines)
         if not quantities:
-            return self._response(cycle, [])
+            return await self._response(cycle, [], None)
 
         result = await self._session.execute(
             select(Product, ProductVariant, Category.name)
@@ -96,12 +102,15 @@ class CartService:
             .order_by(Product.name, ProductVariant.sort_order)
             .options(selectinload(Product.images))
         )
-        return self._response(
+        return await self._response(
             cycle,
             [
                 _line(product, variant, category_name, quantities[variant.id])
                 for product, variant, category_name in result.all()
             ],
+            # A guest has taken part in nothing: the preview shows what signing in and
+            # checking out would give them.
+            None,
         )
 
     async def merge(
@@ -274,6 +283,47 @@ class CartService:
             raise NoActiveCycleError
         return cycle
 
+    async def check_promo_code(self, user_id: uuid.UUID, raw_code: str) -> PromoCodeCheckResponse:
+        """Would this code work on the cart as it is, and what would the cart come to?
+
+        The refusals are `PromoCodeError`s: not the customer's (or no such code), used,
+        expired, not valid yet, or a cart that does not meet its conditions. Writes nothing —
+        reserving is checkout's.
+        """
+        code = await PromoCodesService(self._session).usable(user_id, raw_code)
+        cycle = await CyclesService(self._session).get_active_cycle()
+        lines: list[CartLine] = []
+        if cycle is not None:
+            cart = await self._find_cart(user_id, cycle.id)
+            if cart is not None:
+                # The same join as the cart's own response and as checkout.
+                result = await self._session.execute(
+                    select(CartItem, ProductVariant)
+                    .join(Product, Product.id == CartItem.product_id)
+                    .join(ProductVariant, ProductVariant.id == CartItem.variant_id)
+                    .where(CartItem.cart_id == cart.id, _orderable())
+                )
+                lines = [
+                    CartLine(
+                        product_id=item.product_id,
+                        variant_id=variant.id,
+                        price_cents=variant.price_cents,
+                        quantity=item.quantity,
+                    )
+                    for item, variant in result.tuples()
+                ]
+        preview = await preview_cart(self._session, user_id, lines, promo_code=code)
+        if preview.code is None:
+            raise PromoCodeConditionsNotMetError
+        return PromoCodeCheckResponse(
+            code=order_promo_code_response(code, datetime.now(UTC)),
+            discount_cents=preview.code.discount_cents,
+            gifts=[gift_response(gift) for gift in preview.code.gifts],
+            cart_total_cents=sum(line.price_cents * line.quantity for line in lines),
+            payable_cents=preview.payable_cents,
+            promotions=cart_promotions_response(preview),
+        )
+
     async def _get_item(self, cart: Cart | None, variant_id: uuid.UUID) -> CartItem:
         if cart is not None:
             item = await self._find_item(cart, variant_id)
@@ -310,7 +360,7 @@ class CartService:
 
     async def _build_response(self, cycle: OrderCycle | None, cart: Cart | None) -> CartResponse:
         if cart is None:
-            return self._response(cycle, [])
+            return await self._response(cycle, [], None)
 
         # Discontinued products and volumes — and ones the owner has taken out of stock —
         # drop out of the cart (`_orderable`). The rows themselves are left alone (a
@@ -333,21 +383,43 @@ class CartService:
             .options(selectinload(Product.images))
         )
 
-        return self._response(
+        return await self._response(
             cycle,
             [
                 _line(product, variant, category_name, cart_item.quantity)
                 for cart_item, product, variant, category_name in result.all()
             ],
+            cart.user_id,
         )
 
-    @staticmethod
-    def _response(cycle: OrderCycle | None, items: list[CartItemResponse]) -> CartResponse:
+    async def _response(
+        self, cycle: OrderCycle | None, items: list[CartItemResponse], user_id: uuid.UUID | None
+    ) -> CartResponse:
+        """The cart, with what checkout would give it (`promotions`).
+
+        `total_cents` stays price × quantity; the promotions' discounts are in the block, so
+        the site shows the cart's own sum and the promotions' separately. The block comes
+        from the engine checkout uses (`preview_cart`), for a guest as for a customer.
+        """
+        preview = await preview_cart(
+            self._session,
+            user_id,
+            [
+                CartLine(
+                    product_id=item.product_id,
+                    variant_id=item.variant_id,
+                    price_cents=item.product_price_cents,
+                    quantity=item.quantity,
+                )
+                for item in items
+            ],
+        )
         return CartResponse(
             cycle_id=cycle.id if cycle is not None else None,
             cycle_deadline_at=cycle.deadline_at if cycle is not None else None,
             items=items,
             total_cents=sum(item.line_total_cents for item in items),
+            promotions=cart_promotions_response(preview),
         )
 
 

@@ -9,6 +9,7 @@ from app.checklist.models import ChecklistExtra, ChecklistMark  # noqa: F401
 from app.cycles.models import OrderCycle  # noqa: F401
 from app.orders.models import Order, OrderItem  # noqa: F401
 from app.payments.models import PaymentReceipt  # noqa: F401
+from app.promotions.models import OrderGift, OrderPromotion, PromoCode, Promotion  # noqa: F401
 from app.telegram.models import RelayedMessage  # noqa: F401
 from app.wanted.models import WantedProduct  # noqa: F401
 from app.wishlist.models import WishlistItem  # noqa: F401

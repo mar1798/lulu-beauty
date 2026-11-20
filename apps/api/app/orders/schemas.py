@@ -5,8 +5,13 @@ from pydantic import Field, field_validator, model_validator
 
 from app.common.limits import MAX_ITEM_QUANTITY
 from app.common.schemas import CamelModel, PageResponse
-from app.orders.discounts import MAX_DISCOUNT_PERCENT
-from app.orders.models import DiscountKind, OrderStatus, PendingStage
+from app.orders.models import MAX_DISCOUNT_PERCENT, DiscountKind, OrderStatus, PendingStage
+from app.promotions.code_schemas import OrderPromoCodeResponse
+from app.promotions.order_schemas import (
+    OrderGiftResponse,
+    OrderPromotionResponse,
+    PromotionRefResponse,
+)
 
 # Mirrored by `OWNER_MESSAGE_MAX_LENGTH` on the website, which counts down to it.
 MAX_OWNER_MESSAGE_LENGTH = 3500
@@ -41,6 +46,8 @@ __all__ = [
     "AdminOrderResponse",
     "AdminOrdersSummary",
     "CheckoutRequest",
+    "OrderEditPreviewRequest",
+    "OrderEditPreviewResponse",
     "OrderItemAddRequest",
     "OrderItemQuantityRequest",
     "OrderItemResponse",
@@ -52,6 +59,41 @@ __all__ = [
 
 class CheckoutRequest(CamelModel):
     note: str | None = Field(default=None, max_length=2000)
+    # A promo code the customer entered; checked and reserved with the order. Left out or
+    # empty, nothing is applied.
+    promo_code: str | None = Field(default=None, max_length=64)
+
+
+class OrderEditPreviewRequest(CamelModel):
+    """A change the customer is about to make to their order, to be asked about, not made.
+
+    One of `item_id` (a line of the order: set its quantity, or `quantity` 0 to remove it)
+    and `variant_id` (a volume to add). The website asks before the edit to warn about what
+    it would take off — the discounts (`discountLoss`) and the promotions this answers for.
+    """
+
+    revision: int = Field(ge=0)
+    item_id: uuid.UUID | None = None
+    variant_id: uuid.UUID | None = None
+    quantity: int = Field(ge=0, le=MAX_ITEM_QUANTITY)
+
+    @model_validator(mode="after")
+    def _one_target(self) -> "OrderEditPreviewRequest":
+        if (self.item_id is None) == (self.variant_id is None):
+            raise ValueError("name either a line or a volume")
+        if self.variant_id is not None and self.quantity < 1:
+            raise ValueError("a volume is added at one or more")
+        return self
+
+
+class OrderEditPreviewResponse(CamelModel):
+    """What the edit would do to the order's promotions and sum."""
+
+    # Promotions the order holds now and would not after the edit.
+    lost_promotions: list[PromotionRefResponse]
+    # Promotions it does not hold and would take after it.
+    gained_promotions: list[PromotionRefResponse]
+    total_cents: int
 
 
 class OrderStatusUpdateRequest(CamelModel):
@@ -264,6 +306,18 @@ class OrderResponse(CamelModel):
     # (`OrderItemQuantityRequest.revision`, `AdminOrderEditRequest.revision`), so a change
     # decided on lines that have since moved is refused instead of applied over them.
     revision: int = 0
+    # The promotions the order holds (live participations) and the gifts going out with it.
+    # Their money is counted in `total_cents`; `app/orders/discounts.py` is where, and the
+    # two sums below say how much came off in each of its steps.
+    promotions: list[OrderPromotionResponse] = []
+    gifts: list[OrderGiftResponse] = []
+    promo_items_discount_cents: int = 0
+    promo_order_discount_cents: int = 0
+    # The promo code the order holds (reserved by it, or spent when it was paid for) — its
+    # discount is the `promotions` entry with the same `promoCodeId`.
+    promo_code: OrderPromoCodeResponse | None = None
+    # The codes this order earned when it was paid for, revoked ones included.
+    issued_promo_codes: list[OrderPromoCodeResponse] = []
 
 
 class AdminOrderResponse(OrderResponse):

@@ -4,11 +4,13 @@ from typing import Any
 
 from sqlalchemy import case, delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.auth.models import ADMIN_ROLES, RefreshToken, Role, TelegramAuthSession, User
 from app.auth.service import AuthService
 from app.cart.models import Cart
 from app.orders.models import Order, OrderStatus
+from app.promotions.orders import OrderPromotionsService
 from app.wanted.models import WantedProduct
 from app.wishlist.models import WishlistItem
 
@@ -258,13 +260,17 @@ class UsersService:
             raise AccountHasUnfinishedOrdersError(blocking)
 
         open_orders = await self._session.execute(
-            select(Order).where(
-                Order.user_id == user_id, Order.status.in_(DELETION_WITHDRAWN_STATUSES)
-            )
+            select(Order)
+            .options(selectinload(Order.items))
+            .where(Order.user_id == user_id, Order.status.in_(DELETION_WITHDRAWN_STATUSES))
         )
         withdrawn = list(open_orders.scalars().all())
+        promotions = OrderPromotionsService(self._session)
         for order in withdrawn:
+            was_status = order.status
             order.status = OrderStatus.CANCELLED_BY_CUSTOMER
+            # As a cancellation by hand: what the order held is let go.
+            await promotions.release_all(order, was_status=was_status)
 
         # Carts take their items with them at the database level (`ON DELETE CASCADE` on
         # cart_items.cart_id), so the rows go even though this never loads them.

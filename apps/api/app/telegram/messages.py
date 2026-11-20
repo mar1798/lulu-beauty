@@ -5,9 +5,9 @@ what to do when it fails) and how it is worded change for different reasons, and
 are now nine texts rather than the original two.
 
 Everything here is plain text — the bot sends without a `parse_mode`, so nothing needs
-escaping and a product name with an underscore in it can't break a message. The one
-exception is the bill (`order_confirmed`): it is HTML, sent with `parse_mode="HTML"`,
-and escapes every product name it lists.
+escaping and a product name with an underscore in it can't break a message. The exceptions
+are the HTML ones (the bill `order_confirmed`, `order_created_for_customer`,
+`promo_code_issued`): they are sent with `parse_mode="HTML"` and escape every name they list.
 """
 
 import html
@@ -16,6 +16,8 @@ import uuid
 from collections.abc import Sequence
 from datetime import datetime
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+from pydantic import ValidationError
 
 from app.auth.models import User
 from app.catalog.labels import product_label
@@ -30,6 +32,22 @@ from app.orders.service import (
     LostDiscount,
     OrderItemDrop,
     OrderPriceChange,
+)
+from app.promotions.models import PromoCode, Promotion
+from app.promotions.rules import (
+    AnyCodeReward,
+    AnyCondition,
+    AnyReward,
+    ContainsCondition,
+    ContainsMode,
+    DiscountReward,
+    GiftReward,
+    PromoCodeReward,
+    QuantityCondition,
+    SubtotalCondition,
+    load_code_rewards,
+    load_conditions,
+    load_rewards,
 )
 from app.wanted.models import WantedProduct
 
@@ -195,6 +213,7 @@ def new_order_for_owner(
     ]
     if order.created_by_id is not None:
         lines.append(f"Оформлена в админке: {creator.name}" if creator else "Оформлена в админке")
+    lines.extend(_gift_lines_for_owner(order))
     if order.note:
         lines.append(f"Комментарий: {order.note}")
     return "\n".join(lines)
@@ -401,6 +420,7 @@ def order_created_for_customer(order: Order, cycle: OrderCycle | None, *, is_ope
             f"🛍{_items_count(order)}",
             *(_bill_line(item) for item in order.items),
             "",
+            *(html.escape(line) for line in promotion_lines(order)),
             *_order_discount_lines(order),
             f"Сумма: <b>{format_price(order.total_cents, grouped=False)}</b>",
             "",
@@ -1037,6 +1057,159 @@ def cycle_opened(cycle: OrderCycle) -> str:
     )
 
 
+# ─── Promotions and promo codes ──────────────────────────────────────────────────
+#
+# Plain text unless a function says HTML: a title typed by the owner (a promotion's, a
+# gift's) goes through `html.escape` in the HTML messages and is left alone in the rest.
+
+
+def _gift_text(title: str, quantity: int) -> str:
+    return f"{title} × {quantity}" if quantity > 1 else title
+
+
+def describe_condition(condition: AnyCondition) -> str:
+    """One condition in the customer's words: "покупка от 2000 сом"."""
+    if isinstance(condition, SubtotalCondition):
+        scope = " на выбранные товары" if condition.target and not condition.target.is_empty else ""
+        return f"покупка от {format_price(condition.min_cents)}{scope}"
+    if isinstance(condition, QuantityCondition):
+        count = condition.min_quantity
+        scope = " из выбранных" if condition.target and not condition.target.is_empty else ""
+        return f"от {count} {plural(count, 'товара', 'товаров', 'товаров')}{scope}"
+    assert isinstance(condition, ContainsCondition)
+    if condition.mode is ContainsMode.ALL:
+        return "в заявке есть все выбранные товары"
+    return "в заявке есть выбранные товары"
+
+
+def describe_rewards(rewards: Sequence[AnyReward] | Sequence[AnyCodeReward]) -> list[str]:
+    """What a promotion or a code gives, one phrase per reward: "скидка 10%", "подарок X"."""
+    parts: list[str] = []
+    for reward in rewards:
+        if isinstance(reward, DiscountReward):
+            tag = discount_label(reward.kind, reward.value)
+            scope = " на выбранные товары" if reward.is_on_items else ""
+            parts.append(f"скидка {tag}{scope}")
+        elif isinstance(reward, GiftReward):
+            parts.append(f"подарок {_gift_text(reward.title, reward.quantity)}")
+        elif isinstance(reward, PromoCodeReward):
+            inner = ", ".join(describe_rewards(reward.rewards))
+            parts.append(f"промокод ({inner}) после оплаты заявки")
+    return parts
+
+
+def _safe_rewards(raw: object) -> list[AnyReward]:
+    try:
+        return load_rewards(raw)
+    except ValidationError:
+        logger.exception("a stored reward list does not parse")
+        return []
+
+
+def promotion_lines(order: Order) -> list[str]:
+    """Where an order stands in promotions: «вы участвуете в акции X: скидка …, подарок …».
+
+    One line per live participation (a released one is history), and a code that was
+    entered says so. Gifts are the order's own `order_gifts` rows rather than the snapshot's
+    GIFT rewards: those rows are what goes out with the order. Raw text — the HTML message
+    that embeds it escapes it.
+    """
+    lines: list[str] = []
+    for participation in order.promotions:
+        if participation.released_at is not None:
+            continue
+        parts = describe_rewards(
+            [r for r in _safe_rewards(participation.rewards) if not isinstance(r, GiftReward)]
+        )
+        gifts = [gift for gift in order.gifts if gift.order_promotion_id == participation.id]
+        if gifts:
+            names = ", ".join(_gift_text(gift.title, gift.quantity) for gift in gifts)
+            parts.append(f"{plural(len(gifts), 'подарок', 'подарки', 'подарки')} {names}")
+        what = ": " + ", ".join(parts) if parts else ""
+        if participation.promo_code_id is not None:
+            lines.append(f"🎟 Применён {_lower_first(participation.title)}{what}")
+        else:
+            lines.append(f"🎁 Вы участвуете в акции «{participation.title}»{what}")
+    return lines
+
+
+def _lower_first(text: str) -> str:
+    return text[:1].lower() + text[1:]
+
+
+def _gift_lines_for_owner(order: Order) -> list[str]:
+    """The gifts to put into the parcel, so that nobody finds out at pickup they were forgotten."""
+    if not order.gifts:
+        return []
+    return [
+        "🎁 Подарки - не забыть положить:",
+        *(f"• {_gift_text(gift.title, gift.quantity)}" for gift in order.gifts),
+    ]
+
+
+def promotion_started(promotion: Promotion) -> str:
+    """The broadcast that an offer has begun: what it gives, on what terms, until when."""
+    lines = [f"🎁 Началась акция «{promotion.title}»"]
+    try:
+        rewards = describe_rewards(load_rewards(promotion.rewards))
+        conditions = [describe_condition(c) for c in load_conditions(promotion.conditions)]
+    except ValidationError:
+        logger.exception("promotion %s has rules that do not parse", promotion.id)
+        rewards, conditions = [], []
+    if rewards:
+        lines.append(f"Что получите: {', '.join(rewards)}")
+    if conditions:
+        lines.append(f"Условия: {', '.join(conditions)}")
+    lines.append(f"Акция идёт до {format_deadline(promotion.ends_at)}")
+    return "\n".join(lines)
+
+
+def _code_terms(code: PromoCode) -> list[str]:
+    """What a code gives and on what terms, from the snapshot taken when it was issued."""
+    lines: list[str] = []
+    try:
+        rewards = describe_rewards(load_code_rewards(code.rewards))
+        conditions = [describe_condition(c) for c in load_conditions(code.conditions)]
+    except ValidationError:
+        logger.exception("promo code %s has rules that do not parse", code.id)
+        return lines
+    if rewards:
+        lines.append(f"Даёт: {', '.join(rewards)}")
+    if conditions:
+        lines.append(f"Условия: {', '.join(conditions)}")
+    return lines
+
+
+def promo_code_issued(code: PromoCode, promotion_title: str, *, now: datetime) -> str:
+    """The code the customer earned by paying: HTML, so the code is tap-to-copy.
+
+    The title is the owner's text and is escaped; the code itself is from a fixed alphabet.
+    """
+    lines = [
+        f"🎟 Промокод за участие в акции «{html.escape(promotion_title)}»",
+        f"Код: <code>{code.code}</code>",
+        *(html.escape(line) for line in _code_terms(code)),
+    ]
+    if code.valid_from > now:
+        lines.append(
+            f"Действует с {format_deadline(code.valid_from)} до {format_deadline(code.expires_at)}"
+        )
+    else:
+        lines.append(f"Действует до {format_deadline(code.expires_at)}")
+    lines.append("Введите его при оформлении следующей заявки")
+    return "\n".join(lines)
+
+
+def promo_code_expiring(code: PromoCode, promotion_title: str) -> str:
+    lines = [
+        f"⏳ Промокод {code.code} скоро сгорит",
+        f"Акция «{promotion_title}»",
+        *_code_terms(code),
+        f"Действует до {format_deadline(code.expires_at)}",
+    ]
+    return "\n".join(lines)
+
+
 def cycle_deadline_changed(cycle: OrderCycle, previous_deadline_at: datetime) -> str:
     """Владелец сдвинул дедлайн сбора, в котором у человека лежит корзина или заявка.
 
@@ -1184,6 +1357,8 @@ CHECKOUT_BUTTON = "Оформить заявку"
 WISHLIST_BUTTON = "Посмотреть избранное"
 CATALOG_BUTTON = "Открыть каталог"
 ORDERS_BUTTON = "Все заявки на сайте"
+PROMOTION_BUTTON = "Смотреть акцию"
+PROMO_CODES_BUTTON = "Мои промокоды"
 SITE_BUTTON = "Открыть сайт"
 # The help screen is the one place in the bot that links to the site's pages, so these
 # are short and carry an emoji like the menu labels: five of them sit together, and the

@@ -35,9 +35,10 @@ from app.orders.service import (
     OrderPriceChange,
 )
 from app.payments.models import PaymentReceipt
+from app.promotions.models import PromoCode, PromoCodeStatus, Promotion
 from app.telegram import messages, recipients, relay
 from app.telegram.client import notifications_service
-from app.telegram.service import CartRescueNotice
+from app.telegram.service import CartRescueNotice, Delivery
 from app.wanted.models import WantedProduct
 
 logger = logging.getLogger("app.telegram.notify")
@@ -56,6 +57,9 @@ logger = logging.getLogger("app.telegram.notify")
 # one API process (docs/deployment.md) — the same assumption every sweep here already
 # rests on, since a second process would double every reminder and every closing too.
 _announcing: set[uuid.UUID] = set()
+
+# The same claim for promotions whose start announcement is in flight (see `_announcing`).
+_announcing_promotions: set[uuid.UUID] = set()
 
 
 async def notify_new_order(order_id: uuid.UUID) -> None:
@@ -743,3 +747,114 @@ async def notify_carts_rescued(
         )
     except Exception:  # noqa: BLE001 - the carts are already moved; see module docstring
         logger.exception("Failed to announce the cart rescue for cycle %s", cycle.id)
+
+
+async def notify_promotion_started(promotion_id: uuid.UUID) -> bool:
+    """Announces a promotion that has begun to every linked customer, once.
+
+    The same shape as `notify_cycle_opened`, down to the crash semantics: the stamp
+    `announced_at` is written after the fan-out and never before it, so a process that dies
+    partway through leaves the promotion unstamped and the next sweep tick tells everyone
+    again — a duplicate is a nuisance, an offer nobody heard about is a lost offer. The
+    claim in `_announcing_promotions` keeps a tick landing mid-broadcast from starting a
+    second copy.
+
+    Eligibility is read again here, not trusted from the sweep's list: the promotion may
+    have been switched off, archived or finished between the two.
+
+    Returns whether this call is the one that got the announcement out.
+    """
+    if promotion_id in _announcing_promotions:
+        return False
+    _announcing_promotions.add(promotion_id)
+    try:
+        async with async_session() as session:
+            promotion = await session.get(Promotion, promotion_id)
+            if promotion is None or promotion.announced_at is not None:
+                return False
+            now = datetime.now(UTC)
+            if (
+                not promotion.announce
+                or not promotion.is_enabled
+                or promotion.deleted_at is not None
+                or not promotion.starts_at <= now < promotion.ends_at
+            ):
+                return False
+
+            audience = await recipients.get_broadcast_audience(session)
+            result = await notifications_service.send_promotion_started(audience, promotion)
+
+            promotion.announced_at = datetime.now(UTC)
+            cleared = await recipients.clear_stale_bindings(session, result.blocked_chat_ids)
+            await session.commit()
+
+            logger.info(
+                "Promotion %s announced to %d/%d chat(s); %d stale binding(s) cleared",
+                promotion_id,
+                result.sent,
+                len(audience),
+                cleared,
+            )
+            return True
+    except Exception:  # noqa: BLE001 - the promotion is already committed; see module docstring
+        logger.exception("Failed to announce promotion %s", promotion_id)
+        return False
+    finally:
+        _announcing_promotions.discard(promotion_id)
+
+
+async def notify_promo_codes_issued(code_ids: Sequence[uuid.UUID]) -> None:
+    """Tells each customer the code their paid order earned, after the commit that issued it.
+
+    Takes ids and re-reads: the codes were issued by a request or a sweep whose session is
+    gone by now. Nothing is stamped — the code is the record, and `/promocodes` shows it
+    whether or not this message arrived — so a crash between the commit and here costs the
+    message and nothing else.
+    """
+    for code_id in code_ids:
+        try:
+            async with async_session() as session:
+                code = await session.get(PromoCode, code_id)
+                if code is None or code.status is PromoCodeStatus.REVOKED:
+                    continue
+                await notify_promo_code_issued(session, code)
+                await session.commit()
+        except Exception:  # noqa: BLE001 - one code's failure must not cost the others
+            logger.exception("Failed to tell the customer about promo code %s", code_id)
+
+
+async def notify_promo_code_issued(session: AsyncSession, code: PromoCode) -> None:
+    """Tells the participant their code: what it is, what it gives, until when."""
+    customer = await _load_customer(session, code.user_id)
+    if customer is None:
+        return
+    promotion = await session.get(Promotion, code.promotion_id)
+    title = promotion.title if promotion is not None else ""
+    outcome = await notifications_service.send_promo_code_issued(customer, code, title)
+    if outcome is Delivery.BLOCKED and customer.telegram_chat_id is not None:
+        await recipients.clear_stale_bindings(session, [customer.telegram_chat_id])
+
+
+async def notify_promo_code_expiring(session: AsyncSession, code: PromoCode) -> bool:
+    """Warns the owner of a code that it runs out soon. Returns whether the reminder is settled.
+
+    Settled means the caller may stamp `reminded_at`, and that is the point of a return
+    value, as in `notify_stale_orders`: a stamp is final, so a transient failure (Telegram
+    down, a rate limit) answers False and the next tick tries again. What can never
+    succeed answers True instead — an erased account, a chat that was never bound, a bot
+    that blocked us (the binding is cleared) — or the sweep would retry it every tick for
+    the code's last three days.
+    """
+    try:
+        customer = await _load_customer(session, code.user_id)
+        if customer is None or customer.telegram_chat_id is None:
+            return True
+        promotion = await session.get(Promotion, code.promotion_id)
+        title = promotion.title if promotion is not None else ""
+        outcome = await notifications_service.send_promo_code_expiring(customer, code, title)
+        if outcome is Delivery.BLOCKED:
+            await recipients.clear_stale_bindings(session, [customer.telegram_chat_id])
+        return outcome in (Delivery.SENT, Delivery.BLOCKED)
+    except Exception:  # noqa: BLE001 - the sweep must survive one code's failure
+        logger.exception("Failed to remind about expiring promo code %s", code.id)
+        return False

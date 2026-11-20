@@ -18,6 +18,8 @@ from app.cart.service import (
     ProductNotFoundError,
 )
 from app.db import get_session
+from app.promotions.code_errors import PromoCodeError
+from app.promotions.code_schemas import PromoCodeCheckRequest, PromoCodeCheckResponse
 
 router = APIRouter(prefix="/cart", tags=["cart"])
 
@@ -38,6 +40,23 @@ async def preview_cart(
     session: AsyncSession = Depends(get_session),
 ) -> CartResponse:
     return await CartService(session).preview(body.items)
+
+
+@router.post("/promo-code/check", response_model=PromoCodeCheckResponse)
+async def check_promo_code(
+    body: PromoCodeCheckRequest,
+    session: AsyncSession = Depends(get_session),
+    current_user: CurrentUser = Depends(get_current_user),
+) -> PromoCodeCheckResponse:
+    """Validate a promo code against the signed-in customer's cart, before checkout.
+
+    A code that is not theirs answers `promo_code_not_found`, exactly like one that does
+    not exist.
+    """
+    try:
+        return await CartService(session).check_promo_code(current_user.id, body.code)
+    except PromoCodeError as error:
+        raise HTTPException(error.status_code, error.code) from error
 
 
 @router.post("/merge", response_model=CartResponse)

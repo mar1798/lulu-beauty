@@ -1177,6 +1177,22 @@ async def test_the_owner_cannot_revive_a_cancellation_the_customer_made(
         await service.update_status(order.id, OrderStatus.PENDING)
 
 
+async def test_emptying_a_billed_order_keeps_the_billed_total(db_session: AsyncSession) -> None:
+    """`drop_product` only reaches PENDING orders, but `_drop_lines` must not rewrite a
+    bill if it is ever handed one: the total stays the sum that was billed."""
+    order, _ = await _order_with(db_session, price_cents=1000, quantity=2)
+    await OrdersService(db_session).update_status(order.id, OrderStatus.AWAITING_PAYMENT)
+    billed = order.total_cents
+    revision = order.revision
+    assert billed == 2000
+
+    await OrdersService(db_session)._drop_lines([order], lambda _item: True)
+
+    assert order.status is OrderStatus.CANCELLED_BY_OWNER
+    assert order.total_cents == billed
+    assert order.revision == revision + 1
+
+
 async def test_the_owner_cannot_revive_an_order_left_with_nothing(
     db_session: AsyncSession,
 ) -> None:

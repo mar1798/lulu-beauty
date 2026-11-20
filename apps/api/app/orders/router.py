@@ -1,5 +1,6 @@
 import uuid
 from collections.abc import Mapping
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -21,6 +22,8 @@ from app.orders.schemas import (
     AdminOrderResponse,
     AdminOrdersSummary,
     CheckoutRequest,
+    OrderEditPreviewRequest,
+    OrderEditPreviewResponse,
     OrderItemAddRequest,
     OrderItemQuantityRequest,
     OrderItemResponse,
@@ -54,6 +57,14 @@ from app.orders.service import (
     StatusTransitionError,
 )
 from app.payments.service import PaymentsService
+from app.promotions.code_errors import PromoCodeError
+from app.promotions.code_schemas import OrderPromoCodeResponse, order_promo_code_response
+from app.promotions.codes import OrderCodes
+from app.promotions.order_schemas import (
+    PromotionRefResponse,
+    order_gift_responses,
+    order_promotion_responses,
+)
 from app.telegram import recipients
 from app.telegram.client import notifications_service
 from app.telegram.notify import (
@@ -65,6 +76,7 @@ from app.telegram.notify import (
     notify_order_discount,
     notify_order_edited,
     notify_order_status,
+    notify_promo_codes_issued,
 )
 from app.telegram.service import Delivery
 
@@ -114,12 +126,24 @@ _NO_ACTIONS = OrderFlags(
 )
 
 
+def _used_code(codes: OrderCodes | None, now: datetime) -> OrderPromoCodeResponse | None:
+    if codes is None or codes.used is None:
+        return None
+    return order_promo_code_response(codes.used, now)
+
+
+def _issued_codes(codes: OrderCodes | None, now: datetime) -> list[OrderPromoCodeResponse]:
+    return [order_promo_code_response(code, now) for code in (codes.issued if codes else [])]
+
+
 def _order_response(
     order: Order,
     tags: Mapping[uuid.UUID, ProductTags],
     flags: OrderFlags = _NO_ACTIONS,
+    codes: OrderCodes | None = None,
 ) -> OrderResponse:
     totals = order_totals(order)
+    now = datetime.now(UTC)
     return OrderResponse(
         id=order.id,
         cycle_id=order.cycle_id,
@@ -139,6 +163,12 @@ def _order_response(
         pending_stage=flags.pending_stage,
         paid_at=order.paid_at,
         revision=order.revision,
+        promotions=order_promotion_responses(order, totals),
+        gifts=order_gift_responses(order),
+        promo_items_discount_cents=totals.promo_items_discount_cents,
+        promo_order_discount_cents=totals.promo_order_discount_cents,
+        promo_code=_used_code(codes, now),
+        issued_promo_codes=_issued_codes(codes, now),
     )
 
 
@@ -146,7 +176,8 @@ async def _one_order_response(service: OrdersService, order: Order) -> OrderResp
     """Response for a single order, with the flags the customer's UI branches on."""
     flags = await service.customer_flags([order])
     tags = await service.load_item_tags([order])
-    return _order_response(order, tags, flags.get(order.id, _NO_ACTIONS))
+    codes = await service.load_codes([order])
+    return _order_response(order, tags, flags.get(order.id, _NO_ACTIONS), codes.get(order.id))
 
 
 def _admin_order_response(
@@ -155,6 +186,7 @@ def _admin_order_response(
     tags: Mapping[uuid.UUID, ProductTags],
     with_receipts: set[uuid.UUID],
     creators: Mapping[uuid.UUID, User] | None = None,
+    codes: OrderCodes | None = None,
 ) -> AdminOrderResponse:
     # `None` is the erased account, not a rarity: `load_customers` leaves it out of the map
     # so its placeholder name and filled-in phone are never read back, and the dash this
@@ -162,6 +194,7 @@ def _admin_order_response(
     # is unchanged — what the owner bought is still on it.
     creator = (creators or {}).get(order.created_by_id) if order.created_by_id is not None else None
     totals = order_totals(order)
+    now = datetime.now(UTC)
     return AdminOrderResponse(
         id=order.id,
         cycle_id=order.cycle_id,
@@ -185,6 +218,12 @@ def _admin_order_response(
         created_by_id=order.created_by_id,
         created_by_name=creator.name if creator is not None else None,
         revision=order.revision,
+        promotions=order_promotion_responses(order, totals),
+        gifts=order_gift_responses(order),
+        promo_items_discount_cents=totals.promo_items_discount_cents,
+        promo_order_discount_cents=totals.promo_order_discount_cents,
+        promo_code=_used_code(codes, now),
+        issued_promo_codes=_issued_codes(codes, now),
     )
 
 
@@ -198,7 +237,9 @@ async def checkout(
 ) -> OrderResponse:
     service = OrdersService(session)
     try:
-        order = await service.checkout(current_user.id, body.note)
+        order = await service.checkout(current_user.id, body.note, body.promo_code)
+    except PromoCodeError as error:
+        raise HTTPException(error.status_code, error.code) from error
     except NoActiveCycleError as error:
         raise HTTPException(status.HTTP_409_CONFLICT, "no_active_cycle") from error
     except EmptyCartError as error:
@@ -223,8 +264,12 @@ async def list_my_orders(
     orders, total = await service.list_for_user(current_user.id, page, page_size)
     flags = await service.customer_flags(orders)
     tags = await service.load_item_tags(orders)
+    codes = await service.load_codes(orders)
     return PageResponse(
-        items=[_order_response(order, tags, flags.get(order.id, _NO_ACTIONS)) for order in orders],
+        items=[
+            _order_response(order, tags, flags.get(order.id, _NO_ACTIONS), codes.get(order.id))
+            for order in orders
+        ],
         total=total,
         page=page,
         page_size=page_size,
@@ -278,6 +323,48 @@ async def update_my_order_note(
     response = await _one_order_response(service, order)
     await session.commit()
     return response
+
+
+@router.post("/orders/{order_id}/edit-preview", response_model=OrderEditPreviewResponse)
+async def preview_my_order_edit(
+    order_id: uuid.UUID,
+    body: OrderEditPreviewRequest,
+    session: AsyncSession = Depends(get_session),
+    current_user: CurrentUser = Depends(get_current_user),
+) -> OrderEditPreviewResponse:
+    """What an edit would take off or bring to the order's promotions, without making it.
+
+    The very edit, rolled back instead of committed (like the admin's discount preview): the
+    site asks before the customer changes their order, next to the discount warning, so the
+    arithmetic and the promotions' conditions stay on the server. The same refusals as the
+    edit itself — a stale `revision`, a closed cycle, the last line.
+    """
+    service = OrdersService(session)
+    try:
+        impact = await service.preview_customer_edit(
+            current_user.id,
+            order_id,
+            revision=body.revision,
+            item_id=body.item_id,
+            variant_id=body.variant_id,
+            quantity=body.quantity,
+        )
+    except (
+        OrderNotFoundError,
+        OrderNotEditableError,
+        OrderChangedError,
+        OrderItemNotFoundError,
+        LastOrderItemError,
+        ProductNotFoundError,
+    ) as error:
+        raise _editing_error(error) from error
+    finally:
+        await session.rollback()
+    return OrderEditPreviewResponse(
+        lost_promotions=[PromotionRefResponse(promotion_id=i, title=t) for i, t in impact.lost],
+        gained_promotions=[PromotionRefResponse(promotion_id=i, title=t) for i, t in impact.gained],
+        total_cents=impact.total_cents,
+    )
 
 
 @router.post(
@@ -443,11 +530,17 @@ async def list_orders_admin(
     customers = await service.load_customers(orders)
     creators = await service.load_creators(orders)
     tags = await service.load_item_tags(orders)
+    codes = await service.load_codes(orders)
     with_receipts = await PaymentsService(session).orders_with_receipts(o.id for o in orders)
     return AdminOrderPageResponse(
         items=[
             _admin_order_response(
-                order, customers.get(order.user_id), tags, with_receipts, creators
+                order,
+                customers.get(order.user_id),
+                tags,
+                with_receipts,
+                creators,
+                codes.get(order.id),
             )
             for order in orders
         ],
@@ -480,11 +573,19 @@ async def update_order_status(
     customers = await service.load_customers([order])
     creators = await service.load_creators([order])
     tags = await service.load_item_tags([order])
+    codes = await service.load_codes([order])
     with_receipts = await PaymentsService(session).orders_with_receipts([order.id])
+    # Ids taken before the commit expires the rows: the customer is told about the codes
+    # this payment earned once the transaction that issued them is durable.
+    issued_code_ids = [code.id for code in service.issued_codes]
     await session.commit()
     if changed:
         background_tasks.add_task(notify_order_status, order.id)
-    return _admin_order_response(order, customers.get(order.user_id), tags, with_receipts, creators)
+    if issued_code_ids:
+        background_tasks.add_task(notify_promo_codes_issued, issued_code_ids)
+    return _admin_order_response(
+        order, customers.get(order.user_id), tags, with_receipts, creators, codes.get(order.id)
+    )
 
 
 @router.get("/admin/orders/cycles", response_model=list[AdminOrderCycleResponse])
@@ -549,11 +650,12 @@ async def create_order_admin(
     customers = await service.load_customers([order])
     creators = await service.load_creators([order])
     tags = await service.load_item_tags([order])
+    codes = await service.load_codes([order])
     with_receipts = (
         set() if created else await PaymentsService(session).orders_with_receipts([order.id])
     )
     response = _admin_order_response(
-        order, customers.get(order.user_id), tags, with_receipts, creators
+        order, customers.get(order.user_id), tags, with_receipts, creators, codes.get(order.id)
     )
     await session.commit()
     if created:
@@ -600,9 +702,10 @@ async def edit_order_admin(
     customers = await service.load_customers([order])
     creators = await service.load_creators([order])
     tags = await service.load_item_tags([order])
+    codes = await service.load_codes([order])
     with_receipts = await PaymentsService(session).orders_with_receipts([order.id])
     response = _admin_order_response(
-        order, customers.get(order.user_id), tags, with_receipts, creators
+        order, customers.get(order.user_id), tags, with_receipts, creators, codes.get(order.id)
     )
     await session.commit()
     if edit is not None:
@@ -661,9 +764,10 @@ async def set_order_discount_admin(
     customers = await service.load_customers([order])
     creators = await service.load_creators([order])
     tags = await service.load_item_tags([order])
+    codes = await service.load_codes([order])
     with_receipts = await PaymentsService(session).orders_with_receipts([order.id])
     response = _admin_order_response(
-        order, customers.get(order.user_id), tags, with_receipts, creators
+        order, customers.get(order.user_id), tags, with_receipts, creators, codes.get(order.id)
     )
     await session.commit()
     if change is not None:

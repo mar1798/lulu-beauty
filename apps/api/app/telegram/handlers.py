@@ -66,6 +66,7 @@ from app.telegram.keyboards import (
 from app.telegram.notify import (
     notify_order_status,
     notify_payment_reviewed,
+    notify_promo_codes_issued,
     notify_receipt_received,
 )
 from app.telegram.service import Delivery
@@ -409,10 +410,9 @@ async def handle_order_action(query: CallbackQuery, callback_data: OrderAction) 
             await query.answer(messages.CALLBACK_NOT_FOR_YOU, show_alert=True)
             return
 
+        orders = OrdersService(session)
         try:
-            order, changed = await OrdersService(session).update_status(
-                callback_data.order_id, new_status
-            )
+            order, changed = await orders.update_status(callback_data.order_id, new_status)
         except OrderNotFoundError:
             # The owner deleted it from the admin panel and the notification outlived it.
             await query.answer(messages.CALLBACK_ORDER_GONE, show_alert=True)
@@ -423,6 +423,7 @@ async def handle_order_action(query: CallbackQuery, callback_data: OrderAction) 
             await query.answer(messages.CALLBACK_ORDER_MOVED_ON, show_alert=True)
             return
 
+        issued_code_ids = [code.id for code in orders.issued_codes]
         await session.commit()
         order_id = order.id
 
@@ -447,6 +448,7 @@ async def handle_order_action(query: CallbackQuery, callback_data: OrderAction) 
         # Same customer-facing notification the admin panel triggers — pressing the button
         # here has to mean exactly what pressing it there means.
         await notify_order_status(order_id)
+        await notify_promo_codes_issued(issued_code_ids)
 
 
 # Telegram sends an album as one message per file, each carrying the same
@@ -923,6 +925,7 @@ async def handle_payment_action(query: CallbackQuery, callback_data: PaymentActi
             await query.answer(messages.CALLBACK_PAYMENT_ALREADY_ACCEPTED, show_alert=True)
             return
 
+        issued_code_ids = [code.id for code in reviewed.issued_codes]
         await session.commit()
         order_id = reviewed.order.id
         changed = reviewed.changed
@@ -951,6 +954,7 @@ async def handle_payment_action(query: CallbackQuery, callback_data: PaymentActi
 
     if changed:
         await notify_payment_reviewed(order_id, accepted=accept)
+        await notify_promo_codes_issued(issued_code_ids)
 
 
 @router.message()

@@ -5,6 +5,7 @@ from pydantic import Field
 
 from app.common.limits import MAX_GUEST_CART_LINES, MAX_ITEM_QUANTITY
 from app.common.schemas import CamelModel
+from app.promotions.order_schemas import CartPromotionsResponse
 
 
 class AddCartItemRequest(CamelModel):
@@ -66,3 +67,6 @@ class CartResponse(CamelModel):
     cycle_deadline_at: datetime | None
     items: list[CartItemResponse]
     total_cents: int
+    # What checkout would give this cart: promotions applied, their discounts, the gifts as
+    # virtual lines (never written to `cart_items`) and «ещё N сом до подарка» hints.
+    promotions: CartPromotionsResponse = CartPromotionsResponse()

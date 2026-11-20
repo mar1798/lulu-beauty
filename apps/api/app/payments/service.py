@@ -1,6 +1,6 @@
 import uuid
 from collections.abc import Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import String, and_, cast, func, select
@@ -9,6 +9,8 @@ from sqlalchemy.orm import selectinload
 
 from app.orders.models import PAYABLE_STATUSES, Order, OrderStatus
 from app.payments.models import PaymentReceipt, ReceiptKind, ReceiptVerdict
+from app.promotions.codes import PromoCodesService
+from app.promotions.models import PromoCode
 
 # How far back the bot looks when it has to guess which order a receipt pays for. A
 # receipt comes within days of the bill; an order billed in a cycle long gone and
@@ -68,6 +70,9 @@ class ReviewedReceipt:
     # False on a repeat press, or a second owner pressing the same thing: the customer
     # has already been told.
     changed: bool
+    # The promo codes this payment issued — to tell their owner once the transaction has
+    # committed. Empty on a repeat press, and for an order that earns none.
+    issued_codes: list[PromoCode] = field(default_factory=list)
 
 
 class PaymentsService:
@@ -227,12 +232,15 @@ class PaymentsService:
             raise OrderNotAwaitingPaymentError
 
         now = datetime.now(UTC)
+        issued: list[PromoCode] = []
         if accept:
             if order.paid_at is not None:
                 return ReviewedReceipt(receipt=receipt, order=order, changed=False)
             order.paid_at = now
             order.status = OrderStatus.CONFIRMED
             receipt.verdict = ReceiptVerdict.ACCEPTED
+            # The code the order used is spent, and the codes it earns are issued.
+            issued = await PromoCodesService(self._session).on_paid(order)
         else:
             if order.paid_at is not None:
                 raise PaymentAlreadyAcceptedError
@@ -241,7 +249,7 @@ class PaymentsService:
             receipt.verdict = ReceiptVerdict.REJECTED
         receipt.reviewed_at = now
         await self._session.flush()
-        return ReviewedReceipt(receipt=receipt, order=order, changed=True)
+        return ReviewedReceipt(receipt=receipt, order=order, changed=True, issued_codes=issued)
 
     async def orders_with_receipts(self, order_ids: Iterable[uuid.UUID]) -> set[uuid.UUID]:
         """Which of these orders have a receipt waiting for the owner — for the admin
