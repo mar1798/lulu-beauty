@@ -1164,7 +1164,7 @@ def _gift_lines_for_owner(order: Order) -> list[str]:
 
 
 def promotion_started(promotion: Promotion) -> str:
-    """The broadcast that an offer has begun: what it gives, on what terms, until when."""
+    """The broadcast that an offer has begun: what it gives, on what terms, until when (if ever)."""
     lines = [f"🎁 Началась акция «{promotion.title}»"]
     try:
         rewards = describe_rewards(load_rewards(promotion.rewards))
@@ -1176,7 +1176,10 @@ def promotion_started(promotion: Promotion) -> str:
         lines.append(f"Что получите: {', '.join(rewards)}")
     if conditions:
         lines.append(f"Условия: {', '.join(conditions)}")
-    lines.append(f"Акция идёт до {format_deadline(promotion.ends_at)}")
+    if promotion.ends_at is None:
+        lines.append("Акция бессрочная")
+    else:
+        lines.append(f"Акция идёт до {format_deadline(promotion.ends_at)}")
     return "\n".join(lines)
 
 

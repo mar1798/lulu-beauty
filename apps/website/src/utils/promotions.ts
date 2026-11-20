@@ -40,7 +40,7 @@ export const initialValuesOf = (promotion: IPromotion): IAdminPromotionInitialVa
  * созданием.
  *
  * Что намеренно не копируется: даты — их придётся выбрать заново (копия с
- * прошедшим окном сразу была бы завершённой), включённость и анонс — копия не
+ * прошедшим окном сразу была бы завершённой; бессрочная остаётся бессрочной), включённость и анонс — копия не
  * должна выстрелить сама, пока её не проверили. Адрес занят оригиналом (он
  * уникален, в том числе у архивных), поэтому получает суффикс. Баннеры не
  * переносятся: файл принадлежит оригиналу.
@@ -50,7 +50,7 @@ export const duplicateOf = (promotion: IPromotion): IAdminPromotionInitialValues
   title: `${promotion.title} (копия)`,
   slug: `${promotion.slug}-copy`,
   startsAt: '',
-  endsAt: '',
+  endsAt: promotion.endsAt === null ? null : '',
   isEnabled: false,
   announce: false,
 })

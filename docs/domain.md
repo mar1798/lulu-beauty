@@ -973,6 +973,11 @@ route), unlike the rest of the owner panel.
 - **The window is `[starts_at, ends_at)`**, `ends_at > starts_at` (`422
 promotion_ends_before_start`, and a CHECK constraint). A promotion ending at midnight is over
   at midnight.
+- **`ends_at` is optional.** `NULL` is an open-ended promotion: running from `starts_at` on,
+  never `FINISHED`, until the owner disables or archives it (`not_ended()` is the SQL half of
+  the window check). The form makes it an explicit «Бессрочная» switch rather than an empty
+  date, so a forgotten end does not quietly run forever; the page, the admin table, the
+  snippet and the start broadcast say «бессрочно» instead of a date.
 - **The status is derived, never stored** (`promotion_status`): `ARCHIVED` (`deleted_at`),
   `DISABLED` (`is_enabled` off), `SCHEDULED`, `ACTIVE`, `FINISHED`. "Running" means enabled,
   not archived and inside the window (`active_promotions`).

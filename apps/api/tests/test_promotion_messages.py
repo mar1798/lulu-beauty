@@ -158,13 +158,15 @@ def test_an_order_without_gifts_has_no_gift_block_for_the_owner() -> None:
     assert "Подарки" not in messages.new_order_for_owner(_order(), None, None)
 
 
-def _promotion(*, title: str = "Осенняя акция") -> Promotion:
+def _promotion(
+    *, title: str = "Осенняя акция", ends_at: datetime | None = NOW + timedelta(days=7)
+) -> Promotion:
     return Promotion(
         id=uuid.uuid4(),
         slug="osen",
         title=title,
         starts_at=NOW,
-        ends_at=NOW + timedelta(days=7),
+        ends_at=ends_at,
         conditions=dump_conditions(
             [SubtotalCondition(type=ConditionType.SUBTOTAL, min_cents=200_000)]
         ),
@@ -179,6 +181,13 @@ def test_the_start_announcement_says_what_terms_and_until_when() -> None:
     assert "скидка 10%" in text and "подарок Бокс" in text
     assert "покупка от 2" in text  # 2 000 сом, however the grouping space is written
     assert "27.11.2026" in text
+
+
+def test_the_start_announcement_of_an_open_ended_promotion_names_no_date() -> None:
+    text = messages.promotion_started(_promotion(ends_at=None))
+
+    assert "бессрочная" in text
+    assert "идёт до" not in text
 
 
 def test_the_start_announcement_button_points_at_the_promotion_page() -> None:

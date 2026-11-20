@@ -116,6 +116,23 @@ async def test_create_refusals_are_codes(
     assert response.json()["detail"] == code
 
 
+@pytest.mark.parametrize("ends_at", [None, "omitted"])
+async def test_an_end_date_is_optional(owner: AsyncClient, ends_at: str | None) -> None:
+    body = {key: value for key, value in BODY.items() if key != "endsAt"}
+    if ends_at is None:
+        body["endsAt"] = None
+    with patch("app.promotions.router.PromotionsService") as service_cls:
+        create = AsyncMock(side_effect=PromotionSlugTakenError())
+        service_cls.return_value.create = create
+        async with owner as client:
+            response = await client.post("/admin/promotions", json=body)
+
+    # Past validation and into the service, with the end left open.
+    assert response.status_code == 409
+    assert create.await_args is not None
+    assert create.await_args.args[0].ends_at is None
+
+
 async def test_banner_variant_is_one_of_two(owner: AsyncClient) -> None:
     async with owner as client:
         response = await client.post(

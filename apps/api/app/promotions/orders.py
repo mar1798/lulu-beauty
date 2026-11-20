@@ -54,7 +54,14 @@ from app.promotions.engine import (
     matching_lines,
     qualifies,
 )
-from app.promotions.models import OrderGift, OrderPromotion, PromoCode, PromoCodeStatus, Promotion
+from app.promotions.models import (
+    OrderGift,
+    OrderPromotion,
+    PromoCode,
+    PromoCodeStatus,
+    Promotion,
+    not_ended,
+)
 from app.promotions.rules import (
     AnyCodeReward,
     AnyReward,
@@ -279,14 +286,17 @@ async def resolve_gifts(
 
 
 async def active_promotions(session: AsyncSession, now: datetime) -> list[Promotion]:
-    """Enabled, not archived, inside `[starts_at, ends_at)` — in carousel order."""
+    """Enabled, not archived, inside `[starts_at, ends_at)` — in carousel order.
+
+    No `ends_at` is an open-ended promotion: it is running from its start on.
+    """
     result = await session.execute(
         select(Promotion)
         .where(
             Promotion.deleted_at.is_(None),
             Promotion.is_enabled.is_(True),
             Promotion.starts_at <= now,
-            Promotion.ends_at > now,
+            not_ended(now),
         )
         .order_by(Promotion.sort_order, Promotion.title, Promotion.id)
     )

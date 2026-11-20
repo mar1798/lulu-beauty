@@ -2880,7 +2880,8 @@ export interface IPromotion {
   bannerMobileUrl: string | null
   bannerDesktopUrl: string | null
   startsAt: string
-  endsAt: string
+  /** `null` — бессрочная: идёт, пока её не выключат или не уберут в архив. */
+  endsAt: string | null
   isEnabled: boolean
   announce: boolean
   announcedAt: string | null
@@ -3195,7 +3196,8 @@ export interface IPublicPromotion {
   bannerMobileUrl: string | null
   bannerDesktopUrl: string | null
   startsAt: string
-  endsAt: string
+  /** `null` — бессрочная: идёт, пока её не выключат или не уберут в архив. */
+  endsAt: string | null
   conditions: IPromotionCondition[]
   rewards: IPromotionReward[]
 }

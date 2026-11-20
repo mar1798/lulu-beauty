@@ -329,7 +329,8 @@ API responses carrying rewards must be built from the model instances `load_*` r
 both expanding: new tables and a column with a default or nullable):
 
 - `promotions` — `conditions`/`rewards` JSONB, a CHECK `ends_at > starts_at`, a partial index
-  on `(starts_at, ends_at)` for "enabled and not archived".
+  on `(starts_at, ends_at)` for "enabled and not archived". `ends_at` became nullable in
+  `8c3e5a1f2d74` (open-ended promotions); the CHECK lets NULL through.
 - `order_promotions` — CHECK that exactly one of `promotion_id`/`promo_code_id` is set;
   **partial unique** `uq_order_promotions_live_participant (promotion_id, user_id) WHERE
 released_at IS NULL AND promotion_id IS NOT NULL` (once per customer) and

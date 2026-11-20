@@ -777,7 +777,8 @@ async def notify_promotion_started(promotion_id: uuid.UUID) -> bool:
                 not promotion.announce
                 or not promotion.is_enabled
                 or promotion.deleted_at is not None
-                or not promotion.starts_at <= now < promotion.ends_at
+                or now < promotion.starts_at
+                or (promotion.ends_at is not None and now >= promotion.ends_at)
             ):
                 return False
 

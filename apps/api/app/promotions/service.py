@@ -23,7 +23,7 @@ from app.catalog.rich_text import description_from_html
 from app.catalog.service import UNIQUE_VIOLATION
 from app.config import settings
 from app.orders.models import Order
-from app.promotions.models import OrderPromotion, PromoCode, Promotion
+from app.promotions.models import OrderPromotion, PromoCode, Promotion, not_ended
 from app.promotions.rules import (
     AnyCondition,
     AnyReward,
@@ -96,7 +96,7 @@ class PromotionDraft:
     title: str
     description_html: str | None
     starts_at: datetime
-    ends_at: datetime
+    ends_at: datetime | None
     is_enabled: bool
     announce: bool
     sort_order: int
@@ -141,7 +141,7 @@ class PromotionsService:
             Promotion.deleted_at.is_(None),
             Promotion.is_enabled.is_(True),
             Promotion.starts_at <= now,
-            Promotion.ends_at > now,
+            not_ended(now),
         )
 
     async def list_active(self, now: datetime | None = None) -> list[Promotion]:
@@ -269,7 +269,7 @@ class PromotionsService:
     # --- internals ----------------------------------------------------------------------
 
     async def _check(self, draft: PromotionDraft, *, current: Promotion | None) -> None:
-        if draft.ends_at <= draft.starts_at:
+        if draft.ends_at is not None and draft.ends_at <= draft.starts_at:
             raise PromotionEndsBeforeStartError
         if (current is None or current.slug != draft.slug) and await self._slug_taken(draft.slug):
             raise PromotionSlugTakenError

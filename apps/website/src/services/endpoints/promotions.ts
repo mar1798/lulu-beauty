@@ -23,9 +23,9 @@ export interface IPromotionInput {
   title: string
   /** HTML из редактора; `null` — описания нет. */
   descriptionHtml: string | null
-  /** ISO-строки с таймзоной. Окно `[startsAt, endsAt)`. */
+  /** ISO-строки с таймзоной. Окно `[startsAt, endsAt)`; `endsAt: null` — бессрочная. */
   startsAt: string
-  endsAt: string
+  endsAt: string | null
   isEnabled: boolean
   announce: boolean
   sortOrder: number

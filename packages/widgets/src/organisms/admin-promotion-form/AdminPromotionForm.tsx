@@ -44,7 +44,12 @@ import * as styles from './AdminPromotionForm.css'
  *
  * Время — по магазину (Asia/Bishkek), как у сборов: владелец ставит «с 1 мая,
  * 00:00», а в ISO это переводит `storeIso`. Конец — не включительно, поэтому в
- * подсказке назван момент, а не «день».
+ * подсказке назван момент, а не «день». Переключатель «Бессрочная» прячет
+ * конец и отправляет `endsAt: null`: акция идёт, пока её не выключат. Это явный
+ * выбор, а не пустое поле: забытая дата не должна молча делать акцию вечной, а
+ * стереть дату в `type="date"` на телефоне и не всегда получается.
+ * В начальных значениях `endsAt: null` - бессрочная, `''` - конец надо выбрать
+ * заново (так приходит «дубль» акции с датой).
  *
  * Баннеры. У сохранённой акции файл уходит на сервер сразу (`onBannerUpload`) —
  * заменённый удаляется из хранилища. При создании акции ещё нет, и файлы копятся
@@ -80,8 +85,8 @@ interface IFields {
   sortOrder: string
 }
 
-const partsOf = (iso: string | undefined): { date: string; time: string } =>
-  (iso === undefined ? null : toStoreParts(iso)) ?? { date: '', time: '' }
+const partsOf = (iso: string | null | undefined): { date: string; time: string } =>
+  (iso === undefined || iso === null ? null : toStoreParts(iso)) ?? { date: '', time: '' }
 
 const BANNER_VARIANTS: PromotionBannerVariant[] = ['mobile', 'desktop']
 
@@ -118,6 +123,7 @@ export const AdminPromotionForm: FC<IAdminPromotionFormProps & IBasicStyling> = 
   )
   const [isEnabled, setIsEnabled] = useState(initialValues?.isEnabled ?? true)
   const [announce, setAnnounce] = useState(initialValues?.announce ?? false)
+  const [isOpenEnded, setIsOpenEnded] = useState(initialValues?.endsAt === null)
   const [conditions, setConditions] = useState<IPromotionConditionDraft[]>(
     () => initialValues?.conditions.map(conditionToDraft) ?? []
   )
@@ -185,8 +191,9 @@ export const AdminPromotionForm: FC<IAdminPromotionFormProps & IBasicStyling> = 
           ? null
           : 'Только латиница, цифры и дефисы: spring-sale',
     start: startIso === '' ? 'Укажите дату и время начала' : null,
-    end:
-      endIso === ''
+    end: isOpenEnded
+      ? null
+      : endIso === ''
         ? 'Укажите дату и время окончания'
         : startIso !== '' && endIso <= startIso
           ? 'Акция должна заканчиваться позже, чем начинается'
@@ -219,7 +226,7 @@ export const AdminPromotionForm: FC<IAdminPromotionFormProps & IBasicStyling> = 
       slug: fields.slug.trim(),
       descriptionHtml,
       startsAt: startIso,
-      endsAt: endIso,
+      endsAt: isOpenEnded ? null : endIso,
       isEnabled,
       announce,
       sortOrder,
@@ -343,28 +350,36 @@ export const AdminPromotionForm: FC<IAdminPromotionFormProps & IBasicStyling> = 
           />
         </div>
 
-        <div className={styles.pair}>
-          <Input
-            label="Конец, дата"
-            type="date"
-            value={fields.endDate}
-            required={true}
-            error={isSubmitted ? errors.end : null}
-            onChange={next => {
-              patch({ endDate: next })
-            }}
-          />
-          <Input
-            label="Конец, время"
-            type="time"
-            value={fields.endTime}
-            hint="Время по Бишкеку. Акция действует до этого момента, не включая его."
-            required={true}
-            onChange={next => {
-              patch({ endTime: next })
-            }}
-          />
-        </div>
+        <Switch
+          label="Бессрочная - без даты окончания"
+          checked={isOpenEnded}
+          onChange={setIsOpenEnded}
+        />
+
+        {!isOpenEnded && (
+          <div className={styles.pair}>
+            <Input
+              label="Конец, дата"
+              type="date"
+              value={fields.endDate}
+              required={true}
+              error={isSubmitted ? errors.end : null}
+              onChange={next => {
+                patch({ endDate: next })
+              }}
+            />
+            <Input
+              label="Конец, время"
+              type="time"
+              value={fields.endTime}
+              hint="Время по Бишкеку. Акция действует до этого момента, не включая его."
+              required={true}
+              onChange={next => {
+                patch({ endTime: next })
+              }}
+            />
+          </div>
+        )}
 
         <Input
           label="Порядок"

@@ -5,6 +5,7 @@ from typing import Any
 
 from sqlalchemy import (
     CheckConstraint,
+    ColumnElement,
     DateTime,
     ForeignKey,
     Index,
@@ -12,6 +13,7 @@ from sqlalchemy import (
     String,
     Text,
     func,
+    or_,
     text,
 )
 from sqlalchemy import Enum as SAEnum
@@ -68,9 +70,10 @@ class Promotion(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     banner_mobile_url: Mapped[str | None] = mapped_column(String(2048))
     banner_desktop_url: Mapped[str | None] = mapped_column(String(2048))
     # The window is [starts_at, ends_at): a promotion ending at midnight is over at
-    # midnight.
+    # midnight. No `ends_at` means open-ended: it runs until the owner disables or
+    # archives it. The CHECK below lets NULL through, as SQL CHECKs do.
     starts_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
-    ends_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    ends_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     is_enabled: Mapped[bool] = mapped_column(default=True, server_default=text("true"))
     # Whether everyone is told when it starts (`notify_promotion_started`).
     announce: Mapped[bool] = mapped_column(default=False, server_default=text("false"))
@@ -232,6 +235,11 @@ class PromoCode(UUIDPrimaryKeyMixin, Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+def not_ended(now: datetime) -> ColumnElement[bool]:
+    """The SQL half of "still inside the window": no end date, or one still ahead."""
+    return or_(Promotion.ends_at.is_(None), Promotion.ends_at > now)
+
+
 def promotion_status(promotion: Promotion, now: datetime) -> PromotionStatus:
     if promotion.deleted_at is not None:
         return PromotionStatus.ARCHIVED
@@ -239,6 +247,6 @@ def promotion_status(promotion: Promotion, now: datetime) -> PromotionStatus:
         return PromotionStatus.DISABLED
     if now < promotion.starts_at:
         return PromotionStatus.SCHEDULED
-    if now >= promotion.ends_at:
+    if promotion.ends_at is not None and now >= promotion.ends_at:
         return PromotionStatus.FINISHED
     return PromotionStatus.ACTIVE

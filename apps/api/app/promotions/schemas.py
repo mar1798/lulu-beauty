@@ -26,7 +26,8 @@ class PromotionWriteRequest(CamelModel):
     title: str = Field(min_length=1, max_length=255)
     description_html: str | None = Field(default=None, max_length=MAX_DESCRIPTION_HTML_LENGTH)
     starts_at: AwareDatetime
-    ends_at: AwareDatetime
+    # Omitted or null: open-ended, runs until disabled or archived.
+    ends_at: AwareDatetime | None = None
     is_enabled: bool = True
     announce: bool = False
     sort_order: int = Field(default=0, ge=0, le=10_000)
@@ -72,7 +73,7 @@ class PromotionResponse(CamelModel):
     banner_mobile_url: str | None
     banner_desktop_url: str | None
     starts_at: datetime
-    ends_at: datetime
+    ends_at: datetime | None
     is_enabled: bool
     announce: bool
     announced_at: datetime | None
@@ -97,7 +98,7 @@ class PublicPromotionResponse(CamelModel):
     banner_mobile_url: str | None
     banner_desktop_url: str | None
     starts_at: datetime
-    ends_at: datetime
+    ends_at: datetime | None
     conditions: list[Condition]
     rewards: list[Reward]
 

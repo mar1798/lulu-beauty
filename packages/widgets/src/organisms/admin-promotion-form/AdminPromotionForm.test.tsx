@@ -29,6 +29,32 @@ describe('AdminPromotionForm', () => {
     expect(new Date(values.endsAt).getTime()).toBeGreaterThan(new Date(values.startsAt).getTime())
   })
 
+  it('«Бессрочная» прячет конец и отправляет endsAt: null', async () => {
+    const onSubmit = vi.fn()
+
+    renderWidget(<AdminPromotionForm {...feedAdminPromotionForm()} onSubmit={onSubmit} />)
+    await userEvent.click(screen.getByRole('switch', { name: /Бессрочная/ }))
+
+    expect(screen.queryByLabelText('Конец, дата')).toBeNull()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Сохранить' }))
+
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ endsAt: null }))
+  })
+
+  it('бессрочная акция открывается с включённым переключателем', () => {
+    const props = feedAdminPromotionForm()
+
+    renderWidget(
+      <AdminPromotionForm
+        {...props}
+        initialValues={props.initialValues && { ...props.initialValues, endsAt: null }}
+      />
+    )
+
+    expect(screen.getByRole('switch', { name: /Бессрочная/ })).toBeChecked()
+  })
+
   it('пустая форма создания не уходит: ошибки у полей', async () => {
     const onSubmit = vi.fn()
 

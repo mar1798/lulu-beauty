@@ -49,6 +49,12 @@ describe('promotionDescription', () => {
     ).toBe('Весна - до 2026-04-01.')
   })
 
+  it('у бессрочной акции без текста срока нет', () => {
+    expect(
+      promotionDescription({ title: 'Весна', descriptionHtml: null, endsAt: null }, format)
+    ).toBe('Весна - бессрочная акция.')
+  })
+
   it('режет по границе слова до длины сниппета', () => {
     const long = `<p>${'слово '.repeat(60)}</p>`
     const result = promotionDescription(

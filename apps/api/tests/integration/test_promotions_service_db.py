@@ -10,7 +10,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.orders.models import Order
-from app.promotions.models import OrderPromotion, Promotion
+from app.promotions.models import OrderPromotion, Promotion, PromotionStatus, promotion_status
 from app.promotions.rules import (
     AnyCondition,
     AnyReward,
@@ -52,7 +52,7 @@ def _draft(
     conditions: Sequence[AnyCondition] = (),
     rewards: Sequence[AnyReward] = (MYSTERY,),
     starts_at: datetime = NOW - timedelta(days=1),
-    ends_at: datetime = NOW + timedelta(days=1),
+    ends_at: datetime | None = NOW + timedelta(days=1),
     description_html: str | None = None,
 ) -> PromotionDraft:
     return PromotionDraft(
@@ -361,6 +361,19 @@ async def test_once_per_customer_is_held_by_the_database(db_session: AsyncSessio
         select(OrderPromotion).where(OrderPromotion.released_at.is_(None))
     )
     assert [row.id for row in live] == [again.id]
+
+
+async def test_an_open_ended_promotion_runs_and_never_finishes(
+    db_session: AsyncSession,
+) -> None:
+    service = PromotionsService(db_session)
+    forever = await service.create(_draft(slug="forever", ends_at=None))
+
+    assert forever.ends_at is None
+    assert [p.slug for p in await service.list_active()] == ["forever"]
+    far = NOW + timedelta(days=365 * 50)
+    assert promotion_status(forever, far) == PromotionStatus.ACTIVE
+    assert [p.slug for p in await service.list_active(far)] == ["forever"]
 
 
 async def test_only_running_promotions_are_public(db_session: AsyncSession) -> None:

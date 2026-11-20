@@ -136,7 +136,9 @@ export const AdminPromotionsTable: FC<IAdminPromotionsTableProps & IBasicStyling
 
                     <td className={styles.cell} role="cell" data-label="Период">
                       <span className={styles.period}>
-                        {formatShortDate(promotion.startsAt)} - {formatShortDate(promotion.endsAt)}
+                        {promotion.endsAt === null
+                          ? `с ${formatShortDate(promotion.startsAt)}, бессрочно`
+                          : `${formatShortDate(promotion.startsAt)} - ${formatShortDate(promotion.endsAt)}`}
                       </span>
                     </td>
 

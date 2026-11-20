@@ -39,6 +39,10 @@ describe('«Дублировать»', () => {
     expect(copy.conditions).toEqual(promotion().conditions)
     expect(copy.rewards).toEqual(promotion().rewards)
   })
+
+  it('бессрочная копия остаётся бессрочной', () => {
+    expect(duplicateOf(promotion({ endsAt: null })).endsAt).toBeNull()
+  })
 })
 
 describe('тело запроса', () => {
