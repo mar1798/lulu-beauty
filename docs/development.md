@@ -89,6 +89,7 @@ Seeding:
 cd apps/api
 uv run python -m app.scripts.seed          # the SUPER_ADMIN owner, from OWNER_* env vars
 uv run python -m app.scripts.seed_catalog  # sample catalog data
+uv run python -m app.scripts.seed_promotions  # three demo promotions: discount, gift, promo code
 ```
 
 ## Migrations
