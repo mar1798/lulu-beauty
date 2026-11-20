@@ -1,5 +1,14 @@
 import clsx from 'clsx'
-import { type FC, type FormEvent, useEffect, useRef, useState } from 'react'
+import { m, useReducedMotion } from 'motion/react'
+import {
+  type FC,
+  type FormEvent,
+  type ReactNode,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+} from 'react'
 import type {
   IAdminPromotionFormProps,
   IBasicStyling,
@@ -14,6 +23,7 @@ import { Button } from '../../atoms/button'
 import { Input } from '../../atoms/input'
 import { Switch } from '../../atoms/switch'
 import { Text } from '../../atoms/text'
+import { IconChevronDown } from '../../svg/icons'
 import { PromotionBannerField } from '../../molecules/promotion-banner-field'
 import { RichTextEditor } from '../../molecules/rich-text-editor'
 import { storeIso, storeToday, toStoreParts } from '../../utils/datetime'
@@ -26,6 +36,8 @@ import {
   newPromoCodeDraft,
   rewardToDraft,
 } from '../../utils/promotion'
+import { FAQ_TRANSITION } from '../../utils/motion'
+import { pluralize } from '../../utils/plural'
 import { plainTextToHtml } from '../../utils/richText'
 import { slugify } from '../../utils/slug'
 import { AdminPromoCodeDialog } from '../admin-promo-code-dialog'
@@ -64,6 +76,12 @@ import * as styles from './AdminPromotionForm.css'
  * Строка-промокод в наградах настраивается в `AdminPromoCodeDialog`: он и
  * сохраняет в черновик строки, а не напрямую в акцию — применяется всё вместе по
  * «Сохранить» формы.
+ *
+ * Четыре секции сворачиваются: открыта только «Основное», у остальных в
+ * заголовке сводка (сколько баннеров, условий, наград). Свёрнутая секция не
+ * размонтируется — её поля и состояние редактора остаются на месте. Если при
+ * отправке ошибка нашлась в свёрнутой секции, форма раскрывает её и ставит
+ * фокус на первое неверное поле.
  */
 
 const TITLE_MAX_LENGTH = 255
@@ -89,6 +107,72 @@ const partsOf = (iso: string | null | undefined): { date: string; time: string }
   (iso === undefined || iso === null ? null : toStoreParts(iso)) ?? { date: '', time: '' }
 
 const BANNER_VARIANTS: PromotionBannerVariant[] = ['mobile', 'desktop']
+
+type SectionKey = 'main' | 'banners' | 'conditions' | 'rewards'
+
+const INITIAL_OPEN: Record<SectionKey, boolean> = {
+  main: true,
+  banners: false,
+  conditions: false,
+  rewards: false,
+}
+
+interface IFormSectionProps {
+  title: string
+  /** Сводка рядом с заголовком; показывается и у свёрнутой секции. */
+  summary?: string
+  isOpen: boolean
+  onToggle: () => void
+  children: ReactNode
+}
+
+/**
+ * Сворачиваемая панель формы: кнопка-заголовок с `aria-expanded` и тело,
+ * высота которого анимируется (то же исключение, что в `FaqAccordion`). Пока
+ * тело раскрывается, `overflow` скрыт, а по окончании становится видимым —
+ * иначе обрезались бы кольца фокуса у краёв полей и выпадающие списки.
+ */
+const FormSection: FC<IFormSectionProps> = ({ title, summary, isOpen, onToggle, children }) => {
+  const isReduced = useReducedMotion() ?? false
+  const baseId = useId()
+  const triggerId = `${baseId}-trigger`
+  const bodyId = `${baseId}-body`
+
+  return (
+    <section className={styles.panel} aria-labelledby={triggerId}>
+      <h2 className={styles.sectionHeading}>
+        <button
+          type="button"
+          id={triggerId}
+          className={styles.sectionTrigger}
+          aria-expanded={isOpen}
+          aria-controls={bodyId}
+          onClick={onToggle}
+        >
+          <span className={styles.sectionTitle}>{title}</span>
+          {summary !== undefined && <span className={styles.sectionSummary}>{summary}</span>}
+          <IconChevronDown className={clsx(styles.chevron, isOpen && styles.chevronOpen)} />
+        </button>
+      </h2>
+
+      <m.div
+        id={bodyId}
+        role="region"
+        aria-labelledby={triggerId}
+        className={clsx(styles.sectionBody, !isOpen && styles.sectionBodyClosed)}
+        initial={false}
+        animate={
+          isOpen
+            ? { height: 'auto', opacity: 1, transitionEnd: { overflow: 'visible' } }
+            : { height: 0, opacity: 0, overflow: 'hidden' }
+        }
+        transition={isReduced ? { duration: 0 } : FAQ_TRANSITION}
+      >
+        <div className={styles.sectionInner}>{children}</div>
+      </m.div>
+    </section>
+  )
+}
 
 export const AdminPromotionForm: FC<IAdminPromotionFormProps & IBasicStyling> = ({
   catalog,
@@ -132,6 +216,9 @@ export const AdminPromotionForm: FC<IAdminPromotionFormProps & IBasicStyling> = 
   )
   const [isSubmitted, setIsSubmitted] = useState(false)
   const [codeKey, setCodeKey] = useState<string | null>(null)
+  const [openSections, setOpenSections] = useState(INITIAL_OPEN)
+  // Растёт с каждой неудачной отправкой: фокус ставится после того, как раскрылись секции с ошибками.
+  const [focusRequest, setFocusRequest] = useState(0)
   const formRef = useRef<HTMLFormElement>(null)
 
   // Названия товаров, выбранных в этой форме: страница знает только те, что пришли с сервером.
@@ -157,6 +244,12 @@ export const AdminPromotionForm: FC<IAdminPromotionFormProps & IBasicStyling> = 
       })
     }
   }, [])
+
+  useEffect(() => {
+    if (focusRequest > 0) {
+      formRef.current?.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus()
+    }
+  }, [focusRequest])
 
   // Страница дочитывает названия после загрузки акции — подмешиваем, не теряя выбранные здесь.
   useEffect(() => {
@@ -205,18 +298,35 @@ export const AdminPromotionForm: FC<IAdminPromotionFormProps & IBasicStyling> = 
     rewards: rewards.length === 0 ? 'Добавьте хотя бы одну награду' : null,
   }
 
-  const hasErrors =
-    Object.values(errors).some(message => message !== null) ||
-    Object.keys(builtConditions.errors).length > 0 ||
-    Object.keys(builtRewards.errors).length > 0
+  const sectionErrors: Record<SectionKey, boolean> = {
+    main: [errors.title, errors.slug, errors.start, errors.end, errors.sortOrder].some(
+      message => message !== null
+    ),
+    banners: false,
+    conditions: Object.keys(builtConditions.errors).length > 0,
+    rewards: errors.rewards !== null || Object.keys(builtRewards.errors).length > 0,
+  }
+
+  const hasErrors = Object.values(sectionErrors).some(Boolean)
+
+  const toggleSection = (key: SectionKey): void => {
+    setOpenSections(current => ({ ...current, [key]: !current[key] }))
+  }
 
   const handleSubmit = (event: FormEvent): void => {
     event.preventDefault()
     setIsSubmitted(true)
 
     if (hasErrors) {
-      // Первая подсветка — наверх формы не прыгаем: ошибка стоит у самого поля, браузер ведёт к нему.
-      formRef.current?.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus()
+      // Наверх формы не прыгаем: ошибка стоит у самого поля, фокус ведёт к нему. Свёрнутые
+      // секции с ошибками раскрываются, иначе фокусировать было бы нечего.
+      setOpenSections(current => ({
+        main: current.main || sectionErrors.main,
+        banners: current.banners,
+        conditions: current.conditions || sectionErrors.conditions,
+        rewards: current.rewards || sectionErrors.rewards,
+      }))
+      setFocusRequest(current => current + 1)
 
       return
     }
@@ -284,6 +394,24 @@ export const AdminPromotionForm: FC<IAdminPromotionFormProps & IBasicStyling> = 
 
   const codeRow = rewards.find(row => row.key === codeKey)
 
+  const bannerCount = BANNER_VARIANTS.filter(variant => bannerUrl(variant) !== null).length
+  const bannerSummary =
+    bannerCount === 0
+      ? 'Не загружены'
+      : bannerCount === BANNER_VARIANTS.length
+        ? 'Оба загружены'
+        : bannerUrl('mobile') === null
+          ? 'Нет мобильного'
+          : 'Только мобильный'
+  const conditionSummary =
+    conditions.length === 0
+      ? 'Без условий'
+      : pluralize(conditions.length, ['условие', 'условия', 'условий'])
+  const rewardSummary =
+    rewards.length === 0
+      ? 'Не добавлены'
+      : pluralize(rewards.length, ['награда', 'награды', 'наград'])
+
   return (
     <form
       ref={formRef}
@@ -291,11 +419,14 @@ export const AdminPromotionForm: FC<IAdminPromotionFormProps & IBasicStyling> = 
       noValidate={true}
       onSubmit={handleSubmit}
     >
-      <section className={styles.panel} aria-labelledby="promotion-main">
-        <h2 className={styles.sectionTitle} id="promotion-main">
-          Основное
-        </h2>
-
+      <FormSection
+        title="Основное"
+        summary={openSections.main || fields.title.trim() === '' ? undefined : fields.title.trim()}
+        isOpen={openSections.main}
+        onToggle={() => {
+          toggleSection('main')
+        }}
+      >
         <Input
           label="Название"
           value={fields.title}
@@ -405,13 +536,16 @@ export const AdminPromotionForm: FC<IAdminPromotionFormProps & IBasicStyling> = 
             Рассылка уходит всем покупателям с привязанным ботом, один раз - когда акция начнётся.
           </Text>
         </div>
-      </section>
+      </FormSection>
 
-      <section className={styles.panel} aria-labelledby="promotion-banners">
-        <h2 className={styles.sectionTitle} id="promotion-banners">
-          Баннеры
-        </h2>
-
+      <FormSection
+        title="Баннеры"
+        summary={bannerSummary}
+        isOpen={openSections.banners}
+        onToggle={() => {
+          toggleSection('banners')
+        }}
+      >
         <Text tone="secondary" size="sm">
           Баннер встаёт в карусель вверху каталога - один слайд на всю ширину. Мобильный нужен
           обязательно: без него акции в карусели не будет. Десктопный необязателен - без него на
@@ -437,13 +571,16 @@ export const AdminPromotionForm: FC<IAdminPromotionFormProps & IBasicStyling> = 
             />
           ))}
         </div>
-      </section>
+      </FormSection>
 
-      <section className={styles.panel} aria-labelledby="promotion-conditions">
-        <h2 className={styles.sectionTitle} id="promotion-conditions">
-          Условия
-        </h2>
-
+      <FormSection
+        title="Условия"
+        summary={conditionSummary}
+        isOpen={openSections.conditions}
+        onToggle={() => {
+          toggleSection('conditions')
+        }}
+      >
         <Text tone="secondary" size="sm">
           Чтобы получить награды, заявка должна выполнять все условия сразу. Сумма и количество
           считаются до скидок, подарки не в счёт.
@@ -456,13 +593,16 @@ export const AdminPromotionForm: FC<IAdminPromotionFormProps & IBasicStyling> = 
           errors={isSubmitted ? builtConditions.errors : {}}
           maxRows={MAX_PROMOTION_CONDITIONS}
         />
-      </section>
+      </FormSection>
 
-      <section className={styles.panel} aria-labelledby="promotion-rewards">
-        <h2 className={styles.sectionTitle} id="promotion-rewards">
-          Награды
-        </h2>
-
+      <FormSection
+        title="Награды"
+        summary={rewardSummary}
+        isOpen={openSections.rewards}
+        onToggle={() => {
+          toggleSection('rewards')
+        }}
+      >
         <PromotionRewardBuilder
           value={rewards}
           onChange={setRewards}
@@ -477,7 +617,7 @@ export const AdminPromotionForm: FC<IAdminPromotionFormProps & IBasicStyling> = 
             {errors.rewards}
           </Text>
         )}
-      </section>
+      </FormSection>
 
       {/*
         Ошибка сервера — у кнопки, а не над формой: на телефоне верх формы в этот

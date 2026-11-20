@@ -132,6 +132,9 @@ Admin:
   `PROMO_CODE` reward: validity, conditions, what it gives — a code cannot hold another code).
   Numbers live as strings in the builders and become numbers in `buildConditions`/`buildRewards`.
   The mobile banner is labelled «Нужен для карусели» but does not block saving.
+  The four sections (Основное, Баннеры, Условия, Награды) collapse; only «Основное» starts
+  open, the others show a summary in the header. Collapsed bodies stay mounted, and a submit
+  with an error inside a collapsed section opens it before focusing the first invalid field.
 - `PromotionTargetField` — products, categories and brands; reads as «any of», so the label says so.
   There is **no category picker**: categories and brands are each a `Select` plus a label
   list (a brand comes from the catalogue's list, picking adds it). The product search is open

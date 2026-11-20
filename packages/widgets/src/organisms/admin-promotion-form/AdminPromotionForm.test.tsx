@@ -111,4 +111,45 @@ describe('AdminPromotionForm', () => {
     expect(onSubmit).not.toHaveBeenCalled()
     expect(screen.getByText('Акция должна заканчиваться позже, чем начинается')).toBeInTheDocument()
   })
+
+  it('секции сворачиваются: открыта только «Основное», у остальных сводка', async () => {
+    renderWidget(<AdminPromotionForm {...feedAdminPromotionForm()} />)
+
+    const main = screen.getByRole('button', { name: /^Основное/ })
+    const rewards = screen.getByRole('button', { name: /^Награды/ })
+
+    expect(main).toHaveAttribute('aria-expanded', 'true')
+    expect(rewards).toHaveAttribute('aria-expanded', 'false')
+    expect(rewards).toHaveTextContent('2 награды')
+
+    await userEvent.click(main)
+    expect(main).toHaveAttribute('aria-expanded', 'false')
+
+    await userEvent.click(rewards)
+    expect(rewards).toHaveAttribute('aria-expanded', 'true')
+  })
+
+  it('ошибка в свёрнутой секции раскрывает её при отправке', async () => {
+    renderWidget(
+      <AdminPromotionForm
+        {...feedAdminPromotionForm()}
+        initialValues={undefined}
+        savedBanners={undefined}
+        onBannerUpload={undefined}
+        onBannerRemove={undefined}
+      />
+    )
+
+    const rewards = screen.getByRole('button', { name: /^Награды/ })
+
+    expect(rewards).toHaveAttribute('aria-expanded', 'false')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Создать акцию' }))
+
+    expect(rewards).toHaveAttribute('aria-expanded', 'true')
+    expect(screen.getByRole('button', { name: /^Баннеры/ })).toHaveAttribute(
+      'aria-expanded',
+      'false'
+    )
+  })
 })
