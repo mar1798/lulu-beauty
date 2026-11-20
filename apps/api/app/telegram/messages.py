@@ -420,7 +420,7 @@ def order_created_for_customer(order: Order, cycle: OrderCycle | None, *, is_ope
             f"🛍{_items_count(order)}",
             *(_bill_line(item) for item in order.items),
             "",
-            *(html.escape(line) for line in promotion_lines(order)),
+            *_promotion_block(order),
             *_order_discount_lines(order),
             f"Сумма: <b>{format_price(order.total_cents, grouped=False)}</b>",
             "",
@@ -476,6 +476,7 @@ def order_edited(order: Order, lost: Sequence[LostDiscount] = ()) -> str:
                 if dropped
                 else []
             ),
+            *_promotion_block(order),
             *_order_discount_lines(order),
             f"Сумма: <b>{format_price(order.total_cents, grouped=False)}</b>",
         ]
@@ -532,6 +533,20 @@ def _order_discount_lines(order: Order) -> list[str]:
     ]
     if order.discount_note:
         lines.append(f"Причина: {html.escape(order.discount_note)}")
+    return lines
+
+
+def _promotion_block(order: Order) -> list[str]:
+    """The promotions an order holds, itemised above the sum — empty without any.
+
+    One line per participation (what it gives, the gifts that go out with the order), then
+    the money the promotions took off in all, so that lines - discounts = the sum printed
+    under it. HTML: the participation titles are the admin's text and are escaped.
+    """
+    lines = [html.escape(line) for line in promotion_lines(order)]
+    promo = order_totals(order).promo_discount_cents
+    if promo:
+        lines.append(f"Скидки по акциям: -{format_price(promo, grouped=False)}")
     return lines
 
 
@@ -640,6 +655,7 @@ def order_confirmed(order: Order, *, first_cycle: bool) -> str:
             f"🛍{_items_count(order)}",
             *(_bill_line(item) for item in order.items),
             "",
+            *_promotion_block(order),
             *_order_discount_lines(order),
             f"Итого к оплате: <b>{format_price(order.total_cents, grouped=False)}</b>",
             "Если всё верно, можете произвести оплату по реквизитам:",

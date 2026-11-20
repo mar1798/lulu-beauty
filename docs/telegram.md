@@ -310,9 +310,15 @@ between lines (`service.split_message`), the receipt button under the last.
 The bill greets the customers of the **first** cycle (no earlier deadline) as the shop's
 first; every later one gets the same text without that word (`notify._is_first_cycle`).
 
-The bill is the one message sent with `parse_mode="HTML"`: «Sululu» and the sum to pay are
-bold, so every product name in it goes through `html.escape`. Every other text is plain and
-escapes nothing. Its amounts are written without the thousands separator («3050 сом»),
+Between the lines and «Итого к оплате» the bill (and `order_edited` and `order_created_for_customer`, which end in «Сумма») itemises
+what the promotions did, so that the lines minus the discounts equal the total: one line per
+live participation (`promotion_lines`: what it gives, the gifts going out with the order, a
+promo code marked as applied), then «Скидки по акциям: -N сом» when they took money off, then
+the owner's order discount. An order with no promotions renders as before.
+
+The bill, `order_edited`, `order_created_for_customer`, `order_discount` and `promo_code_issued` are sent
+with `parse_mode="HTML"` (the sums are bold), so every product name and promotion title in them goes
+through `html.escape`. Every other text is plain and escapes nothing. Its amounts are written without the thousands separator («3050 сом»),
 unlike every other message and the site («3 050 сом»).
 
 ### Polling vs webhook
