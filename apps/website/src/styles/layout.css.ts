@@ -75,14 +75,15 @@ export const flushPicker = style({
 })
 
 /**
- * Карточки промокодов: на телефоне одна колонка во всю ширину, с `md` - две.
- * Длинный код и условия переносятся внутри карточки, а не растягивают сетку (`minmax(0, 1fr)`).
+ * Купоны промокодов - по одному в строку на всю ширину: корешок и факты в ряд в
+ * половине не помещаются. Длинный код и условия переносятся внутри купона, а не
+ * растягивают сетку (`minmax(0, 1fr)`).
  */
 export const promoCodeGrid = style({
   display: 'grid',
   gridTemplateColumns: 'minmax(0, 1fr)',
   gap: vars.space.md,
   ...media({
-    md: { gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: vars.space.lg },
+    md: { gap: vars.space.lg },
   }),
 })

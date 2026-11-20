@@ -134,8 +134,6 @@ const PromoCodesPage: React.FC = () => {
           <PromoCodeCard
             key={code.id}
             code={code}
-            // Применяется на оформлении: корзина - ближайший шаг к нему.
-            useHref="/cart"
             onCopy={copy}
             buildOrderHref={orderId => `/orders/${orderId}`}
           />

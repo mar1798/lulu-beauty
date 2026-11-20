@@ -31,14 +31,13 @@ describe('PromoCodeCard', () => {
     expect(onCopy).toHaveBeenCalledWith('K7M2XQ9R')
   })
 
-  it('у недействующего кода нет ни копирования, ни «Использовать»', () => {
+  it('у недействующего кода нет копирования', () => {
     renderWidget(
       <PromoCodeCard {...feedPromoCodeCard()} code={feedPromoCode({ status: 'EXPIRED' })} />
     )
 
     expect(screen.getByText('истёк')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /Скопировать/ })).toBeNull()
-    expect(screen.queryByRole('link', { name: 'Использовать' })).toBeNull()
   })
 
   it('использованный код ведёт к заявке, которая его потратила', () => {
@@ -56,9 +55,9 @@ describe('PromoCodeCard', () => {
     )
   })
 
-  it('«Использовать» ведёт на заданный адрес', () => {
+  it('кнопки «Использовать» нет: код вводится на оформлении', () => {
     renderWidget(<PromoCodeCard {...feedPromoCodeCard()} />)
 
-    expect(screen.getByRole('link', { name: 'Использовать' })).toHaveAttribute('href', '/cart')
+    expect(screen.queryByRole('link', { name: 'Использовать' })).toBeNull()
   })
 })

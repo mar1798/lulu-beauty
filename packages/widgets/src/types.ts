@@ -3271,8 +3271,6 @@ export interface IPromotionLinesProps {
 
 export interface IPromoCodeCardProps {
   code: IPromoCode
-  /** Куда ведёт «Использовать»: оформление. Без адреса кнопки нет. */
-  useHref?: string
   /** Копирование уходит наружу: буфер обмена и тост - дело сайта. */
   onCopy?: (code: string) => void
   /** Адрес заявки, которая держит или потратила код. */

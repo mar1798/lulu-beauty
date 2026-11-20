@@ -2061,7 +2061,6 @@ export const feedPromoCode = (overrides: Partial<IPromoCode> = {}): IPromoCode =
 
 export const feedPromoCodeCard = (): IPromoCodeCardProps => ({
   code: feedPromoCode(),
-  useHref: '/cart',
   onCopy: noop,
   buildOrderHref: id => `/orders/${id}`,
 })
