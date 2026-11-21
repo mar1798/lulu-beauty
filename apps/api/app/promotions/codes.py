@@ -23,6 +23,7 @@ the commit — `on_paid` and the sweep return the codes they issued so it can.
 
 import enum
 import logging
+import re
 import secrets
 import uuid
 from collections.abc import Sequence
@@ -38,6 +39,7 @@ from app.orders.models import CANCELLED_STATUSES, Order, OrderStatus
 from app.promotions.code_errors import (
     PromoCodeAlreadyUsedError,
     PromoCodeExpiredError,
+    PromoCodeInvalidError,
     PromoCodeNotFoundError,
     PromoCodeNotYetValidError,
 )
@@ -84,6 +86,35 @@ def generate_code() -> str:
 def normalize_code(raw: str) -> str:
     """What the customer typed, as it is stored: no spaces or dashes, upper case."""
     return "".join(ch for ch in raw.upper() if not ch.isspace() and ch != "-")
+
+
+# An owner's code, once normalised: Latin letters and digits only. Unlike a generated one it
+# may hold 0/O and 1/I — the owner chooses it on purpose.
+OWNER_CODE_PATTERN = re.compile(r"^[A-Z0-9]{4,16}$")
+
+
+def validate_owner_code(raw: str) -> str:
+    """The code the owner typed, normalised; `PromoCodeInvalidError` if it is not 4-16 Latin
+    letters or digits (Cyrillic look-alikes are refused, not mapped)."""
+    code = normalize_code(raw)
+    if not OWNER_CODE_PATTERN.fullmatch(code):
+        raise PromoCodeInvalidError
+    return code
+
+
+async def code_string_taken(
+    session: AsyncSession, code: str, *, except_promotion_id: uuid.UUID | None = None
+) -> bool:
+    """Whether this string is a code already — an owner's (archived ones included, the way
+    slugs work) or one issued to a customer. A customer types one string into one field, so
+    the two kinds share a namespace. `except_promotion_id` is the owner code being edited."""
+    issued = await session.scalar(select(exists().where(PromoCode.code == code)))
+    if issued:
+        return True
+    query = exists().where(Promotion.code == code)
+    if except_promotion_id is not None:
+        query = query.where(Promotion.id != except_promotion_id)
+    return bool(await session.scalar(select(query)))
 
 
 def code_status(code: PromoCode, now: datetime) -> PromoCodeView:
@@ -150,9 +181,13 @@ class PromoCodesService:
         for _ in range(_ISSUE_ATTEMPTS):
             if await self._has_standing_code(order.user_id, promotion_id):
                 return None
+            generated = generate_code()
+            if await self._session.scalar(select(exists().where(Promotion.code == generated))):
+                # An owner's code holds this string: one namespace for both kinds.
+                continue
             code = PromoCode(
                 id=uuid.uuid4(),
-                code=generate_code(),
+                code=generated,
                 user_id=order.user_id,
                 promotion_id=promotion_id,
                 source_order_id=order.id,

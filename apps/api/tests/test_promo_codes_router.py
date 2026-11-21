@@ -153,8 +153,12 @@ async def test_the_check_needs_a_signed_in_customer() -> None:
 
 async def test_my_promo_codes(client: AsyncClient) -> None:
     code = _code()
-    with patch("app.promotions.codes_router.PromoCodesService") as service_cls:
+    with (
+        patch("app.promotions.codes_router.PromoCodesService") as service_cls,
+        patch("app.promotions.codes_router.OwnerCodesService") as owner_cls,
+    ):
         service_cls.return_value.list_for_user = AsyncMock(return_value=[(code, "Акция")])
+        owner_cls.return_value.personal_for_user = AsyncMock(return_value=[])
         async with client as c:
             response = await c.get("/me/promo-codes")
 

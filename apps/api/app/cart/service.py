@@ -15,10 +15,15 @@ from app.common.limits import MAX_ITEM_QUANTITY
 from app.cycles.models import OrderCycle
 from app.cycles.service import CyclesService
 from app.promotions.code_errors import PromoCodeConditionsNotMetError
-from app.promotions.code_schemas import PromoCodeCheckResponse, order_promo_code_response
-from app.promotions.codes import PromoCodesService
+from app.promotions.code_schemas import (
+    PromoCodeCheckResponse,
+    order_promo_code_response,
+    owner_promo_code_response,
+)
+from app.promotions.models import PromoCode
 from app.promotions.order_schemas import cart_promotions_response, gift_response
 from app.promotions.orders import CartLine, preview_cart
+from app.promotions.owner_codes import resolve_code
 
 
 class NoActiveCycleError(Exception):
@@ -290,7 +295,7 @@ class CartService:
         expired, not valid yet, or a cart that does not meet its conditions. Writes nothing —
         reserving is checkout's.
         """
-        code = await PromoCodesService(self._session).usable(user_id, raw_code)
+        code = await resolve_code(self._session, user_id, raw_code)
         cycle = await CyclesService(self._session).get_active_cycle()
         lines: list[CartLine] = []
         if cycle is not None:
@@ -316,7 +321,11 @@ class CartService:
         if preview.code is None:
             raise PromoCodeConditionsNotMetError
         return PromoCodeCheckResponse(
-            code=order_promo_code_response(code, datetime.now(UTC)),
+            code=(
+                order_promo_code_response(code, datetime.now(UTC))
+                if isinstance(code, PromoCode)
+                else owner_promo_code_response(code)
+            ),
             discount_cents=preview.code.discount_cents,
             gifts=[gift_response(gift) for gift in preview.code.gifts],
             cart_total_cents=sum(line.price_cents * line.quantity for line in lines),

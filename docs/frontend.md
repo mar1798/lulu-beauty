@@ -24,15 +24,15 @@ vanilla-extract plugin wired in here is the webpack one. **Don't drop that flag.
 
 ## Pages
 
-| Group         | Pages                                                                                                                                                                                       | Rendering                          |
-| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------- |
-| Public        | `index`, `catalog/index`, `catalog/[slug]`, `promotions/[slug]`, `privacy`                                                                                                                  | SSG + ISR (`privacy` is plain SSG) |
-| Behind login  | `checkout`, `orders/index`, `orders/[id]`, `promocodes`, `account`                                                                                                                          | Static shell, client-rendered data |
-| Guest or user | `cart`, `wishlist` — a guest's lives in the browser (`utils/guestStorage`)                                                                                                                  | Static shell, client-rendered data |
-| Auth          | `login` — **this is the registration too**                                                                                                                                                  | Static                             |
-| Owner-only    | `admin/index`, `admin/products/{index,add,[id]}`, `admin/categories`, `admin/import`, `admin/cycles`, `admin/orders`, `admin/checklist`, `admin/users`, `admin/promotions/{index,add,[id]}` | Static, gated on the client        |
-| Errors        | `404`, `500`                                                                                                                                                                                | Static                             |
-| Crawlers      | `sitemap.xml`                                                                                                                                                                               | `getServerSideProps`, per request  |
+| Group         | Pages                                                                                                                                                                                                                             | Rendering                          |
+| ------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------- |
+| Public        | `index`, `catalog/index`, `catalog/[slug]`, `promotions/[slug]`, `privacy`                                                                                                                                                        | SSG + ISR (`privacy` is plain SSG) |
+| Behind login  | `checkout`, `orders/index`, `orders/[id]`, `promocodes`, `account`                                                                                                                                                                | Static shell, client-rendered data |
+| Guest or user | `cart`, `wishlist` — a guest's lives in the browser (`utils/guestStorage`)                                                                                                                                                        | Static shell, client-rendered data |
+| Auth          | `login` — **this is the registration too**                                                                                                                                                                                        | Static                             |
+| Owner-only    | `admin/index`, `admin/products/{index,add,[id]}`, `admin/categories`, `admin/import`, `admin/cycles`, `admin/orders`, `admin/checklist`, `admin/users`, `admin/promotions/{index,add,[id]}`, `admin/promo-codes/{index,add,[id]}` | Static, gated on the client        |
+| Errors        | `404`, `500`                                                                                                                                                                                                                      | Static                             |
+| Crawlers      | `sitemap.xml`                                                                                                                                                                                                                     | `getServerSideProps`, per request  |
 
 Every page a person can open is static, which is why `next build` reports `/admin/*` as
 `○ (Static)`. The one `getServerSideProps` in the app is `sitemap.xml`, which nobody visits:
@@ -247,6 +247,15 @@ Rules: [domain.md](domain.md#promotions). The site side:
   «Duplicate» is `/admin/promotions/add?from=<id>`: conditions and rewards are copied, dates
   are not, the copy is switched off, unannounced, with a `-copy` slug and no banners. The API
   refuses non-`SUPER_ADMIN` accounts, while the menu entry shows for any admin.
+- `pages/admin/promo-codes/{index,add,[id]}.tsx` — the owner's promo codes, «Промокоды» in
+  `AdminShell` right after «Акции». The list (`AdminPromoCodesTable`) copies a code with
+  `navigator.clipboard` («Код скопирован»); there is no showcase to rebuild, so no
+  `refreshPublicPages`. The form (`AdminPromoCodeForm`) gets its customer search from
+  `useCustomerSearch`. After `POST` the toast names the generated code and the page moves to the
+  card. The delete toast says «удалён» or «убран в архив» from the `deleted` flag of the `DELETE`
+  answer, not from `participantsCount`. «Duplicate» is `/admin/promo-codes/add?from=<id>`: conditions and rewards are copied; the
+  code (regenerated), dates, customer and enabled flag are not. The card has «Использования (N)»
+  and, for an archived code, a warning.
 
 **Cart, checkout and orders.** `CartPanel`, `CheckoutPanel`/`CheckoutForm` and `OrderDetails`
 show the promotions' discount lines, gift cards (`GiftLine`) and «ещё N сом» hints; they take
@@ -278,17 +287,23 @@ promotions, gifts and hints). It is `PromoCodeField`, driven by `usePromoCode`.
   one `GET /admin/products/{id}` each, since there is no "products by ids" endpoint).
 - `usePromotionParticipants` (admin) — the «Участники» dialog, shared by the list and the
   card; reloaded on every open, paged by 20 and back to page 1 each time.
+  `usePromoCodeParticipants` is the same for a promo code, on the same dialog.
+- `useCustomerSearch(isActive)` (admin) — the debounced customer search behind `CustomerSelect`
+  (`props`, `reset`), shared by the «Новая заявка» dialog (`useAdminOrderDraft`) and the promo
+  code form.
 
-**Data layer.** `services/endpoints/promotions.ts` holds the admin calls, the public
+**Data layer.** `services/endpoints/promoCodes.ts` holds the owner's promo-code calls (the customer
+search is `listAdminUsers`, the gift picture `uploadGiftImage`). `services/endpoints/promotions.ts` holds the admin calls, the public
 `listPublicPromotions`/`getPublicPromotion` (also used by `sitemap.xml`) and
 `listMyPromoCodes`; `checkPromoCode` is in `endpoints/cart.ts` and `previewMyOrderEdit` in
 `endpoints/orders.ts`. SWR keys: `adminPromotionsKey(includeDeleted)` (with
 `isAdminPromotionsKey` for both variants), `adminPromotionKey`, `adminPromotionParticipantsKey`,
-`adminPromotionProductLabelsKey`, `promoCodesKey(userId)` and `isPromoCodesKey` (a checkout
+`adminPromotionProductLabelsKey`, `adminPromoCodesKey(includeDeleted)` (with `isAdminPromoCodesKey`),
+`adminPromoCodeKey`, `adminPromoCodeParticipantsKey`, `promoCodesKey(userId)` and `isPromoCodesKey` (a checkout
 reserves a code and a payment issues new ones, so the page and the checkout picker go stale
 together). `apiErrors.ts` has the five `promo_code_*` codes under checkout and the scopes
 `promoCode.check` and `promoCodes.load`, the four `promotion_*` codes under seven
-`admin.promotion.*` error-map scopes (`create`, `update`, `toggle`, `delete`, `banner`, `giftImage`, `participants`; the title map adds `admin.promotions.load`), and teaches the 422 parser the nested rule fields.
+`admin.promotion.*` error-map scopes (`create`, `update`, `toggle`, `delete`, `banner`, `giftImage`, `participants`; the title map adds `admin.promotions.load`), and teaches the 422 parser the nested rule fields. The owner's codes have the `admin.promoCode.*` scopes (`create`, `update`, `toggle`, `delete`, `participants`; the title map adds `admin.promoCodes.load`) and the codes `promo_code_taken`, `promo_code_invalid` and `promo_code_user_not_found`.
 
 ## State and layout
 

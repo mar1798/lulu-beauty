@@ -4,6 +4,7 @@ import type { IBasicStyling, IPromoCodeCardProps, PromoCodeView } from '../../ty
 import { IconCopy } from '../../svg/icons'
 import { AppLink } from '../../atoms/app-link'
 import { Badge } from '../../atoms/badge'
+import { RichText } from '../../atoms/rich-text'
 import { IconButton } from '../../atoms/icon-button'
 import { formatShortDate } from '../../utils/datetime'
 import {
@@ -76,9 +77,15 @@ export const PromoCodeCard: FC<IPromoCodeCardProps & IBasicStyling> = ({
           </Badge>
 
           {code.promotionTitle !== null && (
-            <span className={styles.promotion}>{`Акция «${code.promotionTitle}»`}</span>
+            <span className={styles.promotion}>
+              {code.isOwnerCode ? code.promotionTitle : `Акция «${code.promotionTitle}»`}
+            </span>
           )}
         </div>
+
+        {code.descriptionHtml !== null && code.descriptionHtml !== '' && (
+          <RichText html={code.descriptionHtml} />
+        )}
 
         <dl className={styles.facts}>
           <div className={styles.fact}>
@@ -96,7 +103,9 @@ export const PromoCodeCard: FC<IPromoCodeCardProps & IBasicStyling> = ({
           <div className={styles.fact}>
             <dt className={styles.term}>Срок</dt>
             <dd className={styles.value}>
-              {`${formatShortDate(code.validFrom)} - ${formatShortDate(code.expiresAt)}`}
+              {code.expiresAt === null
+                ? `с ${formatShortDate(code.validFrom)}, бессрочно`
+                : `${formatShortDate(code.validFrom)} - ${formatShortDate(code.expiresAt)}`}
             </dd>
           </div>
         </dl>

@@ -108,7 +108,7 @@ Public and customer-facing:
 | `POST`                        | `/cart/promo-code/check`                      | Signed-in. Validates a code against the cart (`{code}`), writes nothing. Refusals: see "Promotions and promo codes".                                           |
 | `POST`                        | `/orders/checkout`                            | Body `note`, optional `promoCode` (checked and reserved with the order; a refusal creates nothing).                                                            |
 | `GET`                         | `/promotions`, `/promotions/{slug}`           | **Public.** Running promotions only (carousel, sitemap, the page); anything else, archived or not started included, is a 404.                                  |
-| `GET`                         | `/me/promo-codes`                             | Every code the caller was ever given, newest first, `REVOKED` included.                                                                                        |
+| `GET`                         | `/me/promo-codes`                             | Every code the caller was ever given, newest first, `REVOKED` included, plus the personal owner codes assigned to them.                                        |
 | `POST`                        | `/orders/{id}/edit-preview`                   | The customer's edit run and rolled back: which promotions it would take off or bring. Body `revision`, `itemId` or `variantId`, `quantity` (0 removes a line). |
 | `GET`                         | `/orders`, `/orders/{id}`                     |                                                                                                                                                                |
 | `PATCH`                       | `/orders/{id}`                                | Note only.                                                                                                                                                     |
@@ -134,7 +134,10 @@ Owner-only (`ADMIN` or `SUPER_ADMIN`, checked on the API — the frontend gate i
 `GET`/`POST /admin/promotions` (`GET` takes `includeDeleted`), `GET`/`PUT`/`DELETE
 /admin/promotions/{id}`, `PATCH /admin/promotions/{id}/enabled`, `POST`/`DELETE
 /admin/promotions/{id}/banner?variant=mobile|desktop`, `GET /admin/promotions/{id}/participants`
-and `POST /admin/promotions/gift-image`. Details below.
+and `POST /admin/promotions/gift-image`. **The owner's promo codes** are `SUPER_ADMIN` only too:
+`GET`/`POST /admin/promo-codes` (`GET` takes `includeDeleted`), `GET`/`PUT`/`DELETE
+/admin/promo-codes/{id}`, `PATCH /admin/promo-codes/{id}/enabled` and
+`GET /admin/promo-codes/{id}/participants`. Details below.
 
 `POST /admin/orders/{id}/discount/preview` is the `PUT .../discount` above with the same
 body, rolled back instead of committed: it answers with the sum the order would come to, or
@@ -279,6 +282,7 @@ promotion_not_found       promotion_slug_taken      promotion_ends_before_start
 promotion_code_window_past
 promotion_invalid_rules   promo_code_not_found      promo_code_expired
 promo_code_not_yet_valid  promo_code_already_used   promo_code_conditions_not_met
+promo_code_taken          promo_code_invalid        promo_code_user_not_found
 ```
 
 (plus `image_unreadable`, `image_too_large`, `image_too_many_pixels`, `import_file_too_large`,
@@ -308,29 +312,41 @@ See [domain.md](domain.md).
 Rules and meaning: [domain.md](domain.md#promotions). What lives where in
 `apps/api/app/promotions/`:
 
-| File                                                   | Contents                                                                                                                                     |
-| ------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| `models.py`                                            | `Promotion`, `OrderPromotion`, `OrderGift`, `PromoCode`; `promotion_status` (derived).                                                       |
-| `rules.py`                                             | Conditions, rewards and `Target` as pydantic discriminated unions; `load_*`/`dump_*` for the JSONB columns; `promo_code_expiry`.             |
-| `engine.py`                                            | `evaluate(lines, offers, already_joined=…)` — pure, no session, no clock. Returns `applied` and `shortfalls`.                                |
-| `service.py`, `router.py`                              | The owner's CRUD, banners, participants, plus the two public reads. `schemas.py` holds the request/response shapes (`GiftImageResponse`, …). |
-| `orders.py`                                            | `OrderPromotionsService` (`refresh`, `release_all`, `attach_code`/`check_code`), `preview_cart`, `resolve_gifts`, `item_scopes`.             |
-| `order_schemas.py`                                     | What orders and the cart say about promotions (`OrderPromotionResponse`, `OrderGiftResponse`, `CartPromotionsResponse`).                     |
-| `codes.py`                                             | `PromoCodesService` (issue, `usable`, list), `code_status`, `issue_missing_promo_codes` (the sweep's call).                                  |
-| `code_errors.py`, `code_schemas.py`, `codes_router.py` | The five `PromoCodeError` subclasses (each carries its `code` and `status_code`, routers return them as is); `GET /me/promo-codes`.          |
-| `sweep.py`                                             | The read-only queries of `_run_promotion_sweep`: `unannounced_promotions`, `expiring_promo_codes`.                                           |
+| File                                                   | Contents                                                                                                                                                                |
+| ------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `models.py`                                            | `Promotion`, `OrderPromotion`, `OrderGift`, `PromoCode`; `promotion_status` (derived).                                                                                  |
+| `rules.py`                                             | Conditions, rewards and `Target` as pydantic discriminated unions; `load_*`/`dump_*` for the JSONB columns; `promo_code_expiry`.                                        |
+| `engine.py`                                            | `evaluate(lines, offers, already_joined=…)` — pure, no session, no clock. Returns `applied` and `shortfalls`.                                                           |
+| `service.py`, `router.py`                              | The owner's CRUD, banners, participants, plus the two public reads. `schemas.py` holds the request/response shapes (`GiftImageResponse`, …).                            |
+| `orders.py`                                            | `OrderPromotionsService` (`refresh`, `release_all`, `attach_code`/`check_code`), `preview_cart`, `resolve_gifts`, `item_scopes`.                                        |
+| `order_schemas.py`                                     | What orders and the cart say about promotions (`OrderPromotionResponse`, `OrderGiftResponse`, `CartPromotionsResponse`).                                                |
+| `codes.py`                                             | `PromoCodesService` (issue, `usable`, list), `code_status`, `issue_missing_promo_codes`; `generate_code`, `normalize_code`, `validate_owner_code`, `code_string_taken`. |
+| `code_errors.py`, `code_schemas.py`, `codes_router.py` | The `PromoCodeError` subclasses (each carries its `code` and `status_code`, routers return them as is); `GET /me/promo-codes`.                                          |
+| `owner_codes.py`                                       | `OwnerCodesService` (the owner's CRUD over `Promotion` rows with a `code`, `usable`, `personal_for_user`), `resolve_code`, `OwnerCodeDraft`.                            |
+| `owner_code_schemas.py`, `owner_codes_router.py`       | `PromoCodeWriteRequest`, `AdminPromoCodeResponse`; the `/admin/promo-codes*` routes.                                                                                    |
+| `sweep.py`                                             | The read-only queries of `_run_promotion_sweep`: `unannounced_promotions`, `expiring_promo_codes`.                                                                      |
 
 `app/common/uploads.py` (`read_image`, `read_within`) is the shared way an upload is read and
 re-encoded; catalogue photos, banners and gift pictures all go through it.
 
 API responses carrying rewards must be built from the model instances `load_*` returns, never from raw dicts: response validation runs without the trusted context.
 
-**Tables** (migrations `310c104e5d85_add_promotions` and `5b1d7c93a0e4_order_promotions_scopes`,
-both expanding: new tables and a column with a default or nullable):
+**Tables** (migrations `310c104e5d85_add_promotions`, `5b1d7c93a0e4_order_promotions_scopes` and
+`a4d9e7b2c615_promotions_owner_promo_codes`, all expanding: new tables and columns that are
+nullable or have a default):
 
 - `promotions` — `conditions`/`rewards` JSONB, a CHECK `ends_at > starts_at`, a partial index
   on `(starts_at, ends_at)` for "enabled and not archived". `ends_at` became nullable in
-  `8c3e5a1f2d74` (open-ended promotions); the CHECK lets NULL through.
+  `8c3e5a1f2d74` (open-ended promotions); the CHECK lets NULL through. `a4d9e7b2c615` added
+  `code` (NULL: an automatic promotion; set: an owner's promo code, unique through
+  `uq_promotions_code`, archived rows included) and `assigned_user_id` (a personal code's
+  customer; FK `ON DELETE CASCADE`, indexed). Both nullable with no default, so the migration
+  passes the release guard. **Every query that picks automatic promotions filters
+  `Promotion.code IS NULL`** (`automatic()`): `active_promotions`, `PromotionsService._running`
+  and `list_all`, `unannounced_promotions`. `PromotionsService.get`/`set_enabled`/`delete`/
+  `participants` take `owner_code=` and answer `PromotionNotFoundError` for the other kind, so
+  `/admin/promotions/{id}` is 404 for a code row and `/admin/promo-codes/{id}` for a plain
+  promotion. No new model: `Promotion` is already in `app/models.py`.
 - `order_promotions` — CHECK that exactly one of `promotion_id`/`promo_code_id` is set;
   **partial unique** `uq_order_promotions_live_participant (promotion_id, user_id) WHERE
 released_at IS NULL AND promotion_id IS NOT NULL` (once per customer) and
@@ -358,7 +374,8 @@ than a relationship, which would go stale inside the transaction.
   `title`, `descriptionHtml`, `startsAt`, `endsAt`, `isEnabled`, `announce`, `sortOrder`,
   `conditions`, `rewards`. `PUT` replaces everything but the banners. Responses carry
   the derived `status`, `participantsCount` (live participations) and `announcedAt`.
-- `DELETE /admin/promotions/{id}` — `204`; deleted or archived, the caller is not told which.
+- `DELETE /admin/promotions/{id}` — `200 {deleted}`: `true` when the row was removed, `false` when
+  it was archived because somebody had taken part (the page words its toast from this).
   Files of a deleted promotion's banners are removed after the commit.
 - `POST /admin/promotions/{id}/banner?variant=mobile|desktop` (multipart `file`) puts a banner up
   and removes the file it replaced from disk after the commit; `DELETE` takes it down. The
@@ -379,6 +396,30 @@ than a relationship, which would go stale inside the transaction.
 "Duplicate" in the admin table has no endpoint: the form is opened prefilled from the
 existing promotion (`?from=<id>`).
 
+**Owner's promo codes** (`/admin/promo-codes`, rules in
+[domain.md](domain.md#owners-promo-codes)):
+
+- `GET /admin/promo-codes?includeDeleted=` — unpaginated, like promotions; `AdminPromoCodeResponse`
+  has `code`, `assignedUser` (`id`, `name`, `phone`, `telegramLinked`, `isDeleted`), `status`
+  (the promotions' derived one) and `participantsCount`.
+- `POST /admin/promo-codes`, `PUT /admin/promo-codes/{id}` — `PromoCodeWriteRequest`: `code`
+  (`null`: generate; on a PUT, replace with a new one), `title`, `descriptionHtml`, `startsAt`,
+  `endsAt` (optional), `isEnabled`, `assignedUserId`, `conditions`, `rewards` (`CodeReward`s: a
+  `PROMO_CODE` reward is a plain `422`).
+- `PATCH /admin/promo-codes/{id}/enabled`, `DELETE /admin/promo-codes/{id}` (`200 {deleted}`, as for
+  promotions), `GET /admin/promo-codes/{id}/participants?page=&pageSize=`.
+- The customer is picked with `GET /admin/users?q=` (no endpoint of its own); a gift picture
+  goes through `POST /admin/promotions/gift-image`.
+- Applying: `resolve_code` (`owner_codes.py`) tries the customer's issued codes first, then the
+  owner's. The cart check and `checkout` use it; `OrderPromotionsService.attach_owner_code`
+  makes the participation. `OrderPromoCodeResponse.expiresAt` is **nullable** (an open-ended
+  owner code); `AppliedCodePreview.code` is a `PromoCode | Promotion`.
+- `GET /me/promo-codes` appends the personal owner codes assigned to the caller
+  (`OwnerCodesService.personal_for_user`), with a status derived from their live participation. A
+  switched-off personal code is listed only while one of the caller's orders holds it (as
+  `RESERVED`/`USED`). `PromoCodeResponse` carries `isOwnerCode` (its `promotionTitle` is then the
+  code's own name) and `descriptionHtml` (the owner's note; `null` for an issued code).
+
 **New fields.** `OrderResponse`/`AdminOrderResponse`: `promotions` (live participations, each
 with `discountCents`), `gifts`, `promoItemsDiscountCents`, `promoOrderDiscountCents`,
 `promoCode` (the code the order holds or spent) and `issuedPromoCodes` (codes it earned,
@@ -392,26 +433,29 @@ too (a guest has joined nothing, so "once per customer" only shows after sign-in
 
 **Error codes**
 
-| Code                            | Status | Raised                                                                      |
-| ------------------------------- | ------ | --------------------------------------------------------------------------- |
-| `promotion_not_found`           | 404    | Unknown id/slug, or on the public read a promotion that is not running.     |
-| `promotion_slug_taken`          | 409    | Another promotion has the slug (a lost race at flush too).                  |
-| `promotion_ends_before_start`   | 422    | `endsAt` is not after `startsAt`.                                           |
-| `promotion_code_window_past`    | 422    | A promo-code reward's fixed window ended; on update only a new/changed one. |
-| `promotion_invalid_rules`       | 409    | A rule names a product, category or gift variant the catalogue lacks.       |
-| `promo_code_not_found`          | 404    | No such code, someone else's, or `REVOKED` — indistinguishable on purpose.  |
-| `promo_code_expired`            | 409    |                                                                             |
-| `promo_code_not_yet_valid`      | 409    |                                                                             |
-| `promo_code_already_used`       | 409    | `USED`, or `RESERVED` by another order.                                     |
-| `promo_code_conditions_not_met` | 409    | Including an empty cart.                                                    |
+| Code                            | Status | Raised                                                                                                                                                                              |
+| ------------------------------- | ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `promotion_not_found`           | 404    | Unknown id/slug, or on the public read a promotion that is not running.                                                                                                             |
+| `promotion_slug_taken`          | 409    | Another promotion has the slug (a lost race at flush too).                                                                                                                          |
+| `promotion_ends_before_start`   | 422    | `endsAt` is not after `startsAt`.                                                                                                                                                   |
+| `promotion_code_window_past`    | 422    | A promo-code reward's fixed window ended; on update only a new/changed one.                                                                                                         |
+| `promotion_invalid_rules`       | 409    | A rule names a product, category or gift variant the catalogue lacks.                                                                                                               |
+| `promo_code_not_found`          | 404    | No such code, someone else's, `REVOKED`, a disabled or archived owner code — indistinguishable on purpose. On `/admin/promo-codes/{id}`: an unknown id or an automatic promotion's. |
+| `promo_code_expired`            | 409    |                                                                                                                                                                                     |
+| `promo_code_not_yet_valid`      | 409    |                                                                                                                                                                                     |
+| `promo_code_already_used`       | 409    | `USED`, or `RESERVED` by another order.                                                                                                                                             |
+| `promo_code_conditions_not_met` | 409    | Including an empty cart.                                                                                                                                                            |
+| `promo_code_taken`              | 409    | Owner code string used by another owner code (archived too) or an issued one.                                                                                                       |
+| `promo_code_invalid`            | 422    | Owner code string is not 4-16 Latin letters/digits after normalising.                                                                                                               |
+| `promo_code_user_not_found`     | 422    | `assignedUserId` is unknown or an erased account.                                                                                                                                   |
 
 Structural mistakes in the rules (an unknown type, a percent over 100, two `PROMO_CODE`
 rewards, a bad code term) are plain pydantic `422`s without a code. The website has Russian
 text for each code, per scope, in `apiErrors.ts` (`promoCode.check`, `promoCodes.load`, and the
-`admin.promotion*` areas).
+`admin.promotion*` and `admin.promoCode*` areas).
 
 **Known limitations**: no brute-force limit on `POST /cart/promo-code/check` beyond the global
-rate limit; `edit-preview` says nothing about promo codes.
+rate limit; `edit-preview` says nothing about an **issued** promo code (an owner code is reported like a promotion).
 
 ## Catalogue order
 

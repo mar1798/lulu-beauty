@@ -2953,7 +2953,8 @@ export interface IOrderPromoCode {
   conditions: IPromotionCondition[]
   rewards: IPromotionCodeReward[]
   validFrom: string
-  expiresAt: string
+  /** `null` - промокод владельца без даты окончания. */
+  expiresAt: string | null
 }
 
 /** Рекомендованные размеры баннеров: подписи в форме и пропорции превью. */
@@ -3143,6 +3144,127 @@ export interface IAdminPromotionFormProps {
   footer?: ReactNode
 }
 
+/** Сворачиваемая панель формы: заголовок-кнопка и тело. */
+export interface IFormSectionProps {
+  title: string
+  /** Сводка рядом с заголовком; показывается и у свёрнутой секции. */
+  summary?: string
+  isOpen: boolean
+  onToggle: () => void
+  children: ReactNode
+}
+
+/** Начало и конец окна действия, как их набирает человек: дата и время по магазину. */
+export interface IPromotionPeriod {
+  startDate: string
+  startTime: string
+  endDate: string
+  endTime: string
+}
+
+export interface IPromotionPeriodFieldsProps extends IPromotionPeriod {
+  /** «Бессрочная»: конец не нужен, уйдёт `endsAt: null`. */
+  isOpenEnded: boolean
+  /** Текст ошибки у начала и у конца; форма отдаёт его, когда показывать уже можно. */
+  errors: { start: string | null; end: string | null }
+  onChange: (patch: Partial<IPromotionPeriod>) => void
+  onOpenEndedChange: (isOpenEnded: boolean) => void
+  /** Подпись переключателя; по умолчанию - как у акции. */
+  openEndedLabel?: string
+  /** Подсказка под временем конца; по умолчанию - как у акции. */
+  endHint?: string
+}
+
+/** Промокод владельца, как его отдаёт `GET /admin/promo-codes`. */
+export interface IAdminPromoCode {
+  id: string
+  code: string
+  title: string
+  descriptionHtml: string | null
+  startsAt: string
+  /** `null` - без даты окончания: действует, пока код не выключат или не уберут в архив. */
+  endsAt: string | null
+  isEnabled: boolean
+  /** Персональный код: пользоваться им может только этот покупатель. `null` - общий. */
+  assignedUser: IAssignedUser | null
+  conditions: IPromotionCondition[]
+  rewards: IPromotionCodeReward[]
+  status: PromotionStatus
+  /** Живые использования; у персонального кода больше нуля значит «использован». */
+  participantsCount: number
+  deletedAt: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+/** Покупатель, которому выдан персональный код: срез `ICustomerOption` плюс признак удалённого аккаунта. */
+export interface IAssignedUser extends ICustomerOption {
+  /** Аккаунт стёрт: код уже никто не применит. */
+  isDeleted: boolean
+}
+
+/** Начальные значения формы: сохранённый промокод или копия для «дублировать». */
+export type IAdminPromoCodeInitialValues = Pick<
+  IAdminPromoCode,
+  | 'title'
+  | 'descriptionHtml'
+  | 'startsAt'
+  | 'endsAt'
+  | 'isEnabled'
+  | 'assignedUser'
+  | 'conditions'
+  | 'rewards'
+> & {
+  /** `null` - у копии кода строки ещё нет: она сгенерируется при сохранении. */
+  code: string | null
+}
+
+/** Значения формы промокода, готовые к отправке. */
+export interface IAdminPromoCodeValues {
+  /** `null` - сгенерировать (при правке - заменить новым). Иначе - код как набран, в верхнем регистре. */
+  code: string | null
+  title: string
+  /** Пустая строка - описания нет. */
+  descriptionHtml: string
+  startsAt: string
+  endsAt: string | null
+  isEnabled: boolean
+  assignedUser: ICustomerOption | null
+  conditions: IPromotionCondition[]
+  rewards: IPromotionCodeReward[]
+}
+
+export interface IAdminPromoCodeFormProps {
+  catalog: IPromotionCatalog
+  /** Выбор покупателя для персонального кода: поиск ведёт страница. Значение формы держит сама. */
+  customerSelect: Omit<ICustomerSelectProps, 'value' | 'onChange' | 'label'>
+  /** Без значений - создание (код по умолчанию генерируется); с ними - правка или дубль. */
+  initialValues?: IAdminPromoCodeInitialValues
+  /** Сохранённый промокод: на кнопке «Сохранить», а у кода есть «Сгенерировать новый». */
+  isSaved?: boolean
+  onSubmit: (values: IAdminPromoCodeValues) => void
+  isSubmitting?: boolean
+  error?: string | null
+  /** Слот под удаление промокода. */
+  footer?: ReactNode
+}
+
+export interface IAdminPromoCodesTableProps {
+  promoCodes: IAdminPromoCode[]
+  buildEditHref: (promoCode: IAdminPromoCode) => string
+  /** «Дублировать» - ссылка на форму добавления, предзаполненную этим кодом. */
+  buildDuplicateHref: (promoCode: IAdminPromoCode) => string
+  onCopy: (promoCode: IAdminPromoCode) => void
+  onToggleEnabled: (promoCode: IAdminPromoCode) => void
+  onShowParticipants: (promoCode: IAdminPromoCode) => void
+  /** Решает страница: удаление или архив (если код уже применяли) - по `participantsCount`. */
+  onDelete: (promoCode: IAdminPromoCode) => void
+  isLoading?: boolean
+  skeletonRows?: number
+  busyId?: string | null
+  emptyState?: ReactNode
+}
+
 export interface IAdminPromoCodeDialogProps {
   isOpen: boolean
   onClose: () => void
@@ -3227,7 +3349,12 @@ export interface IPublicPromotion {
 
 /** Код покупателя на странице «Промокоды». */
 export interface IPromoCode extends IOrderPromoCode {
+  /** Название акции, выдавшей код, а у персонального кода владельца - его собственное название. */
   promotionTitle: string | null
+  /** Персональный код владельца: `promotionTitle` - его имя, а не акция, которая его выдала. */
+  isOwnerCode: boolean
+  /** Описание персонального кода от владельца (очищенный HTML); у выданного кода `null`. */
+  descriptionHtml: string | null
   sourceOrderId: string | null
   /** Заявка, которая держит код (в заявке) или потратила его (использован). */
   usedOrderId: string | null

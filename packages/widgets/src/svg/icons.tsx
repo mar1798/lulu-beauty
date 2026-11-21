@@ -317,6 +317,22 @@ export const IconGift: FC<IBasicStyling> = ({ className }) => (
   </svg>
 )
 
+/** Промокод: билет с вырезами по бокам. */
+export const IconTicket: FC<IBasicStyling> = ({ className }) => (
+  <svg {...base} className={className}>
+    <path d="M4 8a1 1 0 0 1 1-1h14a1 1 0 0 1 1 1v2a2 2 0 0 0 0 4v2a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-2a2 2 0 0 0 0-4V8Z" />
+    <path d="M14.5 7v2M14.5 11v2M14.5 15v2" />
+  </svg>
+)
+
+/** Скопировать в буфер обмена: планшет с листом. */
+export const IconClipboard: FC<IBasicStyling> = ({ className }) => (
+  <svg {...base} className={className}>
+    <rect x="5" y="4.5" width="14" height="16" rx="2" />
+    <path d="M9 4.5V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v.5M8.5 11h7M8.5 15h4.5" />
+  </svg>
+)
+
 /** Пауза: две вертикальные планки. */
 export const IconPause: FC<IBasicStyling> = ({ className }) => (
   <svg {...base} className={className}>

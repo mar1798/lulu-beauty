@@ -1,14 +1,5 @@
 import clsx from 'clsx'
-import { m, useReducedMotion } from 'motion/react'
-import {
-  type FC,
-  type FormEvent,
-  type ReactNode,
-  useEffect,
-  useId,
-  useRef,
-  useState,
-} from 'react'
+import { type FC, type FormEvent, useEffect, useRef, useState } from 'react'
 import type {
   IAdminPromotionFormProps,
   IBasicStyling,
@@ -23,8 +14,9 @@ import { Button } from '../../atoms/button'
 import { Input } from '../../atoms/input'
 import { Switch } from '../../atoms/switch'
 import { Text } from '../../atoms/text'
-import { IconChevronDown } from '../../svg/icons'
+import { FormSection } from '../../molecules/form-section'
 import { PromotionBannerField } from '../../molecules/promotion-banner-field'
+import { PromotionPeriodFields } from '../../molecules/promotion-period-fields'
 import { RichTextEditor } from '../../molecules/rich-text-editor'
 import { storeIso, storeToday, toStoreParts } from '../../utils/datetime'
 import {
@@ -36,7 +28,6 @@ import {
   newPromoCodeDraft,
   rewardToDraft,
 } from '../../utils/promotion'
-import { FAQ_TRANSITION } from '../../utils/motion'
 import { pluralize } from '../../utils/plural'
 import { plainTextToHtml } from '../../utils/richText'
 import { slugify } from '../../utils/slug'
@@ -115,63 +106,6 @@ const INITIAL_OPEN: Record<SectionKey, boolean> = {
   banners: false,
   conditions: false,
   rewards: false,
-}
-
-interface IFormSectionProps {
-  title: string
-  /** Сводка рядом с заголовком; показывается и у свёрнутой секции. */
-  summary?: string
-  isOpen: boolean
-  onToggle: () => void
-  children: ReactNode
-}
-
-/**
- * Сворачиваемая панель формы: кнопка-заголовок с `aria-expanded` и тело,
- * высота которого анимируется (то же исключение, что в `FaqAccordion`). Пока
- * тело раскрывается, `overflow` скрыт, а по окончании становится видимым —
- * иначе обрезались бы кольца фокуса у краёв полей и выпадающие списки.
- */
-const FormSection: FC<IFormSectionProps> = ({ title, summary, isOpen, onToggle, children }) => {
-  const isReduced = useReducedMotion() ?? false
-  const baseId = useId()
-  const triggerId = `${baseId}-trigger`
-  const bodyId = `${baseId}-body`
-
-  return (
-    <section className={styles.panel} aria-labelledby={triggerId}>
-      <h2 className={styles.sectionHeading}>
-        <button
-          type="button"
-          id={triggerId}
-          className={styles.sectionTrigger}
-          aria-expanded={isOpen}
-          aria-controls={bodyId}
-          onClick={onToggle}
-        >
-          <span className={styles.sectionTitle}>{title}</span>
-          {summary !== undefined && <span className={styles.sectionSummary}>{summary}</span>}
-          <IconChevronDown className={clsx(styles.chevron, isOpen && styles.chevronOpen)} />
-        </button>
-      </h2>
-
-      <m.div
-        id={bodyId}
-        role="region"
-        aria-labelledby={triggerId}
-        className={clsx(styles.sectionBody, !isOpen && styles.sectionBodyClosed)}
-        initial={false}
-        animate={
-          isOpen
-            ? { height: 'auto', opacity: 1, transitionEnd: { overflow: 'visible' } }
-            : { height: 0, opacity: 0, overflow: 'hidden' }
-        }
-        transition={isReduced ? { duration: 0 } : FAQ_TRANSITION}
-      >
-        <div className={styles.sectionInner}>{children}</div>
-      </m.div>
-    </section>
-  )
 }
 
 export const AdminPromotionForm: FC<IAdminPromotionFormProps & IBasicStyling> = ({
@@ -459,58 +393,19 @@ export const AdminPromotionForm: FC<IAdminPromotionFormProps & IBasicStyling> = 
           onChange={setDescriptionHtml}
         />
 
-        <div className={styles.pair}>
-          <Input
-            label="Начало, дата"
-            type="date"
-            value={fields.startDate}
-            required={true}
-            error={isSubmitted ? errors.start : null}
-            onChange={next => {
-              patch({ startDate: next })
-            }}
-          />
-          <Input
-            label="Начало, время"
-            type="time"
-            value={fields.startTime}
-            required={true}
-            onChange={next => {
-              patch({ startTime: next })
-            }}
-          />
-        </div>
-
-        <Switch
-          label="Бессрочная - без даты окончания"
-          checked={isOpenEnded}
-          onChange={setIsOpenEnded}
+        <PromotionPeriodFields
+          startDate={fields.startDate}
+          startTime={fields.startTime}
+          endDate={fields.endDate}
+          endTime={fields.endTime}
+          isOpenEnded={isOpenEnded}
+          errors={{
+            start: isSubmitted ? errors.start : null,
+            end: isSubmitted ? errors.end : null,
+          }}
+          onChange={patch}
+          onOpenEndedChange={setIsOpenEnded}
         />
-
-        {!isOpenEnded && (
-          <div className={styles.pair}>
-            <Input
-              label="Конец, дата"
-              type="date"
-              value={fields.endDate}
-              required={true}
-              error={isSubmitted ? errors.end : null}
-              onChange={next => {
-                patch({ endDate: next })
-              }}
-            />
-            <Input
-              label="Конец, время"
-              type="time"
-              value={fields.endTime}
-              hint="Время по Бишкеку. Акция действует до этого момента, не включая его."
-              required={true}
-              onChange={next => {
-                patch({ endTime: next })
-              }}
-            />
-          </div>
-        )}
 
         <Input
           label="Порядок"

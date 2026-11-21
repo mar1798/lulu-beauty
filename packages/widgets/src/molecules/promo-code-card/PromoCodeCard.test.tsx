@@ -60,4 +60,29 @@ describe('PromoCodeCard', () => {
 
     expect(screen.queryByRole('link', { name: 'Использовать' })).toBeNull()
   })
+
+  it('бессрочный код (expiresAt: null) показывает срок «с даты, бессрочно»', () => {
+    renderWidget(
+      <PromoCodeCard {...feedPromoCodeCard()} code={feedPromoCode({ expiresAt: null })} />
+    )
+
+    expect(screen.getByText(/, бессрочно$/)).toBeInTheDocument()
+  })
+
+  it('у персонального кода владельца название без «Акция», и видно описание', () => {
+    renderWidget(
+      <PromoCodeCard
+        {...feedPromoCodeCard()}
+        code={feedPromoCode({
+          isOwnerCode: true,
+          promotionTitle: 'Для постоянных',
+          descriptionHtml: '<p>Спасибо, что с нами</p>',
+        })}
+      />
+    )
+
+    expect(screen.getByText('Для постоянных')).toBeInTheDocument()
+    expect(screen.queryByText(/Акция «/)).toBeNull()
+    expect(screen.getByText('Спасибо, что с нами')).toBeInTheDocument()
+  })
 })

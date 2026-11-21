@@ -202,3 +202,18 @@ export const promoCodesKey = (userId: string) => [PROMO_CODES_TAG, userId] as co
  */
 export const isPromoCodesKey = (key: unknown): boolean =>
   Array.isArray(key) && key[0] === PROMO_CODES_TAG
+
+export const ADMIN_PROMO_CODES_TAG = 'admin-promo-codes'
+
+/** Список промокодов владельца - с архивными или без, это разные выборки. */
+export const adminPromoCodesKey = (includeDeleted: boolean) =>
+  [ADMIN_PROMO_CODES_TAG, includeDeleted] as const
+
+/** Оба варианта списка разом - после создания, правки, включения и удаления. */
+export const isAdminPromoCodesKey = (key: unknown): boolean =>
+  Array.isArray(key) && key[0] === ADMIN_PROMO_CODES_TAG
+
+export const adminPromoCodeKey = (id: string) => ['admin-promo-code', id] as const
+
+export const adminPromoCodeParticipantsKey = (id: string, page: number) =>
+  ['admin-promo-code-participants', id, page] as const

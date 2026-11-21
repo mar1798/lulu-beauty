@@ -59,6 +59,8 @@ class Promotion(UUIDPrimaryKeyMixin, TimestampMixin, Base):
             "ends_at",
             postgresql_where=text("deleted_at IS NULL AND is_enabled"),
         ),
+        # An owner's promo code is unique across all of them, archived ones included.
+        Index("uq_promotions_code", "code", unique=True),
     )
 
     slug: Mapped[str] = mapped_column(String(255), unique=True, index=True)
@@ -92,6 +94,17 @@ class Promotion(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     # Set instead of deleting a promotion somebody already took part in: the orders and
     # codes that point at it are a record, and a FK keeps them from losing it.
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Set: an owner's promo code. It is never applied automatically, only when typed at
+    # checkout. NULL: an automatic promotion.
+    code: Mapped[str | None] = mapped_column(String(16))
+    # Personal code: only this account may use it. NULL: general.
+    assigned_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+
+    @property
+    def is_code(self) -> bool:
+        return self.code is not None
 
 
 class OrderPromotion(UUIDPrimaryKeyMixin, Base):
@@ -238,6 +251,11 @@ class PromoCode(UUIDPrimaryKeyMixin, Base):
 def not_ended(now: datetime) -> ColumnElement[bool]:
     """The SQL half of "still inside the window": no end date, or one still ahead."""
     return or_(Promotion.ends_at.is_(None), Promotion.ends_at > now)
+
+
+def automatic() -> ColumnElement[bool]:
+    """The SQL half of "an automatic promotion": a row without an owner's code."""
+    return Promotion.code.is_(None)
 
 
 def promotion_status(promotion: Promotion, now: datetime) -> PromotionStatus:

@@ -17,7 +17,12 @@ import {
   IAdminChecklistExtraDialogProps,
   IAdminOrdersTableProps,
   IAdminProductFormProps,
+  IAdminPromoCode,
   IAdminPromoCodeDialogProps,
+  IAdminPromoCodeFormProps,
+  IAdminPromoCodesTableProps,
+  IFormSectionProps,
+  IPromotionPeriodFieldsProps,
   IAdminPromotionFormProps,
   IAdminPromotionParticipantsDialogProps,
   IAdminPromotionsTableProps,
@@ -1770,6 +1775,96 @@ export const feedAdminPromotionForm = (): IAdminPromotionFormProps => ({
   onSubmit: noop,
 })
 
+export const feedFormSection = (): IFormSectionProps => ({
+  title: 'Основное',
+  summary: 'Весенняя распродажа',
+  isOpen: true,
+  onToggle: noop,
+  children: 'Поля секции',
+})
+
+export const feedPromotionPeriodFields = (): IPromotionPeriodFieldsProps => ({
+  startDate: '2026-12-01',
+  startTime: '00:00',
+  endDate: '2026-12-31',
+  endTime: '23:59',
+  isOpenEnded: false,
+  errors: { start: null, end: null },
+  onChange: noop,
+  onOpenEndedChange: noop,
+})
+
+export const feedAdminPromoCode = (overrides: Partial<IAdminPromoCode> = {}): IAdminPromoCode => ({
+  id: faker.string.uuid(),
+  code: 'LETO2026',
+  title: 'Скидка 10% на летнюю заявку',
+  descriptionHtml: '<p>Для постоянных покупателей.</p>',
+  startsAt: new Date(Date.now() - DAY_MS).toISOString(),
+  endsAt: null,
+  isEnabled: true,
+  assignedUser: null,
+  conditions: [{ type: 'SUBTOTAL', minCents: 200_000, target: null }],
+  rewards: [{ type: 'DISCOUNT', kind: 'PERCENT', value: 10, target: null }],
+  status: 'ACTIVE',
+  participantsCount: 4,
+  deletedAt: null,
+  createdAt: new Date(Date.now() - 5 * DAY_MS).toISOString(),
+  updatedAt: new Date(Date.now() - DAY_MS).toISOString(),
+  ...overrides,
+})
+
+export const feedAdminPromoCodesTable = (): IAdminPromoCodesTableProps => ({
+  promoCodes: [
+    feedAdminPromoCode(),
+    feedAdminPromoCode({
+      code: 'K7M2XQ9R',
+      title: 'Персональная скидка для Айгуль',
+      endsAt: new Date(Date.now() + 14 * DAY_MS).toISOString(),
+      assignedUser: {
+        ...feedCustomerOption({ name: 'Айгуль', phone: '+996700123456' }),
+        isDeleted: false,
+      },
+      participantsCount: 1,
+      rewards: [
+        {
+          type: 'GIFT',
+          gift: 'CUSTOM',
+          title: 'Mystery box',
+          imageUrl: null,
+          variantId: null,
+          quantity: 1,
+        },
+      ],
+    }),
+    feedAdminPromoCode({
+      code: 'ZIMA2026',
+      title: 'Зимняя акция (выключен)',
+      isEnabled: false,
+      status: 'DISABLED',
+      participantsCount: 0,
+    }),
+  ],
+  buildEditHref: promoCode => `/admin/promo-codes/${promoCode.id}`,
+  buildDuplicateHref: promoCode => `/admin/promo-codes/add?from=${promoCode.id}`,
+  onCopy: noop,
+  onToggleEnabled: noop,
+  onShowParticipants: noop,
+  onDelete: noop,
+})
+
+export const feedAdminPromoCodeForm = (): IAdminPromoCodeFormProps => ({
+  catalog: feedPromotionCatalog(),
+  customerSelect: {
+    query: '',
+    onQueryChange: noop,
+    results: [
+      feedCustomerOption({ name: 'Айгуль', phone: '+996700123456' }),
+      feedCustomerOption({ name: 'Айгерим', phone: '+996555987654', telegramLinked: false }),
+    ],
+  },
+  onSubmit: noop,
+})
+
 export const feedAdminPromoCodeDialog = (): IAdminPromoCodeDialogProps => ({
   isOpen: true,
   onClose: noop,
@@ -2053,6 +2148,8 @@ export const feedPromoCode = (overrides: Partial<IPromoCode> = {}): IPromoCode =
   validFrom: new Date(Date.now() - DAY_MS).toISOString(),
   expiresAt: new Date(Date.now() + 20 * DAY_MS).toISOString(),
   promotionTitle: 'Весенняя распродажа',
+  isOwnerCode: false,
+  descriptionHtml: null,
   sourceOrderId: 'order-1',
   usedOrderId: null,
   createdAt: new Date(Date.now() - DAY_MS).toISOString(),

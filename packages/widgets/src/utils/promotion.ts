@@ -64,6 +64,15 @@ export const PROMOTION_STATUS_LABELS: Record<PromotionStatus, string> = {
   ARCHIVED: 'В архиве',
 }
 
+/** Те же статусы для промокода (мужской род): «Выключен», а не «Выключена». */
+export const ADMIN_PROMO_CODE_STATUS_LABELS: Record<PromotionStatus, string> = {
+  DISABLED: 'Выключен',
+  SCHEDULED: 'Запланирован',
+  ACTIVE: 'Активен',
+  FINISHED: 'Завершён',
+  ARCHIVED: 'В архиве',
+}
+
 export const PROMOTION_STATUS_TONES: Record<
   PromotionStatus,
   'neutral' | 'success' | 'info' | 'warning'

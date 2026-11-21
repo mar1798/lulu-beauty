@@ -39,6 +39,7 @@ from app.orders.schemas import MAX_ITEM_QUANTITY
 from app.promotions.codes import OrderCodes, PromoCodesService
 from app.promotions.models import PromoCode
 from app.promotions.orders import OrderPromotionsService, PromotionDelta
+from app.promotions.owner_codes import resolve_code
 
 # How many product ids go into one `IN (...)` when a price list reprices in bulk.
 # Same reasoning as `_SLUG_CHUNK` in the import service: whole file in one round trip is
@@ -421,9 +422,10 @@ class OrdersService:
     ) -> Order:
         """Turn the cart into a PENDING order, with the promotions it qualifies for.
 
-        `promo_code` is a code the customer entered; it must be theirs, unused and inside its
-        dates, and the lines must meet its conditions — a `PromoCodeError` otherwise, and no
-        order. It is reserved for this order (`RESERVED`) and counted in the total.
+        `promo_code` is a code the customer entered, one issued to them or an owner's; it must be
+        theirs to use, unused and inside its dates, and the lines must meet its conditions — a
+        `PromoCodeError` otherwise, and no order. It is reserved for this order (`RESERVED`)
+        and counted in the total.
         """
         cycle = await self._cycles.get_active_cycle()
         if cycle is None:
@@ -466,10 +468,14 @@ class OrdersService:
         if not rows:
             raise EmptyCartError
 
-        # Locked before anything is written: of two checkouts holding the same code the
-        # second waits here, then finds it RESERVED and is refused.
+        # Locked before anything is written. An issued code's row is locked: of two checkouts
+        # holding it the second waits here, then finds it RESERVED and is refused. An owner's
+        # code locks the customer's row instead: the second checkout of one customer then
+        # finds the first one's participation.
         code = (
-            await self._codes.usable(user_id, promo_code, for_update=True) if promo_code else None
+            await resolve_code(self._session, user_id, promo_code, for_update=True)
+            if promo_code
+            else None
         )
 
         # Collections started empty: a new order has no promotions yet, and a collection
@@ -505,7 +511,10 @@ class OrdersService:
         if code is not None:
             # After the promotions, so the code is counted on what they left. Its
             # conditions are checked against the lines as the order now has them.
-            await self._promos.attach_code(order, code)
+            if isinstance(code, PromoCode):
+                await self._promos.attach_code(order, code)
+            else:
+                await self._promos.attach_owner_code(order, code)
         order.total_cents = order_totals(order).total_cents
         await self._session.flush()
         # The lines went in in whatever order the cart rows came back; read them back

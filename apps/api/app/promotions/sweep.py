@@ -11,7 +11,7 @@ from datetime import datetime, timedelta
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.promotions.models import PromoCode, PromoCodeStatus, Promotion, not_ended
+from app.promotions.models import PromoCode, PromoCodeStatus, Promotion, automatic, not_ended
 
 # How far ahead of `expires_at` the "скоро сгорит" reminder goes out.
 EXPIRY_REMINDER_LEAD = timedelta(days=3)
@@ -35,6 +35,7 @@ async def unannounced_promotions(session: AsyncSession, now: datetime) -> list[u
             await session.scalars(
                 select(Promotion.id)
                 .where(
+                    automatic(),
                     Promotion.announce.is_(True),
                     Promotion.is_enabled.is_(True),
                     Promotion.deleted_at.is_(None),

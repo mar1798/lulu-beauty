@@ -498,7 +498,9 @@ export const OrderDetails: FC<IOrderDetailsProps & IBasicStyling> = ({
           {[
             describePromoCodeRewards(issued),
             describePromoCodeConditions(issued),
-            `действует до ${formatDateTime(issued.expiresAt)}`,
+            issued.expiresAt === null
+              ? 'бессрочный'
+              : `действует до ${formatDateTime(issued.expiresAt)}`,
           ]
             .filter(part => part !== '')
             .join(', ')}

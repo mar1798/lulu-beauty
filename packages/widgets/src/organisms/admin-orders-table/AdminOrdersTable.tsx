@@ -417,7 +417,7 @@ export const AdminOrdersTable: FC<IAdminOrdersTableProps & IBasicStyling> = ({
                               <ul className={styles.promoList}>
                                 {order.issuedPromoCodes.map(code => (
                                   <li key={code.id} className={styles.promoItem}>
-                                    {`${code.code} - ${PROMO_CODE_STATUS_LABELS[code.status]}, до ${formatDate(code.expiresAt)}`}
+                                    {`${code.code} - ${PROMO_CODE_STATUS_LABELS[code.status]}${code.expiresAt === null ? ', бессрочный' : `, до ${formatDate(code.expiresAt)}`}`}
                                   </li>
                                 ))}
                               </ul>

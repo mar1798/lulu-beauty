@@ -68,6 +68,13 @@ export type ErrorScope =
   | 'admin.promotion.banner'
   | 'admin.promotion.giftImage'
   | 'admin.promotion.participants'
+  // промокоды владельца
+  | 'admin.promoCodes.load'
+  | 'admin.promoCode.create'
+  | 'admin.promoCode.update'
+  | 'admin.promoCode.toggle'
+  | 'admin.promoCode.delete'
+  | 'admin.promoCode.participants'
   | 'admin.categories'
   | 'admin.cycles'
   | 'admin.import'
@@ -218,6 +225,13 @@ const MESSAGES: Record<string, string> = {
   // больше нет (сняли с продажи, пока форма была открыта).
   promotion_invalid_rules:
     'В условиях или наградах есть товар или категория, которых больше нет в каталоге. Выберите их заново.',
+
+  // --- промокоды владельца ---
+  // Строка кода одна на все виды промокодов: и владельца, и выданные покупателям.
+  promo_code_taken:
+    'Такой код уже есть - у другого промокода, в том числе архивного, или среди выданных покупателям. Введите другой или сгенерируйте.',
+  promo_code_invalid: 'Код - от 4 до 16 латинских букв и цифр, без пробелов.',
+  promo_code_user_not_found: 'Покупатель не найден - возможно, аккаунт удалён. Выберите другого.',
 
   // --- корзина и заявки ---
   cart_item_not_found: 'Этой позиции в корзине уже нет. Обновите страницу.',
@@ -390,22 +404,20 @@ const SCOPED: Partial<Record<ErrorScope, Record<string, string>>> = {
     cart_is_empty: 'Корзина пуста - добавьте товары из каталога, прежде чем оформлять заявку',
     not_authenticated: 'Сессия истекла. Войдите заново и отправьте заявку ещё раз.',
     invalid_token: 'Сессия истекла. Войдите заново и отправьте заявку ещё раз.',
-    promo_code_not_found:
-      'Такого промокода нет в вашем аккаунте. Проверьте, что ввели его без ошибок.',
+    promo_code_not_found: 'Такого промокода нет. Проверьте, что ввели его без ошибок.',
     promo_code_expired: 'Срок действия этого промокода закончился.',
-    promo_code_not_yet_valid: 'Этот промокод ещё не начал действовать - загляните в «Промокоды».',
-    promo_code_already_used: 'Этот промокод уже использован или лежит в другой вашей заявке.',
-    promo_code_conditions_not_met:
-      'Корзина не подходит под условия промокода - они указаны на странице «Промокоды».',
+    promo_code_not_yet_valid: 'Этот промокод ещё не начал действовать.',
+    promo_code_already_used:
+      'Вы уже использовали этот промокод, или он лежит в другой вашей заявке.',
+    promo_code_conditions_not_met: 'Корзина не подходит под условия промокода.',
   },
   'promoCode.check': {
-    promo_code_not_found:
-      'Такого промокода нет в вашем аккаунте. Проверьте, что ввели его без ошибок.',
+    promo_code_not_found: 'Такого промокода нет. Проверьте, что ввели его без ошибок.',
     promo_code_expired: 'Срок действия этого промокода закончился.',
-    promo_code_not_yet_valid: 'Этот промокод ещё не начал действовать - загляните в «Промокоды».',
-    promo_code_already_used: 'Этот промокод уже использован или лежит в другой вашей заявке.',
-    promo_code_conditions_not_met:
-      'Корзина не подходит под условия промокода - они указаны на странице «Промокоды».',
+    promo_code_not_yet_valid: 'Этот промокод ещё не начал действовать.',
+    promo_code_already_used:
+      'Вы уже использовали этот промокод, или он лежит в другой вашей заявке.',
+    promo_code_conditions_not_met: 'Корзина не подходит под условия промокода.',
     not_authenticated: 'Промокоды привязаны к аккаунту - войдите, чтобы применить промокод',
     invalid_token: 'Сессия истекла. Войдите заново и введите промокод ещё раз.',
   },
@@ -512,6 +524,26 @@ const SCOPED: Partial<Record<ErrorScope, Record<string, string>>> = {
   'admin.promotion.participants': {
     promotion_not_found: 'Акцию уже удалили. Обновите список.',
   },
+  'admin.promoCode.create': {
+    promotion_ends_before_start: 'Промокод должен заканчиваться позже, чем начинается',
+    promotion_invalid_rules:
+      'В условиях или наградах есть товар или категория, которых больше нет в каталоге. Выберите их заново.',
+  },
+  'admin.promoCode.update': {
+    promo_code_not_found: 'Промокод уже удалили - сохранять нечего. Вернитесь к списку.',
+    promotion_ends_before_start: 'Промокод должен заканчиваться позже, чем начинается',
+    promotion_invalid_rules:
+      'В условиях или наградах есть товар или категория, которых больше нет в каталоге. Выберите их заново.',
+  },
+  'admin.promoCode.toggle': {
+    promo_code_not_found: 'Промокод уже удалили. Обновите список.',
+  },
+  'admin.promoCode.delete': {
+    promo_code_not_found: 'Промокод уже удалили. Обновите список.',
+  },
+  'admin.promoCode.participants': {
+    promo_code_not_found: 'Промокод уже удалили. Обновите список.',
+  },
   'admin.categories': {
     slug_already_exists: 'Категория с таким адресом (slug) уже есть. Измените slug.',
   },
@@ -605,6 +637,12 @@ const SCOPE_FALLBACKS: Record<ErrorScope, string> = {
   'admin.promotion.banner': 'Не удалось изменить баннер',
   'admin.promotion.giftImage': 'Не удалось загрузить картинку подарка',
   'admin.promotion.participants': 'Не удалось загрузить участников акции',
+  'admin.promoCodes.load': 'Не удалось загрузить промокоды',
+  'admin.promoCode.create': 'Не удалось создать промокод',
+  'admin.promoCode.update': 'Не удалось сохранить промокод',
+  'admin.promoCode.toggle': 'Не удалось включить или выключить промокод',
+  'admin.promoCode.delete': 'Не удалось удалить промокод',
+  'admin.promoCode.participants': 'Не удалось загрузить использования промокода',
   'admin.categories': 'Не удалось изменить категории',
   'admin.cycles': 'Не удалось изменить сбор',
   'admin.import': 'Не удалось импортировать файл',

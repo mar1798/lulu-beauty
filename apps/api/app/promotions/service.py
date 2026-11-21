@@ -23,8 +23,9 @@ from app.catalog.rich_text import description_from_html
 from app.catalog.service import UNIQUE_VIOLATION
 from app.config import settings
 from app.orders.models import Order
-from app.promotions.models import OrderPromotion, PromoCode, Promotion, not_ended
+from app.promotions.models import OrderPromotion, PromoCode, Promotion, automatic, not_ended
 from app.promotions.rules import (
+    AnyCodeReward,
     AnyCondition,
     AnyReward,
     PromoCodeReward,
@@ -124,7 +125,8 @@ class PromotionsService:
         self._session = session
 
     async def list_all(self, *, include_deleted: bool = False) -> list[Promotion]:
-        query = select(Promotion)
+        """Automatic promotions; the owner's promo codes are `OwnerCodesService.list_all`."""
+        query = select(Promotion).where(automatic())
         if not include_deleted:
             query = query.where(Promotion.deleted_at.is_(None))
         query = query.order_by(
@@ -137,7 +139,9 @@ class PromotionsService:
 
     @staticmethod
     def _running(now: datetime) -> tuple[ColumnElement[bool], ...]:
+        # An owner's promo code is never on the showcase: it works only when typed.
         return (
+            automatic(),
             Promotion.deleted_at.is_(None),
             Promotion.is_enabled.is_(True),
             Promotion.starts_at <= now,
@@ -163,9 +167,11 @@ class PromotionsService:
             raise PromotionNotFoundError
         return promotion
 
-    async def get(self, promotion_id: uuid.UUID) -> Promotion:
+    async def get(self, promotion_id: uuid.UUID, *, owner_code: bool = False) -> Promotion:
+        """One row. An owner's promo code is a different thing to the admin: asking for it
+        as a promotion (or the other way round) is a plain not-found."""
         promotion = await self._session.get(Promotion, promotion_id)
-        if promotion is None:
+        if promotion is None or promotion.is_code != owner_code:
             raise PromotionNotFoundError
         return promotion
 
@@ -197,19 +203,21 @@ class PromotionsService:
         await self._flush_slug(promotion)
         return promotion
 
-    async def set_enabled(self, promotion_id: uuid.UUID, is_enabled: bool) -> Promotion:
-        promotion = await self.get(promotion_id)
+    async def set_enabled(
+        self, promotion_id: uuid.UUID, is_enabled: bool, *, owner_code: bool = False
+    ) -> Promotion:
+        promotion = await self.get(promotion_id, owner_code=owner_code)
         promotion.is_enabled = is_enabled
         await self._session.flush()
         return promotion
 
-    async def delete(self, promotion_id: uuid.UUID) -> Deletion:
+    async def delete(self, promotion_id: uuid.UUID, *, owner_code: bool = False) -> Deletion:
         """Deletes a promotion nobody took part in; archives one somebody did.
 
         Somebody is any order that ever held it — released participations included — or
         any code it issued: those rows point at the promotion and are the record of it.
         """
-        promotion = await self.get(promotion_id)
+        promotion = await self.get(promotion_id, owner_code=owner_code)
         if promotion.deleted_at is not None:
             return Deletion(deleted=False, orphaned_urls=[])
         if not await self._has_history(promotion_id):
@@ -226,7 +234,7 @@ class PromotionsService:
                 # A checkout joined it after the check above: archive it after all.
                 if getattr(error.orig, "sqlstate", None) != _FOREIGN_KEY_VIOLATION:
                     raise
-                promotion = await self.get(promotion_id)
+                promotion = await self.get(promotion_id, owner_code=owner_code)
             else:
                 return Deletion(deleted=True, orphaned_urls=urls)
         promotion.deleted_at = datetime.now(UTC)
@@ -253,7 +261,12 @@ class PromotionsService:
         return promotion, previous
 
     async def participants(
-        self, promotion_id: uuid.UUID, page: int = 1, page_size: int = 20
+        self,
+        promotion_id: uuid.UUID,
+        page: int = 1,
+        page_size: int = 20,
+        *,
+        owner_code: bool = False,
     ) -> tuple[list[Participant], int]:
         """One page of participations, newest first, and how many there are in all.
 
@@ -261,7 +274,7 @@ class PromotionsService:
         promotion collects one row per customer, and the dialog would otherwise load
         every one of them to show the first screen.
         """
-        await self.get(promotion_id)
+        await self.get(promotion_id, owner_code=owner_code)
         total = (
             await self._session.scalar(
                 select(func.count())
@@ -305,16 +318,20 @@ class PromotionsService:
                 and (_day(reward.valid_from), _day(reward.valid_until)) not in stored
             ):
                 raise PromotionCodeWindowPastError
-        await self._check_references(draft)
+        await self.check_references(draft.conditions, draft.rewards)
 
-    async def _check_references(self, draft: PromotionDraft) -> None:
+    async def check_references(
+        self,
+        conditions: Sequence[AnyCondition],
+        rewards: Sequence[AnyReward] | Sequence[AnyCodeReward],
+    ) -> None:
         """Every id the rules name is something the catalogue sells now.
 
         Only on write: a product withdrawn later quietly stops matching instead (see
         `promotions/rules.py`). A gift is checked as a variant still on sale, because a
         gift the owner cannot buy is a promise to the customer the shop cannot keep.
         """
-        products, categories, variants = referenced_ids(list(draft.conditions), list(draft.rewards))
+        products, categories, variants = referenced_ids(list(conditions), list(rewards))
         if products:
             found = await self._session.scalar(
                 select(func.count())

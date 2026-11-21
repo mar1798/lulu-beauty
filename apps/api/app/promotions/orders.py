@@ -29,6 +29,7 @@ from datetime import UTC, datetime
 
 from pydantic import ValidationError
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -36,6 +37,7 @@ from app.auth.models import User
 from app.catalog.images import variant_image_url
 from app.catalog.labels import product_label
 from app.catalog.models import Category, Product, ProductVariant
+from app.catalog.service import UNIQUE_VIOLATION
 from app.orders.discounts import (
     PromoDiscount,
     PromoLayer,
@@ -44,7 +46,11 @@ from app.orders.discounts import (
     promo_order_discounts,
 )
 from app.orders.models import CANCELLED_STATUSES, Order, OrderStatus
-from app.promotions.code_errors import PromoCodeConditionsNotMetError
+from app.promotions.code_errors import (
+    PromoCodeAlreadyUsedError,
+    PromoCodeConditionsNotMetError,
+    PromoCodeError,
+)
 from app.promotions.engine import (
     Evaluation,
     Line,
@@ -60,8 +66,10 @@ from app.promotions.models import (
     PromoCode,
     PromoCodeStatus,
     Promotion,
+    automatic,
     not_ended,
 )
+from app.promotions.owner_codes import OwnerCodesService
 from app.promotions.rules import (
     AnyCodeReward,
     AnyReward,
@@ -141,10 +149,12 @@ def _offer(promotion: Promotion, rewards: Sequence[AnyReward] | None = None) -> 
     try:
         return Offer(
             id=promotion.id,
-            title=promotion.title,
+            # An owner's promo code is counted like an issued one: after the promotions and
+            # named after its string, not after the owner's note in the title.
+            title=code_title_of(promotion.code) if promotion.code else promotion.title,
             conditions=load_conditions(promotion.conditions),
             rewards=load_rewards(promotion.rewards) if rewards is None else rewards,
-            sort_order=promotion.sort_order,
+            sort_order=CODE_SORT_ORDER if promotion.is_code else promotion.sort_order,
         )
     except ValidationError:
         logger.exception("promotion %s has rules that do not parse", promotion.id)
@@ -156,9 +166,13 @@ def _offer(promotion: Promotion, rewards: Sequence[AnyReward] | None = None) -> 
 CODE_SORT_ORDER = 1_000_000
 
 
+def code_title_of(code: str) -> str:
+    return f"Промокод {code}"
+
+
 def code_title(code: PromoCode) -> str:
     """What a participation through this code is called — a snapshot, like a promotion's title."""
-    return f"Промокод {code.code}"
+    return code_title_of(code.code)
 
 
 def code_offer(code: PromoCode, rewards: Sequence[AnyCodeReward] | None = None) -> Offer | None:
@@ -177,6 +191,13 @@ def code_offer(code: PromoCode, rewards: Sequence[AnyCodeReward] | None = None) 
     except ValidationError:
         logger.exception("promo code %s has rules that do not parse", code.id)
         return None
+
+
+def owner_code_offer(
+    promotion: Promotion, rewards: Sequence[AnyCodeReward] | None = None
+) -> Offer | None:
+    """An owner's promo code as the engine tries it; None for a row whose rules no longer parse."""
+    return _offer(promotion, rewards)
 
 
 def item_scopes(
@@ -288,11 +309,13 @@ async def resolve_gifts(
 async def active_promotions(session: AsyncSession, now: datetime) -> list[Promotion]:
     """Enabled, not archived, inside `[starts_at, ends_at)` — in carousel order.
 
-    No `ends_at` is an open-ended promotion: it is running from its start on.
+    No `ends_at` is an open-ended promotion: it is running from its start on. An owner's
+    promo code is not here: it joins an order only when the customer types it.
     """
     result = await session.execute(
         select(Promotion)
         .where(
+            automatic(),
             Promotion.deleted_at.is_(None),
             Promotion.is_enabled.is_(True),
             Promotion.starts_at <= now,
@@ -553,8 +576,36 @@ class OrderPromotionsService:
             return []
         last = max(p.released_at for p in released if p.released_at is not None)
         attached: list[OrderPromotion] = []
+        owner_codes = {
+            p.id: p
+            for p in (
+                await self._session.scalars(
+                    select(Promotion).where(
+                        Promotion.id.in_(
+                            [p.promotion_id for p in released if p.promotion_id is not None]
+                        ),
+                        Promotion.code.is_not(None),
+                    )
+                )
+            ).all()
+        }
         for participation in released:
-            if participation.released_at != last or participation.promo_code_id is None:
+            if participation.released_at != last:
+                continue
+            if participation.promotion_id in owner_codes:
+                # An owner's code: taken again if the customer may still use it (not used
+                # in another order meanwhile, still switched on and inside its dates).
+                promotion = owner_codes[participation.promotion_id]
+                assert promotion.code is not None
+                try:
+                    usable = await OwnerCodesService(self._session).usable(
+                        order.user_id, promotion.code, for_update=True, except_order_id=order.id
+                    )
+                    attached.append(await self.attach_owner_code(order, usable))
+                except PromoCodeError:
+                    continue
+                continue
+            if participation.promo_code_id is None:
                 continue
             code = await self._session.scalar(
                 select(PromoCode)
@@ -586,9 +637,11 @@ class OrderPromotionsService:
             if participation.released_at is None:
                 await self._free_code(participation, spent=False)
 
-    async def _code_offer_for(self, order: Order, code: PromoCode) -> tuple[Offer, list[Line]]:
+    async def _code_offer_for(
+        self, order: Order, code: PromoCode | Promotion
+    ) -> tuple[Offer, list[Line]]:
         """The code as an offer, and the order's lines — or `PromoCodeConditionsNotMetError`."""
-        offer = code_offer(code)
+        offer = code_offer(code) if isinstance(code, PromoCode) else owner_code_offer(code)
         if offer is None:
             raise PromoCodeConditionsNotMetError
         tags = await load_line_tags(
@@ -599,11 +652,12 @@ class OrderPromotionsService:
             raise PromoCodeConditionsNotMetError
         return offer, lines
 
-    async def check_code(self, order: Order, code: PromoCode) -> None:
+    async def check_code(self, order: Order, code: PromoCode | Promotion) -> None:
         """Whether the order's lines meet the code's conditions, before anything is written.
 
         Works on an order that has not been added to the session yet, which is how checkout
-        refuses a code without having touched the cart.
+        refuses a code without having touched the cart. The code is an issued one or an
+        owner's (a `Promotion` with a `code`).
         """
         await self._code_offer_for(order, code)
 
@@ -624,6 +678,28 @@ class OrderPromotionsService:
         code.used_order_id = order.id
         await self._session.flush()
         return participation
+
+    async def attach_owner_code(self, order: Order, promotion: Promotion) -> OrderPromotion:
+        """Put an owner's promo code on an order: an ordinary participation in the promotion
+        behind it, so «один раз на покупателя» is `uq_order_promotions_live_participant`'s.
+
+        `OwnerCodesService.usable` has already vouched for the customer, the dates and the
+        switch; the lines against the conditions are checked here. If the index still
+        refuses (a race `usable`'s lock did not cover) the answer is the same
+        `PromoCodeAlreadyUsedError`, not a 500. Needs `order.items`.
+        """
+        await self._session.flush()
+        offer, lines = await self._code_offer_for(order, promotion)
+        try:
+            async with self._session.begin_nested():
+                return await self._attach(order, offer, lines)
+        except IntegrityError as error:
+            if getattr(error.orig, "sqlstate", None) != UNIQUE_VIOLATION:
+                raise
+            # The savepoint's rollback expired the order: reload the collection from the
+            # database, which never saw the participation that was refused.
+            await self._session.refresh(order, ["promotions"])
+            raise PromoCodeAlreadyUsedError from error
 
     async def release_all(self, order: Order, *, was_status: OrderStatus) -> list[OrderPromotion]:
         """The order is off (cancelled): every live participation ends, the customer is free
@@ -726,7 +802,8 @@ class HintPreview:
 
 @dataclass(frozen=True)
 class AppliedCodePreview:
-    code: PromoCode
+    # An issued code, or an owner's (a promotion with a `code`).
+    code: PromoCode | Promotion
     discount_cents: int
     gifts: list[GiftSpec]
 
@@ -757,7 +834,7 @@ async def preview_cart(
     session: AsyncSession,
     user_id: uuid.UUID | None,
     cart: Sequence[CartLine],
-    promo_code: PromoCode | None = None,
+    promo_code: PromoCode | Promotion | None = None,
 ) -> CartPromotionsPreview:
     """What checkout would give this cart right now, without writing anything.
 
@@ -767,7 +844,8 @@ async def preview_cart(
 
     `promo_code` is a code the customer is checking: it is tried like one more offer, after
     the promotions, and counted into the totals when the cart qualifies for it. Whether it
-    may be used at all (the owner, the dates, its status) is `PromoCodesService.usable`'s.
+    may be used at all (the owner, the dates, its status) is `PromoCodesService.usable`'s,
+    or `OwnerCodesService.usable`'s for an owner's code.
     """
     subtotal = sum(line.price_cents * line.quantity for line in cart)
     live = [line for line in cart if line.quantity > 0]
@@ -793,7 +871,11 @@ async def preview_cart(
     ]
     offers = [offer for p in promotions.values() if (offer := _offer(p)) is not None]
     joined = await joined_promotion_ids(session, user_id) if user_id is not None else frozenset()
-    code_offer_ = code_offer(promo_code) if promo_code is not None else None
+    code_offer_: Offer | None = None
+    if isinstance(promo_code, PromoCode):
+        code_offer_ = code_offer(promo_code)
+    elif promo_code is not None:
+        code_offer_ = owner_code_offer(promo_code)
     if code_offer_ is not None:
         offers.append(code_offer_)
     evaluation = evaluate(lines, offers, already_joined=joined)

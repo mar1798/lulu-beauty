@@ -988,7 +988,7 @@ promotion_ends_before_start`, and a CHECK constraint). A promotion ending at mid
 - **No cap on participants** — only "once per customer" below.
 - **Archive vs delete.** `DELETE /admin/promotions/{id}` removes the row only when nothing
   points at it: no `order_promotions` row (released ones count — they are history) and no
-  promo code. Otherwise it sets `deleted_at` (archive) and answers `204` either way. An
+  promo code. Otherwise it sets `deleted_at` (archive) and answers `200 {deleted}` either way (`deleted: false` when archived). An
   archived promotion cannot be switched on or deleted again from the table; the form still
   edits it, with a warning. A promotion that was deleted loses its banner files; an archived
   one keeps them.
@@ -1049,7 +1049,7 @@ the conditions) sets `released_at` and the customer may take part again.
   runs the same engine), and the order is created holding them.
 - **Promo code: at payment, `CONFIRMED`.** The participation is made at checkout like any
   other, but the code itself is issued only when the order is paid for
-  ([below](#promo-codes)).
+  ([below](#issued-promo-codes)).
 
 `OrderPromotion` is the order's part in one promotion **or** its use of one promo code (a CHECK
 makes exactly one of `promotion_id`/`promo_code_id` set). It stores the **title and the
@@ -1150,7 +1150,7 @@ every participation and then:
   (`release_all` recounts a `PENDING` order without it); the code carries its own current
   status, so it may read as used by another order. A cancelled `PENDING` order shows no code.
 
-### Promo codes
+### Issued promo codes
 
 `PromoCode`: 8 characters from `ABCDEFGHJKLMNPQRSTUVWXYZ23456789` (no `0/O/1/I`), `user_id`
 (personal), `promotion_id`, `source_order_id`, a **snapshot** of the template's `conditions`
@@ -1189,7 +1189,55 @@ and `rewards`, `valid_from`, `expires_at`, `status`, `used_order_id`, `reminded_
   cannot be attached. If the conditions stop holding the participation is released and the
   code is `ACTIVE` again; it does not re-attach by itself.
 - **Reading.** `GET /me/promo-codes` lists every code the customer has had, newest first,
-  `REVOKED` included (the page says why a code is gone).
+  `REVOKED` included (the page says why a code is gone). It also lists the **personal owner
+  codes** assigned to the customer (next section), but never general ones. A switched-off personal
+  code stays listed (as used) while an order of theirs holds it; one never used disappears.
+
+### Owner's promo codes
+
+The owner can also make a code by hand (`/admin/promo-codes`). It is **not** a `PromoCode`
+row: it is a `Promotion` whose `code` is set (`is_code`), with an internal slug
+`promo-code-<uuid hex>` that is never served. So the rules are the promotions' own: the same
+conditions and rewards (checked on write the same way), the same window (`starts_at`, and
+`ends_at` or open-ended), enabled/disabled, the derived `promotion_status`, archive-vs-delete
+and the participants list. The differences:
+
+- **Never automatic.** Every query that picks promotions for a cart leaves code rows out
+  (`active_promotions`, the carousel/sitemap/public page reads, `unannounced_promotions`), and
+  `/admin/promotions*` answers 404 for a code row just as `/admin/promo-codes*` does for an
+  automatic one. A code joins an order only when the customer types it at checkout.
+- **Rewards: `DISCOUNT` and `GIFT` only**, the same `CodeReward` an issued code gives. No
+  `PROMO_CODE` reward: a code does not hand out codes.
+- **General or personal.** `assigned_user_id` NULL: any customer may use it, **each once**.
+  Set: only that account, once, which makes it single-use. Both come from one database
+  guarantee, `uq_order_promotions_live_participant`, because on use the code becomes an
+  ordinary `order_promotions` participation (`promotion_id` set, `promo_code_id` NULL).
+  Cancelling the order releases the participation, so the customer may use the code again.
+- **Format and uniqueness.** The string is normalised (upper case, no spaces or dashes) and must
+  be 4-16 Latin letters or digits (`422 promo_code_invalid`; Cyrillic look-alikes are refused,
+  not mapped). The owner may type `0/O/1/I`; only generated codes (8 characters, the same
+  alphabet as issued codes) avoid them. A string is unique **across both kinds**
+  (`promotions.code`, archived rows included, and `promo_codes.code`), because the customer
+  types one string into one field: `409 promo_code_taken`. `PromoCodesService._issue` skips a
+  generated string an owner code holds. The owner may change or regenerate the string later;
+  orders keep the old one in their title snapshot.
+- **Refusals**, in the same order as issued codes: missing, archived, switched off or someone
+  else's personal code → `404 promo_code_not_found` (a paused campaign is not revealed);
+  already used by this customer in a live participation → `409 promo_code_already_used`; past
+  `ends_at` → `promo_code_expired`; before `starts_at` → `promo_code_not_yet_valid`; conditions
+  not met → `promo_code_conditions_not_met`, with no order created. `OwnerCodesService.usable`
+  locks the customer's row for update (the lock `refresh` takes), and a unique violation that
+  still gets through maps to `promo_code_already_used`, not a 500.
+- **Counted last.** A participation through an owner code carries `CODE_SORT_ORDER` and the
+  title «Промокод XXXX», so its cart-wide discount is taken after every promotion's, like an
+  issued code's. While `PENDING` a held owner code stays while its conditions hold, even after
+  the window ended; a recount never attaches one. The owner undoing a cancellation takes it
+  again (`reattach_codes`) if the customer may still use it, and drops it quietly otherwise.
+- **Delete/archive.** Unused: the row is deleted. Ever used (a participation, released ones
+  included): archived (`deleted_at`), still unusable, and its string stays taken.
+- **The customer sees** a personal code on `/promocodes` (and in the checkout quick-pick) as
+  `ACTIVE`, `RESERVED` (in an unpaid order), `USED` (in a paid one) or `EXPIRED`. The check
+  answer for an open-ended code has `expiresAt: null`, as does `IOrderPromoCode` on the site.
 
 ### Gifts
 
@@ -1215,18 +1263,29 @@ conditions stop holding.
 
 ### Known limitations
 
-- `POST /orders/{id}/edit-preview` reports lost and gained **promotions only**; a promo code
-  an edit would detach is not mentioned.
+- `POST /orders/{id}/edit-preview` reports lost and gained **promotions** by `promotion_id`,
+  which includes a held owner code; an **issued** code an edit would detach (it has no
+  `promotion_id`) is not mentioned.
 - Codes have no brute-force limit beyond the global rate limit (300/min). The space is
   32^8 and a stranger's code answers the same as a missing one.
 - The «code issued» Telegram message is **not retried**: the code row is the record, and
   `/promocodes` shows it whether or not the message arrived
   ([telegram.md](telegram.md#promotions-and-promo-codes)).
+- An owner code has **no total cap** ("the first 100"): it is once per customer, with no limit on
+  customers.
+- An issued code and an owner code live in different tables (`promo_codes`, `promotions`), so no
+  unique index spans both. Creating or editing an owner code checks `promo_codes` too
+  (`code_string_taken`) and issuing skips strings an owner code holds, so a duplicate needs two
+  such inserts to race. If it ever happens, `resolve_code` gives the string to the customer the
+  issued code belongs to and the owner code to everyone else.
+- A customer is **not told** (Telegram) when a personal code is assigned to them; they find it
+  on `/promocodes`.
+- Orders the owner places on a customer's behalf (`AdminOrderDialog`) take no promo code.
 - A gift picture the admin uploads and then abandons stays in storage.
 - There is no list page `/promotions` (only the carousel on `/catalog` and each promotion's
   own page) and no "Акция" badge on product cards; both were deferred.
-- A customer with a plain `ADMIN` role sees «Акции» in the admin menu but every call is
-  refused: the section is `SUPER_ADMIN`-only on the API.
+- A customer with a plain `ADMIN` role sees «Акции» and «Промокоды» in the admin menu but every
+  call is refused: both sections are `SUPER_ADMIN`-only on the API.
 
 ## Money
 

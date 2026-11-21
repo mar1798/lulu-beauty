@@ -46,3 +46,25 @@ class PromoCodeAlreadyUsedError(PromoCodeError):
 class PromoCodeConditionsNotMetError(PromoCodeError):
     code = "promo_code_conditions_not_met"
     status_code = status.HTTP_409_CONFLICT
+
+
+class PromoCodeTakenError(PromoCodeError):
+    """The owner's code string already belongs to another owner code (archived ones
+    included) or to a code issued to a customer."""
+
+    code = "promo_code_taken"
+    status_code = status.HTTP_409_CONFLICT
+
+
+class PromoCodeInvalidError(PromoCodeError):
+    """The owner's code string is not 4-16 Latin letters and digits."""
+
+    code = "promo_code_invalid"
+    status_code = status.HTTP_422_UNPROCESSABLE_CONTENT
+
+
+class PromoCodeUserNotFoundError(PromoCodeError):
+    """A personal code was assigned to an account that does not exist or was erased."""
+
+    code = "promo_code_user_not_found"
+    status_code = status.HTTP_422_UNPROCESSABLE_CONTENT

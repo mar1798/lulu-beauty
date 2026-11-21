@@ -24,12 +24,12 @@ Storybook is the primary dev loop here — build a widget against stories, not a
 [Atomic design](https://bradfrost.com/blog/post/atomic-web-design/); all four tiers are
 populated.
 
-| Tier            | Examples                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `src/atoms`     | `Button`, `Input`, `Price`, `Badge`, `Chip`, `Select`, `Combobox`, `Tooltip`, `Skeleton`, `Appear`, `Reveal`, `Parallax`, `AppLink`, `AppImage`, `RichText`                                                                                                                                                                                                                                                                                                                                                                                                                 |
-| `src/molecules` | `ProductCard`, `VariantSelector`, `QuantityStepper`, `SearchField`, `CustomerSelect`, `Pagination`, `OrderCard`, `OrderStatusBadge`, `DeadlineCountdown`, `Toast`, `EmptyState`, `FileDropzone`, `RichTextEditor`                                                                                                                                                                                                                                                                                                                                                           |
-| `src/organisms` | `Header`, `HeaderSearch`, `Footer`, `CartPanel`, `CheckoutForm`, `ProductGrid`, `ProductDetails`, `OrderDetails`, `Modal`, `ConfirmDialog`, `ToastViewport`, `MobileMenu`, `TelegramLoginPanel`, `AdminOrdersTable`, `AdminMessageDialog`, `AdminOrderDialog`, `AdminOrderEditDialog`, `AdminOrderDiscountDialog`, `AdminProductsTable`, `AdminProductForm`, `AdminProductGallery`, `AdminCycleCalendar`, `AdminUsersTable`, `AdminImportPanel`, `AdminCategoriesPanel`, `ProductPicker`, `PromoCarousel`, `PromotionDetails`, `AdminPromotionsTable`, `AdminPromotionForm` |
-| `src/templates` | `BaseLayout`, `AdminLayout`, `HomeTemplate`, `CatalogTemplate`, `ProductTemplate`, `CartTemplate`, `AccountTemplate`, `AuthTemplate`, `LegalTemplate`, `ErrorTemplate`                                                                                                                                                                                                                                                                                                                                                                                                      |
+| Tier            | Examples                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/atoms`     | `Button`, `Input`, `Price`, `Badge`, `Chip`, `Select`, `Combobox`, `Tooltip`, `Skeleton`, `Appear`, `Reveal`, `Parallax`, `AppLink`, `AppImage`, `RichText`                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| `src/molecules` | `ProductCard`, `VariantSelector`, `QuantityStepper`, `SearchField`, `CustomerSelect`, `Pagination`, `OrderCard`, `OrderStatusBadge`, `DeadlineCountdown`, `Toast`, `EmptyState`, `FileDropzone`, `RichTextEditor`                                                                                                                                                                                                                                                                                                                                                                                                         |
+| `src/organisms` | `Header`, `HeaderSearch`, `Footer`, `CartPanel`, `CheckoutForm`, `ProductGrid`, `ProductDetails`, `OrderDetails`, `Modal`, `ConfirmDialog`, `ToastViewport`, `MobileMenu`, `TelegramLoginPanel`, `AdminOrdersTable`, `AdminMessageDialog`, `AdminOrderDialog`, `AdminOrderEditDialog`, `AdminOrderDiscountDialog`, `AdminProductsTable`, `AdminProductForm`, `AdminProductGallery`, `AdminCycleCalendar`, `AdminUsersTable`, `AdminImportPanel`, `AdminCategoriesPanel`, `ProductPicker`, `PromoCarousel`, `PromotionDetails`, `AdminPromotionsTable`, `AdminPromotionForm`, `AdminPromoCodesTable`, `AdminPromoCodeForm` |
+| `src/templates` | `BaseLayout`, `AdminLayout`, `HomeTemplate`, `CatalogTemplate`, `ProductTemplate`, `CartTemplate`, `AccountTemplate`, `AuthTemplate`, `LegalTemplate`, `ErrorTemplate`                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 
 Supporting directories:
 
@@ -114,7 +114,8 @@ Storefront:
 - `PromoCodeCard` (molecule) — a code on «Промокоды», drawn as a coupon: a stub with the code
   and tap-to-copy, a perforation with notches (CSS masks, shadow via `drop-shadow`), then what
   it gives, conditions, term, status badge (the status comes from the API; `EXPIRED` is
-  computed there). No «Использовать» — the code is typed in at checkout. One per row.
+  computed there). A personal owner code (`isOwnerCode`) shows its own title without the «Акция»
+  prefix and its `descriptionHtml` through `RichText`. No «Использовать» — the code is typed in at checkout. One per row.
 - `CartPanel`, `CheckoutPanel`, `CheckoutForm` and `OrderDetails` got promotions, gifts and
   hints props (`ICart.promotions` is required); `buildPromotionHref` makes the links.
 
@@ -127,6 +128,26 @@ Admin:
   `aria-label` adds the promotion («Изменить «Весна»»), since a screen reader hears every
   row's buttons alike; no text buttons, no
   menus. An archived promotion has no «Включить» and no «Удалить».
+- `FormSection` (molecule) — the collapsible panel both admin forms are built from (a heading
+  button with `aria-expanded`, a body whose height animates, `overflow` visible once open so
+  focus rings and dropdowns are not clipped). Extracted unchanged from `AdminPromotionForm`.
+- `PromotionPeriodFields` (molecule) — start date and time, the «Бессрочная» switch and the end
+  date and time. Controlled; the ISO conversion (`storeIso`) and the «end after start» check
+  stay with each form, which passes the error texts in. `openEndedLabel` and `endHint` override
+  the promotion wording.
+- `AdminPromoCodesTable` — modelled on `AdminPromotionsTable` (same icon-only actions with
+  tooltips, cards below `xl`). Columns: the code (monospace, with a copy `IconButton` whose click
+  goes to the page's `onCopy`: the widget knows nothing about the clipboard), name, «Кому» («Все»,
+  or name and phone, «Аккаунт удалён» for an erased account), period («бессрочно» for an open
+  end), rewards, the derived status (labels in the masculine, `ADMIN_PROMO_CODE_STATUS_LABELS`; plus «Использован» for a personal code with a use) and the
+  number of uses. Delete reads «В архив» once a code was applied.
+- `AdminPromoCodeForm` — an owner's promo code in one PUT/POST. Four `FormSection`s: «Основное»
+  (code, name, description, `PromotionPeriodFields`, enabled), «Кому» (a personal switch and
+  `CustomerSelect`, whose search the page drives through `customerSelect`), «Условия» and «Награды»
+  (the same builders as the promotion, with `allowPromoCode={false}`). The code is generated by
+  the server by default (`code: null`); a typed one is upper-cased and checked client-side against
+  4-16 Latin letters/digits after stripping spaces and dashes; a saved code offers «Сгенерировать
+  новый» (sends `null`). A personal code without a customer does not submit and opens «Кому».
 - `AdminPromotionForm` — the whole promotion in one PUT/POST: fields, two `PromotionBannerField`s,
   `PromotionConditionBuilder`, `PromotionRewardBuilder` and `AdminPromoCodeDialog` (a
   `PROMO_CODE` reward: validity, conditions, what it gives — a code cannot hold another code).
@@ -155,9 +176,9 @@ Admin:
 ratios, so a banner the form previews is the one the visitor sees. Accepted files: JPEG, PNG,
 WebP, up to 15 MB (`BANNER_ALLOWED_TYPES`, `BANNER_MAX_BYTES`, mirroring the API).
 
-Smaller additions: icons `IconCopy`, `IconUsers`, `IconGift`, `IconPause`, `IconPlay` (the last two no longer used by the carousel);
+Smaller additions: icons `IconCopy`, `IconUsers`, `IconGift`, `IconTicket` (the «Промокоды» menu entry), `IconClipboard` (copy a code), `IconPause`, `IconPlay` (the last two no longer used by the carousel);
 `Input` takes `type="date"`; shared timings for the carousel in `utils/motion.ts`; types
-`IPromotion`, `IPublicPromotion`, `IPromoCode`, `IPromoCodeCheck`, `IOrderPromotion`, `IOrderGift`, `ICartGift`,
+`IPromotion`, `IPublicPromotion`, `IAdminPromoCode` (and its form values and props), `IPromoCode` (`expiresAt` is nullable: an open-ended owner code), `IPublicPromotion`, `IPromoCodeCheck`, `IOrderPromotion`, `IOrderGift`, `ICartGift`,
 `IPromotionCondition`/`IPromotionReward` and friends in `types.ts`; `IAdminChecklist` has
 `customGifts`.
 
