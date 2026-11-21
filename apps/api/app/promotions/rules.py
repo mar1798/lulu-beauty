@@ -163,7 +163,7 @@ class DiscountReward(CamelModel):
     @model_validator(mode="after")
     def _percent_in_range(self) -> Self:
         if self.kind is DiscountKind.PERCENT and self.value > MAX_DISCOUNT_PERCENT:
-            raise ValueError(f"скидка в процентах — от 1 до {MAX_DISCOUNT_PERCENT}")
+            raise ValueError(f"скидка в процентах - от 1 до {MAX_DISCOUNT_PERCENT}")
         return self
 
     @property
@@ -234,7 +234,7 @@ class PromoCodeReward(CamelModel):
     def _one_validity(self) -> Self:
         fixed = self.valid_from is not None or self.valid_until is not None
         if self.valid_days is not None and fixed:
-            raise ValueError("срок промокода — либо дни, либо даты, не оба сразу")
+            raise ValueError("срок промокода - либо дни, либо даты, не оба сразу")
         if self.valid_days is None:
             if self.valid_from is None or self.valid_until is None:
                 raise ValueError("у промокода должен быть срок: дни или обе даты")
