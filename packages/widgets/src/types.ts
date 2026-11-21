@@ -1480,6 +1480,12 @@ export interface ISearchFieldProps {
    * сказать нечем.
    */
   isBusy?: boolean
+  /**
+   * `false` - обёртка `div role="search"` вместо `<form>`: для поля внутри чужой
+   * формы, где вложенный `<form>` невалиден. Enter при этом не отправляет
+   * внешнюю форму, а только убирает клавиатуру.
+   */
+  isForm?: boolean
 }
 
 export interface IVariantSelectorProps {
