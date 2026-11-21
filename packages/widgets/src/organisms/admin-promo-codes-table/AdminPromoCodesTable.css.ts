@@ -16,9 +16,9 @@ import { vars } from '../../styling/themes/contract.css'
 
 /**
  * Mobile first: по умолчанию строка — карточка (код с копированием, название,
- * кому выдан, период, награды, статус, число применений и ряд иконок внизу);
- * таблицей она становится с `xl` — восемь колонок (семь с данными и колонка
- * действий) рядом с сайдбаром админки раньше не помещаются, как и у товаров.
+ * кому выдан, период, награды, статус и «⋯» внизу); таблицей она становится
+ * с `xl` — семь колонок (шесть с данными и меню действий) рядом с сайдбаром
+ * админки раньше не помещаются, как и у товаров.
  */
 const CARD_UNTIL = 'xl'
 
@@ -33,7 +33,7 @@ export const body = style(tableCardBody(CARD_UNTIL))
 export const row = style(tableCardRow(CARD_UNTIL))
 
 /*
-  Восемь колонок в контейнере около 1000px: отступы по бокам ячеек сужены с `md` до
+  Семь колонок в контейнере около 1000px: отступы по бокам ячеек сужены с `md` до
   `sm`, иначе одни они съедают почти 130px, и таблица вылезает за контейнер.
 */
 const compactPadding = {
@@ -48,7 +48,12 @@ export const headActionsCell = style([tableHeadCell(), { textAlign: 'right' }, c
 
 export const cell = style([tableCardCell(CARD_UNTIL), compactPadding])
 
-export const actionsCell = style([tableCardActionsCell(CARD_UNTIL), compactPadding])
+/** На карточке «⋯» прижата вправо, в таблице - и так, ячейка `text-align: right`. */
+export const actionsCell = style([
+  tableCardActionsCell(CARD_UNTIL),
+  compactPadding,
+  { justifyContent: 'flex-end' },
+])
 
 /** Архивный код приглушён не прозрачностью (она роняет контраст текста), а цветом названия. */
 export const archivedRow = style({})
@@ -152,31 +157,4 @@ export const rewards = style({
 export const reward = style({
   font: font('13/20'),
   color: color.text('secondary'),
-})
-
-export const count = style({
-  font: font('14/20', 600),
-  fontVariantNumeric: 'tabular-nums',
-})
-
-/**
- * Ряд иконок. На телефоне занимает всю строку карточки и равномерно делит её:
- * пять кнопок не должны слипаться и не должны уезжать за край. Зазор 8px, как у
- * таблицы товаров: ряд из пяти `sm` занимает 192px, а не 256px прежних `lg`.
- */
-export const actions = style({
-  ...flexRow(8),
-  flexWrap: 'wrap',
-  alignItems: 'center',
-  justifyContent: 'space-between',
-  width: '100%',
-  paddingTop: rem(4),
-  ...media({
-    [CARD_UNTIL]: {
-      flexWrap: 'nowrap',
-      justifyContent: 'flex-end',
-      width: 'auto',
-      paddingTop: 0,
-    },
-  }),
 })

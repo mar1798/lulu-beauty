@@ -15,8 +15,8 @@ import { transition } from '../../styling/lib'
 
 /**
  * Mobile first: по умолчанию строка — карточка (название, период, статус,
- * награды, участники и ряд иконок внизу); таблицей она становится с `xl` — шесть
- * колонок рядом с сайдбаром админки раньше не помещаются, как и у товаров.
+ * награды и «⋯» внизу); таблицей она становится с `xl` — пять колонок рядом с
+ * сайдбаром админки раньше не помещаются, как и у товаров.
  */
 const CARD_UNTIL = 'xl'
 
@@ -36,7 +36,8 @@ export const headActionsCell = style([tableHeadCell(), { textAlign: 'right' }])
 
 export const cell = style(tableCardCell(CARD_UNTIL))
 
-export const actionsCell = style(tableCardActionsCell(CARD_UNTIL))
+/** На карточке «⋯» прижата вправо, в таблице - и так, ячейка `text-align: right`. */
+export const actionsCell = style([tableCardActionsCell(CARD_UNTIL), { justifyContent: 'flex-end' }])
 
 /** Архивная акция приглушена не прозрачностью (она роняет контраст текста), а цветом названия. */
 export const archivedRow = style({})
@@ -96,31 +97,4 @@ export const rewards = style({
 export const reward = style({
   font: font('13/20'),
   color: color.text('secondary'),
-})
-
-export const count = style({
-  font: font('14/20', 600),
-  fontVariantNumeric: 'tabular-nums',
-})
-
-/**
- * Ряд иконок. На телефоне занимает всю строку карточки и равномерно делит её:
- * пять кнопок не должны слипаться и не должны уезжать за край. Зазор 8px, как у
- * таблицы товаров: ряд из пяти `sm` занимает 192px, а не 256px прежних `lg`.
- */
-export const actions = style({
-  ...flexRow(8),
-  flexWrap: 'wrap',
-  alignItems: 'center',
-  justifyContent: 'space-between',
-  width: '100%',
-  paddingTop: rem(4),
-  ...media({
-    [CARD_UNTIL]: {
-      flexWrap: 'nowrap',
-      justifyContent: 'flex-end',
-      width: 'auto',
-      paddingTop: 0,
-    },
-  }),
 })

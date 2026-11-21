@@ -5,6 +5,13 @@ import { AdminPromotionsTable } from '.'
 import { feedAdminPromotionsTable } from '../../stories/feed'
 import { renderWidget } from '../../testing/render'
 
+/** Раскрывает меню «⋯» строки и возвращает его. */
+const openMenu = async (title: string): Promise<HTMLElement> => {
+  await userEvent.click(screen.getByRole('button', { name: `Действия «${title}»` }))
+
+  return screen.getByRole('menu', { name: `Действия «${title}»` })
+}
+
 describe('AdminPromotionsTable', () => {
   it('рендерится с фикстурой из feed', () => {
     const { container } = renderWidget(<AdminPromotionsTable {...feedAdminPromotionsTable()} />)
@@ -12,67 +19,54 @@ describe('AdminPromotionsTable', () => {
     expect(container.firstElementChild).not.toBeNull()
   })
 
-  it('все действия строки — иконки: подсказка называет действие, aria-label — ещё и акцию', () => {
+  it('действия строки - в меню «⋯», колонки участников нет', () => {
     renderWidget(<AdminPromotionsTable {...feedAdminPromotionsTable()} />)
 
-    const rows = screen.getAllByRole('row').slice(1)
-    const actions = within(rows[0]).getAllByRole('tooltip', { hidden: true })
+    expect(screen.queryByRole('columnheader', { name: 'Участники' })).toBeNull()
 
-    expect(actions.length).toBeGreaterThanOrEqual(5)
+    const [, first] = screen.getAllByRole('row')
 
-    for (const tooltip of actions) {
-      const control = tooltip.parentElement?.querySelector('[aria-label]')
-
-      const action = tooltip.textContent ?? ''
-
-      expect(action).not.toContain('«')
-      expect(control?.getAttribute('aria-label')).toMatch(new RegExp(`^${action} «.+»$`))
-    }
+    expect(within(first).getAllByRole('button')).toHaveLength(1)
   })
 
-  it('в строке нет текстовых кнопок: имя каждой кнопки — скрытая подпись иконки', () => {
+  it('удаление акции с участниками называется «В архив», без участников - «Удалить»', async () => {
     renderWidget(<AdminPromotionsTable {...feedAdminPromotionsTable()} />)
 
-    for (const button of screen.getAllByRole('button')) {
-      expect(button.querySelector('svg')).not.toBeNull()
-    }
+    const spring = await openMenu('Весенняя распродажа')
+
+    expect(within(spring).getByRole('menuitem', { name: 'В архив' })).toBeInTheDocument()
   })
 
-  it('удаление акции с участниками называется «В архив», без участников — «Удалить»', () => {
+  it('архивной акции не предлагает ни включить, ни удалить', async () => {
     renderWidget(<AdminPromotionsTable {...feedAdminPromotionsTable()} />)
 
-    expect(
-      screen.getByRole('button', { name: 'В архив «Весенняя распродажа»' })
-    ).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /^Удалить «Подарок за три/ })).toBeInTheDocument()
-  })
+    const menu = await openMenu('Прошлогодняя акция')
 
-  it('архивной акции не предлагает ни включить, ни удалить', () => {
-    renderWidget(<AdminPromotionsTable {...feedAdminPromotionsTable()} />)
-
-    expect(screen.queryByRole('button', { name: 'Удалить «Прошлогодняя акция»' })).toBeNull()
-    expect(screen.queryByRole('button', { name: /«Прошлогодняя акция»/ })).toBeInTheDocument()
+    expect(within(menu).queryByRole('menuitem', { name: /^(Удалить|В архив)$/ })).toBeNull()
+    expect(within(menu).queryByRole('menuitem', { name: /^(Включить|Выключить)$/ })).toBeNull()
     expect(screen.getAllByText('В архиве').length).toBeGreaterThan(0)
   })
 
-  it('включённая акция предлагает «Выключить», выключенная — «Включить»', async () => {
-    const props = feedAdminPromotionsTable()
+  it('выключенная акция предлагает «Включить» и отдаёт её наверх', async () => {
     const onToggleEnabled = vi.fn()
 
-    renderWidget(<AdminPromotionsTable {...props} onToggleEnabled={onToggleEnabled} />)
+    renderWidget(
+      <AdminPromotionsTable {...feedAdminPromotionsTable()} onToggleEnabled={onToggleEnabled} />
+    )
 
-    await userEvent.click(screen.getByRole('button', { name: 'Включить «Осенний сбор»' }))
+    const menu = await openMenu('Осенний сбор')
+
+    await userEvent.click(within(menu).getByRole('menuitem', { name: 'Включить' }))
 
     expect(onToggleEnabled).toHaveBeenCalledWith(expect.objectContaining({ title: 'Осенний сбор' }))
-    expect(
-      screen.getByRole('button', { name: 'Выключить «Весенняя распродажа»' })
-    ).toBeInTheDocument()
   })
 
-  it('«Дублировать» и «Изменить» — ссылки', () => {
+  it('«Дублировать» - ссылка', async () => {
     renderWidget(<AdminPromotionsTable {...feedAdminPromotionsTable()} />)
 
-    expect(screen.getByRole('link', { name: 'Дублировать «Весенняя распродажа»' })).toHaveAttribute(
+    const menu = await openMenu('Весенняя распродажа')
+
+    expect(within(menu).getByRole('menuitem', { name: 'Дублировать' })).toHaveAttribute(
       'href',
       expect.stringContaining('/admin/promotions/add?from=')
     )
@@ -90,8 +84,12 @@ describe('AdminPromotionsTable', () => {
       />
     )
 
-    await userEvent.click(screen.getByRole('button', { name: 'Участники «Весенняя распродажа»' }))
-    await userEvent.click(screen.getByRole('button', { name: 'В архив «Весенняя распродажа»' }))
+    await userEvent.click(
+      within(await openMenu('Весенняя распродажа')).getByRole('menuitem', { name: 'Участники' })
+    )
+    await userEvent.click(
+      within(await openMenu('Весенняя распродажа')).getByRole('menuitem', { name: 'В архив' })
+    )
 
     expect(onShowParticipants).toHaveBeenCalledOnce()
     expect(onDelete).toHaveBeenCalledOnce()

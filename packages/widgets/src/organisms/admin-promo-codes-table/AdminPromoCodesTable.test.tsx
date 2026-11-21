@@ -5,6 +5,13 @@ import { AdminPromoCodesTable } from '.'
 import { feedAdminPromoCode, feedAdminPromoCodesTable } from '../../stories/feed'
 import { renderWidget } from '../../testing/render'
 
+/** Раскрывает меню «⋯» строки и возвращает его. */
+const openMenu = async (code: string): Promise<HTMLElement> => {
+  await userEvent.click(screen.getByRole('button', { name: `Действия «${code}»` }))
+
+  return screen.getByRole('menu', { name: `Действия «${code}»` })
+}
+
 describe('AdminPromoCodesTable', () => {
   it('рендерится с фикстурой из feed', () => {
     const { container } = renderWidget(<AdminPromoCodesTable {...feedAdminPromoCodesTable()} />)
@@ -62,14 +69,40 @@ describe('AdminPromoCodesTable', () => {
     expect(onCopy).toHaveBeenCalledWith(props.promoCodes[0])
   })
 
-  it('удаление использованного кода называется «В архив», неиспользованного - «Удалить»', () => {
+  it('колонки «Применений» нет, в строке - копирование и меню «⋯»', () => {
     renderWidget(<AdminPromoCodesTable {...feedAdminPromoCodesTable()} />)
 
-    expect(screen.getByRole('button', { name: 'В архив «LETO2026»' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Удалить «ZIMA2026»' })).toBeInTheDocument()
+    expect(screen.queryByRole('columnheader', { name: 'Применений' })).toBeNull()
+
+    const [, first] = screen.getAllByRole('row')
+
+    expect(within(first).getAllByRole('button')).toHaveLength(2)
   })
 
-  it('архивному коду не предлагает ни включить, ни удалить', () => {
+  it('удаление использованного кода называется «В архив», неиспользованного - «Удалить»', async () => {
+    renderWidget(<AdminPromoCodesTable {...feedAdminPromoCodesTable()} />)
+
+    expect(
+      within(await openMenu('LETO2026')).getByRole('menuitem', { name: 'В архив' })
+    ).toBeInTheDocument()
+    expect(
+      within(await openMenu('ZIMA2026')).getByRole('menuitem', { name: 'Удалить' })
+    ).toBeInTheDocument()
+  })
+
+  it('удаление из меню отдаёт код странице', async () => {
+    const onDelete = vi.fn()
+    const props = feedAdminPromoCodesTable()
+
+    renderWidget(<AdminPromoCodesTable {...props} onDelete={onDelete} />)
+    await userEvent.click(
+      within(await openMenu('LETO2026')).getByRole('menuitem', { name: 'В архив' })
+    )
+
+    expect(onDelete).toHaveBeenCalledWith(props.promoCodes[0])
+  })
+
+  it('архивному коду не предлагает ни включить, ни удалить', async () => {
     const props = feedAdminPromoCodesTable()
     const archived = feedAdminPromoCode({
       deletedAt: new Date().toISOString(),
@@ -78,8 +111,10 @@ describe('AdminPromoCodesTable', () => {
 
     renderWidget(<AdminPromoCodesTable {...props} promoCodes={[archived]} />)
 
-    expect(screen.queryByRole('button', { name: /^Выключить/ })).toBeNull()
-    expect(screen.queryByRole('button', { name: /^(Удалить|В архив)/ })).toBeNull()
+    const menu = await openMenu(archived.code)
+
+    expect(within(menu).queryByRole('menuitem', { name: /^(Включить|Выключить)$/ })).toBeNull()
+    expect(within(menu).queryByRole('menuitem', { name: /^(Удалить|В архив)$/ })).toBeNull()
     expect(screen.getByText('В архиве')).toBeInTheDocument()
   })
 

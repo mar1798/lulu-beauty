@@ -356,3 +356,12 @@ export const IconPlay: FC<IBasicStyling> = ({ className }) => (
     <path d="M8 5.5v13L18.5 12 8 5.5Z" />
   </svg>
 )
+
+/** Ещё действия: три точки в ряд. Заливка, а не штрих - штрихом точки выходят бледными. */
+export const IconDots: FC<IBasicStyling> = ({ className }) => (
+  <svg {...base} className={className}>
+    <circle cx="5.5" cy="12" r="1.5" fill="currentColor" stroke="none" />
+    <circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none" />
+    <circle cx="18.5" cy="12" r="1.5" fill="currentColor" stroke="none" />
+  </svg>
+)

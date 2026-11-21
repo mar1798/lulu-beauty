@@ -4,9 +4,8 @@ import type { IAdminPromotionsTableProps, IBasicStyling, IPromotion } from '../.
 import { IconCopy, IconEye, IconEyeOff, IconPencil, IconTrash, IconUsers } from '../../svg/icons'
 import { AppLink } from '../../atoms/app-link'
 import { Badge } from '../../atoms/badge'
-import { IconButton } from '../../atoms/icon-button'
+import { ActionMenu } from '../../molecules/action-menu'
 import { Skeleton } from '../../atoms/skeleton'
-import { Tooltip } from '../../atoms/tooltip'
 import { formatShortDate } from '../../utils/datetime'
 import {
   PROMOTION_STATUS_LABELS,
@@ -24,12 +23,11 @@ import * as styles from './AdminPromotionsTable.css'
  * `data-label`, роли проставлены явно: `display: block` снимает встроенные роли
  * таблицы, и без них строка перестала бы объявляться строкой.
  *
- * **Все действия строки — только иконки.** Каждая обёрнута в `Tooltip`, который
- * называет одно действие («Изменить»): зрячий и так видит, в какой он строке.
- * `aria-label` кнопки длиннее — с акцией («Изменить «Весна»»): подсказка скрыта
- * от скринридера, а безымянное «Изменить» он читал бы у всех строк одинаково.
- * Размер `sm` (32px, как у товаров): ряд из пяти иконок не должен раздвигать
- * таблицу до горизонтального скролла, а зону нажатия до 44px `sm` расширяет сам.
+ * **Действия строки - в меню «⋯»** (`ActionMenu`): пять иконок в ряд
+ * раздвигали таблицу до горизонтальной прокрутки, а в меню у них ещё и есть
+ * подписи. Имя кнопки называет акцию («Действия «Весна»»): скринридер иначе
+ * читал бы у всех строк одно и то же. Число участников отдельной колонкой
+ * не показывается - его видно в «Участниках».
  *
  * «Изменить» и «Дублировать» — ссылки: это навигация, она открывается в новой
  * вкладке и остаётся в истории. Архивной акции вместо «Включить» и «Удалить»
@@ -39,20 +37,9 @@ import * as styles from './AdminPromotionsTable.css'
  */
 
 const DEFAULT_SKELETON_ROWS = 4
-const COLUMN_COUNT = 6
+const COLUMN_COUNT = 5
 
 const isArchived = (promotion: IPromotion): boolean => promotion.deletedAt !== null
-
-interface IActionProps {
-  /** Действие без акции — текст подсказки. */
-  label: string
-  children: React.ReactNode
-}
-
-/** Иконка и подсказка: подсказка называет только действие, имя кнопки — ещё и акцию. */
-const Action: FC<IActionProps> = ({ label, children }) => (
-  <Tooltip content={label}>{children}</Tooltip>
-)
 
 export const AdminPromotionsTable: FC<IAdminPromotionsTableProps & IBasicStyling> = ({
   promotions,
@@ -87,9 +74,6 @@ export const AdminPromotionsTable: FC<IAdminPromotionsTableProps & IBasicStyling
             </th>
             <th className={styles.headCell} scope="col" role="columnheader">
               Награды
-            </th>
-            <th className={styles.headCell} scope="col" role="columnheader">
-              Участники
             </th>
             <th className={styles.headActionsCell} scope="col" role="columnheader">
               Действия
@@ -160,74 +144,54 @@ export const AdminPromotionsTable: FC<IAdminPromotionsTableProps & IBasicStyling
                       </ul>
                     </td>
 
-                    <td className={styles.cell} role="cell" data-label="Участники">
-                      <span className={styles.count}>{promotion.participantsCount}</span>
-                    </td>
-
                     <td className={styles.actionsCell} role="cell">
-                      <div className={styles.actions}>
-                        <Action label="Изменить">
-                          <IconButton
-                            icon={<IconPencil />}
-                            label={`Изменить ${name}`}
-                            size="sm"
-                            variant="ghost"
-                            link={{ href: buildEditHref(promotion) }}
-                          />
-                        </Action>
-
-                        {!archived && (
-                          <Action label={toggleAction}>
-                            <IconButton
-                              icon={promotion.isEnabled ? <IconEyeOff /> : <IconEye />}
-                              label={`${toggleAction} ${name}`}
-                              size="sm"
-                              variant="ghost"
-                              disabled={isBusy}
-                              onClick={() => {
-                                onToggleEnabled(promotion)
-                              }}
-                            />
-                          </Action>
-                        )}
-
-                        <Action label="Дублировать">
-                          <IconButton
-                            icon={<IconCopy />}
-                            label={`Дублировать ${name}`}
-                            size="sm"
-                            variant="ghost"
-                            link={{ href: buildDuplicateHref(promotion) }}
-                          />
-                        </Action>
-
-                        <Action label="Участники">
-                          <IconButton
-                            icon={<IconUsers />}
-                            label={`Участники ${name}`}
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => {
+                      <ActionMenu
+                        label={`Действия ${name}`}
+                        items={[
+                          {
+                            label: 'Изменить',
+                            icon: <IconPencil />,
+                            link: { href: buildEditHref(promotion) },
+                          },
+                          ...(archived
+                            ? []
+                            : [
+                                {
+                                  label: toggleAction,
+                                  icon: promotion.isEnabled ? <IconEyeOff /> : <IconEye />,
+                                  disabled: isBusy,
+                                  onSelect: () => {
+                                    onToggleEnabled(promotion)
+                                  },
+                                },
+                              ]),
+                          {
+                            label: 'Дублировать',
+                            icon: <IconCopy />,
+                            link: { href: buildDuplicateHref(promotion) },
+                          },
+                          {
+                            label: 'Участники',
+                            icon: <IconUsers />,
+                            onSelect: () => {
                               onShowParticipants(promotion)
-                            }}
-                          />
-                        </Action>
-
-                        {!archived && (
-                          <Action label={deleteAction}>
-                            <IconButton
-                              icon={<IconTrash />}
-                              label={`${deleteAction} ${name}`}
-                              size="sm"
-                              variant="danger"
-                              disabled={isBusy}
-                              onClick={() => {
-                                onDelete(promotion)
-                              }}
-                            />
-                          </Action>
-                        )}
-                      </div>
+                            },
+                          },
+                          ...(archived
+                            ? []
+                            : [
+                                {
+                                  label: deleteAction,
+                                  icon: <IconTrash />,
+                                  tone: 'danger' as const,
+                                  disabled: isBusy,
+                                  onSelect: () => {
+                                    onDelete(promotion)
+                                  },
+                                },
+                              ]),
+                        ]}
+                      />
                     </td>
                   </tr>
                 )

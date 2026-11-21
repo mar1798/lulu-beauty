@@ -18,6 +18,9 @@ export interface ILink {
    * вместе с ним (мобильное меню). Навигацию он не подменяет и не отменяет.
    */
   onClick?: () => void
+  /** Роль ссылки там, где она пункт меню (`ActionMenu`), а не просто ссылка. */
+  role?: React.AriaRole
+  tabIndex?: number
 }
 export interface ILinkedLabel {
   label: string
@@ -617,6 +620,23 @@ export interface IIconButtonProps {
   isExpanded?: boolean
   /** Что именно открывает кнопка (`aria-haspopup`). */
   hasPopup?: 'menu' | 'dialog' | 'listbox'
+}
+
+/** Пункт `ActionMenu`: либо переход (`link`), либо действие (`onSelect`). */
+export interface IActionMenuItem {
+  label: string
+  icon?: ReactNode
+  /** `danger` - разрушительное действие: удалить, в архив. */
+  tone?: 'default' | 'danger'
+  link?: ILink
+  onSelect?: () => void
+  disabled?: boolean
+}
+
+export interface IActionMenuProps {
+  /** Имя кнопки «⋯» для скринридера - с объектом: «Действия «LETO2026»». */
+  label: string
+  items: IActionMenuItem[]
 }
 
 export interface ITooltipProps {

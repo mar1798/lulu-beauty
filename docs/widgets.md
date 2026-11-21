@@ -27,7 +27,7 @@ populated.
 | Tier            | Examples                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `src/atoms`     | `Button`, `Input`, `Price`, `Badge`, `Chip`, `Select`, `Combobox`, `Tooltip`, `Skeleton`, `Appear`, `Reveal`, `Parallax`, `AppLink`, `AppImage`, `RichText`                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
-| `src/molecules` | `ProductCard`, `VariantSelector`, `QuantityStepper`, `SearchField`, `CustomerSelect`, `Pagination`, `OrderCard`, `OrderStatusBadge`, `DeadlineCountdown`, `Toast`, `EmptyState`, `FileDropzone`, `RichTextEditor`                                                                                                                                                                                                                                                                                                                                                                                                         |
+| `src/molecules` | `ProductCard`, `VariantSelector`, `QuantityStepper`, `SearchField`, `CustomerSelect`, `Pagination`, `OrderCard`, `OrderStatusBadge`, `DeadlineCountdown`, `Toast`, `EmptyState`, `FileDropzone`, `RichTextEditor`, `ActionMenu`                                                                                                                                                                                                                                                                                                                                                                                           |
 | `src/organisms` | `Header`, `HeaderSearch`, `Footer`, `CartPanel`, `CheckoutForm`, `ProductGrid`, `ProductDetails`, `OrderDetails`, `Modal`, `ConfirmDialog`, `ToastViewport`, `MobileMenu`, `TelegramLoginPanel`, `AdminOrdersTable`, `AdminMessageDialog`, `AdminOrderDialog`, `AdminOrderEditDialog`, `AdminOrderDiscountDialog`, `AdminProductsTable`, `AdminProductForm`, `AdminProductGallery`, `AdminCycleCalendar`, `AdminUsersTable`, `AdminImportPanel`, `AdminCategoriesPanel`, `ProductPicker`, `PromoCarousel`, `PromotionDetails`, `AdminPromotionsTable`, `AdminPromotionForm`, `AdminPromoCodesTable`, `AdminPromoCodeForm` |
 | `src/templates` | `BaseLayout`, `AdminLayout`, `HomeTemplate`, `CatalogTemplate`, `ProductTemplate`, `CartTemplate`, `AccountTemplate`, `AuthTemplate`, `LegalTemplate`, `ErrorTemplate`                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 
@@ -122,12 +122,16 @@ Storefront:
 Admin:
 
 - `AdminPromotionsTable` — a real `<table>` that turns into cards below `xl`
-  (`styling/mixin/table.ts`). **Every row action is an `IconButton size="sm"` inside a
-  `Tooltip`** (32px, the products table's size, so the row of five does not push the table
-  into a horizontal scroll). The tooltip names only the action («Изменить»); the
-  `aria-label` adds the promotion («Изменить «Весна»»), since a screen reader hears every
-  row's buttons alike; no text buttons, no
-  menus. An archived promotion has no «Включить» and no «Удалить».
+  (`styling/mixin/table.ts`). **The row actions live in an `ActionMenu`** («⋯»): a row of
+  five icons pushed the table into a horizontal scroll. The trigger's name adds the promotion
+  («Действия «Весна»»), since a screen reader hears every row's button alike; the items are
+  plain «Изменить», «Выключить», … There is no participants-count column — the count is one
+  click away in «Участники». An archived promotion has no «Включить» and no «Удалить».
+- `ActionMenu` (molecule) — a «⋯» `IconButton` and an ARIA APG menu: focus moves to the first
+  item, arrows/Home/End move it, Escape and Tab close and return focus to the trigger. Items
+  are `{ label, icon?, tone?, link? | onSelect?, disabled? }`; a `link` item stays an `<a>`
+  (`role="menuitem"`). Rendered through `Portal` with `position: fixed`, like `Select`'s
+  list, so the table wrapper's `overflow` does not clip it.
 - `FormSection` (molecule) — the collapsible panel both admin forms are built from (a heading
   button with `aria-expanded`, a body whose height animates, `overflow` visible once open so
   focus rings and dropdowns are not clipped). Extracted unchanged from `AdminPromotionForm`.
@@ -135,12 +139,12 @@ Admin:
   date and time. Controlled; the ISO conversion (`storeIso`) and the «end after start» check
   stay with each form, which passes the error texts in. `openEndedLabel` and `endHint` override
   the promotion wording.
-- `AdminPromoCodesTable` — modelled on `AdminPromotionsTable` (same icon-only actions with
-  tooltips, cards below `xl`). Columns: the code (monospace, with a copy `IconButton` whose click
+- `AdminPromoCodesTable` — modelled on `AdminPromotionsTable` (same `ActionMenu`, cards below
+  `xl`). Columns: the code (monospace, with a copy `IconButton` whose click
   goes to the page's `onCopy`: the widget knows nothing about the clipboard), name, «Кому» («Все»,
   or name and phone, «Аккаунт удалён» for an erased account), period («бессрочно» for an open
-  end), rewards, the derived status (labels in the masculine, `ADMIN_PROMO_CODE_STATUS_LABELS`; plus «Использован» for a personal code with a use) and the
-  number of uses. Delete reads «В архив» once a code was applied.
+  end), rewards, the derived status (labels in the masculine, `ADMIN_PROMO_CODE_STATUS_LABELS`; plus «Использован» for a personal code with a use). No uses-count column — «Использования»
+  in the menu shows them. Delete reads «В архив» once a code was applied.
 - `AdminPromoCodeForm` — an owner's promo code in one PUT/POST. Four `FormSection`s: «Основное»
   (code, name, description, `PromotionPeriodFields`, enabled), «Кому» (a personal switch and
   `CustomerSelect`, whose search the page drives through `customerSelect`), «Условия» and «Награды»

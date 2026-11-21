@@ -13,6 +13,7 @@ import {
 import { AppLink } from '../../atoms/app-link'
 import { Badge } from '../../atoms/badge'
 import { IconButton } from '../../atoms/icon-button'
+import { ActionMenu } from '../../molecules/action-menu'
 import { Skeleton } from '../../atoms/skeleton'
 import { Tooltip } from '../../atoms/tooltip'
 import { formatShortDate } from '../../utils/datetime'
@@ -27,8 +28,9 @@ import * as styles from './AdminPromoCodesTable.css'
  * Список промокодов владельца в админке.
  *
  * Устроен как `AdminPromotionsTable`: настоящая `<table>`, ниже `xl` строки
- * раскладываются в карточки, а все действия строки - иконки с подсказкой, у
- * которых `aria-label` длиннее подсказки и называет ещё и код. Код стоит
+ * раскладываются в карточки, а действия строки собраны в меню «⋯»
+ * (`ActionMenu`), чьё имя называет ещё и код. Число применений отдельной
+ * колонкой не показывается - его видно в «Использованиях». Код стоит
  * отдельной колонкой с кнопкой «Скопировать»: его отправляют покупателю, и это
  * самое частое действие со строкой. Копирует страница (`onCopy`): виджет не
  * знает про буфер обмена и уведомления.
@@ -42,7 +44,7 @@ import * as styles from './AdminPromoCodesTable.css'
  */
 
 const DEFAULT_SKELETON_ROWS = 4
-const COLUMN_COUNT = 8
+const COLUMN_COUNT = 7
 
 const isArchived = (promoCode: IAdminPromoCode): boolean => promoCode.deletedAt !== null
 
@@ -52,7 +54,7 @@ interface IActionProps {
   children: ReactNode
 }
 
-/** Иконка и подсказка: подсказка называет только действие, имя кнопки - ещё и код. */
+/** Иконка «Скопировать» и подсказка: подсказка называет действие, имя кнопки - ещё и код. */
 const Action: FC<IActionProps> = ({ label, children }) => (
   <Tooltip content={label}>{children}</Tooltip>
 )
@@ -97,9 +99,6 @@ export const AdminPromoCodesTable: FC<IAdminPromoCodesTableProps & IBasicStyling
             </th>
             <th className={styles.headCell} scope="col" role="columnheader">
               Статус
-            </th>
-            <th className={styles.headCell} scope="col" role="columnheader">
-              Применений
             </th>
             <th className={styles.headActionsCell} scope="col" role="columnheader">
               Действия
@@ -208,74 +207,54 @@ export const AdminPromoCodesTable: FC<IAdminPromoCodesTableProps & IBasicStyling
                       </div>
                     </td>
 
-                    <td className={styles.cell} role="cell" data-label="Применений">
-                      <span className={styles.count}>{promoCode.participantsCount}</span>
-                    </td>
-
                     <td className={styles.actionsCell} role="cell">
-                      <div className={styles.actions}>
-                        <Action label="Изменить">
-                          <IconButton
-                            icon={<IconPencil />}
-                            label={`Изменить ${name}`}
-                            size="sm"
-                            variant="ghost"
-                            link={{ href: buildEditHref(promoCode) }}
-                          />
-                        </Action>
-
-                        {!archived && (
-                          <Action label={toggleAction}>
-                            <IconButton
-                              icon={promoCode.isEnabled ? <IconEyeOff /> : <IconEye />}
-                              label={`${toggleAction} ${name}`}
-                              size="sm"
-                              variant="ghost"
-                              disabled={isBusy}
-                              onClick={() => {
-                                onToggleEnabled(promoCode)
-                              }}
-                            />
-                          </Action>
-                        )}
-
-                        <Action label="Дублировать">
-                          <IconButton
-                            icon={<IconCopy />}
-                            label={`Дублировать ${name}`}
-                            size="sm"
-                            variant="ghost"
-                            link={{ href: buildDuplicateHref(promoCode) }}
-                          />
-                        </Action>
-
-                        <Action label="Использования">
-                          <IconButton
-                            icon={<IconUsers />}
-                            label={`Использования ${name}`}
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => {
+                      <ActionMenu
+                        label={`Действия ${name}`}
+                        items={[
+                          {
+                            label: 'Изменить',
+                            icon: <IconPencil />,
+                            link: { href: buildEditHref(promoCode) },
+                          },
+                          ...(archived
+                            ? []
+                            : [
+                                {
+                                  label: toggleAction,
+                                  icon: promoCode.isEnabled ? <IconEyeOff /> : <IconEye />,
+                                  disabled: isBusy,
+                                  onSelect: () => {
+                                    onToggleEnabled(promoCode)
+                                  },
+                                },
+                              ]),
+                          {
+                            label: 'Дублировать',
+                            icon: <IconCopy />,
+                            link: { href: buildDuplicateHref(promoCode) },
+                          },
+                          {
+                            label: 'Использования',
+                            icon: <IconUsers />,
+                            onSelect: () => {
                               onShowParticipants(promoCode)
-                            }}
-                          />
-                        </Action>
-
-                        {!archived && (
-                          <Action label={deleteAction}>
-                            <IconButton
-                              icon={<IconTrash />}
-                              label={`${deleteAction} ${name}`}
-                              size="sm"
-                              variant="danger"
-                              disabled={isBusy}
-                              onClick={() => {
-                                onDelete(promoCode)
-                              }}
-                            />
-                          </Action>
-                        )}
-                      </div>
+                            },
+                          },
+                          ...(archived
+                            ? []
+                            : [
+                                {
+                                  label: deleteAction,
+                                  icon: <IconTrash />,
+                                  tone: 'danger' as const,
+                                  disabled: isBusy,
+                                  onSelect: () => {
+                                    onDelete(promoCode)
+                                  },
+                                },
+                              ]),
+                        ]}
+                      />
                     </td>
                   </tr>
                 )

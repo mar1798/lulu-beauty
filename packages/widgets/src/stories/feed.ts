@@ -96,6 +96,7 @@ import {
   IHeaderProps,
   IHeaderSearchProps,
   IIconButtonProps,
+  IActionMenuProps,
   IImage,
   IInputProps,
   IItemRowProps,
@@ -205,6 +206,17 @@ export const feedButton = (): IButtonProps => ({
 export const feedIconButton = (): IIconButtonProps => ({
   icon: '✕',
   label: 'Удалить позицию',
+})
+
+export const feedActionMenu = (): IActionMenuProps => ({
+  label: 'Действия «LETO2026»',
+  items: [
+    { label: 'Изменить', link: { href: '/admin/promo-codes/1' } },
+    { label: 'Выключить', onSelect: noop },
+    { label: 'Дублировать', link: { href: '/admin/promo-codes/add?from=1' } },
+    { label: 'Использования', onSelect: noop },
+    { label: 'В архив', tone: 'danger', onSelect: noop },
+  ],
 })
 
 export const feedInput = (): IInputProps => ({
