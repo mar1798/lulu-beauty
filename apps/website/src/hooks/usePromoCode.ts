@@ -15,7 +15,9 @@ import { checkPromoCode } from '@/services/endpoints/cart'
  * видел бы скидку, которую заявка уже не даст, и узнавал об этом отказом оформления.
  * Не прошёл - код снимается, а причина остаётся в `error`. `signature` - любая строка,
  * меняющаяся вместе с составом (объёмы и количества); `waitForCart` - ожидание, пока
- * корзина на сервере догонит экран (оптимистичные правки уходят очередью).
+ * корзина на сервере догонит экран (оптимистичные правки уходят очередью): ждёт и перепроверка,
+ * и сам `apply`, а правка корзины во время его ожидания или проверки не отменяет его, а
+ * повторяет проверку по новому составу.
  */
 
 export interface IPromoCodeState {
@@ -30,6 +32,10 @@ export interface IPromoCodeState {
   remove: () => void
 }
 
+/** Исход проверки: принят, отказан сервером или вытеснен более новой проверкой. */
+type CheckOutcome =
+  { kind: 'ok'; result: IPromoCodeCheck } | { kind: 'refused' } | { kind: 'stale' }
+
 /** Регистр и края не важны человеку - и серверу, но показываем код так, как его выдали. */
 export const normalizeCodeInput = (value: string): string => value.trim().toUpperCase()
 
@@ -43,13 +49,25 @@ export const usePromoCode = (
   const [error, setError] = useState<string | null>(null)
   /** Номер последней проверки: ответ запоздавшей перекрывать новую не должен. */
   const attempt = useRef(0)
+  /**
+   * Последнее намерение: правка состава, «Применить» или «Убрать». Перепроверка, которая
+   * ждёт корзину, после ожидания проверяет, что оно не сменилось: иначе она вернула бы
+   * снятый код или вытеснила бы выбранный человеком.
+   */
+  const intent = useRef(0)
+  /** Выбор человека: «Применить» или «Убрать». Правка состава его не меняет. */
+  const choice = useRef(0)
+  /** Счётчик правок состава корзины: `apply` по нему понимает, что ответ устарел. */
+  const cartVersion = useRef(0)
+  /** Выбор, чей `apply` ещё идёт (0 - никакой): перепроверка принятого кода ему не мешает. */
+  const pending = useRef(0)
   const waitRef = useRef(waitForCart)
 
   useEffect(() => {
     waitRef.current = waitForCart
   }, [waitForCart])
 
-  const check = useCallback(async (code: string): Promise<IPromoCodeCheck | null> => {
+  const check = useCallback(async (code: string): Promise<CheckOutcome> => {
     const current = attempt.current + 1
 
     attempt.current = current
@@ -59,13 +77,13 @@ export const usePromoCode = (
     try {
       const result = await checkPromoCode(code)
 
-      return current === attempt.current ? result : null
+      return current === attempt.current ? { kind: 'ok', result } : { kind: 'stale' }
     } catch (cause: unknown) {
       if (current === attempt.current) {
         setError(messageForError(cause, 'promoCode.check'))
       }
 
-      return null
+      return current === attempt.current ? { kind: 'refused' } : { kind: 'stale' }
     } finally {
       if (current === attempt.current) {
         setIsChecking(false)
@@ -82,12 +100,51 @@ export const usePromoCode = (
       }
 
       setValue(normalized)
+      intent.current += 1
+      choice.current += 1
 
-      const result = await check(normalized)
+      const mine = choice.current
 
-      if (result !== null) {
-        setApplied(result)
-        setValue('')
+      pending.current = mine
+
+      try {
+        // Сперва корзина на сервере догоняет экран, иначе код проверится по составу до «+».
+        // Правка корзины во время ожидания или проверки не отменяет выбор: ждём и проверяем
+        // заново, уже по новому составу. Отменить его могут только «Убрать» и другой код.
+        for (;;) {
+          const version = cartVersion.current
+
+          await waitRef.current()
+
+          if (choice.current !== mine) {
+            return
+          }
+
+          if (cartVersion.current !== version) {
+            continue
+          }
+
+          const outcome = await check(normalized)
+
+          if (choice.current !== mine || outcome.kind === 'stale') {
+            return
+          }
+
+          if (cartVersion.current !== version) {
+            continue
+          }
+
+          if (outcome.kind === 'ok') {
+            setApplied(outcome.result)
+            setValue('')
+          }
+
+          return
+        }
+      } finally {
+        if (pending.current === mine) {
+          pending.current = 0
+        }
       }
     },
     [check, value]
@@ -95,6 +152,9 @@ export const usePromoCode = (
 
   const remove = useCallback((): void => {
     attempt.current += 1
+    intent.current += 1
+    choice.current += 1
+    pending.current = 0
     setApplied(null)
     setError(null)
     setIsChecking(false)
@@ -114,18 +174,34 @@ export const usePromoCode = (
     }
 
     lastSignature.current = signature
+    // Каждая правка состава - новое намерение: живой остаётся только последняя перепроверка.
+    intent.current += 1
+    cartVersion.current += 1
 
-    if (code === null) {
+    // Нет принятого кода или идёт «Применить»: он сам дождётся корзины и проверит по новому составу.
+    if (code === null || pending.current !== 0) {
       return
     }
+
+    const mine = intent.current
 
     void (async (): Promise<void> => {
       await waitRef.current()
 
-      const result = await check(code)
+      // За время ожидания код сняли, ввели другой или состав изменился ещё раз.
+      if (intent.current !== mine) {
+        return
+      }
+
+      const outcome = await check(code)
 
       // Отказ (`error` уже записан) снимает код: условия перестали выполняться.
-      setApplied(result)
+      // Вытесненная проверка ничего не решает: актуальный ответ придёт от более новой.
+      if (outcome.kind === 'ok') {
+        setApplied(outcome.result)
+      } else if (outcome.kind === 'refused') {
+        setApplied(null)
+      }
     })()
   }, [signature, code, check])
 
