@@ -1183,8 +1183,9 @@ def promotion_started(promotion: Promotion) -> str:
     return "\n".join(lines)
 
 
-def _code_terms(code: PromoCode) -> list[str]:
-    """What a code gives and on what terms, from the snapshot taken when it was issued."""
+def _code_terms(code: PromoCode | Promotion) -> list[str]:
+    """What a code gives and on what terms: an issued code's snapshot, or an owner's code's
+    own rules."""
     lines: list[str] = []
     try:
         rewards = describe_rewards(load_code_rewards(code.rewards))
@@ -1216,6 +1217,31 @@ def promo_code_issued(code: PromoCode, promotion_title: str, *, now: datetime) -
     else:
         lines.append(f"Действует до {format_deadline(code.expires_at)}")
     lines.append("Введите его при оформлении следующей заявки")
+    return "\n".join(lines)
+
+
+def personal_promo_code(promotion: Promotion, *, now: datetime) -> str:
+    """The owner gave this customer a code of their own: HTML, so the code is tap-to-copy.
+
+    The title is the owner's text and is escaped; the code string is validated on write.
+    """
+    assert promotion.code is not None
+    lines = [
+        f"🎟 Для вас персональный промокод «{html.escape(promotion.title)}»",
+        f"Код: <code>{html.escape(promotion.code)}</code>",
+        *(html.escape(line) for line in _code_terms(promotion)),
+    ]
+    # Without an end date only the start is named: the customer is not told it is open-ended.
+    if promotion.ends_at is None:
+        lines.append(f"Действует с {format_deadline(promotion.starts_at)}")
+    elif promotion.starts_at > now:
+        lines.append(
+            f"Действует с {format_deadline(promotion.starts_at)}"
+            f" до {format_deadline(promotion.ends_at)}"
+        )
+    else:
+        lines.append(f"Действует до {format_deadline(promotion.ends_at)}")
+    lines.append("Введите его при оформлении заявки - он сработает один раз")
     return "\n".join(lines)
 
 

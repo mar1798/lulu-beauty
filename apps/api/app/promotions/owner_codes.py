@@ -68,6 +68,23 @@ class OwnerCodeDraft:
     rewards: Sequence[AnyCodeReward]
 
 
+def handed_to(
+    promotion: Promotion, *, was_user_id: uuid.UUID | None = None, was_enabled: bool = False
+) -> uuid.UUID | None:
+    """The customer a write just gave this personal code to, if it did: the one to tell.
+
+    A code reaches its customer when it is switched on for them — created that way, moved
+    to them, or switched on while theirs. Edits that change neither (a new title, a new
+    date) are not news. The defaults describe a code that did not exist before.
+    """
+    user_id = promotion.assigned_user_id
+    if user_id is None or not promotion.is_enabled or promotion.deleted_at is not None:
+        return None
+    if user_id == was_user_id and was_enabled:
+        return None
+    return user_id
+
+
 class OwnerCodesService:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session

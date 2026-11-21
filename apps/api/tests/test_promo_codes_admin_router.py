@@ -126,6 +126,7 @@ async def test_write_refusals_are_codes(
 ) -> None:
     with patch("app.promotions.owner_codes_router.OwnerCodesService") as service_cls:
         service_cls.return_value.create = AsyncMock(side_effect=error)
+        service_cls.return_value.get = AsyncMock(return_value=_code())
         service_cls.return_value.update = AsyncMock(side_effect=error)
         async with owner as client:
             created = await client.post("/admin/promo-codes", json=BODY)
@@ -145,3 +146,81 @@ async def test_a_promo_code_reward_is_a_422(owner: AsyncClient) -> None:
         response = await client.post("/admin/promo-codes", json=body)
 
     assert response.status_code == 422
+
+
+def _respond_with(service: Any, code: Promotion) -> None:
+    service.participant_counts = AsyncMock(return_value={})
+    service.users_of = AsyncMock(return_value={})
+
+
+async def test_creating_a_personal_code_tells_its_customer(owner: AsyncClient) -> None:
+    code = _code()
+    code.assigned_user_id = uuid.uuid4()
+    with (
+        patch("app.promotions.owner_codes_router.OwnerCodesService") as service_cls,
+        patch("app.promotions.owner_codes_router.notify_personal_promo_code") as notify,
+    ):
+        service_cls.return_value.create = AsyncMock(return_value=code)
+        _respond_with(service_cls.return_value, code)
+        async with owner as client:
+            response = await client.post("/admin/promo-codes", json=BODY)
+
+    assert response.status_code == 201
+    notify.assert_called_once_with(code.id, code.assigned_user_id)
+
+
+async def test_creating_a_general_code_tells_nobody(owner: AsyncClient) -> None:
+    code = _code()
+    with (
+        patch("app.promotions.owner_codes_router.OwnerCodesService") as service_cls,
+        patch("app.promotions.owner_codes_router.notify_personal_promo_code") as notify,
+    ):
+        service_cls.return_value.create = AsyncMock(return_value=code)
+        _respond_with(service_cls.return_value, code)
+        async with owner as client:
+            response = await client.post("/admin/promo-codes", json=BODY)
+
+    assert response.status_code == 201
+    notify.assert_not_called()
+
+
+async def test_switching_on_a_personal_code_tells_its_customer(owner: AsyncClient) -> None:
+    user_id = uuid.uuid4()
+    before = _code()
+    before.assigned_user_id, before.is_enabled = user_id, False
+    after = _code()
+    after.id, after.assigned_user_id = before.id, user_id
+    with (
+        patch("app.promotions.owner_codes_router.OwnerCodesService") as service_cls,
+        patch("app.promotions.owner_codes_router.notify_personal_promo_code") as notify,
+    ):
+        service_cls.return_value.get = AsyncMock(return_value=before)
+        service_cls.return_value.set_enabled = AsyncMock(return_value=after)
+        _respond_with(service_cls.return_value, after)
+        async with owner as client:
+            response = await client.patch(
+                f"/admin/promo-codes/{before.id}/enabled", json={"isEnabled": True}
+            )
+
+    assert response.status_code == 200
+    notify.assert_called_once_with(after.id, user_id)
+
+
+async def test_editing_a_personal_code_in_place_tells_nobody(owner: AsyncClient) -> None:
+    user_id = uuid.uuid4()
+    before = _code()
+    before.assigned_user_id = user_id
+    after = _code()
+    after.id, after.assigned_user_id, after.title = before.id, user_id, "Новое название"
+    with (
+        patch("app.promotions.owner_codes_router.OwnerCodesService") as service_cls,
+        patch("app.promotions.owner_codes_router.notify_personal_promo_code") as notify,
+    ):
+        service_cls.return_value.get = AsyncMock(return_value=before)
+        service_cls.return_value.update = AsyncMock(return_value=after)
+        _respond_with(service_cls.return_value, after)
+        async with owner as client:
+            response = await client.put(f"/admin/promo-codes/{before.id}", json=BODY)
+
+    assert response.status_code == 200
+    notify.assert_not_called()

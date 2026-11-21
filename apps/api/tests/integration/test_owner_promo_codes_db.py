@@ -2,7 +2,9 @@
 
 import uuid
 from collections.abc import AsyncIterator, Sequence
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
+from unittest.mock import AsyncMock
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -48,6 +50,8 @@ from app.promotions.rules import (
 )
 from app.promotions.service import PromotionNotFoundError, PromotionsService
 from app.promotions.sweep import unannounced_promotions
+from app.telegram.notify import notify_personal_promo_code
+from app.telegram.service import Delivery
 from tests.integration.factories import make_cycle, make_product, make_user, variant_id
 
 NOW = datetime.now(UTC)
@@ -682,6 +686,63 @@ async def test_a_code_row_is_not_a_promotion_over_http(db_session: AsyncSession)
             assert deletion.status_code == 200 and deletion.json() == {"deleted": True}
     finally:
         app.dependency_overrides.clear()
+
+
+# --- Telling the customer ---------------------------------------------------------------
+
+
+@pytest.fixture
+def personal_sends(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
+    """The notifier opens its own session; hand it the test's, and catch what it sends."""
+
+    @asynccontextmanager
+    async def factory() -> AsyncIterator[AsyncSession]:
+        yield db_session
+
+    monkeypatch.setattr("app.telegram.notify.async_session", factory)
+    send = AsyncMock(return_value=Delivery.SENT)
+    monkeypatch.setattr("app.telegram.notify.notifications_service.send_personal_promo_code", send)
+    return send
+
+
+async def test_the_customer_hears_of_a_personal_code(
+    db_session: AsyncSession, personal_sends: AsyncMock
+) -> None:
+    user = await make_user(db_session, telegram_chat_id=101)
+    promotion = await _make_code(db_session, assigned_user_id=user.id)
+
+    await notify_personal_promo_code(promotion.id, user.id)
+
+    personal_sends.assert_awaited_once()
+    assert personal_sends.await_args is not None
+    assert personal_sends.await_args.args[0].id == user.id
+
+
+async def test_a_code_that_is_off_or_moved_on_is_not_announced(
+    db_session: AsyncSession, personal_sends: AsyncMock
+) -> None:
+    user = await make_user(db_session, telegram_chat_id=102)
+    other = await make_user(db_session, telegram_chat_id=103)
+    switched_off = await _make_code(db_session, assigned_user_id=user.id, is_enabled=False)
+    moved = await _make_code(db_session, assigned_user_id=other.id)
+
+    await notify_personal_promo_code(switched_off.id, user.id)
+    await notify_personal_promo_code(moved.id, user.id)
+
+    personal_sends.assert_not_awaited()
+
+
+async def test_a_code_already_on_an_order_is_not_announced_again(
+    db_session: AsyncSession, personal_sends: AsyncMock
+) -> None:
+    product = await _shop(db_session)
+    user = await make_user(db_session, telegram_chat_id=104)
+    promotion = await _make_code(db_session, code="LICHNYI1", assigned_user_id=user.id)
+    await _checkout(db_session, user.id, (product, 1), promo_code="LICHNYI1")
+
+    await notify_personal_promo_code(promotion.id, user.id)
+
+    personal_sends.assert_not_awaited()
 
 
 async def test_a_dash_is_part_of_the_code(db_session: AsyncSession) -> None:

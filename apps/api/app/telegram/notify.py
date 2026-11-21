@@ -35,7 +35,7 @@ from app.orders.service import (
     OrderPriceChange,
 )
 from app.payments.models import PaymentReceipt
-from app.promotions.models import PromoCode, PromoCodeStatus, Promotion
+from app.promotions.models import OrderPromotion, PromoCode, PromoCodeStatus, Promotion
 from app.telegram import messages, recipients, relay
 from app.telegram.client import notifications_service
 from app.telegram.service import CartRescueNotice, Delivery
@@ -834,6 +834,49 @@ async def notify_promo_code_issued(session: AsyncSession, code: PromoCode) -> No
     outcome = await notifications_service.send_promo_code_issued(customer, code, title)
     if outcome is Delivery.BLOCKED and customer.telegram_chat_id is not None:
         await recipients.clear_stale_bindings(session, [customer.telegram_chat_id])
+
+
+async def notify_personal_promo_code(promotion_id: uuid.UUID, user_id: uuid.UUID) -> None:
+    """Tells a customer the owner gave them a personal code, after the commit that did it.
+
+    Re-reads and re-checks, as the request's session is gone: the code must still be this
+    customer's, switched on, not archived or over, and not already on one of their orders
+    (switching a used code off and on again is not news). Nothing is stamped — `/promocodes`
+    lists the code whether or not this message arrived.
+    """
+    try:
+        async with async_session() as session:
+            promotion = await session.get(Promotion, promotion_id)
+            now = datetime.now(UTC)
+            if (
+                promotion is None
+                or promotion.code is None
+                or promotion.assigned_user_id != user_id
+                or not promotion.is_enabled
+                or promotion.deleted_at is not None
+                or (promotion.ends_at is not None and now >= promotion.ends_at)
+            ):
+                return
+            used = await session.scalar(
+                select(
+                    exists().where(
+                        OrderPromotion.promotion_id == promotion_id,
+                        OrderPromotion.user_id == user_id,
+                        OrderPromotion.released_at.is_(None),
+                    )
+                )
+            )
+            if used:
+                return
+            customer = await _load_customer(session, user_id)
+            if customer is None:
+                return
+            outcome = await notifications_service.send_personal_promo_code(customer, promotion)
+            if outcome is Delivery.BLOCKED and customer.telegram_chat_id is not None:
+                await recipients.clear_stale_bindings(session, [customer.telegram_chat_id])
+            await session.commit()
+    except Exception:  # noqa: BLE001 - the code is already committed; see module docstring
+        logger.exception("Failed to tell the customer about personal promo code %s", promotion_id)
 
 
 async def notify_promo_code_expiring(session: AsyncSession, code: PromoCode) -> bool:

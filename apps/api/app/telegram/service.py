@@ -634,6 +634,25 @@ class NotificationsService:
             logger.warning("%s; promo code %s not announced", self._fallback_reason(user), code.id)
         return outcome
 
+    async def send_personal_promo_code(self, user: User, promotion: Promotion) -> Delivery:
+        """A personal code the owner just gave this customer. Reports the delivery, so a
+        blocked chat can be unbound."""
+        outcome = await self._deliver(
+            user.telegram_chat_id,
+            messages.personal_promo_code(promotion, now=datetime.now(UTC)),
+            reply_markup=keyboards.promo_codes_link(),
+            parse_mode="HTML",
+        )
+        if outcome is Delivery.SENT:
+            logger.info("Told %s about personal promo code %s", user.phone, promotion.id)
+        else:
+            logger.warning(
+                "%s; personal promo code %s not announced",
+                self._fallback_reason(user),
+                promotion.id,
+            )
+        return outcome
+
     async def send_promo_code_expiring(
         self, user: User, code: PromoCode, promotion_title: str
     ) -> Delivery:

@@ -376,3 +376,35 @@ def test_no_em_dash_in_the_new_copy() -> None:
         *messages.promotion_lines(order),
     ]
     assert all("—" not in text for text in texts)
+
+
+def _personal(*, starts_at: datetime = NOW, ends_at: datetime | None = None) -> Promotion:
+    return Promotion(
+        id=uuid.uuid4(),
+        slug="promo-code-x",
+        code="LETO2026",
+        title="<b>Для Айгуль</b>",
+        starts_at=starts_at,
+        ends_at=ends_at,
+        conditions=[],
+        rewards=dump_rewards([_percent(10)]),
+    )
+
+
+def test_a_personal_code_message_has_the_code_and_terms_and_escapes_the_title() -> None:
+    text = messages.personal_promo_code(_personal(), now=NOW)
+
+    assert "<code>LETO2026</code>" in text
+    assert "&lt;b&gt;Для Айгуль&lt;/b&gt;" in text and "<b>" not in text
+    assert "скидка 10%" in text
+    # No end date: only the start is named, never «бессрочный».
+    assert "Действует с 20.11.2026" in text and " до " not in text
+    assert "бессрочн" not in text
+
+
+def test_a_personal_code_that_starts_later_says_from_and_until_when() -> None:
+    text = messages.personal_promo_code(
+        _personal(starts_at=NOW + timedelta(days=1), ends_at=NOW + timedelta(days=3)), now=NOW
+    )
+
+    assert "Действует с 21.11.2026" in text and "до 23.11.2026" in text

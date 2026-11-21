@@ -322,7 +322,7 @@ Rules and meaning: [domain.md](domain.md#promotions). What lives where in
 | `order_schemas.py`                                     | What orders and the cart say about promotions (`OrderPromotionResponse`, `OrderGiftResponse`, `CartPromotionsResponse`).                                                |
 | `codes.py`                                             | `PromoCodesService` (issue, `usable`, list), `code_status`, `issue_missing_promo_codes`; `generate_code`, `normalize_code`, `validate_owner_code`, `code_string_taken`. |
 | `code_errors.py`, `code_schemas.py`, `codes_router.py` | The `PromoCodeError` subclasses (each carries its `code` and `status_code`, routers return them as is); `GET /me/promo-codes`.                                          |
-| `owner_codes.py`                                       | `OwnerCodesService` (the owner's CRUD over `Promotion` rows with a `code`, `usable`, `personal_for_user`), `resolve_code`, `OwnerCodeDraft`.                            |
+| `owner_codes.py`                                       | `OwnerCodesService` (the owner's CRUD over `Promotion` rows with a `code`, `usable`, `personal_for_user`), `resolve_code`, `OwnerCodeDraft`, `handed_to`.               |
 | `owner_code_schemas.py`, `owner_codes_router.py`       | `PromoCodeWriteRequest`, `AdminPromoCodeResponse`; the `/admin/promo-codes*` routes.                                                                                    |
 | `sweep.py`                                             | The read-only queries of `_run_promotion_sweep`: `unannounced_promotions`, `expiring_promo_codes`.                                                                      |
 

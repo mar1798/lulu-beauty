@@ -1278,8 +1278,11 @@ conditions stop holding.
   (`code_string_taken`) and issuing skips strings an owner code holds, so a duplicate needs two
   such inserts to race. If it ever happens, `resolve_code` gives the string to the customer the
   issued code belongs to and the owner code to everyone else.
-- A customer is **not told** (Telegram) when a personal code is assigned to them; they find it
-  on `/promocodes`.
+- A customer **is told** (Telegram, `personal_promo_code`) when a personal code becomes theirs:
+  created switched on for them, moved to them, or switched on while assigned to them. An edit
+  that changes neither (title, dates, rules) is silent, and so is a code they have already
+  used. Nothing is stamped: a code switched off and on again is announced again. General codes
+  are never sent to anyone.
 - Orders the owner places on a customer's behalf (`AdminOrderDialog`) take no promo code.
 - A gift picture the admin uploads and then abandons stays in storage.
 - There is no list page `/promotions` (only the carousel on `/catalog` and each promotion's

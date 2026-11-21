@@ -7,7 +7,7 @@ work; each route commits after it.
 import uuid
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import CurrentUser, require_super_admin
@@ -21,7 +21,7 @@ from app.promotions.owner_code_schemas import (
     AssignedUserResponse,
     PromoCodeWriteRequest,
 )
-from app.promotions.owner_codes import OwnerCodeDraft, OwnerCodesService
+from app.promotions.owner_codes import OwnerCodeDraft, OwnerCodesService, handed_to
 from app.promotions.rules import load_code_rewards, load_conditions, load_rewards
 from app.promotions.schemas import (
     PromotionDeletionResponse,
@@ -33,8 +33,18 @@ from app.promotions.service import (
     PromotionInvalidRulesError,
     PromotionNotFoundError,
 )
+from app.telegram.notify import notify_personal_promo_code
 
 router = APIRouter(prefix="/admin/promo-codes", tags=["admin-promo-codes"])
+
+
+def _tell(
+    background_tasks: BackgroundTasks, promotion: Promotion, user_id: uuid.UUID | None
+) -> None:
+    """Queues the bot's message to the customer a write gave a personal code to. Call it
+    after the commit: the task runs once the response is out."""
+    if user_id is not None:
+        background_tasks.add_task(notify_personal_promo_code, promotion.id, user_id)
 
 
 def _draft(body: PromoCodeWriteRequest) -> OwnerCodeDraft:
@@ -128,6 +138,7 @@ async def list_promo_codes(
 @router.post("", response_model=AdminPromoCodeResponse, status_code=status.HTTP_201_CREATED)
 async def create_promo_code(
     body: PromoCodeWriteRequest,
+    background_tasks: BackgroundTasks,
     session: AsyncSession = Depends(get_session),
     _admin: CurrentUser = Depends(require_super_admin),
 ) -> AdminPromoCodeResponse:
@@ -138,6 +149,7 @@ async def create_promo_code(
         raise _error(error) from error
     response = await _respond(service, promotion)
     await session.commit()
+    _tell(background_tasks, promotion, handed_to(promotion))
     return response
 
 
@@ -159,16 +171,24 @@ async def get_promo_code(
 async def update_promo_code(
     promo_code_id: uuid.UUID,
     body: PromoCodeWriteRequest,
+    background_tasks: BackgroundTasks,
     session: AsyncSession = Depends(get_session),
     _admin: CurrentUser = Depends(require_super_admin),
 ) -> AdminPromoCodeResponse:
     service = OwnerCodesService(session)
     try:
+        before = await service.get(promo_code_id)
+        was_user_id, was_enabled = before.assigned_user_id, before.is_enabled
         promotion = await service.update(promo_code_id, _draft(body))
     except _ERRORS as error:
         raise _error(error) from error
     response = await _respond(service, promotion)
     await session.commit()
+    _tell(
+        background_tasks,
+        promotion,
+        handed_to(promotion, was_user_id=was_user_id, was_enabled=was_enabled),
+    )
     return response
 
 
@@ -176,16 +196,24 @@ async def update_promo_code(
 async def set_promo_code_enabled(
     promo_code_id: uuid.UUID,
     body: PromotionEnabledRequest,
+    background_tasks: BackgroundTasks,
     session: AsyncSession = Depends(get_session),
     _admin: CurrentUser = Depends(require_super_admin),
 ) -> AdminPromoCodeResponse:
     service = OwnerCodesService(session)
     try:
+        before = await service.get(promo_code_id)
+        was_user_id, was_enabled = before.assigned_user_id, before.is_enabled
         promotion = await service.set_enabled(promo_code_id, body.is_enabled)
     except PromotionNotFoundError as error:
         raise _error(error) from error
     response = await _respond(service, promotion)
     await session.commit()
+    _tell(
+        background_tasks,
+        promotion,
+        handed_to(promotion, was_user_id=was_user_id, was_enabled=was_enabled),
+    )
     return response
 
 
