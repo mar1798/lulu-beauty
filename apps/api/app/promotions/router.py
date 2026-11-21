@@ -21,6 +21,7 @@ from app.promotions.models import Promotion, promotion_status
 from app.promotions.rules import load_conditions, load_rewards
 from app.promotions.schemas import (
     GiftImageResponse,
+    PromotionDeletionResponse,
     PromotionEnabledRequest,
     PromotionParticipantResponse,
     PromotionResponse,
@@ -246,20 +247,24 @@ async def set_promotion_enabled(
     return response
 
 
-@router.delete("/admin/promotions/{promotion_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/admin/promotions/{promotion_id}", response_model=PromotionDeletionResponse)
 async def delete_promotion(
     promotion_id: uuid.UUID,
     background_tasks: BackgroundTasks,
     session: AsyncSession = Depends(get_session),
     _admin: CurrentUser = Depends(require_super_admin),
-) -> None:
-    """Deletes it, or archives it when somebody already took part — see the service."""
+) -> PromotionDeletionResponse:
+    """Deletes it, or archives it when somebody already took part — see the service.
+
+    `deleted` says which of the two happened.
+    """
     try:
         deletion = await PromotionsService(session).delete(promotion_id)
     except PromotionNotFoundError as error:
         raise _write_error(error) from error
     await session.commit()
     background_tasks.add_task(discard_files, deletion.orphaned_urls)
+    return PromotionDeletionResponse(deleted=deletion.deleted)
 
 
 @router.post("/admin/promotions/{promotion_id}/banner", response_model=PromotionResponse)

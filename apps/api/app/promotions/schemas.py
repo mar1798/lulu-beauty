@@ -65,6 +65,12 @@ class PromotionEnabledRequest(CamelModel):
     is_enabled: bool
 
 
+class PromotionDeletionResponse(CamelModel):
+    """What a delete did: removed the row, or archived it because somebody had taken part."""
+
+    deleted: bool
+
+
 class PromotionResponse(CamelModel):
     id: uuid.UUID
     slug: str

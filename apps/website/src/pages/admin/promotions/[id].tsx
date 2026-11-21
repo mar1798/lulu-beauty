@@ -138,10 +138,11 @@ const AdminPromotionPage: React.FC = () => {
     }
 
     try {
-      await deletePromotion(promotion.id)
+      const { deleted } = await deletePromotion(promotion.id)
+
       notify({
         tone: 'success',
-        title: promotion.participantsCount > 0 ? 'Акция убрана в архив' : 'Акция удалена',
+        title: deleted ? 'Акция удалена' : 'Акция убрана в архив',
       })
       refreshAfterChange()
       await router.push('/admin/promotions')

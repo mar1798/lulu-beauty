@@ -52,12 +52,18 @@ export const setPromotionEnabled = (promotionId: string, isEnabled: boolean): Pr
     body: { isEnabled },
   })
 
+/** Ответ удаления: `deleted: false` - акцию не удалили, а убрали в архив. */
+export interface IDeletion {
+  deleted: boolean
+}
+
 /**
  * Удаляет акцию, а если в ней уже участвовали (в том числе снятые участия и
- * выданные коды) — переводит в архив. Какой из двух случаев вышел, из ответа не
- * видно (204): страница решает по `participantsCount` заранее.
+ * выданные коды) — переводит в архив. Какой из двух случаев вышел, говорит
+ * `deleted` в ответе: по `participantsCount` не угадать, снятые участия в нём
+ * не считаются, а архив их помнит.
  */
-export const deletePromotion = (promotionId: string): Promise<void> =>
+export const deletePromotion = (promotionId: string): Promise<IDeletion> =>
   api.remove(`/admin/promotions/${encodeURIComponent(promotionId)}`)
 
 /** Ставит баннер; заменённый файл бэкенд удаляет из хранилища сам. */

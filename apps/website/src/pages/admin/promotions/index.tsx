@@ -54,18 +54,23 @@ const AdminPromotionsPage: React.FC = () => {
     fetchError === undefined ? null : messageForError(fetchError, 'admin.promotions.load')
   const isFirstLoad = data === undefined && fetchError === undefined
 
-  const runAction = async (
+  const runAction = async <T,>(
     promotion: IPromotion,
-    action: () => Promise<unknown>,
-    success: string,
+    action: () => Promise<T>,
+    success: string | ((result: T) => string),
     scope: ErrorScope
   ): Promise<void> => {
     setBusyId(promotion.id)
     setActionError(null)
 
     try {
-      await action()
-      notify({ tone: 'success', title: success, description: promotion.title })
+      const result = await action()
+
+      notify({
+        tone: 'success',
+        title: typeof success === 'function' ? success(result) : success,
+        description: promotion.title,
+      })
       refreshPublicPages(...SHOWCASE_PATHS, promotionPath(promotion.slug))
       await mutate()
       // Другие варианты списка (с архивом и без) тоже устарели.
@@ -87,7 +92,7 @@ const AdminPromotionsPage: React.FC = () => {
       await runAction(
         promotion,
         () => deletePromotion(promotion.id),
-        promotion.participantsCount > 0 ? 'Акция убрана в архив' : 'Акция удалена',
+        ({ deleted }) => (deleted ? 'Акция удалена' : 'Акция убрана в архив'),
         'admin.promotion.delete'
       )
     }
