@@ -25,7 +25,7 @@ from app.promotions.rules import (
     dump_rewards,
 )
 from app.promotions.sweep import expiring_promo_codes, unannounced_promotions
-from app.telegram.notify import notify_promotion_started
+from app.telegram.notify import notify_promo_codes_issued, notify_promotion_started
 from app.telegram.service import BroadcastResult, Delivery
 from tests.integration.factories import make_cycle, make_product, make_user, variant_id
 
@@ -222,6 +222,20 @@ async def test_a_second_tick_mid_broadcast_does_not_start_another(
 
 
 # --- The whole sweep --------------------------------------------------------------------
+
+
+async def test_a_code_already_past_its_end_date_is_not_announced(
+    sweep_session: AsyncSession, sends: dict[str, AsyncMock]
+) -> None:
+    promotion = await _promotion(sweep_session)
+    dead = await _code(sweep_session, promotion, expires_in=timedelta(days=-1))
+    live = await _code(sweep_session, promotion, expires_in=timedelta(days=3))
+
+    await notify_promo_codes_issued([dead.id, live.id])
+
+    sends["issued"].assert_awaited_once()
+    assert sends["issued"].await_args is not None
+    assert sends["issued"].await_args.args[1].id == live.id
 
 
 async def test_the_sweep_announces_issues_missing_codes_and_reminds(

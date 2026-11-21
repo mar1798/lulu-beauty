@@ -1174,6 +1174,8 @@ and `rewards`, `valid_from`, `expires_at`, `status`, `used_order_id`, `reminded_
   (event racing the sweep) read as "already issued", and a revoked code does not block
   earning it again. The sweep `issue_missing_promo_codes` covers a paid order whose event
   failed (`CONFIRMED`/`READY`/`COMPLETED` with a live participation and no code).
+  A fixed-window template whose `valid_until` has already passed when the order is paid
+  still issues its code (it shows as `EXPIRED`), but the customer is not sent the bot message.
 - **Entering.** `POST /cart/promo-code/check` validates against the cart and writes nothing;
   `checkout` takes `promo_code`, locks the code row, checks **before** the order is created
   (a refusal leaves no order and an untouched cart), and attaches it as an `order_promotions`

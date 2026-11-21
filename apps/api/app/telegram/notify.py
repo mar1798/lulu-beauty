@@ -818,6 +818,10 @@ async def notify_promo_codes_issued(code_ids: Sequence[uuid.UUID]) -> None:
                 code = await session.get(PromoCode, code_id)
                 if code is None or code.status is PromoCodeStatus.REVOKED:
                     continue
+                if datetime.now(UTC) >= code.expires_at:
+                    # A fixed window that ended before the payment: the code is dead on
+                    # arrival, and telling the customer "valid until <past date>" only confuses.
+                    continue
                 await notify_promo_code_issued(session, code)
                 await session.commit()
         except Exception:  # noqa: BLE001 - one code's failure must not cost the others
