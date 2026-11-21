@@ -50,6 +50,12 @@ class ChecklistCycle(CamelModel):
     is_active: bool
 
 
+class ChecklistCustomGift(CamelModel):
+    title: str
+    image_url: str | None
+    quantity: int
+
+
 class ChecklistResponse(CamelModel):
     # None only when the shop has never had a cycle to show.
     cycle: ChecklistCycle | None
@@ -57,6 +63,8 @@ class ChecklistResponse(CamelModel):
     # The rows ticked as bought, shared by every admin (`ChecklistMark`). May name rows that
     # are no longer in `items` — a cancelled order's — which the page simply ignores.
     checked_keys: list[str] = []
+    # Free gifts to pack (`GiftKind.CUSTOM`) — not something to buy, so apart from `items`.
+    custom_gifts: list[ChecklistCustomGift] = []
 
 
 def _xlsx(content: bytes, filename: str) -> Response:
@@ -122,7 +130,9 @@ async def get_checklist(
     if cycle is None:
         return ChecklistResponse(cycle=None, items=[])
 
-    rows = await ExportService(session).checklist_rows(cycle.id)
+    exports = ExportService(session)
+    rows = await exports.checklist_rows(cycle.id)
+    custom_gifts = await exports.checklist_custom_gifts(cycle.id)
     # The owner's own lines go last, after everything the orders ask for.
     extras = await ChecklistExtrasService(session).list(cycle.id)
     checked_keys = await ChecklistMarksService(session).keys(cycle.id)
@@ -144,6 +154,10 @@ async def get_checklist(
         ]
         + [extra_item(extra) for extra in extras],
         checked_keys=checked_keys,
+        custom_gifts=[
+            ChecklistCustomGift(title=g.title, image_url=g.image_url, quantity=g.quantity)
+            for g in custom_gifts
+        ],
     )
 
 

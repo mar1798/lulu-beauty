@@ -9,6 +9,7 @@ import { Skeleton } from '../../atoms/skeleton'
 import { Text } from '../../atoms/text'
 import { Textarea } from '../../atoms/textarea'
 import { DeadlineCountdown } from '../../molecules/deadline-countdown'
+import { PromotionLines } from '../../molecules/promotion-lines'
 import * as styles from './CheckoutForm.css'
 
 /**
@@ -24,6 +25,10 @@ const NOTE_MAX_LENGTH = 2000
 export const CheckoutForm: FC<ICheckoutFormProps & IBasicStyling> = ({
   totalCents,
   itemCount,
+  promotions,
+  code = null,
+  buildPromotionHref,
+  promoCode,
   deadlineAt = null,
   onSubmit,
   isLoading = false,
@@ -32,6 +37,7 @@ export const CheckoutForm: FC<ICheckoutFormProps & IBasicStyling> = ({
   className,
 }) => {
   const [note, setNote] = useState('')
+  const hasDiscount = promotions !== undefined && promotions.discountCents > 0
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>): void => {
     event.preventDefault()
@@ -72,7 +78,29 @@ export const CheckoutForm: FC<ICheckoutFormProps & IBasicStyling> = ({
         <Price priceCents={totalCents} size="lg" />
       </div>
 
+      {/*
+        Со скидками «Товаров» остаётся суммой до них, под ним строки скидок, а
+        «К оплате» - число сервера. Сами скидки форма не считает и не округляет.
+      */}
+      {hasDiscount && promotions !== undefined && (
+        <>
+          <PromotionLines
+            promotions={promotions}
+            kind="discounts"
+            code={code}
+            buildPromotionHref={buildPromotionHref}
+          />
+
+          <div className={styles.totalRow}>
+            <Text weight="medium">К оплате</Text>
+            <Price priceCents={promotions.payableCents} size="lg" />
+          </div>
+        </>
+      )}
+
       <Divider />
+
+      {promoCode}
 
       <Textarea
         label="Комментарий к заявке"

@@ -33,6 +33,7 @@ import {
   writeGuestCart,
   type IGuestCartLine,
 } from '@/utils/guestStorage'
+import { NO_PROMOTIONS } from '@/utils/cartPromotions'
 import { useAuth } from './AuthContext'
 import { useDemand } from './useDemand'
 
@@ -103,10 +104,15 @@ const UNKNOWN_OWNER_ERROR = 'Проверяем сессию - попробуй�
 const toBody = (lines: readonly IGuestCartLine[]): IGuestCartLineBody[] =>
   lines.map(({ variantId, quantity }) => ({ variantId, quantity }))
 
-/** Объёмы гостевой корзины одной строкой — ключ предпросмотра (`guestCartKey`). */
+/**
+ * Объёмы гостевой корзины с количествами одной строкой — ключ предпросмотра
+ * (`guestCartKey`). Количества в ключе, потому что от них зависят акции: порог
+ * суммы или штук пересекается нажатием «+», и предпросмотр должен прочитаться
+ * заново, иначе гость увидел бы скидку, которой уже нет, или не увидел новую.
+ */
 const variantSet = (lines: readonly IGuestCartLine[]): string =>
   lines
-    .map(line => line.variantId)
+    .map(line => `${line.variantId}:${line.quantity}`)
     .sort()
     .join(',')
 
@@ -121,7 +127,7 @@ const loadGuestCart = async (): Promise<ICart> => {
   if (cart.lines.length > 0 && cart.cycleId !== null && preview.cycleId !== cart.cycleId) {
     rescueGuestCart()
 
-    return { ...preview, items: [], totalCents: 0 }
+    return { ...preview, items: [], totalCents: 0, promotions: NO_PROMOTIONS }
   }
 
   return preview
@@ -133,7 +139,13 @@ const loadGuestCart = async (): Promise<ICart> => {
  * подписана на корзину на каждой странице, тратила бы на каждый просмотр запрос из
  * общего лимита анонимов.
  */
-const EMPTY_GUEST_CART: ICart = { cycleId: null, cycleDeadlineAt: null, items: [], totalCents: 0 }
+const EMPTY_GUEST_CART: ICart = {
+  cycleId: null,
+  cycleDeadlineAt: null,
+  items: [],
+  totalCents: 0,
+  promotions: NO_PROMOTIONS,
+}
 
 /**
  * Перенос не состоялся из-за сбора: он закрылся или сменился, пока гость входил.
@@ -156,6 +168,11 @@ const guestView = (preview: ICart, lines: readonly IGuestCartLine[]): ICart => {
       : [{ ...item, quantity, lineTotalCents: item.productPriceCents * quantity }]
   })
 
+  /*
+    Акции остаются от предыдущего ответа, пока не придёт новый (`keepPreviousData`):
+    на 200 мс «вчерашняя» скидка честнее, чем блок итогов, который исчез и
+    вернулся бы на каждое нажатие «+».
+  */
   return { ...preview, items, totalCents: totalOf(items) }
 }
 
@@ -572,6 +589,7 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
               ...current,
               items: [],
               totalCents: 0,
+              promotions: NO_PROMOTIONS,
             })
           ),
     [isGuest, runGuest, runMutation]

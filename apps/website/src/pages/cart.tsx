@@ -132,6 +132,7 @@ const CartPage: React.FC = () => {
           isItemBusy={isItemBusy}
           error={error}
           buildProductHref={slug => `/catalog/${slug}`}
+          buildPromotionHref={slug => `/promotions/${slug}`}
           onQuantityChange={(variantId, quantity) => {
             void changeQuantity(variantId, quantity)
           }}

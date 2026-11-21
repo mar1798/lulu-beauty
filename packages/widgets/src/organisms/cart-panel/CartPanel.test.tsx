@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { CartPanel } from '.'
-import { feedCartPanel } from '../../stories/feed'
+import { formatPrice } from '../../atoms/price'
+import { feedCartPanel, feedCartPanelWithPromotions } from '../../stories/feed'
 import { renderWidget } from '../../testing/render'
 
 /**
@@ -75,5 +76,44 @@ describe('CartPanel', () => {
     )
 
     expect(getByText('Пока пусто')).toBeTruthy()
+  })
+
+  describe('акции', () => {
+    it('без акций итог - сумма корзины, строк скидок и подарков нет', () => {
+      const { queryByText } = renderWidget(<CartPanel {...feedCartPanel()} />)
+
+      expect(queryByText('Товары')).toBeNull()
+      expect(queryByText('Бесплатно')).toBeNull()
+    })
+
+    it('подарок идёт строкой после позиций, с названием акции', () => {
+      const { getByText } = renderWidget(<CartPanel {...feedCartPanelWithPromotions()} />)
+
+      expect(getByText('Mystery box')).toBeTruthy()
+      expect(getByText('Бесплатно')).toBeTruthy()
+      expect(getByText('Акция «Весенняя распродажа»', { selector: 'p' })).toBeTruthy()
+    })
+
+    it('со скидкой показывает строку скидки и сумму к оплате с сервера', () => {
+      const props = feedCartPanelWithPromotions()
+      const payable = props.cart?.promotions.payableCents ?? 0
+      const discount = props.cart?.promotions.discountCents ?? 0
+      const { getByText } = renderWidget(<CartPanel {...props} />)
+      // Разряды суммы разделены неразрывным пробелом, а `getByText` сворачивает его в обычный.
+      const text = (prefix: string, cents: number): RegExp =>
+        new RegExp(`^${prefix}${formatPrice(cents).replace(/\s/g, '\\s')}$`)
+
+      expect(getByText('Товары')).toBeTruthy()
+      expect(getByText(text('-', discount))).toBeTruthy()
+      expect(getByText(text('', payable))).toBeTruthy()
+    })
+
+    it('подсказка «ещё N сом» ведёт на страницу акции', () => {
+      const { getByRole } = renderWidget(<CartPanel {...feedCartPanelWithPromotions()} />)
+
+      expect(getByRole('link', { name: '«Подарок за большую заявку»' }).getAttribute('href')).toBe(
+        '/promotions/big-order'
+      )
+    })
   })
 })

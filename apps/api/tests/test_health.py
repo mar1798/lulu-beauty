@@ -61,6 +61,4 @@ def test_the_rate_limiter_is_mounted_on_the_real_app() -> None:
     from app.common.rate_limit import RateLimitMiddleware
     from app.main import create_app
 
-    assert any(
-        middleware.cls is RateLimitMiddleware for middleware in create_app().user_middleware
-    )
+    assert any(middleware.cls is RateLimitMiddleware for middleware in create_app().user_middleware)

@@ -1,10 +1,15 @@
-import type { IOrder, IPage } from 'widgets/types'
+import type { IOrder, IOrderEditPreview, IPage } from 'widgets/types'
 import { api } from '../api'
 
 /** Заказы покупателя. Оформление переносит текущую корзину в заказ активного сбора. */
 
-export const checkout = (note?: string): Promise<IOrder> =>
-  api.post('/orders/checkout', { body: { note: note ?? null } })
+/**
+ * `promoCode` - код, который покупатель ввёл на оформлении и сервер уже проверил
+ * (`checkPromoCode`): его условия перепроверяются при оформлении, а сам код
+ * резервируется за заявкой. Без кода - `null`, ничего не применяется.
+ */
+export const checkout = (note?: string, promoCode?: string): Promise<IOrder> =>
+  api.post('/orders/checkout', { body: { note: note ?? null, promoCode: promoCode ?? null } })
 
 export interface IMyOrderListParams {
   page?: number
@@ -116,3 +121,24 @@ export const cancelMyOrder = (orderId: string): Promise<IOrder> =>
  */
 export const restoreMyOrder = (orderId: string): Promise<IOrder> =>
   api.post(`/orders/${encodeURIComponent(orderId)}/restore`)
+
+/**
+ * Что правка сделает с акциями заявки - до самой правки. Сервер выполняет её
+ * и откатывает, поэтому условия акций и арифметика остаются на нём. Либо
+ * `itemId` (строка заявки; `quantity: 0` - убрать её), либо `variantId`
+ * (объём, который добавляют).
+ */
+export interface IOrderEditTarget {
+  itemId?: string
+  variantId?: string
+  quantity: number
+}
+
+export const previewMyOrderEdit = (
+  orderId: string,
+  revision: number,
+  target: IOrderEditTarget
+): Promise<IOrderEditPreview> =>
+  api.post(`/orders/${encodeURIComponent(orderId)}/edit-preview`, {
+    body: { revision, ...target },
+  })

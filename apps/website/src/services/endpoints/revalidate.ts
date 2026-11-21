@@ -19,6 +19,9 @@ export const SHOWCASE_PATHS = ['/', '/catalog'] as const
 
 export const productPath = (slug: string): string => `/catalog/${slug}`
 
+/** Страница акции: её сохранение, включение и удаление пересобирают и её, и витрину с каруселью. */
+export const promotionPath = (slug: string): string => `/promotions/${slug}`
+
 const requestRevalidate = (paths: string[]): Promise<IRevalidateResult> =>
   nextApi.post('/revalidate', { body: { paths } })
 

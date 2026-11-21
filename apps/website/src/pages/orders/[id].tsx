@@ -15,6 +15,8 @@ import { useProductSearch } from '@/hooks/useProductSearch'
 import {
   discountLoss,
   linesOfVariants,
+  lostPromotions,
+  promotionLoss,
   useDiscountLossConfirm,
 } from '@/hooks/useDiscountLossConfirm'
 import { isApiError, messageForError, type ErrorScope } from '@/services/apiErrors'
@@ -289,10 +291,11 @@ const OrderPage: React.FC = () => {
           уведомлением бота об этой же отмене.
         */
         contactLink={{ href: INSTAGRAM_URL, target: '_blank' }}
+        promoCodesHref="/promocodes"
         onItemQuantityChange={(itemId, quantity) => {
           void (async (): Promise<void> => {
             // Отказ ничего не откатывает: степпер показывает количество из заявки.
-            if (!(await confirmDiscountLoss(order, [itemId]))) {
+            if (!(await confirmDiscountLoss(order, [itemId], [{ itemId, quantity }]))) {
               return
             }
 
@@ -326,12 +329,6 @@ const OrderPage: React.FC = () => {
             «Вернуть» из тоста товар возвращает, а скидку — нет.
           */
           const loss = discountLoss(order, [itemId])
-          const description = [
-            name === undefined ? null : `«${name}» больше не будет в этой заявке`,
-            loss,
-          ]
-            .filter((line): line is string => line !== null)
-            .join('. ')
 
           /*
             «Вернуть» идёт уже после удаления — с `revision`, которую вернуло
@@ -340,6 +337,16 @@ const OrderPage: React.FC = () => {
           let revisionAfter = order.revision
 
           void (async (): Promise<void> => {
+            // Акции, которые потеряет заявка, называет сервер (`edit-preview`): тот же диалог.
+            const promotions = promotionLoss(await lostPromotions(order, [{ itemId, quantity: 0 }]))
+            const description = [
+              name === undefined ? null : `«${name}» больше не будет в этой заявке`,
+              loss,
+              promotions,
+            ]
+              .filter((line): line is string => line !== null)
+              .join('. ')
+
             const confirmed = await confirm({
               title: 'Удалить товар из заявки?',
               description: description === '' ? undefined : description,
@@ -394,7 +401,11 @@ const OrderPage: React.FC = () => {
               .filter((variantId): variantId is string => variantId !== null)}
             onAdd={variantId => {
               void (async (): Promise<void> => {
-                if (!(await confirmDiscountLoss(order, linesOfVariants(order, [variantId])))) {
+                const edits = [{ variantId, quantity: 1 }]
+
+                if (
+                  !(await confirmDiscountLoss(order, linesOfVariants(order, [variantId]), edits))
+                ) {
                   return
                 }
 

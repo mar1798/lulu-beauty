@@ -25,6 +25,10 @@ export type ErrorScope =
   | 'cart.empty'
   | 'cart.merge'
   | 'checkout'
+  // проверка промокода в корзине, до оформления заявки
+  | 'promoCode.check'
+  // страница «Промокоды»
+  | 'promoCodes.load'
   // избранное
   | 'wishlist.load'
   | 'wishlist.add'
@@ -55,6 +59,22 @@ export type ErrorScope =
   | 'admin.product.delete'
   | 'admin.product.restore'
   | 'admin.product.images'
+  // акции
+  | 'admin.promotions.load'
+  | 'admin.promotion.create'
+  | 'admin.promotion.update'
+  | 'admin.promotion.toggle'
+  | 'admin.promotion.delete'
+  | 'admin.promotion.banner'
+  | 'admin.promotion.giftImage'
+  | 'admin.promotion.participants'
+  // промокоды владельца
+  | 'admin.promoCodes.load'
+  | 'admin.promoCode.create'
+  | 'admin.promoCode.update'
+  | 'admin.promoCode.toggle'
+  | 'admin.promoCode.delete'
+  | 'admin.promoCode.participants'
   | 'admin.categories'
   | 'admin.cycles'
   | 'admin.import'
@@ -192,6 +212,27 @@ const MESSAGES: Record<string, string> = {
     'Открытый сбор уже есть, и он может быть только один: второй оставит корзины покупателей в первом. Закройте текущий сбор или измените его дату.',
   cycle_already_closed: 'Этот сбор уже закрыт. Обновите страницу.',
 
+  // --- акции ---
+  promotion_not_found: 'Акция не найдена - возможно, её уже удалили. Обновите страницу.',
+  // Адрес занят и архивной акцией тоже: старая ссылка не должна вести на другое предложение.
+  promotion_slug_taken:
+    'Такой адрес (slug) уже занят другой акцией, в том числе архивной. Измените slug.',
+  promotion_ends_before_start: 'Акция должна заканчиваться позже, чем начинается',
+  // Фиксированные даты промокода-награды уже в прошлом: такой код родился бы просроченным.
+  promotion_code_window_past:
+    'Срок действия промокода уже закончился. Укажите даты в будущем или задайте срок в днях.',
+  // Условие или награда ссылается на товар, вариант или категорию, которых в каталоге
+  // больше нет (сняли с продажи, пока форма была открыта).
+  promotion_invalid_rules:
+    'В условиях или наградах есть товар или категория, которых больше нет в каталоге. Выберите их заново.',
+
+  // --- промокоды владельца ---
+  // Строка кода одна на все виды промокодов: и владельца, и выданные покупателям.
+  promo_code_taken:
+    'Такой код уже есть - у другого промокода, в том числе архивного, или среди выданных покупателям. Введите другой или сгенерируйте.',
+  promo_code_invalid: 'Код - от 4 до 16 символов, пробелы не считаются.',
+  promo_code_user_not_found: 'Покупатель не найден - возможно, аккаунт удалён. Выберите другого.',
+
   // --- корзина и заявки ---
   cart_item_not_found: 'Этой позиции в корзине уже нет. Обновите страницу.',
   cart_is_empty: 'В корзине пусто - отправлять нечего',
@@ -285,6 +326,14 @@ const MESSAGES: Record<string, string> = {
  *
  * Ключ второго уровня — код либо `http_<статус>` для ответов без кода.
  */
+/** Отказы загрузки картинки акции (баннер, подарок): те же коды, что у фото товара. */
+const PROMOTION_IMAGE_ERRORS: Record<string, string> = {
+  unsupported_image_type: 'Подойдут только JPG, PNG или WebP. Пересохраните файл в этих форматах.',
+  image_unreadable: 'Файл повреждён или это не картинка - пересохраните его и попробуйте снова',
+  image_too_large: 'Картинка больше 15 МБ - сожмите её и загрузите снова',
+  image_too_many_pixels: 'Слишком большое разрешение - уменьшите картинку до 4000×4000',
+}
+
 const SCOPED: Partial<Record<ErrorScope, Record<string, string>>> = {
   'admin.order.create': {
     user_not_found: 'Покупатель удалил аккаунт - выберите другого',
@@ -355,6 +404,25 @@ const SCOPED: Partial<Record<ErrorScope, Record<string, string>>> = {
     cart_is_empty: 'Корзина пуста - добавьте товары из каталога, прежде чем оформлять заявку',
     not_authenticated: 'Сессия истекла. Войдите заново и отправьте заявку ещё раз.',
     invalid_token: 'Сессия истекла. Войдите заново и отправьте заявку ещё раз.',
+    promo_code_not_found: 'Такого промокода нет. Проверьте, что ввели его без ошибок.',
+    promo_code_expired: 'Срок действия этого промокода закончился.',
+    promo_code_not_yet_valid: 'Этот промокод ещё не начал действовать.',
+    promo_code_already_used:
+      'Вы уже использовали этот промокод, или он лежит в другой вашей заявке.',
+    promo_code_conditions_not_met: 'Корзина не подходит под условия промокода.',
+  },
+  'promoCode.check': {
+    promo_code_not_found: 'Такого промокода нет. Проверьте, что ввели его без ошибок.',
+    promo_code_expired: 'Срок действия этого промокода закончился.',
+    promo_code_not_yet_valid: 'Этот промокод ещё не начал действовать.',
+    promo_code_already_used:
+      'Вы уже использовали этот промокод, или он лежит в другой вашей заявке.',
+    promo_code_conditions_not_met: 'Корзина не подходит под условия промокода.',
+    not_authenticated: 'Промокоды привязаны к аккаунту - войдите, чтобы применить промокод',
+    invalid_token: 'Сессия истекла. Войдите заново и введите промокод ещё раз.',
+  },
+  'promoCodes.load': {
+    not_authenticated: 'Промокоды у каждого свои - войдите, чтобы увидеть их',
   },
 
   'order.note': {
@@ -433,6 +501,49 @@ const SCOPED: Partial<Record<ErrorScope, Record<string, string>>> = {
     image_too_many_pixels: 'Слишком большое разрешение - уменьшите фотографию до 4000×4000',
     product_not_found: 'Товар удалён - загружать фотографии некуда',
   },
+  'admin.promotion.create': {
+    promotion_slug_taken:
+      'Такой адрес (slug) уже занят другой акцией, в том числе архивной. Измените slug.',
+  },
+  'admin.promotion.update': {
+    promotion_not_found: 'Акцию уже удалили - сохранять нечего. Вернитесь к списку.',
+    promotion_slug_taken:
+      'Такой адрес (slug) уже занят другой акцией, в том числе архивной. Измените slug.',
+  },
+  'admin.promotion.toggle': {
+    promotion_not_found: 'Акцию уже удалили. Обновите список.',
+  },
+  'admin.promotion.delete': {
+    promotion_not_found: 'Акцию уже удалили. Обновите список.',
+  },
+  'admin.promotion.banner': {
+    ...PROMOTION_IMAGE_ERRORS,
+    promotion_not_found: 'Акцию уже удалили - баннер загружать некуда.',
+  },
+  'admin.promotion.giftImage': PROMOTION_IMAGE_ERRORS,
+  'admin.promotion.participants': {
+    promotion_not_found: 'Акцию уже удалили. Обновите список.',
+  },
+  'admin.promoCode.create': {
+    promotion_ends_before_start: 'Промокод должен заканчиваться позже, чем начинается',
+    promotion_invalid_rules:
+      'В условиях или наградах есть товар или категория, которых больше нет в каталоге. Выберите их заново.',
+  },
+  'admin.promoCode.update': {
+    promo_code_not_found: 'Промокод уже удалили - сохранять нечего. Вернитесь к списку.',
+    promotion_ends_before_start: 'Промокод должен заканчиваться позже, чем начинается',
+    promotion_invalid_rules:
+      'В условиях или наградах есть товар или категория, которых больше нет в каталоге. Выберите их заново.',
+  },
+  'admin.promoCode.toggle': {
+    promo_code_not_found: 'Промокод уже удалили. Обновите список.',
+  },
+  'admin.promoCode.delete': {
+    promo_code_not_found: 'Промокод уже удалили. Обновите список.',
+  },
+  'admin.promoCode.participants': {
+    promo_code_not_found: 'Промокод уже удалили. Обновите список.',
+  },
   'admin.categories': {
     slug_already_exists: 'Категория с таким адресом (slug) уже есть. Измените slug.',
   },
@@ -491,6 +602,8 @@ const SCOPE_FALLBACKS: Record<ErrorScope, string> = {
   'wishlist.merge':
     'Не удалось перенести избранное в аккаунт - попробуем ещё раз, когда обновите страницу',
   checkout: 'Не удалось отправить заявку',
+  'promoCode.check': 'Не удалось проверить промокод',
+  'promoCodes.load': 'Не удалось загрузить промокоды',
   'order.load': 'Не удалось загрузить заявку',
   'order.note': 'Не удалось сохранить комментарий',
   'order.item.add': 'Не удалось добавить товар в заявку',
@@ -516,6 +629,20 @@ const SCOPE_FALLBACKS: Record<ErrorScope, string> = {
   'admin.product.delete': 'Не удалось удалить товар',
   'admin.product.restore': 'Не удалось восстановить товар',
   'admin.product.images': 'Не удалось изменить фотографии',
+  'admin.promotions.load': 'Не удалось загрузить акции',
+  'admin.promotion.create': 'Не удалось создать акцию',
+  'admin.promotion.update': 'Не удалось сохранить акцию',
+  'admin.promotion.toggle': 'Не удалось включить или выключить акцию',
+  'admin.promotion.delete': 'Не удалось удалить акцию',
+  'admin.promotion.banner': 'Не удалось изменить баннер',
+  'admin.promotion.giftImage': 'Не удалось загрузить картинку подарка',
+  'admin.promotion.participants': 'Не удалось загрузить участников акции',
+  'admin.promoCodes.load': 'Не удалось загрузить промокоды',
+  'admin.promoCode.create': 'Не удалось создать промокод',
+  'admin.promoCode.update': 'Не удалось сохранить промокод',
+  'admin.promoCode.toggle': 'Не удалось включить или выключить промокод',
+  'admin.promoCode.delete': 'Не удалось удалить промокод',
+  'admin.promoCode.participants': 'Не удалось загрузить использования промокода',
   'admin.categories': 'Не удалось изменить категории',
   'admin.cycles': 'Не удалось изменить сбор',
   'admin.import': 'Не удалось импортировать файл',
@@ -565,6 +692,37 @@ const FIELD_LABELS: Record<string, string> = {
   alt: 'Описание фотографии',
   page: 'Страница',
   pageSize: 'Размер страницы',
+  // акции: поля запроса и вложенных строк условий и наград
+  title: 'Название',
+  descriptionHtml: 'Описание',
+  startsAt: 'Начало акции',
+  endsAt: 'Конец акции',
+  isEnabled: 'Включена',
+  announce: 'Объявление',
+  conditions: 'Условия',
+  rewards: 'Награды',
+  minCents: 'Сумма',
+  minQuantity: 'Количество',
+  value: 'Значение скидки',
+  kind: 'Вид скидки',
+  target: 'Цель',
+  productIds: 'Товары',
+  categoryIds: 'Категории',
+  brands: 'Бренды',
+  mode: 'Режим',
+  gift: 'Вид подарка',
+  imageUrl: 'Картинка подарка',
+  variantId: 'Вариант товара',
+  validDays: 'Срок в днях',
+  validFrom: 'Действует с',
+  validUntil: 'Действует по',
+  // метки типов строк: pydantic кладёт их в `loc` у вложенных ошибок
+  DISCOUNT: 'Скидка',
+  GIFT: 'Подарок',
+  PROMO_CODE: 'Промокод',
+  SUBTOTAL: 'Условие «сумма»',
+  QUANTITY: 'Условие «количество»',
+  CONTAINS: 'Условие «содержит»',
 }
 
 /** Поля, у которых «неверный формат» обязан быть конкретным — иначе не починить. */
@@ -590,6 +748,13 @@ const numberFrom = (ctx: Record<string, unknown> | undefined, key: string): numb
   const value = ctx?.[key]
 
   return typeof value === 'number' ? value : null
+}
+
+/** Текст собственной проверки без служебного префикса pydantic; `null`, если текста нет. */
+const valueErrorText = (msg: string | undefined): string | null => {
+  const text = msg?.replace(/^Value error,\s*/i, '').trim()
+
+  return text === undefined || text === '' ? null : text
 }
 
 /** Человеческое «что не так» по типу ошибки pydantic. */
@@ -645,6 +810,9 @@ const ruleFor = (entry: IValidationDetail, field: string): string => {
       return 'нужен текст'
     case 'json_invalid':
       return 'запрос не разобран - обновите страницу'
+    case 'value_error':
+      // Свои проверки бэкенда (правила акции) пишут по-русски: «Value error, срок промокода - …».
+      return valueErrorText(entry.msg) ?? 'значение не подошло'
     default:
       return 'значение не подошло'
   }
@@ -681,6 +849,19 @@ const issuesFromDetail = (detail: unknown[]): IFieldIssue[] => {
 
     const field = fieldFromLoc(entry.loc)
 
+    // Проверка, охватывающая несколько полей сразу («промокод в акции один»), стоит на `body`
+    // без имени поля: её текст и есть вся претензия.
+    if (field === null && entry.type === 'value_error') {
+      const rule = valueErrorText(entry.msg)
+
+      if (rule !== null && !seen.has(rule)) {
+        seen.add(rule)
+        issues.push({ field: '', rule })
+      }
+
+      continue
+    }
+
     // Одно поле — одна претензия: показывать «не короче 8» и «формат» разом незачем.
     if (field === null || seen.has(field)) {
       continue
@@ -707,7 +888,9 @@ const summaryOfIssues = (issues: IFieldIssue[]): string | null => {
 
   const listed = issues
     .slice(0, MAX_LISTED_FIELDS)
-    .map(issue => `${labelFor(issue.field)}: ${issue.rule}`)
+    .map(issue =>
+      issue.field === '' ? capitalize(issue.rule) : `${labelFor(issue.field)}: ${issue.rule}`
+    )
     .join('; ')
 
   return issues.length > MAX_LISTED_FIELDS ? `${listed} - и другие поля.` : `${listed}.`
@@ -763,7 +946,9 @@ export class ApiError extends Error {
     this.code = code
     this.issues = issues
     this.fields = Object.fromEntries(
-      issues.map(issue => [issue.field, `${capitalize(issue.rule)}.`])
+      issues
+        .filter(issue => issue.field !== '')
+        .map(issue => [issue.field, `${capitalize(issue.rule)}.`])
     )
   }
 

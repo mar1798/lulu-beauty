@@ -8,7 +8,10 @@ import { Price } from '../../atoms/price'
 import { Skeleton } from '../../atoms/skeleton'
 import { Text } from '../../atoms/text'
 import { DeadlineCountdown } from '../../molecules/deadline-countdown'
+import { GiftLine } from '../../molecules/gift-line'
 import { ItemRow } from '../../molecules/item-row'
+import { PromotionLines } from '../../molecules/promotion-lines'
+import { cartPayableCents, giftSource } from '../../utils/promotion'
 import * as styles from './CartPanel.css'
 
 /**
@@ -19,6 +22,12 @@ import * as styles from './CartPanel.css'
  * избранное — это и есть главное, что человек должен видеть рядом с кнопкой.
  *
  * Пустая корзина и «сбора нет» — разные состояния и разные подсказки.
+ *
+ * Акции приходят в `cart.promotions` готовыми: подарки идут строками после
+ * позиций (они не позиции - их нельзя ни править, ни убрать), скидки - строками
+ * итога, а «ещё N сом до акции» - над итогом. Сумма к оплате берётся с сервера;
+ * пока скидок нет, это обычный `totalCents`, который клиент двигает
+ * оптимистично.
  */
 
 const DEFAULT_SKELETON_ROWS = 2
@@ -26,6 +35,7 @@ const DEFAULT_SKELETON_ROWS = 2
 export const CartPanel: FC<ICartPanelProps & IBasicStyling> = ({
   cart,
   buildProductHref,
+  buildPromotionHref,
   onQuantityChange,
   onRemove,
   onCheckout,
@@ -89,6 +99,8 @@ export const CartPanel: FC<ICartPanelProps & IBasicStyling> = ({
   }
 
   const hasCycle = cart.cycleId !== null
+  const { promotions } = cart
+  const hasDiscount = promotions.discountCents > 0
 
   return (
     <div className={clsx(styles.container, className)}>
@@ -110,6 +122,16 @@ export const CartPanel: FC<ICartPanelProps & IBasicStyling> = ({
             onRemove={() => onRemove(item.variantId)}
           />
         ))}
+
+        {promotions.gifts.map((gift, index) => (
+          <GiftLine
+            // Подарок не имеет id; одинаковые по содержимому различает порядок в ответе.
+            // eslint-disable-next-line react/no-array-index-key
+            key={`${gift.title}-${index}`}
+            gift={gift}
+            note={giftSource(promotions, gift) ?? undefined}
+          />
+        ))}
       </div>
 
       <div className={styles.summary}>
@@ -127,11 +149,36 @@ export const CartPanel: FC<ICartPanelProps & IBasicStyling> = ({
           </Alert>
         )}
 
+        <PromotionLines
+          promotions={promotions}
+          kind="hints"
+          buildPromotionHref={buildPromotionHref}
+        />
+
         <Divider />
+
+        {hasDiscount && (
+          <>
+            <div className={styles.subtotalRow}>
+              <Text size="sm" tone="secondary" as="span">
+                Товары
+              </Text>
+              <Text size="sm" tone="secondary" as="span">
+                <Price priceCents={cart.totalCents} size="sm" />
+              </Text>
+            </div>
+
+            <PromotionLines
+              promotions={promotions}
+              kind="discounts"
+              buildPromotionHref={buildPromotionHref}
+            />
+          </>
+        )}
 
         <div className={styles.totalRow}>
           <Text weight="medium">Итого</Text>
-          <Price priceCents={cart.totalCents} size="lg" />
+          <Price priceCents={cartPayableCents(cart)} size="lg" />
         </div>
 
         {/*

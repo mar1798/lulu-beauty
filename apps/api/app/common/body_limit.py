@@ -7,11 +7,11 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 logger = logging.getLogger("app.body_limit")
 
-# Both upload endpoints check their own, stricter limits (`MAX_IMAGE_BYTES`,
-# `MAX_IMPORT_BYTES`); this is the outer bound that has to hold before the route — and
-# therefore before `require_admin` — is reached at all. Wide enough to leave those
-# checks the ones that produce the readable errors, so it has to stay above the largest
-# of them (images, 15 MB) plus the multipart envelope around it.
+# Every upload endpoint checks its own, stricter limit (`MAX_IMAGE_BYTES` in
+# `app/common/uploads.py`, `MAX_IMPORT_BYTES`); this is the outer bound that has to hold
+# before the route — and therefore before `require_admin` — is reached at all. Wide
+# enough to leave those checks the ones that produce the readable errors, so it has to
+# stay above the largest of them (images, 15 MB) plus the multipart envelope around it.
 #
 # In production this is not the outermost limit: Caddy has `request_body max_size` in
 # deploy/Caddyfile, deliberately one MiB above this number. It has to stay above it —

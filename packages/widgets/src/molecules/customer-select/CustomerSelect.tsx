@@ -159,6 +159,7 @@ export const CustomerSelect: FC<ICustomerSelectProps & IBasicStyling> = ({
         label={label}
         placeholder="Имя или телефон"
         isBusy={isSearching}
+        isForm={false}
       />
 
       {list()}

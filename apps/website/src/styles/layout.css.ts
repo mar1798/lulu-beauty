@@ -1,5 +1,5 @@
 import { style } from '@vanilla-extract/css'
-import { rem } from 'widgets/styling/lib'
+import { media, rem } from 'widgets/styling/lib'
 import { flexRow, focusVisibleRing } from 'widgets/styling/mixin'
 import { vars } from 'widgets/styling/theme'
 
@@ -51,6 +51,16 @@ export const inlineIcon = style({
  * фоном, — поэтому отличать ссылку от текста приходится подчёркиванием и
  * насыщенностью: одного цвета там нет вовсе, и без них она сливается.
  */
+/** Маркированный список внутри `Alert`: акции в заявке - по пункту на скидку и подарок. */
+export const alertList = style({
+  display: 'flex',
+  flexDirection: 'column',
+  gap: rem(4),
+  margin: 0,
+  paddingLeft: rem(20),
+  listStyle: 'disc',
+})
+
 export const alertLink = style([
   {
     fontWeight: 500,
@@ -72,4 +82,18 @@ export const alertLink = style([
 export const flushPicker = style({
   padding: 0,
   backgroundColor: 'transparent',
+})
+
+/**
+ * Купоны промокодов - по одному в строку на всю ширину: корешок и факты в ряд в
+ * половине не помещаются. Длинный код и условия переносятся внутри купона, а не
+ * растягивают сетку (`minmax(0, 1fr)`).
+ */
+export const promoCodeGrid = style({
+  display: 'grid',
+  gridTemplateColumns: 'minmax(0, 1fr)',
+  gap: vars.space.md,
+  ...media({
+    md: { gap: vars.space.lg },
+  }),
 })

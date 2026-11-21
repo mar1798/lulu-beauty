@@ -31,6 +31,15 @@ export const list = style({
  * это подсказка поиска, а не содержимое заявки, и перевешивать сам состав
  * она не должна.
  */
+/** Выбранная строка (режим `selected`): подложка акцента, чтобы выбор был виден в списке. */
+export const rowSelected = style({
+  backgroundColor: color.brand('50'),
+  borderRadius: vars.radius.lg,
+  // Подложка выходит за край на свой отступ: содержимое остаётся вровень с соседними строками.
+  paddingInline: vars.space.sm,
+  marginInline: `calc(-1 * ${vars.space.sm})`,
+})
+
 export const row = style({
   ...flexRow(12),
   alignItems: 'center',

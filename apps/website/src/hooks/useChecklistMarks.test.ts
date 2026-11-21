@@ -36,6 +36,7 @@ const fetchChecklist = vi.fn((): Promise<IAdminChecklist> =>
     cycle: { id: 'cycle-1', label: null, deadlineAt: '2030-01-01T00:00:00Z', isActive: true },
     items: [],
     checkedKeys: [...serverKeys],
+    customGifts: [],
   })
 )
 

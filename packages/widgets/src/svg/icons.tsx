@@ -152,6 +152,16 @@ export const IconRestore: FC<IBasicStyling> = ({ className }) => (
   </svg>
 )
 
+/** Перегенерировать значение: две стрелки по кругу. */
+export const IconRefresh: FC<IBasicStyling> = ({ className }) => (
+  <svg {...base} className={className}>
+    <path d="M20 11a8 8 0 0 0-14.3-4.9L4 8" />
+    <path d="M4 4v4h4" />
+    <path d="M4 13a8 8 0 0 0 14.3 4.9L20 16" />
+    <path d="M20 20v-4h-4" />
+  </svg>
+)
+
 export const IconDownload: FC<IBasicStyling> = ({ className }) => (
   <svg {...base} className={className}>
     <path d="M12 3v12M7.5 10.5 12 15l4.5-4.5" />
@@ -288,5 +298,61 @@ export const IconLink: FC<IBasicStyling> = ({ className }) => (
   <svg {...base} className={className}>
     <path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7" />
     <path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7" />
+  </svg>
+)
+
+/** Дублировать: два листа, один поверх другого. */
+export const IconCopy: FC<IBasicStyling> = ({ className }) => (
+  <svg {...base} className={className}>
+    <rect x="9" y="9" width="11" height="11" rx="2" />
+    <path d="M5 15V6a2 2 0 0 1 2-2h9" />
+  </svg>
+)
+
+/** Участники: два силуэта. */
+export const IconUsers: FC<IBasicStyling> = ({ className }) => (
+  <svg {...base} className={className}>
+    <circle cx="9" cy="8" r="3.25" />
+    <path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6" />
+    <path d="M16 5.2a3.25 3.25 0 0 1 0 5.6M18 14.3c1.8.8 3 2.6 3 4.7" />
+  </svg>
+)
+
+/** Подарок: коробка с лентой. */
+export const IconGift: FC<IBasicStyling> = ({ className }) => (
+  <svg {...base} className={className}>
+    <rect x="3.5" y="8" width="17" height="4" rx="1" />
+    <path d="M5 12v8h14v-8M12 8v12" />
+    <path d="M12 8c-1.2-3.5-5-3.8-5-1.6C7 8 9 8 12 8Zm0 0c1.2-3.5 5-3.8 5-1.6C17 8 15 8 12 8Z" />
+  </svg>
+)
+
+/** Промокод: билет с вырезами по бокам. */
+export const IconTicket: FC<IBasicStyling> = ({ className }) => (
+  <svg {...base} className={className}>
+    <path d="M4 8a1 1 0 0 1 1-1h14a1 1 0 0 1 1 1v2a2 2 0 0 0 0 4v2a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-2a2 2 0 0 0 0-4V8Z" />
+    <path d="M14.5 7v2M14.5 11v2M14.5 15v2" />
+  </svg>
+)
+
+/** Скопировать в буфер обмена: планшет с листом. */
+export const IconClipboard: FC<IBasicStyling> = ({ className }) => (
+  <svg {...base} className={className}>
+    <rect x="5" y="4.5" width="14" height="16" rx="2" />
+    <path d="M9 4.5V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v.5M8.5 11h7M8.5 15h4.5" />
+  </svg>
+)
+
+/** Пауза: две вертикальные планки. */
+export const IconPause: FC<IBasicStyling> = ({ className }) => (
+  <svg {...base} className={className}>
+    <path d="M8.5 5.5v13M15.5 5.5v13" />
+  </svg>
+)
+
+/** Воспроизвести: треугольник. */
+export const IconPlay: FC<IBasicStyling> = ({ className }) => (
+  <svg {...base} className={className}>
+    <path d="M8 5.5v13L18.5 12 8 5.5Z" />
   </svg>
 )

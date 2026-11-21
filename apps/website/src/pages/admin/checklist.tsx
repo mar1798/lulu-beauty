@@ -214,6 +214,7 @@ const AdminChecklistPage: React.FC = () => {
         onToggle={handleToggle}
         hideChecked={hideChecked}
         onHideCheckedChange={setHideChecked}
+        customGifts={data?.customGifts}
         onRemoveExtra={item => {
           void handleRemoveExtra(item)
         }}

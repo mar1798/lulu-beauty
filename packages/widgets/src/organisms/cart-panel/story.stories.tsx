@@ -1,6 +1,6 @@
 import type { StoryFn, Meta } from '@storybook/react'
 import { CartPanel } from '.'
-import { feedCartPanel } from '../../stories/feed'
+import { feedCartPanel, feedCartPanelWithPromotions } from '../../stories/feed'
 import { StoryWrapper } from '../../stories/wrapper'
 
 export default {
@@ -33,3 +33,16 @@ Guest.args = {
   checkoutLabel: 'Войти и оформить',
   checkoutNote: 'Для отправки заявки войдите через Telegram - корзина перенесётся в аккаунт',
 }
+
+/**
+ * Акция сработала: подарок строкой после позиций, строка скидки, «К оплате» с
+ * сервера и подсказка «ещё N сом» над итогом.
+ */
+export const WithPromotions = Template.bind({})
+WithPromotions.parameters = Default.parameters
+WithPromotions.args = feedCartPanelWithPromotions()
+
+/** Телефон 360px: итог под составом, подсказка и скидки в одну колонку. */
+export const WithPromotionsMobile = Template.bind({})
+WithPromotionsMobile.parameters = { layout: 'fullscreen', viewport: { defaultViewport: 'mobile1' } }
+WithPromotionsMobile.args = feedCartPanelWithPromotions()

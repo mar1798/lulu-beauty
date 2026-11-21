@@ -129,3 +129,23 @@ export const totalBefore = style({
   textDecoration: 'line-through',
   fontVariantNumeric: 'tabular-nums',
 })
+
+/** Подарки заявки: строки подряд, как состав. */
+export const gifts = style({
+  ...flexColumn(0),
+})
+
+/** Скидки акций над итогом. */
+export const promotions = style({
+  ...flexColumn(8),
+})
+
+export const codesLink = style([
+  {
+    color: 'inherit',
+    fontWeight: 500,
+    textDecoration: 'underline',
+    textUnderlineOffset: '2px',
+  },
+  focusVisibleRing(),
+])

@@ -56,14 +56,18 @@ export const AdminChecklist: FC<IAdminChecklistProps & IBasicStyling> = ({
   onRemoveExtra,
   hideChecked = false,
   onHideCheckedChange,
+  customGifts = [],
   isLoading = false,
   skeletonRows = DEFAULT_SKELETON_ROWS,
   emptyState,
   className,
 }) => {
-  if (!isLoading && items.length === 0) {
+  // Подарки без закупки — тоже содержимое: заявки с одним Mystery box бывают.
+  if (!isLoading && items.length === 0 && customGifts.length === 0) {
     return <>{emptyState}</>
   }
+
+  const hasItems = isLoading || items.length > 0
 
   const checked = new Set(checkedKeys)
   // Отметки по строкам, которых в списке уже нет (заявку отменили), не считаются.
@@ -77,7 +81,7 @@ export const AdminChecklist: FC<IAdminChecklistProps & IBasicStyling> = ({
 
   return (
     <div className={clsx(styles.wrap, className)}>
-      {!isLoading && (
+      {!isLoading && hasItems && (
         <div className={styles.progress}>
           <div className={styles.progressHead}>
             <span className={styles.progressLabel} aria-live="polite">
@@ -101,180 +105,207 @@ export const AdminChecklist: FC<IAdminChecklistProps & IBasicStyling> = ({
         </div>
       )}
 
-      <table className={styles.table}>
-        <thead>
-          <tr>
-            <th className={styles.headCell} scope="col">
-              <VisuallyHidden>Куплено</VisuallyHidden>
-            </th>
-            <th className={styles.headCell} scope="col">
-              Товар
-            </th>
-            {/*
+      {hasItems && (
+        <table className={styles.table}>
+          <thead>
+            <tr>
+              <th className={styles.headCell} scope="col">
+                <VisuallyHidden>Куплено</VisuallyHidden>
+              </th>
+              <th className={styles.headCell} scope="col">
+                Товар
+              </th>
+              {/*
               Подписи числовых колонок короткие и в одну строку: на телефоне
               ширина нужна названию товара. Полное название — для скринридера.
             */}
-            <th className={styles.headNumberCell} scope="col">
-              <span aria-hidden={true}>К</span>
-              <VisuallyHidden>Количество</VisuallyHidden>
-            </th>
-            <th className={styles.headNumberCell} scope="col">
-              <span aria-hidden={true}>За шт</span>
-              <VisuallyHidden>Цена за штуку</VisuallyHidden>
-            </th>
-          </tr>
-        </thead>
+              <th className={styles.headNumberCell} scope="col">
+                <span aria-hidden={true}>К</span>
+                <VisuallyHidden>Количество</VisuallyHidden>
+              </th>
+              <th className={styles.headNumberCell} scope="col">
+                <span aria-hidden={true}>За шт</span>
+                <VisuallyHidden>Цена за штуку</VisuallyHidden>
+              </th>
+            </tr>
+          </thead>
 
-        <tbody aria-busy={isLoading}>
-          {isLoading ? (
-            Array.from({ length: skeletonRows }, (_, index) => (
-              // eslint-disable-next-line react/no-array-index-key
-              <tr key={index}>
-                <td className={styles.nameCell} colSpan={COLUMN_COUNT}>
-                  <Skeleton height={40} shape="block" />
+          <tbody aria-busy={isLoading}>
+            {isLoading ? (
+              Array.from({ length: skeletonRows }, (_, index) => (
+                // eslint-disable-next-line react/no-array-index-key
+                <tr key={index}>
+                  <td className={styles.nameCell} colSpan={COLUMN_COUNT}>
+                    <Skeleton height={40} shape="block" />
+                  </td>
+                </tr>
+              ))
+            ) : visibleItems.length === 0 ? (
+              // Всё отмечено и спрятано: пустая таблица выглядела бы поломкой.
+              <tr>
+                <td className={styles.allDone} colSpan={COLUMN_COUNT}>
+                  Всё куплено
                 </td>
               </tr>
-            ))
-          ) : visibleItems.length === 0 ? (
-            // Всё отмечено и спрятано: пустая таблица выглядела бы поломкой.
-            <tr>
-              <td className={styles.allDone} colSpan={COLUMN_COUNT}>
-                Всё куплено
-              </td>
-            </tr>
-          ) : (
-            visibleItems.map(item => {
-              const isChecked = checked.has(item.key)
-              const volume = formatVolume(item.volumeMl)
-              const variant = formatVariant(item.volumeMl, item.shade)
-              // «100 мл» не разрывается по строкам, как бы ни сжалась колонка.
-              const volumeLabel = volume?.replace(' ', '\u00a0') ?? null
-              // Тон — то, что снимают с полки: «05 Rose», а не просто «помада».
-              const isExtra = item.extraId !== undefined && item.extraId !== null
-              const meta = [
-                item.brand === '-' ? null : item.brand,
-                volumeLabel,
-                item.shade,
-                isExtra ? 'добавлено вручную' : null,
-              ]
-                .filter(Boolean)
-                .join(' · ')
+            ) : (
+              visibleItems.map(item => {
+                const isChecked = checked.has(item.key)
+                const volume = formatVolume(item.volumeMl)
+                const variant = formatVariant(item.volumeMl, item.shade)
+                // «100 мл» не разрывается по строкам, как бы ни сжалась колонка.
+                const volumeLabel = volume?.replace(' ', '\u00a0') ?? null
+                // Тон — то, что снимают с полки: «05 Rose», а не просто «помада».
+                const isExtra = item.extraId !== undefined && item.extraId !== null
+                const meta = [
+                  item.brand === '-' ? null : item.brand,
+                  volumeLabel,
+                  item.shade,
+                  isExtra ? 'добавлено вручную' : null,
+                ]
+                  .filter(Boolean)
+                  .join(' · ')
 
-              return (
-                <tr
-                  key={item.key}
-                  className={styles.row}
-                  data-checked={isChecked}
-                  onClick={() => {
-                    onToggle(item.key, !isChecked)
-                  }}
-                >
-                  <td
-                    className={styles.checkCell}
-                    onClick={event => {
-                      event.stopPropagation()
+                return (
+                  <tr
+                    key={item.key}
+                    className={styles.row}
+                    data-checked={isChecked}
+                    onClick={() => {
+                      onToggle(item.key, !isChecked)
                     }}
                   >
-                    <Checkbox
-                      className={styles.checkbox}
-                      checked={isChecked}
-                      onChange={next => {
-                        onToggle(item.key, next)
+                    <td
+                      className={styles.checkCell}
+                      onClick={event => {
+                        event.stopPropagation()
                       }}
-                      label={
-                        <VisuallyHidden>
-                          {/*
+                    >
+                      <Checkbox
+                        className={styles.checkbox}
+                        checked={isChecked}
+                        onChange={next => {
+                          onToggle(item.key, next)
+                        }}
+                        label={
+                          <VisuallyHidden>
+                            {/*
                               С тоном: две строки одной помады в одном объёме
                               иначе объявлялись бы скринридером одинаково.
                             */}
-                          {variant === null ? item.productName : `${item.productName}, ${variant}`}
-                        </VisuallyHidden>
-                      }
-                    />
-                  </td>
+                            {variant === null
+                              ? item.productName
+                              : `${item.productName}, ${variant}`}
+                          </VisuallyHidden>
+                        }
+                      />
+                    </td>
 
-                  <td className={styles.nameCell}>
-                    {/*
+                    <td className={styles.nameCell}>
+                      {/*
                         Переход по ссылке — не отметка: щелчок по ней до строки
                         не всплывает, иначе товар отмечался бы при каждом
                         заходе на его страницу.
                       */}
-                    {item.productSlug === null ? (
-                      <span className={styles.name}>{item.productName}</span>
-                    ) : (
-                      <span
-                        className={styles.name}
-                        onClick={event => {
-                          event.stopPropagation()
-                        }}
-                      >
-                        <AppLink
-                          href={buildProductHref(item.productSlug)}
-                          className={styles.nameLink}
+                      {item.productSlug === null ? (
+                        <span className={styles.name}>{item.productName}</span>
+                      ) : (
+                        <span
+                          className={styles.name}
+                          onClick={event => {
+                            event.stopPropagation()
+                          }}
                         >
-                          {item.productName}
-                        </AppLink>
-                      </span>
-                    )}
-                    {(meta !== '' || isExtra) && (
-                      <span className={styles.meta}>
-                        {meta}
-                        {isExtra && onRemoveExtra !== undefined && (
-                          // Удаление — не отметка: щелчок до строки не всплывает.
-                          <span
-                            className={styles.removeExtra}
-                            onClick={event => {
-                              event.stopPropagation()
-                            }}
+                          <AppLink
+                            href={buildProductHref(item.productSlug)}
+                            className={styles.nameLink}
                           >
-                            <IconButton
-                              icon={<IconTrash />}
-                              label={`Удалить «${item.productName}»`}
-                              size="sm"
-                              variant="danger"
-                              onClick={() => {
-                                onRemoveExtra(item)
+                            {item.productName}
+                          </AppLink>
+                        </span>
+                      )}
+                      {(meta !== '' || isExtra) && (
+                        <span className={styles.meta}>
+                          {meta}
+                          {isExtra && onRemoveExtra !== undefined && (
+                            // Удаление — не отметка: щелчок до строки не всплывает.
+                            <span
+                              className={styles.removeExtra}
+                              onClick={event => {
+                                event.stopPropagation()
                               }}
-                            />
-                          </span>
-                        )}
-                      </span>
-                    )}
-                  </td>
+                            >
+                              <IconButton
+                                icon={<IconTrash />}
+                                label={`Удалить «${item.productName}»`}
+                                size="sm"
+                                variant="danger"
+                                onClick={() => {
+                                  onRemoveExtra(item)
+                                }}
+                              />
+                            </span>
+                          )}
+                        </span>
+                      )}
+                    </td>
 
-                  <td className={styles.numberCell}>
-                    <span className={styles.quantity}>{item.quantity}</span>
-                  </td>
+                    <td className={styles.numberCell}>
+                      <span className={styles.quantity}>{item.quantity}</span>
+                    </td>
 
-                  {/*
+                    {/*
                       Без «сом» в каждой ячейке: на телефоне ширина нужнее
                       названию товара. Валюта одна на магазин и стоит в итоге.
                     */}
-                  <td className={styles.numberCell}>{formatUnitPrice(item.unitPriceCents)}</td>
-                </tr>
-              )
-            })
-          )}
-        </tbody>
+                    <td className={styles.numberCell}>{formatUnitPrice(item.unitPriceCents)}</td>
+                  </tr>
+                )
+              })
+            )}
+          </tbody>
 
-        {!isLoading && (
-          <tfoot>
-            {/*
+          {!isLoading && (
+            <tfoot>
+              {/*
               Одна ячейка на всю ширину, а не по колонкам: семизначный итог в
               колонке «За шт» раздувал её вдвое против самих цен, и место
               отнималось у названий товаров.
             */}
-            <tr>
-              <td className={styles.foot} colSpan={COLUMN_COUNT}>
-                <span>{hideChecked ? 'Осталось' : 'Итого'}</span>
-                <span className={styles.footTotals}>
-                  {totalQuantity} шт · {formatPrice(totalCents)}
-                </span>
-              </td>
-            </tr>
-          </tfoot>
-        )}
-      </table>
+              <tr>
+                <td className={styles.foot} colSpan={COLUMN_COUNT}>
+                  <span>{hideChecked ? 'Осталось' : 'Итого'}</span>
+                  <span className={styles.footTotals}>
+                    {totalQuantity} шт · {formatPrice(totalCents)}
+                  </span>
+                </td>
+              </tr>
+            </tfoot>
+          )}
+        </table>
+      )}
+
+      {/*
+        Свободные подарки (Mystery box и т. п.) не покупают — их упаковывают. Отдельным
+        блоком, без отметок и цен: это не строки закупки, а список «не забыть положить».
+      */}
+      {!isLoading && customGifts.length > 0 && (
+        <section className={styles.gifts} aria-labelledby="checklist-gifts">
+          <h2 className={styles.giftsTitle} id="checklist-gifts">
+            Подарки к упаковке
+          </h2>
+          <ul className={styles.giftList}>
+            {customGifts.map(gift => (
+              <li key={`${gift.title}-${gift.imageUrl ?? ''}`} className={styles.gift}>
+                {gift.imageUrl !== null && (
+                  <img className={styles.giftImage} src={gift.imageUrl} alt="" />
+                )}
+                <span className={styles.giftName}>{gift.title}</span>
+                <span className={styles.giftQuantity}>× {gift.quantity}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
     </div>
   )
 }

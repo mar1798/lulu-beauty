@@ -3,7 +3,12 @@ import { screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { OrderDetails } from '.'
 import { formatPrice } from '../../atoms/price'
-import { feedOrder, feedOrderDetails, feedOrderItem } from '../../stories/feed'
+import {
+  feedOrder,
+  feedOrderDetails,
+  feedOrderItem,
+  feedOrderWithPromotions,
+} from '../../stories/feed'
 import { renderWidget } from '../../testing/render'
 
 /**
@@ -346,5 +351,64 @@ describe('OrderDetails', () => {
     expect(screen.getByText('Скидка 10% - Помятая коробка')).toBeInTheDocument()
     expect(screen.getByText(`Скидка на заявку ${formatPrice(1_000)}`)).toBeInTheDocument()
     expect(screen.getByText('Постоянный клиент')).toBeInTheDocument()
+  })
+
+  describe('акции и промокоды', () => {
+    it('без акций блоков про них нет', () => {
+      renderWidget(<OrderDetails {...feedOrderDetails()} />)
+
+      expect(screen.queryByText('Бесплатно')).toBeNull()
+      expect(screen.queryByText(/вы получили промокод/)).toBeNull()
+    })
+
+    it('подарки идут строками с названием акции', () => {
+      renderWidget(<OrderDetails {...feedOrderDetails()} order={feedOrderWithPromotions()} />)
+
+      expect(screen.getByText('Mystery box')).toBeInTheDocument()
+      expect(screen.getByText('Бесплатно')).toBeInTheDocument()
+      expect(screen.getAllByText('Весенняя распродажа').length).toBeGreaterThan(0)
+    })
+
+    it('строка скидки на каждую акцию и на код, суммы с сервера', () => {
+      const order = feedOrderWithPromotions()
+
+      renderWidget(<OrderDetails {...feedOrderDetails()} order={order} />)
+
+      expect(screen.getByText('Акция «Весенняя распродажа»')).toBeInTheDocument()
+      expect(screen.getByText('Промокод K7M2XQ9R')).toBeInTheDocument()
+      expect(screen.getByText(`-${formatPrice(20_000)}`)).toBeInTheDocument()
+    })
+
+    it('выданный за заявку код объявлен со ссылкой на «Промокоды»', () => {
+      renderWidget(
+        <OrderDetails
+          {...feedOrderDetails()}
+          order={feedOrderWithPromotions()}
+          promoCodesHref="/promocodes"
+        />
+      )
+
+      expect(screen.getByText('За эту заявку вы получили промокод P4TN8W3B')).toBeInTheDocument()
+      expect(screen.getByRole('link', { name: 'Мои промокоды' })).toHaveAttribute(
+        'href',
+        '/promocodes'
+      )
+    })
+
+    it('отозванный выданный код не объявляется', () => {
+      const order = feedOrderWithPromotions()
+
+      renderWidget(
+        <OrderDetails
+          {...feedOrderDetails()}
+          order={{
+            ...order,
+            issuedPromoCodes: order.issuedPromoCodes.map(code => ({ ...code, status: 'REVOKED' })),
+          }}
+        />
+      )
+
+      expect(screen.queryByText(/вы получили промокод/)).toBeNull()
+    })
   })
 })

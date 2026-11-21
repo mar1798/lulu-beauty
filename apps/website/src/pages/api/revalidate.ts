@@ -52,12 +52,14 @@ const UPSTREAM_UNAVAILABLE = 503
  *
  * Slug повторяет `SLUG_PATTERN` бэкенда (`apps/api/app/catalog/schemas.py`):
  * раз список закрытый, ему незачем пропускать адреса, которых у товара
- * не бывает.
+ * не бывает. Тот же шаблон у страниц акций (`/promotions/<slug>`).
  */
 const PRODUCT_PATH = /^\/catalog\/[a-z0-9]+(?:-[a-z0-9]+)*$/
+const PROMOTION_PATH = /^\/promotions\/[a-z0-9]+(?:-[a-z0-9]+)*$/
 const STATIC_PATHS = new Set(['/', '/catalog'])
 
-const isPublicPath = (path: string): boolean => STATIC_PATHS.has(path) || PRODUCT_PATH.test(path)
+const isPublicPath = (path: string): boolean =>
+  STATIC_PATHS.has(path) || PRODUCT_PATH.test(path) || PROMOTION_PATH.test(path)
 
 /** Адреса из тела запроса — или `null`, если пришло не то. */
 const readPaths = (body: unknown): string[] | null => {

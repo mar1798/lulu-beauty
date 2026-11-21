@@ -4,7 +4,7 @@ import logging
 import uuid
 from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 
 from aiogram import Bot
 from aiogram.exceptions import TelegramForbiddenError, TelegramRetryAfter
@@ -15,6 +15,7 @@ from app.cycles.models import OrderCycle
 from app.orders.models import Order, OrderStatus
 from app.orders.service import DiscountChange, DiscountLoss, LostDiscount
 from app.payments.models import PaymentReceipt, ReceiptKind
+from app.promotions.models import PromoCode, Promotion
 from app.telegram import keyboards, messages
 from app.wanted.models import WantedProduct
 
@@ -616,6 +617,61 @@ class NotificationsService:
         logger.warning("%s; wish %s not passed on", self._fallback_reason(owner), wanted.id)
         return sent_ids
 
+    async def send_promo_code_issued(
+        self, user: User, code: PromoCode, promotion_title: str
+    ) -> Delivery:
+        """The code a paid order earned. Reports the delivery: it is the only place the
+        customer is told, and a failure is worth more than a log line to the sweep."""
+        outcome = await self._deliver(
+            user.telegram_chat_id,
+            messages.promo_code_issued(code, promotion_title, now=datetime.now(UTC)),
+            reply_markup=keyboards.promo_codes_link(),
+            parse_mode="HTML",
+        )
+        if outcome is Delivery.SENT:
+            logger.info("Told %s about promo code %s", user.phone, code.id)
+        else:
+            logger.warning("%s; promo code %s not announced", self._fallback_reason(user), code.id)
+        return outcome
+
+    async def send_personal_promo_code(self, user: User, promotion: Promotion) -> Delivery:
+        """A personal code the owner just gave this customer. Reports the delivery, so a
+        blocked chat can be unbound."""
+        outcome = await self._deliver(
+            user.telegram_chat_id,
+            messages.personal_promo_code(promotion, now=datetime.now(UTC)),
+            reply_markup=keyboards.promo_codes_link(),
+            parse_mode="HTML",
+        )
+        if outcome is Delivery.SENT:
+            logger.info("Told %s about personal promo code %s", user.phone, promotion.id)
+        else:
+            logger.warning(
+                "%s; personal promo code %s not announced",
+                self._fallback_reason(user),
+                promotion.id,
+            )
+        return outcome
+
+    async def send_promo_code_expiring(
+        self, user: User, code: PromoCode, promotion_title: str
+    ) -> Delivery:
+        """The "скоро сгорит" nudge. Reports the delivery, because the caller stamps on it."""
+        outcome = await self._deliver(
+            user.telegram_chat_id,
+            messages.promo_code_expiring(code, promotion_title),
+            reply_markup=keyboards.promo_codes_link(),
+        )
+        if outcome is Delivery.SENT:
+            logger.info("Reminded %s that promo code %s is expiring", user.phone, code.id)
+        else:
+            logger.warning(
+                "%s; expiry reminder for promo code %s not sent",
+                self._fallback_reason(user),
+                code.id,
+            )
+        return outcome
+
     async def send_cycle_closed(
         self, owner: User, cycle: OrderCycle, orders_count: int, total_cents: int
     ) -> None:
@@ -664,6 +720,16 @@ class NotificationsService:
         message = messages.cycle_opened(cycle)
         return await self._broadcast(
             [(user, message) for user in users], reply_markup=keyboards.catalog_link()
+        )
+
+    async def send_promotion_started(
+        self, users: list[User], promotion: Promotion
+    ) -> BroadcastResult:
+        """The announcement that an offer has begun, with the button to its page."""
+        message = messages.promotion_started(promotion)
+        return await self._broadcast(
+            [(user, message) for user in users],
+            reply_markup=keyboards.promotion_link(promotion.slug),
         )
 
     async def send_cycle_deadline_changed(

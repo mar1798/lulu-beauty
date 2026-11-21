@@ -90,9 +90,7 @@ async def test_a_signed_update_reaches_the_dispatcher(
     assert update.message.text == "/menu"
 
 
-async def test_a_failing_handler_still_answers_200(
-    client: AsyncClient, enabled: MagicMock
-) -> None:
+async def test_a_failing_handler_still_answers_200(client: AsyncClient, enabled: MagicMock) -> None:
     """Telegram redelivers anything non-2xx, and the handlers behind this write: a crash
     after a commit would come back as a second confirmation, a second unlink, a second
     status change. There is nothing a retry could fix here and plenty it could duplicate.

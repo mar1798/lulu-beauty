@@ -147,6 +147,7 @@ async def test_the_checklist_shows_the_open_cycle(client: AsyncClient) -> None:
         marks_cls.return_value.keys = AsyncMock(return_value=["Крем|50|15000"])
         cycles_cls.return_value.get_latest_closed_cycle = AsyncMock()
         service_cls.return_value.checklist_rows = AsyncMock(return_value=[row])
+        service_cls.return_value.checklist_custom_gifts = AsyncMock(return_value=[])
         async with client as c:
             response = await c.get("/admin/checklist")
 
@@ -201,6 +202,7 @@ async def test_without_an_open_cycle_the_checklist_falls_back_to_the_last_closed
         cycles_cls.return_value.get_active_cycle = AsyncMock(return_value=None)
         cycles_cls.return_value.get_latest_closed_cycle = AsyncMock(return_value=closed)
         service_cls.return_value.checklist_rows = AsyncMock(return_value=[])
+        service_cls.return_value.checklist_custom_gifts = AsyncMock(return_value=[])
         async with client as c:
             response = await c.get("/admin/checklist")
 
@@ -215,4 +217,4 @@ async def test_a_shop_without_cycles_gets_an_empty_checklist(client: AsyncClient
         async with client as c:
             response = await c.get("/admin/checklist")
 
-    assert response.json() == {"cycle": None, "items": [], "checkedKeys": []}
+    assert response.json() == {"cycle": None, "items": [], "checkedKeys": [], "customGifts": []}

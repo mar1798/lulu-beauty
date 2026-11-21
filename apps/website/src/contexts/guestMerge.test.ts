@@ -56,6 +56,15 @@ const emptyCart = (cycleId: string | null = CYCLE): ICart => ({
   cycleDeadlineAt: null,
   items: [],
   totalCents: 0,
+  promotions: {
+    applied: [],
+    hints: [],
+    gifts: [],
+    itemsDiscountCents: 0,
+    orderDiscountCents: 0,
+    discountCents: 0,
+    payableCents: 0,
+  },
 })
 
 const line = (variantId: string, quantity = 1): ICart['items'][number] =>

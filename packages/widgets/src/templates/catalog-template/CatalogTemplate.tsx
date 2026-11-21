@@ -19,6 +19,7 @@ import * as styles from './CatalogTemplate.css'
  */
 export const CatalogTemplate: FC<ICatalogTemplateProps & IBasicStyling> = ({
   title,
+  banner,
   summary,
   focusKey,
   aside,
@@ -43,27 +44,32 @@ export const CatalogTemplate: FC<ICatalogTemplateProps & IBasicStyling> = ({
 
   return (
     <Container as="section" className={clsx(styles.container, className)}>
-      <div className={styles.head}>
-        <div ref={headingRef} className={styles.heading} tabIndex={-1}>
-          <Heading level={1}>{title}</Heading>
-          {/*
+      {banner}
+
+      {/* Заголовок со счётчиком и фильтры — одна группа: шаг между ними меньше общих 48px. */}
+      <div className={styles.top}>
+        <div className={styles.head}>
+          <div ref={headingRef} className={styles.heading} tabIndex={-1}>
+            <Heading level={1}>{title}</Heading>
+            {/*
             Живая область стоит всегда, даже пустая: скринридер следит только за
             областями, которые были в документе до изменения.
           */}
-          <div role="status">
-            {summary !== undefined && <Text tone="secondary">{summary}</Text>}
+            <div role="status">
+              {summary !== undefined && <Text tone="secondary">{summary}</Text>}
+            </div>
           </div>
+
+          {aside !== undefined && <div className={styles.aside}>{aside}</div>}
         </div>
 
-        {aside !== undefined && <div className={styles.aside}>{aside}</div>}
+        {(search !== undefined || filter !== undefined) && (
+          <div className={styles.controls}>
+            {filter}
+            {search}
+          </div>
+        )}
       </div>
-
-      {(search !== undefined || filter !== undefined) && (
-        <div className={styles.controls}>
-          {filter}
-          {search}
-        </div>
-      )}
 
       {children}
 

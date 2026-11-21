@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
+import { fireEvent } from '@testing-library/react'
 import { SearchField } from '.'
 import { feedSearchField } from '../../stories/feed'
 import { renderWidget } from '../../testing/render'
@@ -33,5 +34,25 @@ describe('SearchField', () => {
 
     expect(busy.container.querySelector('[role="status"]')).not.toBeNull()
     expect(busy.getByLabelText('Очистить поиск')).toBeInTheDocument()
+  })
+
+  it('isForm={false}: внутри чужой формы нет вложенного <form>, а Enter её не отправляет', () => {
+    const onSubmit = vi.fn((event: { preventDefault: () => void }) => {
+      event.preventDefault()
+    })
+
+    const { container } = renderWidget(
+      <form onSubmit={onSubmit}>
+        <SearchField {...feedSearchField()} isForm={false} />
+      </form>
+    )
+
+    expect(container.querySelectorAll('form')).toHaveLength(1)
+    expect(container.querySelector('[role="search"]')?.tagName).toBe('DIV')
+
+    const input = container.querySelector('input') as HTMLInputElement
+    const notPrevented = fireEvent.keyDown(input, { key: 'Enter' })
+
+    expect(notPrevented).toBe(false)
   })
 })

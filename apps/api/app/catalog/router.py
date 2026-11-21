@@ -16,11 +16,6 @@ from pydantic import Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import CurrentUser, require_admin
-from app.catalog.image_compression import (
-    ImageTooDetailedError,
-    UnreadableImageError,
-    compress_image,
-)
 from app.catalog.import_service import CatalogImportService
 from app.catalog.results import ImageArrangement, VariantSpec
 from app.catalog.schemas import (
@@ -79,6 +74,7 @@ from app.common.limits import (
     MAX_VOLUME_ML,
 )
 from app.common.schemas import PageResponse
+from app.common.uploads import read_image, read_within
 from app.db import get_session
 from app.orders.service import OrdersService
 from app.storage.service import discard_files, storage_service
@@ -86,16 +82,6 @@ from app.telegram.notify import notify_orders_item_dropped, notify_orders_repric
 
 router = APIRouter(tags=["catalog"])
 
-# What may be *uploaded*. Generous because it is no longer what gets stored: every photo
-# is re-encoded by `compress_image` on the way in, so a 14 MB PNG straight out of a
-# camera lands in `uploads` as a few hundred kilobytes of WebP.
-MAX_IMAGE_BYTES = 15 * 1024 * 1024
-# The declared content type is only a first filter — it is chosen by the client, and the
-# decoder downstream is what actually decides whether this is an image. The stored file's
-# extension comes from the compressor, never from the uploaded filename: /files is served
-# as static content and is same-origin with the site (next.config.js rewrites it), so a
-# name like "photo.html" would be stored and later served as a page rather than an image.
-ALLOWED_IMAGE_CONTENT_TYPES = {"image/jpeg", "image/png", "image/webp"}
 MAX_IMPORT_BYTES = 10 * 1024 * 1024
 
 # Everything `ProductService` refuses about a list of variants, and the code each one
@@ -137,23 +123,6 @@ def _variant_specs(variants: list[ProductVariantRequest] | None) -> list[Variant
 
 def _variant_http_error(error: Exception) -> HTTPException:
     return HTTPException(status.HTTP_409_CONFLICT, _VARIANT_ERROR_CODES[type(error)])
-
-
-async def _read_within(file: UploadFile, limit: int, code: str) -> bytes:
-    """The upload's bytes, refused before they are held in memory.
-
-    Starlette has already spooled the part to a temporary file by the time a handler runs
-    and knows how long it is, so the size is answerable without reading it. Reading first
-    and measuring after meant a gigabyte upload became a gigabyte `bytes` object for as
-    long as it took to decide it was too big.
-    """
-    if file.size is not None and file.size > limit:
-        raise HTTPException(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, code)
-
-    content = await file.read()
-    if len(content) > limit:
-        raise HTTPException(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, code)
-    return content
 
 
 @router.get("/categories", response_model=list[CategoryResponse])
@@ -521,22 +490,7 @@ async def upload_product_image(
     session: AsyncSession = Depends(get_session),
     _admin: CurrentUser = Depends(require_admin),
 ) -> ProductImageResponse:
-    if file.content_type not in ALLOWED_IMAGE_CONTENT_TYPES:
-        raise HTTPException(status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, "unsupported_image_type")
-
-    content = await _read_within(file, MAX_IMAGE_BYTES, "image_too_large")
-
-    try:
-        compressed = await compress_image(content)
-    except ImageTooDetailedError as error:
-        # Not `image_too_large`: that one is about the bytes the owner can see in their
-        # file manager, and this is about a pixel count they cannot. A flat 40 MP export
-        # travels in 128 KB and still costs a few hundred megabytes to decode.
-        raise HTTPException(
-            status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, "image_too_many_pixels"
-        ) from error
-    except UnreadableImageError as error:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "image_unreadable") from error
+    compressed = await read_image(file)
 
     service = ProductService(session)
     try:
@@ -646,7 +600,7 @@ async def import_catalog(
     session: AsyncSession = Depends(get_session),
     _admin: CurrentUser = Depends(require_admin),
 ) -> ImportSummaryResponse:
-    content = await _read_within(file, MAX_IMPORT_BYTES, "import_file_too_large")
+    content = await read_within(file, MAX_IMPORT_BYTES, "import_file_too_large")
 
     summary, changes = await CatalogImportService(session).import_file(file.filename or "", content)
     await session.commit()

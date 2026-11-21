@@ -4,6 +4,11 @@ import type { IBasicStyling, IOrderDetailsProps } from '../../types'
 import { formatDateTime } from '../../utils/datetime'
 import { formatDiscount } from '../../utils/discount'
 import { pluralize } from '../../utils/plural'
+import {
+  PROMO_CODE_STATUS_LABELS,
+  describePromoCodeConditions,
+  describePromoCodeRewards,
+} from '../../utils/promotion'
 import { Alert } from '../../atoms/alert'
 import { AppLink } from '../../atoms/app-link'
 import { Button } from '../../atoms/button'
@@ -14,6 +19,7 @@ import { Skeleton } from '../../atoms/skeleton'
 import { Text } from '../../atoms/text'
 import { Textarea } from '../../atoms/textarea'
 import { ITEM_FORMS, orderNumber } from '../../molecules/order-card'
+import { GiftLine } from '../../molecules/gift-line'
 import { ItemRow } from '../../molecules/item-row'
 import { OrderStatusBadge } from '../../molecules/order-status-badge'
 import * as styles from './OrderDetails.css'
@@ -69,6 +75,7 @@ export const OrderDetails: FC<IOrderDetailsProps & IBasicStyling> = ({
   onItemQuantityChange,
   onItemRemove,
   addItem,
+  promoCodesHref,
   onNoteSave,
   onCancel,
   onRestore,
@@ -151,6 +158,12 @@ export const OrderDetails: FC<IOrderDetailsProps & IBasicStyling> = ({
   const isEditable = order.isEditable && onItemQuantityChange !== undefined
   const isRestorable = order.isRestorable && onRestore !== undefined
   const isCancellable = order.isCancellable && onCancel !== undefined
+
+  /* Акции со скидкой в деньгах; у кода строка - его же «Промокод XXXX» (`promoCodeId`). */
+  const discountedPromotions = order.promotions.filter(entry => entry.discountCents > 0)
+  const isCodeInDiscounts = discountedPromotions.some(entry => entry.promoCodeId !== null)
+  /* Отозванный код - не новость: его уже отобрали, показывать «вы получили» нечего. */
+  const issuedCodes = order.issuedPromoCodes.filter(issued => issued.status !== 'REVOKED')
 
   /*
     Подпись под шапкой отвечает ровно на один вопрос: что с этой заявкой можно
@@ -403,6 +416,22 @@ export const OrderDetails: FC<IOrderDetailsProps & IBasicStyling> = ({
       </div>
 
       {/*
+        Подарки акций - строками после состава: их не правят и не убирают, но они
+        входят в заявку, и владелец положит их вместе с товарами.
+      */}
+      {order.gifts.length > 0 && (
+        <div className={styles.gifts}>
+          {order.gifts.map(gift => (
+            <GiftLine
+              key={gift.id}
+              gift={gift}
+              note={order.promotions.find(entry => entry.id === gift.orderPromotionId)?.title}
+            />
+          ))}
+        </div>
+      )}
+
+      {/*
         Добавление стоит между составом и итогом: это продолжение состава, и
         оно должно попасть в поле зрения раньше, чем сумма, которую поменяет.
       */}
@@ -426,6 +455,30 @@ export const OrderDetails: FC<IOrderDetailsProps & IBasicStyling> = ({
         </div>
       )}
 
+      {/*
+        Скидки акций и промокода - по строке на каждую, суммы с сервера. Акция,
+        давшая только подарок, строки не получает: он уже виден выше. Заявка со
+        счётом хранит замороженную сумму, поэтому строки тоже снимок.
+      */}
+      {discountedPromotions.length > 0 && (
+        <div className={styles.promotions}>
+          {discountedPromotions.map(entry => (
+            <div key={entry.id} className={styles.discountRow}>
+              <Text size="sm">
+                {entry.promotionId === null ? entry.title : `Акция «${entry.title}»`}
+              </Text>
+              <Text size="sm" tone="success">{`-${formatPrice(entry.discountCents)}`}</Text>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {order.promoCode !== null && !isCodeInDiscounts && (
+        <Text size="sm" tone="muted">
+          {`Промокод ${order.promoCode.code} - ${PROMO_CODE_STATUS_LABELS[order.promoCode.status]}`}
+        </Text>
+      )}
+
       <div className={styles.totalRow}>
         <Text weight="medium">{`Итого · ${pluralize(order.items.length, ITEM_FORMS)}`}</Text>
         <div className={styles.totals}>
@@ -435,6 +488,32 @@ export const OrderDetails: FC<IOrderDetailsProps & IBasicStyling> = ({
           <Price priceCents={order.totalCents} size="lg" />
         </div>
       </div>
+
+      {issuedCodes.map(issued => (
+        <Alert
+          key={issued.id}
+          tone="success"
+          title={`За эту заявку вы получили промокод ${issued.code}`}
+        >
+          {[
+            describePromoCodeRewards(issued),
+            describePromoCodeConditions(issued),
+            issued.expiresAt === null
+              ? `действует с ${formatDateTime(issued.validFrom)}`
+              : `действует до ${formatDateTime(issued.expiresAt)}`,
+          ]
+            .filter(part => part !== '')
+            .join(', ')}
+          {promoCodesHref !== undefined && (
+            <>
+              {'. '}
+              <AppLink href={promoCodesHref} className={styles.codesLink}>
+                Мои промокоды
+              </AppLink>
+            </>
+          )}
+        </Alert>
+      ))}
 
       {isCancellable && (
         <div className={styles.footer}>

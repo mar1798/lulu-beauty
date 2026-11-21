@@ -157,6 +157,8 @@ describe('AdminOrdersTable', () => {
     const order = feedAdminOrder({
       items: [
         feedOrderItem({
+          // Количество задано явно: фикстура берёт его из seeded faker, и «1 товар» ниже зависел бы от числа вызовов до неё.
+          quantity: 1,
           lineTotalCents: 20_000,
           discountKind: 'PERCENT',
           discountValue: 10,
@@ -179,5 +181,21 @@ describe('AdminOrdersTable', () => {
     expect(
       getByText(`Скидка на заявку ${formatPrice(1_000)}: -${formatPrice(1_000)} - Акция`)
     ).toBeTruthy()
+  })
+
+  it('заявка в акции помечена, а раскрытая показывает акции, подарки и выданные коды', () => {
+    const { getAllByRole, getByText } = renderWidget(
+      <AdminOrdersTable {...feedAdminOrdersTable()} />
+    )
+
+    expect(getByText('Акция')).toBeTruthy()
+
+    const toggle = getAllByRole('button', { expanded: false }).at(-1)
+
+    fireEvent.click(toggle as HTMLElement)
+
+    expect(getByText(/Весенняя распродажа: -150 сом/)).toBeTruthy()
+    expect(getByText(/Mystery box \(свободный подарок\)/)).toBeTruthy()
+    expect(getByText(/K7M2QX9P - активен/)).toBeTruthy()
   })
 })

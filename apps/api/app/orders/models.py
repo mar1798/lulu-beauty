@@ -1,7 +1,7 @@
 import enum
 import uuid
 from datetime import datetime, timedelta
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import (
     BigInteger,
@@ -21,6 +21,9 @@ from sqlalchemy.sql.elements import ColumnElement
 
 from app.common.mixins import TimestampMixin, UUIDPrimaryKeyMixin
 from app.db import Base
+
+if TYPE_CHECKING:
+    from app.promotions.models import OrderGift, OrderPromotion
 
 
 class OrderStatus(enum.StrEnum):
@@ -77,6 +80,11 @@ ADMIN_EDITABLE_STATUSES = frozenset(
 # shop promises in a bot message and settles by hand. Up to the payment the customer
 # simply pays the new sum.
 DISCOUNTABLE_STATUSES = frozenset({OrderStatus.PENDING, OrderStatus.AWAITING_PAYMENT})
+
+
+# A percent discount is whole percent, 1-100. Lives here, next to `DiscountKind`, because the
+# promotions rules and the order arithmetic both read it and neither may import the other.
+MAX_DISCOUNT_PERCENT = 100
 
 
 class DiscountKind(enum.StrEnum):
@@ -239,6 +247,22 @@ class Order(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     items: Mapped[list["OrderItem"]] = relationship(
         back_populates="order", cascade="all, delete-orphan", order_by=lambda: _item_order()
     )
+    # The promotions this order took part in, released ones included as history, and the
+    # gifts going out with it (`app/promotions/models.py`). Loaded with the order — every
+    # response draws them, and `order_totals` reads the live ones — and left to the
+    # database to cascade on delete.
+    promotions: Mapped[list["OrderPromotion"]] = relationship(
+        lazy="selectin",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+        order_by=lambda: _promotion_order(),
+    )
+    gifts: Mapped[list["OrderGift"]] = relationship(
+        lazy="selectin",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+        order_by=lambda: _gift_order(),
+    )
 
 
 class OrderItem(UUIDPrimaryKeyMixin, Base):
@@ -302,3 +326,24 @@ def _item_order() -> list[ColumnElement[Any]]:
         .scalar_subquery()
     )
     return [OrderItem.product_name.asc(), variant_position.asc().nulls_last(), OrderItem.id.asc()]
+
+
+def _promotion_order() -> list[ColumnElement[Any]]:
+    from app.promotions.models import OrderPromotion
+
+    return [
+        OrderPromotion.sort_order.asc(),
+        OrderPromotion.created_at.asc(),
+        OrderPromotion.id.asc(),
+    ]
+
+
+def _gift_order() -> list[ColumnElement[Any]]:
+    from app.promotions.models import OrderGift
+
+    return [OrderGift.title.asc(), OrderGift.id.asc()]
+
+
+# Last, so that the relationships above resolve whoever imports first: the promotions
+# models name `Order`, and `Order` names them.
+import app.promotions.models  # noqa: E402, F401

@@ -282,3 +282,17 @@ export const CART_ACTION_TRANSITION: Transition = {
   duration: CART_ACTION_DURATION_MS / 1000,
   ease: [0.4, 0, 0.2, 1],
 }
+
+/**
+ * Карусель акций (`PromoCarousel`): слайд листает сам браузер (scroll-snap), а
+ * motion двигает только индикатор - активная точка вытягивается в таблетку
+ * масштабом по X (transform, без размеров). Tween, а не пружина: точка не
+ * «прилетает», а переключается, и на быстрых листаниях пружина дрожала бы.
+ */
+export const PROMO_DOT_TRANSITION: Transition = { duration: 0.25, ease: [0.4, 0, 0.2, 1] }
+
+/** Во сколько раз активная точка шире неактивной. */
+export const PROMO_DOT_ACTIVE_SCALE = 2.4
+
+/** Пауза между слайдами по умолчанию, мс: баннер надо успеть прочитать и нажать. */
+export const PROMO_CAROUSEL_INTERVAL_MS = 6000

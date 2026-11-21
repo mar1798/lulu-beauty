@@ -24,12 +24,12 @@ Storybook is the primary dev loop here — build a widget against stories, not a
 [Atomic design](https://bradfrost.com/blog/post/atomic-web-design/); all four tiers are
 populated.
 
-| Tier            | Examples                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
-| --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `src/atoms`     | `Button`, `Input`, `Price`, `Badge`, `Chip`, `Select`, `Combobox`, `Tooltip`, `Skeleton`, `Appear`, `Reveal`, `Parallax`, `AppLink`, `AppImage`, `RichText`                                                                                                                                                                                                                                                                                                                              |
-| `src/molecules` | `ProductCard`, `VariantSelector`, `QuantityStepper`, `SearchField`, `CustomerSelect`, `Pagination`, `OrderCard`, `OrderStatusBadge`, `DeadlineCountdown`, `Toast`, `EmptyState`, `FileDropzone`, `RichTextEditor`                                                                                                                                                                                                                                                                        |
-| `src/organisms` | `Header`, `HeaderSearch`, `Footer`, `CartPanel`, `CheckoutForm`, `ProductGrid`, `ProductDetails`, `OrderDetails`, `Modal`, `ConfirmDialog`, `ToastViewport`, `MobileMenu`, `TelegramLoginPanel`, `AdminOrdersTable`, `AdminMessageDialog`, `AdminOrderDialog`, `AdminOrderEditDialog`, `AdminOrderDiscountDialog`, `AdminProductsTable`, `AdminProductForm`, `AdminProductGallery`, `AdminCycleCalendar`, `AdminUsersTable`, `AdminImportPanel`, `AdminCategoriesPanel`, `ProductPicker` |
-| `src/templates` | `BaseLayout`, `AdminLayout`, `HomeTemplate`, `CatalogTemplate`, `ProductTemplate`, `CartTemplate`, `AccountTemplate`, `AuthTemplate`, `LegalTemplate`, `ErrorTemplate`                                                                                                                                                                                                                                                                                                                   |
+| Tier            | Examples                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/atoms`     | `Button`, `Input`, `Price`, `Badge`, `Chip`, `Select`, `Combobox`, `Tooltip`, `Skeleton`, `Appear`, `Reveal`, `Parallax`, `AppLink`, `AppImage`, `RichText`                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| `src/molecules` | `ProductCard`, `VariantSelector`, `QuantityStepper`, `SearchField`, `CustomerSelect`, `Pagination`, `OrderCard`, `OrderStatusBadge`, `DeadlineCountdown`, `Toast`, `EmptyState`, `FileDropzone`, `RichTextEditor`                                                                                                                                                                                                                                                                                                                                                                                                         |
+| `src/organisms` | `Header`, `HeaderSearch`, `Footer`, `CartPanel`, `CheckoutForm`, `ProductGrid`, `ProductDetails`, `OrderDetails`, `Modal`, `ConfirmDialog`, `ToastViewport`, `MobileMenu`, `TelegramLoginPanel`, `AdminOrdersTable`, `AdminMessageDialog`, `AdminOrderDialog`, `AdminOrderEditDialog`, `AdminOrderDiscountDialog`, `AdminProductsTable`, `AdminProductForm`, `AdminProductGallery`, `AdminCycleCalendar`, `AdminUsersTable`, `AdminImportPanel`, `AdminCategoriesPanel`, `ProductPicker`, `PromoCarousel`, `PromotionDetails`, `AdminPromotionsTable`, `AdminPromotionForm`, `AdminPromoCodesTable`, `AdminPromoCodeForm` |
+| `src/templates` | `BaseLayout`, `AdminLayout`, `HomeTemplate`, `CatalogTemplate`, `ProductTemplate`, `CartTemplate`, `AccountTemplate`, `AuthTemplate`, `LegalTemplate`, `ErrorTemplate`                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 
 Supporting directories:
 
@@ -81,6 +81,110 @@ shape, the story and the barrel entry consistent.
 `styling/mixin` — are generated by [`barrelsby`](https://www.npmjs.com/package/barrelsby).
 
 **Do not hand-edit them.** Run `npm run barrels` after adding or removing a file.
+
+## Promotions
+
+Rules: [domain.md](domain.md#promotions); site side: [frontend.md](frontend.md#promotions).
+The tier is the usual one — all of these were scaffolded with `npm run generate` and have
+stories (the table and the form also a `Mobile` one) and tests. **They compute nothing**: every
+sum, discount and condition comes from the API, and the widgets only draw and word it
+(`utils/promotion.ts` holds the wording, the row drafts and the request builders).
+
+Storefront:
+
+- `PromoCarousel` (organism) — one banner per slide, **a slide is 100% of the width on every
+  screen**. The browser does the scrolling (`scroll-snap`, so a swipe is native and works
+  before hydration); `motion` only moves the dots (`scaleX`). **There is no pause button** —
+  the carousel always plays; autoplay only waits while it is hovered, focused, touched or
+  off-screen, and does not exist under `prefers-reduced-motion`. The frame has a soft shadow
+  and a translucent inset hairline (`::after`), so a light banner does not melt into the page;
+  the dots are 6px on a thin, light pill, with 20×24 hit areas. A slide uses `<picture>`: the
+  desktop banner from `md` up when there is one, otherwise the mobile one, cropped (`cover`).
+  Ratios are fixed so the layout does not jump: 3:2 on a phone, 3:1 from `md`. It goes into `CatalogTemplate`'s optional
+  **`banner`** slot.
+- `PromotionDetails` (organism) — a promotion's page: banner, term, the owner's text
+  (`RichText`), conditions and rewards in words.
+- `GiftLine` (molecule) — a gift in the cart, checkout and order: picture, title and a «Подарок»
+  mark instead of a price; no quantity control, it is not a line. A custom gift without a
+  picture gets a placeholder.
+- `PromotionLines` (molecule) — the cart's promotions as two pieces: discount rows
+  («Акция «…» - 500 сом»; a gift-only promotion gets none) and the «Ещё 300 сом до акции» hints.
+- `PromoCodeField` (molecule) — the checkout field: input, the server's verdict, an accepted
+  code as a row with «Убрать», and a picker among the customer's codes.
+- `PromoCodeCard` (molecule) — a code on «Промокоды», drawn as a coupon: a stub with the code
+  and tap-to-copy, a perforation with notches (CSS masks, shadow via `drop-shadow`), then what
+  it gives, conditions, term, status badge (the status comes from the API; `EXPIRED` is
+  computed there). A personal owner code (`isOwnerCode`) shows its own title without the «Акция»
+  prefix and its `descriptionHtml` through `RichText`. No «Использовать» — the code is typed in at checkout. One per row.
+- `CartPanel`, `CheckoutPanel`, `CheckoutForm` and `OrderDetails` got promotions, gifts and
+  hints props (`ICart.promotions` is required); `buildPromotionHref` makes the links.
+
+Admin:
+
+- `AdminPromotionsTable` — a real `<table>` that turns into cards below `xl`
+  (`styling/mixin/table.ts`). **Every row action is an `IconButton size="sm"` inside a
+  `Tooltip`** (32px, the products table's size, so the row of five does not push the table
+  into a horizontal scroll). The tooltip names only the action («Изменить»); the
+  `aria-label` adds the promotion («Изменить «Весна»»), since a screen reader hears every
+  row's buttons alike; no text buttons, no
+  menus. An archived promotion has no «Включить» and no «Удалить».
+- `FormSection` (molecule) — the collapsible panel both admin forms are built from (a heading
+  button with `aria-expanded`, a body whose height animates, `overflow` visible once open so
+  focus rings and dropdowns are not clipped). Extracted unchanged from `AdminPromotionForm`.
+- `PromotionPeriodFields` (molecule) — start date and time, the «Бессрочная» switch and the end
+  date and time. Controlled; the ISO conversion (`storeIso`) and the «end after start» check
+  stay with each form, which passes the error texts in. `openEndedLabel` and `endHint` override
+  the promotion wording.
+- `AdminPromoCodesTable` — modelled on `AdminPromotionsTable` (same icon-only actions with
+  tooltips, cards below `xl`). Columns: the code (monospace, with a copy `IconButton` whose click
+  goes to the page's `onCopy`: the widget knows nothing about the clipboard), name, «Кому» («Все»,
+  or name and phone, «Аккаунт удалён» for an erased account), period («бессрочно» for an open
+  end), rewards, the derived status (labels in the masculine, `ADMIN_PROMO_CODE_STATUS_LABELS`; plus «Использован» for a personal code with a use) and the
+  number of uses. Delete reads «В архив» once a code was applied.
+- `AdminPromoCodeForm` — an owner's promo code in one PUT/POST. Four `FormSection`s: «Основное»
+  (code, name, description, `PromotionPeriodFields`, enabled), «Кому» (a personal switch and
+  `CustomerSelect`, whose search the page drives through `customerSelect`), «Условия» and «Награды»
+  (the same builders as the promotion, with `allowPromoCode={false}`). A new code (and a
+  duplicate) opens with a `SULU-XXXXX` already in the field, generated client-side from the
+  server's unambiguous alphabet; the «Перегенерировать» icon inside the field draws another, for a
+  saved code too (the hint then warns that the old one stops working). Whatever is in the field is
+  upper-cased, stripped of whitespace (only that: dashes, Cyrillic and punctuation are part of the
+  code), checked for 4-16 characters and sent in that form — `SULU-AB3CD` is stored with its
+  dash; a taken one comes back as
+  `promo_code_taken`. A personal code without a customer does not submit and opens «Кому».
+- `AdminPromotionForm` — the whole promotion in one PUT/POST: fields, two `PromotionBannerField`s,
+  `PromotionConditionBuilder`, `PromotionRewardBuilder` and `AdminPromoCodeDialog` (a
+  `PROMO_CODE` reward: validity, conditions, what it gives — a code cannot hold another code).
+  Numbers live as strings in the builders and become numbers in `buildConditions`/`buildRewards`.
+  The mobile banner is labelled «Нужен для карусели» but does not block saving.
+  The four sections (Основное, Баннеры, Условия, Награды) collapse; only «Основное» starts
+  open, the others show a summary in the header. Collapsed bodies stay mounted, and a submit
+  with an error inside a collapsed section opens it before focusing the first invalid field.
+- `PromotionTargetField` — products, categories and brands; reads as «any of», so the label says so.
+  There is **no category picker**: categories and brands are each a `Select` plus a label
+  list (a brand comes from the catalogue's list, picking adds it). The product search is open
+  from the start — no «Добавить товар» / «Готово».
+- `PromotionProductSearch` — a thin wrapper over `ProductPicker`; the search itself is a
+  callback (`searchProducts`) from the page, so the widget has no data fetching. Already
+  picked rows are marked in the results (`addedMode="selected"`: highlighted, a disabled
+  «Выбран» instead of the button); a target passes `pickedProductIds`, so every variant of a
+  picked product is marked.
+- `AdminPromotionParticipantsDialog` — who joined, through which order, what they got;
+  released participations stay, marked. A table (cards below `md`) with `Pagination` under it.
+- `PromotionBannerField` (molecule) — a file slot that states the recommended size and previews
+  the frame in the right ratio. No drag-and-drop: the «Выбрать файл» / «Заменить» button sits
+  inside the frame itself, and the type and size are checked there before `onSelect`.
+
+**`BANNER_SPECS`** (`utils/promotion.ts`) is the one place the banner sizes are written: mobile
+**1080×720 (3:2)**, desktop **1920×640 (3:1)**. The carousel and the details page keep the same
+ratios, so a banner the form previews is the one the visitor sees. Accepted files: JPEG, PNG,
+WebP, up to 15 MB (`BANNER_ALLOWED_TYPES`, `BANNER_MAX_BYTES`, mirroring the API).
+
+Smaller additions: icons `IconCopy`, `IconUsers`, `IconGift`, `IconTicket` (the «Промокоды» menu entry), `IconClipboard` (copy a code), `IconPause`, `IconPlay` (the last two no longer used by the carousel);
+`Input` takes `type="date"`; shared timings for the carousel in `utils/motion.ts`; types
+`IPromotion`, `IPublicPromotion`, `IAdminPromoCode` (and its form values and props), `IPromoCode` (`expiresAt` is nullable: an open-ended owner code), `IPublicPromotion`, `IPromoCodeCheck`, `IOrderPromotion`, `IOrderGift`, `ICartGift`,
+`IPromotionCondition`/`IPromotionReward` and friends in `types.ts`; `IAdminChecklist` has
+`customGifts`.
 
 ## Public subpaths
 

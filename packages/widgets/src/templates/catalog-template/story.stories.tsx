@@ -1,6 +1,7 @@
 import type { StoryFn, Meta } from '@storybook/react'
 import { CatalogTemplate } from '.'
-import { feedCatalogTemplate } from '../../stories/feed'
+import { PromoCarousel } from '../../organisms/promo-carousel'
+import { feedCatalogTemplate, feedPromoCarousel } from '../../stories/feed'
 import { StoryWrapper } from '../../stories/wrapper'
 
 export default {
@@ -19,3 +20,11 @@ Default.parameters = {
   layout: 'padded',
 }
 Default.args = feedCatalogTemplate()
+
+/** Карусель акций над заголовком каталога. */
+export const WithPromoCarousel = Template.bind({})
+WithPromoCarousel.parameters = { layout: 'padded' }
+WithPromoCarousel.args = {
+  ...feedCatalogTemplate(),
+  banner: <PromoCarousel {...feedPromoCarousel()} />,
+}

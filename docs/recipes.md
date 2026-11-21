@@ -82,8 +82,9 @@ Without step 2 the user gets a status-based placeholder that explains nothing.
    every admin, of either role (`ADMIN_ROLES`).
 3. Call it **after the commit** of the transaction that produced the state, never inside the
    service. Services return what needs saying.
-4. If it is periodic, it belongs in a sweep in `cycles/scheduler_service.py` + a job in
-   `app/scheduler.py`, and follows plan → send → stamp.
+4. If it is periodic, it belongs in a sweep in `cycles/scheduler_service.py` (or, for
+   promotions, `promotions/sweep.py`) + a job in `app/scheduler.py`, and follows plan → send →
+   stamp.
 5. Test it in `tests/test_notifications_service.py` / `tests/test_messages.py`.
 
 ## Add an environment variable
@@ -148,7 +149,7 @@ worked example — `git log -S product_shade` shows every place it had to reach:
    static, and without it the change waits out `revalidate: 60` plus one request. Name
    `SHOWCASE_PATHS` (`/` and `/catalog`) and `productPath(slug)` for the products involved —
    including the slug the product had **before** the edit, if it changed.
-3. A path shape that isn't `/`, `/catalog` or `/catalog/<slug>` also needs adding to the
+3. A path shape that isn't `/`, `/catalog`, `/catalog/<slug>` or `/promotions/<slug>` also needs adding to the
    allowlist in `pages/api/revalidate.ts`, or the route refuses it.
 4. See [frontend.md](frontend.md#keeping-the-public-pages-fresh).
 

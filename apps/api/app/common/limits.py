@@ -65,3 +65,19 @@ MAX_DESCRIPTION_LENGTH = 2000
 # text leaves room for any formatting a real description has, and stops a pasted page of
 # markup from being parsed at all.
 MAX_DESCRIPTION_HTML_LENGTH = 20_000
+
+# Conditions and rewards in one promotion (and in one promo code's template). A promotion
+# is read in full on every cart look and every checkout, so the lists are short by
+# ceiling, not by courtesy: no real offer has ten conditions joined by "и".
+MAX_PROMOTION_CONDITIONS = 10
+MAX_PROMOTION_REWARDS = 10
+
+# Entries in one target — the products, categories or brands a condition or a discount
+# is about. A whole brand or category is one entry, so this caps hand-picked products.
+MAX_PROMOTION_TARGET_ENTRIES = 200
+
+# Units of one gift. A gift is a sample or a box, not a second order.
+MAX_GIFT_QUANTITY = 10
+
+# How long a promo code may be valid for when given as a number of days from issue.
+MAX_PROMO_CODE_VALID_DAYS = 365

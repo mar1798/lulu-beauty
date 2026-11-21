@@ -18,6 +18,9 @@ from app.cycles.router import router as cycles_router
 from app.export.router import router as export_router
 from app.health.router import router as health_router
 from app.orders.router import router as orders_router
+from app.promotions.codes_router import router as promo_codes_router
+from app.promotions.owner_codes_router import router as owner_promo_codes_router
+from app.promotions.router import router as promotions_router
 from app.telegram import bot as telegram_bot
 from app.telegram.webhook import router as telegram_webhook_router
 from app.users.router import router as users_router
@@ -68,6 +71,9 @@ def create_app() -> FastAPI:
     app.include_router(wanted_router)
     app.include_router(wishlist_router)
     app.include_router(orders_router)
+    app.include_router(promotions_router)
+    app.include_router(promo_codes_router)
+    app.include_router(owner_promo_codes_router)
     app.include_router(export_router)
     app.include_router(checklist_router)
     # Mounted whether or not the webhook mode is on — it answers 404 while it is off, so
