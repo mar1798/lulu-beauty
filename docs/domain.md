@@ -1127,9 +1127,10 @@ every participation and then:
   expired code does: `ACTIVE` in the database, `EXPIRED` as shown, not usable. The code row
   is locked (`FOR UPDATE`) while it is given back. An owner's `DELETE` of the order returns
   only a `RESERVED` code; a spent one stays `USED` (deleting is not cancelling, and a cycle
-  delete leaves it `USED` too). Whatever the path, a code whose _earning_ order is cancelled
-  never comes back: it ends `REVOKED` instead of `ACTIVE`, whichever of the two orders was
-  cancelled first.
+  delete leaves it `USED` too). Deleting an order also leaves the promo codes it earned
+  as they are; cancel it first to revoke them. Whatever the path, a code whose _earning_
+  order is cancelled never comes back: it ends `REVOKED` instead of `ACTIVE`, whichever of
+  the two orders was cancelled first.
 - **Codes the order earned** and nobody has used (`ACTIVE`) become `REVOKED`; a `USED` one
   stays. A `RESERVED` earned code: if a `PENDING` order holds it, that participation is
   released (sum recounted, `revision` +1) and the code revoked; if an order with a bill holds
@@ -1219,8 +1220,9 @@ and the participants list. The differences:
   Cancelling the order releases the participation, so the customer may use the code again.
 - **Format and uniqueness.** The string is normalised (upper case, whitespace removed — and
   nothing else: `LETO-2026` and `LETO2026` are two codes) and must be 4-16 characters of any
-  kind, Cyrillic and punctuation included (`422 promo_code_invalid`). The owner may type `0/O/1/I`; only generated codes (8 characters, the same
-  alphabet as issued codes) avoid them. A string is unique **across both kinds**
+  kind, Cyrillic and punctuation included (`422 promo_code_invalid`). The owner may type `0/O/1/I`; only generated codes (the form's `SULU-` plus 5
+  characters, or the server's 8 when the API is sent `code: null`; the same alphabet as
+  issued codes) avoid them. A string is unique **across both kinds**
   (`promotions.code`, archived rows included, and `promo_codes.code`), because the customer
   types one string into one field: `409 promo_code_taken`. `PromoCodesService._issue` skips a
   generated string an owner code holds. The owner may change or regenerate the string later;
