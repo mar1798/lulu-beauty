@@ -1177,7 +1177,7 @@ and `rewards`, `valid_from`, `expires_at`, `status`, `used_order_id`, `reminded_
   (a refusal leaves no order and an untouched cart), and attaches it as an `order_promotions`
   row with `promo_code_id` titled «Промокод XXXXXXXX» — the code becomes `RESERVED` with
   `used_order_id` set. One live order per code (`uq_order_promotions_live_code`). Input is
-  normalised (case, spaces, dashes). A code is **attached at checkout only**; the API cannot
+  normalised (upper case, whitespace removed; a dash is part of the code). A code is **attached at checkout only**; the API cannot
   add one to an existing order.
 - **Refusals**, in order: unknown, someone else's or `REVOKED` → `404 promo_code_not_found`
   (a stranger's code looks exactly like a missing one); `USED`/`RESERVED` →
@@ -1213,9 +1213,9 @@ and the participants list. The differences:
   guarantee, `uq_order_promotions_live_participant`, because on use the code becomes an
   ordinary `order_promotions` participation (`promotion_id` set, `promo_code_id` NULL).
   Cancelling the order releases the participation, so the customer may use the code again.
-- **Format and uniqueness.** The string is normalised (upper case, no spaces or dashes) and must
-  be 4-16 Latin letters or digits (`422 promo_code_invalid`; Cyrillic look-alikes are refused,
-  not mapped). The owner may type `0/O/1/I`; only generated codes (8 characters, the same
+- **Format and uniqueness.** The string is normalised (upper case, whitespace removed — and
+  nothing else: `LETO-2026` and `LETO2026` are two codes) and must be 4-16 characters of any
+  kind, Cyrillic and punctuation included (`422 promo_code_invalid`). The owner may type `0/O/1/I`; only generated codes (8 characters, the same
   alphabet as issued codes) avoid them. A string is unique **across both kinds**
   (`promotions.code`, archived rows included, and `promo_codes.code`), because the customer
   types one string into one field: `409 promo_code_taken`. `PromoCodesService._issue` skips a

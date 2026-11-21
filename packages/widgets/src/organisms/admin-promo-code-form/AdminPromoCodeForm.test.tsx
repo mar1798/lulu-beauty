@@ -5,6 +5,10 @@ import { AdminPromoCodeForm } from '.'
 import { feedAdminPromoCodeForm } from '../../stories/feed'
 import { renderWidget } from '../../testing/render'
 
+/** Сгенерированный код - с дефисом, и на сервер он уходит с ним же. */
+const GENERATED = /^SULU-[A-HJ-NP-Z2-9]{5}$/
+const SENT = GENERATED
+
 const aygul = { id: 'u-1', name: 'Айгуль', phone: '+996700123456', telegramLinked: true }
 
 /** Создание: заполняет название и добавляет награду «скидка 10%». */
@@ -22,18 +26,27 @@ describe('AdminPromoCodeForm', () => {
     expect(container.firstElementChild).not.toBeNull()
   })
 
-  it('при создании код по умолчанию генерируется: поля кода нет, есть подсказка', () => {
+  it('при создании код уже сгенерирован в поле: SULU-XXXXX', () => {
     renderWidget(<AdminPromoCodeForm {...feedAdminPromoCodeForm()} />)
 
-    expect(screen.getByRole('switch', { name: /Сгенерировать код автоматически/ })).toBeChecked()
-    expect(screen.queryByLabelText(/^Код/)).toBeNull()
-    expect(screen.getByText('Код из 8 символов появится после сохранения.')).toBeInTheDocument()
+    expect(screen.getByLabelText<HTMLInputElement>(/^Код/).value).toMatch(GENERATED)
   })
 
-  it('своего кода: поле появляется, набранное переводится в верхний регистр', async () => {
+  it('«Перегенерировать» ставит в поле новый код', async () => {
+    renderWidget(<AdminPromoCodeForm {...feedAdminPromoCodeForm()} />)
+    const field = screen.getByLabelText<HTMLInputElement>(/^Код/)
+    const first = field.value
+
+    await userEvent.click(screen.getByRole('button', { name: 'Перегенерировать' }))
+
+    expect(field.value).toMatch(GENERATED)
+    expect(field.value).not.toBe(first)
+  })
+
+  it('свой код: набранное переводится в верхний регистр', async () => {
     renderWidget(<AdminPromoCodeForm {...feedAdminPromoCodeForm()} />)
 
-    await userEvent.click(screen.getByRole('switch', { name: /Сгенерировать код автоматически/ }))
+    await userEvent.clear(screen.getByLabelText(/^Код/))
     await userEvent.type(screen.getByLabelText(/^Код/), 'leto')
 
     expect(screen.getByLabelText(/^Код/)).toHaveValue('LETO')
@@ -43,14 +56,12 @@ describe('AdminPromoCodeForm', () => {
     const onSubmit = vi.fn()
 
     renderWidget(<AdminPromoCodeForm {...feedAdminPromoCodeForm()} onSubmit={onSubmit} />)
-    await userEvent.click(screen.getByRole('switch', { name: /Сгенерировать код автоматически/ }))
-    await userEvent.type(screen.getByLabelText(/^Код/), 'ЛЕТО')
+    await userEvent.clear(screen.getByLabelText(/^Код/))
+    await userEvent.type(screen.getByLabelText(/^Код/), 'Л Е Т')
     await userEvent.click(screen.getByRole('button', { name: 'Создать промокод' }))
 
     expect(onSubmit).not.toHaveBeenCalled()
-    expect(
-      screen.getByText('Код - от 4 до 16 латинских букв и цифр, без пробелов')
-    ).toBeInTheDocument()
+    expect(screen.getByText('Код - от 4 до 16 символов, пробелы не считаются')).toBeInTheDocument()
   })
 
   it('персональный без выбранного покупателя не уходит и раскрывает «Кому»', async () => {
@@ -114,7 +125,7 @@ describe('AdminPromoCodeForm', () => {
     expect(screen.queryByRole('option', { name: 'Промокод' })).toBeNull()
   })
 
-  it('сохранённый код: в поле его строка, «Сгенерировать новый» отправляет code: null', async () => {
+  it('сохранённый код: в поле его строка, «Перегенерировать» заменяет её новой', async () => {
     const onSubmit = vi.fn()
     const props = feedAdminPromoCodeForm()
 
@@ -149,13 +160,20 @@ describe('AdminPromoCodeForm', () => {
       })
     )
 
-    await userEvent.click(screen.getByRole('button', { name: 'Сгенерировать новый' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Перегенерировать' }))
+
+    expect(
+      screen.getByText('Прежний код LETO2026 перестанет работать после сохранения.')
+    ).toBeInTheDocument()
+
     await userEvent.click(screen.getByRole('button', { name: 'Сохранить' }))
 
-    expect(onSubmit).toHaveBeenLastCalledWith(expect.objectContaining({ code: null }))
+    expect(onSubmit).toHaveBeenLastCalledWith(
+      expect.objectContaining({ code: expect.stringMatching(SENT) })
+    )
   })
 
-  it('минимальная форма создания уходит с code: null и без покупателя', async () => {
+  it('минимальная форма создания уходит со сгенерированным кодом и без покупателя', async () => {
     const onSubmit = vi.fn()
 
     renderWidget(<AdminPromoCodeForm {...feedAdminPromoCodeForm()} onSubmit={onSubmit} />)
@@ -164,7 +182,12 @@ describe('AdminPromoCodeForm', () => {
 
     expect(onSubmit).toHaveBeenCalledOnce()
     expect(onSubmit).toHaveBeenCalledWith(
-      expect.objectContaining({ code: null, title: 'Скидка', assignedUser: null, endsAt: null })
+      expect.objectContaining({
+        code: expect.stringMatching(SENT),
+        title: 'Скидка',
+        assignedUser: null,
+        endsAt: null,
+      })
     )
   })
 })

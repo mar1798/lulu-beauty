@@ -75,7 +75,7 @@ def test_generated_codes_use_the_unambiguous_alphabet() -> None:
 
 
 def test_a_typed_code_is_normalised() -> None:
-    assert normalize_code(" abcd-2345 ") == "ABCD2345"
+    assert normalize_code(" abcd-2345 ") == "ABCD-2345"
     assert normalize_code("ab cd\t2345") == "ABCD2345"
 
 

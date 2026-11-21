@@ -446,7 +446,7 @@ too (a guest has joined nothing, so "once per customer" only shows after sign-in
 | `promo_code_already_used`       | 409    | `USED`, or `RESERVED` by another order.                                                                                                                                             |
 | `promo_code_conditions_not_met` | 409    | Including an empty cart.                                                                                                                                                            |
 | `promo_code_taken`              | 409    | Owner code string used by another owner code (archived too) or an issued one.                                                                                                       |
-| `promo_code_invalid`            | 422    | Owner code string is not 4-16 Latin letters/digits after normalising.                                                                                                               |
+| `promo_code_invalid`            | 422    | Owner code string is not 4-16 characters after removing whitespace.                                                                                                                 |
 | `promo_code_user_not_found`     | 422    | `assignedUserId` is unknown or an erased account.                                                                                                                                   |
 
 Structural mistakes in the rules (an unknown type, a percent over 100, two `PROMO_CODE`

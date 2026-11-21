@@ -16,19 +16,6 @@ export const container = style({
 
 export const switches = style(flexColumn(8))
 
-/** Поле кода и кнопка рядом: «Сгенерировать новый» не должна уезжать под поле на узком экране без нужды. */
-export const codeRow = style({
-  ...flexColumn(8),
-  ...media({
-    sm: { ...flexRow(8), alignItems: 'flex-start' },
-  }),
-})
-
-export const codeInput = style({
-  flex: 1,
-  minWidth: 0,
-})
-
 export const actions = style({
   ...flexColumn(8),
   ...media({

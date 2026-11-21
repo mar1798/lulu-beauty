@@ -251,7 +251,7 @@ Rules: [domain.md](domain.md#promotions). The site side:
   `AdminShell` right after «Акции». The list (`AdminPromoCodesTable`) copies a code with
   `navigator.clipboard` («Код скопирован»); there is no showcase to rebuild, so no
   `refreshPublicPages`. The form (`AdminPromoCodeForm`) gets its customer search from
-  `useCustomerSearch`. After `POST` the toast names the generated code and the page moves to the
+  `useCustomerSearch`. After `POST` the toast names the saved code and the page moves to the
   card. The delete toast says «удалён» or «убран в архив» from the `deleted` flag of the `DELETE`
   answer, not from `participantsCount`. «Duplicate» is `/admin/promo-codes/add?from=<id>`: conditions and rewards are copied; the
   code (regenerated), dates, customer and enabled flag are not. The card has «Использования (N)»

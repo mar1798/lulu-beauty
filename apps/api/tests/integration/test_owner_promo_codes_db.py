@@ -126,12 +126,12 @@ async def test_no_code_means_one_is_generated(db_session: AsyncSession) -> None:
 async def test_a_typed_code_is_normalised(db_session: AsyncSession) -> None:
     promotion = await _make_code(db_session, code=" leto-2026 ")
 
-    assert promotion.code == "LETO2026"
+    assert promotion.code == "LETO-2026"
 
 
 async def test_a_malformed_code_is_refused(db_session: AsyncSession) -> None:
     with pytest.raises(PromoCodeInvalidError):
-        await _make_code(db_session, code="ЛЕТО2026")
+        await _make_code(db_session, code="ab c")
 
 
 async def test_a_code_string_is_unique_among_owner_codes_archived_included(
@@ -282,13 +282,13 @@ async def test_checkout_takes_the_code_as_an_ordinary_participation(
 ) -> None:
     user = await make_user(db_session)
     product = await _shop(db_session)
-    promotion = await _make_code(db_session, code="LETO2026")
+    promotion = await _make_code(db_session, code="LETO-2026")
 
-    order = await _checkout(db_session, user.id, (product, 2), promo_code=" leto-2026 ")
+    order = await _checkout(db_session, user.id, (product, 2), promo_code=" leto - 2026 ")
 
     [participation] = _live(order)
     assert participation.promotion_id == promotion.id and participation.promo_code_id is None
-    assert participation.title == "Промокод LETO2026"
+    assert participation.title == "Промокод LETO-2026"
     assert participation.sort_order == CODE_SORT_ORDER
     assert order.total_cents == 18_000
     assert order_totals(order).promo_by_layer[participation.id] == 2_000
@@ -682,3 +682,12 @@ async def test_a_code_row_is_not_a_promotion_over_http(db_session: AsyncSession)
             assert deletion.status_code == 200 and deletion.json() == {"deleted": True}
     finally:
         app.dependency_overrides.clear()
+
+
+async def test_a_dash_is_part_of_the_code(db_session: AsyncSession) -> None:
+    user = await make_user(db_session)
+    await _make_code(db_session, code="LETO-2026")
+
+    with pytest.raises(PromoCodeNotFoundError):
+        await OwnerCodesService(db_session).usable(user.id, "LETO2026")
+    assert (await OwnerCodesService(db_session).usable(user.id, "leto-2026")).code == "LETO-2026"

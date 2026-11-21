@@ -84,18 +84,19 @@ def generate_code() -> str:
 
 
 def normalize_code(raw: str) -> str:
-    """What the customer typed, as it is stored: no spaces or dashes, upper case."""
-    return "".join(ch for ch in raw.upper() if not ch.isspace() and ch != "-")
+    """What the customer typed, as it is stored: no whitespace, upper case. Every other
+    character stays — a dash is part of the code, `SULU-AB3CD` and `SULUAB3CD` are two codes."""
+    return "".join(ch for ch in raw.upper() if not ch.isspace())
 
 
-# An owner's code, once normalised: Latin letters and digits only. Unlike a generated one it
-# may hold 0/O and 1/I — the owner chooses it on purpose.
-OWNER_CODE_PATTERN = re.compile(r"^[A-Z0-9]{4,16}$")
+# An owner's code, once normalised: any 4-16 characters (Cyrillic, dashes, punctuation
+# included). Unlike a generated one it may hold 0/O and 1/I — the owner chooses it on purpose.
+OWNER_CODE_PATTERN = re.compile(r"^\S{4,16}$")
 
 
 def validate_owner_code(raw: str) -> str:
-    """The code the owner typed, normalised; `PromoCodeInvalidError` if it is not 4-16 Latin
-    letters or digits (Cyrillic look-alikes are refused, not mapped)."""
+    """The code the owner typed, normalised; `PromoCodeInvalidError` if it is not 4-16
+    characters once the whitespace is gone."""
     code = normalize_code(raw)
     if not OWNER_CODE_PATTERN.fullmatch(code):
         raise PromoCodeInvalidError

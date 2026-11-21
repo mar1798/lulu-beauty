@@ -11,6 +11,7 @@ import type {
 } from '../../types'
 import { Alert } from '../../atoms/alert'
 import { Button } from '../../atoms/button'
+import { IconButton } from '../../atoms/icon-button'
 import { Input } from '../../atoms/input'
 import { Switch } from '../../atoms/switch'
 import { Text } from '../../atoms/text'
@@ -18,6 +19,7 @@ import { CustomerSelect } from '../../molecules/customer-select'
 import { FormSection } from '../../molecules/form-section'
 import { PromotionPeriodFields } from '../../molecules/promotion-period-fields'
 import { RichTextEditor } from '../../molecules/rich-text-editor'
+import { IconRefresh } from '../../svg/icons'
 import { storeIso, storeToday, toStoreParts } from '../../utils/datetime'
 import {
   MAX_PROMOTION_CONDITIONS,
@@ -41,13 +43,14 @@ import * as styles from './AdminPromoCodeForm.css'
  * промокод (`allowPromoCode={false}`). Окно действия - `PromotionPeriodFields`,
  * время по магазину (Asia/Bishkek); «Бессрочный» уводит `endsAt: null`.
  *
- * Код. При создании по умолчанию генерируется на сервере (`code: null`), а если
- * владелец хочет свой - набирает его, и форма приводит набранное к виду, в каком
- * код хранится: заглавные латинские буквы и цифры, пробелы и дефисы убраны (так же
- * делает сервер, `normalize_code`). Кириллица отсекается сразу: на телефоне
- * покупатель набирает код латиницей, и русская «С» вместо латинской «C» - частая
- * ошибка. У сохранённого кода его можно заменить новым («Сгенерировать новый»);
- * тогда на сервер уходит `code: null`, а не прежняя строка.
+ * Код. Новый промокод (и дубль) открывается с уже готовым кодом вида `SULU-XXXXX`,
+ * сгенерированным здесь же: владелец видит его до сохранения и может набрать свой
+ * или нажать «Перегенерировать» в поле. У сохранённого кода в поле его строка, и та
+ * же кнопка заменяет её новой. На сервер код уходит в том виде, в каком хранится:
+ * заглавными и без пробелов (так же делает сервер, `normalize_code`). Остальные
+ * символы - кириллица, дефисы, знаки - часть кода: `SULU-AB3CD` сохраняется с
+ * дефисом, и покупатель набирает его тоже с дефисом. Если сгенерированный код вдруг занят, сервер ответит `promo_code_taken` -
+ * хватит перегенерировать.
  *
  * «Кому». Общий код может применить любой покупатель, каждый раз по разу.
  * Персональный привязан к одному аккаунту, которого владелец находит поиском:
@@ -60,16 +63,34 @@ import * as styles from './AdminPromoCodeForm.css'
  */
 
 const TITLE_MAX_LENGTH = 255
-/** Набранное с пробелами и дефисами длиннее самого кода: сервер их убирает, форма тоже. */
+/** Набранное с пробелами длиннее самого кода: сервер их убирает, форма тоже. */
 const CODE_INPUT_MAX_LENGTH = 24
-const CODE_PATTERN = /^[A-Z0-9]{4,16}$/
+/** 4-16 символов любых, кроме пробельных; длина - в кодовых точках, как у сервера. */
+const isValidCode = (code: string): boolean => {
+  const length = [...code].length
+  return length >= 4 && length <= 16 && !/\s/.test(code)
+}
 /** `MAX_DESCRIPTION_HTML_LENGTH` отсекает сервер; видимый предел - как у акции. */
 const DESCRIPTION_MAX_LENGTH = 2000
 const START_TIME = '00:00'
 const END_TIME = '23:59'
 
-/** Код в том виде, в каком его хранит сервер: без пробелов и дефисов, заглавными. */
-const normalizeCode = (raw: string): string => raw.toUpperCase().replace(/[\s-]/g, '')
+/** Код в том виде, в каком его хранит сервер: без пробелов, заглавными. */
+const normalizeCode = (raw: string): string => raw.toUpperCase().replace(/\s/g, '')
+
+/** Алфавит выдаваемых кодов сервера (`CODE_ALPHABET`): без 0/O и 1/I, их путают на слух и на глаз. */
+const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+const GENERATED_PREFIX = 'SULU-'
+const GENERATED_LENGTH = 5
+
+/** Новый код `SULU-XXXXX`. 32^5 вариантов - совпадение редкость, и его всё равно отсечёт сервер. */
+const generatePromoCode = (): string => {
+  const bytes = crypto.getRandomValues(new Uint8Array(GENERATED_LENGTH))
+  // 256 делится на 32 нацело, поэтому остаток не смещает распределение.
+  const tail = Array.from(bytes, byte => CODE_ALPHABET[byte % CODE_ALPHABET.length]).join('')
+
+  return `${GENERATED_PREFIX}${tail}`
+}
 
 const partsOf = (iso: string | null | undefined): { date: string; time: string } =>
   (iso === undefined || iso === null ? null : toStoreParts(iso)) ?? { date: '', time: '' }
@@ -113,14 +134,12 @@ export const AdminPromoCodeForm: FC<IAdminPromoCodeFormProps & IBasicStyling> = 
 
   const [fields, setFields] = useState<IFields>(() => ({
     title: initialValues?.title ?? '',
-    code: savedCode ?? '',
+    code: savedCode ?? generatePromoCode(),
     startDate: start.date === '' ? storeToday().date : start.date,
     startTime: start.date === '' ? START_TIME : start.time,
     endDate: end.date,
     endTime: end.date === '' ? END_TIME : end.time,
   }))
-  // Создание и дубль начинаются с «сгенерировать»; сохранённый код - с его строки в поле.
-  const [isAutoCode, setIsAutoCode] = useState(savedCode === null)
   const [descriptionHtml, setDescriptionHtml] = useState(
     () => initialValues?.descriptionHtml ?? plainTextToHtml('')
   )
@@ -178,11 +197,7 @@ export const AdminPromoCodeForm: FC<IAdminPromoCodeFormProps & IBasicStyling> = 
   const normalizedCode = normalizeCode(fields.code)
 
   const errors = {
-    code: isAutoCode
-      ? null
-      : CODE_PATTERN.test(normalizedCode)
-        ? null
-        : 'Код - от 4 до 16 латинских букв и цифр, без пробелов',
+    code: isValidCode(normalizedCode) ? null : 'Код - от 4 до 16 символов, пробелы не считаются',
     title: fields.title.trim() === '' ? 'Введите название промокода' : null,
     start: startIso === '' ? 'Укажите дату и время начала' : null,
     end: isOpenEnded
@@ -228,7 +243,7 @@ export const AdminPromoCodeForm: FC<IAdminPromoCodeFormProps & IBasicStyling> = 
     }
 
     onSubmit({
-      code: isAutoCode ? null : normalizedCode,
+      code: normalizedCode,
       title: fields.title.trim(),
       descriptionHtml,
       startsAt: startIso,
@@ -248,9 +263,10 @@ export const AdminPromoCodeForm: FC<IAdminPromoCodeFormProps & IBasicStyling> = 
     rewards.length === 0
       ? 'Не добавлены'
       : pluralize(rewards.length, ['награда', 'награды', 'наград'])
-  const mainSummary = isAutoCode
-    ? fields.title.trim()
-    : [normalizedCode, fields.title.trim()].filter(part => part !== '').join(' - ')
+  const mainSummary = [fields.code.trim(), fields.title.trim()]
+    .filter(part => part !== '')
+    .join(' - ')
+  const isCodeReplaced = savedCode !== null && normalizedCode !== normalizeCode(savedCode)
 
   return (
     <form
@@ -267,63 +283,33 @@ export const AdminPromoCodeForm: FC<IAdminPromoCodeFormProps & IBasicStyling> = 
           toggleSection('main')
         }}
       >
-        {!isSaved && (
-          <Switch
-            label="Сгенерировать код автоматически"
-            checked={isAutoCode}
-            onChange={setIsAutoCode}
-          />
-        )}
-
-        {isAutoCode ? (
-          <div className={styles.codeRow}>
-            <Text tone="secondary" size="sm" className={styles.codeInput}>
-              {isSaved
-                ? 'Новый код появится после сохранения, прежний перестанет работать.'
-                : 'Код из 8 символов появится после сохранения.'}
-            </Text>
-            {isSaved && savedCode !== null && (
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                onClick={() => {
-                  setIsAutoCode(false)
-                  patch({ code: savedCode })
-                }}
-              >
-                Оставить прежний
-              </Button>
-            )}
-          </div>
-        ) : (
-          <div className={styles.codeRow}>
-            <Input
-              className={styles.codeInput}
-              label="Код"
-              value={fields.code}
-              maxLength={CODE_INPUT_MAX_LENGTH}
-              required={true}
-              hint="Латинские буквы и цифры, 4-16 символов. Пробелы и дефисы убираются."
-              error={isSubmitted ? errors.code : null}
-              onChange={next => {
-                patch({ code: next.toUpperCase() })
+        <Input
+          label="Код"
+          value={fields.code}
+          maxLength={CODE_INPUT_MAX_LENGTH}
+          required={true}
+          autoComplete="off"
+          hint={
+            isCodeReplaced
+              ? `Прежний код ${savedCode ?? ''} перестанет работать после сохранения.`
+              : '4-16 символов, любые, кроме пробелов - пробелы убираются.'
+          }
+          error={isSubmitted ? errors.code : null}
+          onChange={next => {
+            patch({ code: next.toUpperCase() })
+          }}
+          suffix={
+            <IconButton
+              size="sm"
+              variant="ghost"
+              icon={<IconRefresh />}
+              label="Перегенерировать"
+              onClick={() => {
+                patch({ code: generatePromoCode() })
               }}
             />
-            {isSaved && (
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                onClick={() => {
-                  setIsAutoCode(true)
-                }}
-              >
-                Сгенерировать новый
-              </Button>
-            )}
-          </div>
-        )}
+          }
+        />
 
         <Input
           label="Название"

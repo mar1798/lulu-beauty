@@ -439,7 +439,7 @@ async def test_the_check_says_what_the_code_gives(db_session: AsyncSession) -> N
     await CartService(db_session).add_item(user_id, variant_id(product), 3)
 
     result = await CartService(db_session).check_promo_code(
-        user_id, f" {code.code[:4]}-{code.code[4:]} "
+        user_id, f" {code.code[:4].lower()} {code.code[4:]} "
     )
 
     assert result.code.code == code.code

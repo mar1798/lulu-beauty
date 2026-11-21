@@ -67,7 +67,7 @@ const AdminPromoCodeCreatePage: React.FC = () => {
       summary={
         sourceId === null
           ? undefined
-          : 'Условия и награды скопированы. Код сгенерируется новый, даты выберите заново - копия создаётся выключенной.'
+          : 'Условия и награды скопированы. Код у копии новый, даты выберите заново - копия создаётся выключенной.'
       }
       actions={
         <Button isFullWidth="mobile" variant="secondary" link={{ href: '/admin/promo-codes' }}>

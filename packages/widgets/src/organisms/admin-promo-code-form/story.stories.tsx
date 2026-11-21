@@ -20,7 +20,7 @@ Default.parameters = {
 }
 Default.args = feedAdminPromoCodeForm()
 
-/** Сохранённый персональный код: поле кода с «Сгенерировать новый», выбранный покупатель. */
+/** Сохранённый персональный код: поле кода с «Перегенерировать», выбранный покупатель. */
 export const Saved = Template.bind({})
 Saved.parameters = { layout: 'centered' }
 Saved.args = {

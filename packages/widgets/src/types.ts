@@ -3215,13 +3215,16 @@ export type IAdminPromoCodeInitialValues = Pick<
   | 'conditions'
   | 'rewards'
 > & {
-  /** `null` - у копии кода строки ещё нет: она сгенерируется при сохранении. */
+  /** `null` - у копии своей строки нет: форма подставит новый `SULU-XXXXX`. */
   code: string | null
 }
 
 /** Значения формы промокода, готовые к отправке. */
 export interface IAdminPromoCodeValues {
-  /** `null` - сгенерировать (при правке - заменить новым). Иначе - код как набран, в верхнем регистре. */
+  /**
+   * Код без пробелов (дефис - часть кода), в верхнем регистре. Форма всегда отправляет строку; `null`
+   * (сгенерировать на сервере) API по-прежнему принимает.
+   */
   code: string | null
   title: string
   /** Пустая строка - описания нет. */
@@ -3238,9 +3241,9 @@ export interface IAdminPromoCodeFormProps {
   catalog: IPromotionCatalog
   /** Выбор покупателя для персонального кода: поиск ведёт страница. Значение формы держит сама. */
   customerSelect: Omit<ICustomerSelectProps, 'value' | 'onChange' | 'label'>
-  /** Без значений - создание (код по умолчанию генерируется); с ними - правка или дубль. */
+  /** Без значений - создание (в поле уже готовый `SULU-XXXXX`); с ними - правка или дубль. */
   initialValues?: IAdminPromoCodeInitialValues
-  /** Сохранённый промокод: на кнопке «Сохранить», а у кода есть «Сгенерировать новый». */
+  /** Сохранённый промокод: на кнопке «Сохранить», а смена кода предупреждает о прежнем. */
   isSaved?: boolean
   onSubmit: (values: IAdminPromoCodeValues) => void
   isSubmitting?: boolean
