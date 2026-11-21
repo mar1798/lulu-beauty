@@ -4,14 +4,12 @@ import { flexColumn, flexRow } from '../../styling/mixin'
 
 /**
  * Mobile first: секции - панели друг под другом на всю ширину, поля в одну
- * колонку. На широком экране форма не растягивается дальше `56rem`, как форма акции.
+ * колонку. На широком экране форма занимает всю ширину страницы, как форма акции, -
+ * иначе кнопки в шапке страницы выступают за её правый край.
  */
 export const container = style({
   ...flexColumn(20),
   minWidth: 0,
-  ...media({
-    lg: { maxWidth: '56rem' },
-  }),
 })
 
 export const switches = style(flexColumn(8))

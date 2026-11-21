@@ -6,13 +6,11 @@ import { vars } from '../../styling/themes/contract.css'
 /**
  * Mobile first: секции — панели друг под другом на всю ширину, поля в одну
  * колонку. Пары полей (дата и время) и два баннера встают рядом только с `sm`.
+ * Ширину форма не ограничивает: она идёт вровень с шапкой страницы и её кнопками.
  */
 export const container = style({
   ...flexColumn(20),
   minWidth: 0,
-  ...media({
-    lg: { maxWidth: '56rem' },
-  }),
 })
 
 export const switches = style(flexColumn(8))
