@@ -61,12 +61,13 @@ describe('PromoCodeCard', () => {
     expect(screen.queryByRole('link', { name: 'Использовать' })).toBeNull()
   })
 
-  it('бессрочный код (expiresAt: null) показывает срок «с даты, бессрочно»', () => {
+  it('код без даты окончания (expiresAt: null) показывает только начало, без «бессрочно»', () => {
     renderWidget(
       <PromoCodeCard {...feedPromoCodeCard()} code={feedPromoCode({ expiresAt: null })} />
     )
 
-    expect(screen.getByText(/, бессрочно$/)).toBeInTheDocument()
+    expect(screen.getByText(/^с \S+$/)).toBeInTheDocument()
+    expect(screen.queryByText(/бессрочн/)).not.toBeInTheDocument()
   })
 
   it('у персонального кода владельца название без «Акция», и видно описание', () => {

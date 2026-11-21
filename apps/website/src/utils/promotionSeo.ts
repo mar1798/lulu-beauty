@@ -53,9 +53,12 @@ const clamp = (text: string): string => {
   return `${(lastSpace > 0 ? cut.slice(0, lastSpace) : cut).replace(/[\s,.;:-]+$/u, '')}…`
 }
 
-/** Описание владельца, обрезанное до длины сниппета; без него - название и срок (если он есть). */
+/**
+ * Описание владельца, обрезанное до длины сниппета; без него - название и срок. У акции
+ * без даты окончания назван только старт: что она бессрочная, покупателю не говорим.
+ */
 export const promotionDescription = (
-  promotion: Pick<IPublicPromotion, 'title' | 'descriptionHtml' | 'endsAt'>,
+  promotion: Pick<IPublicPromotion, 'title' | 'descriptionHtml' | 'startsAt' | 'endsAt'>,
   formatDate: (iso: string) => string
 ): string => {
   const text = promotionPlainText(promotion.descriptionHtml)
@@ -66,7 +69,7 @@ export const promotionDescription = (
 
   return clamp(
     promotion.endsAt === null
-      ? `${promotion.title} - бессрочная акция.`
+      ? `${promotion.title} - с ${formatDate(promotion.startsAt)}.`
       : `${promotion.title} - до ${formatDate(promotion.endsAt)}.`
   )
 }

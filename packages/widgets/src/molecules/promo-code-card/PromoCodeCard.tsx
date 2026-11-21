@@ -104,7 +104,7 @@ export const PromoCodeCard: FC<IPromoCodeCardProps & IBasicStyling> = ({
             <dt className={styles.term}>Срок</dt>
             <dd className={styles.value}>
               {code.expiresAt === null
-                ? `с ${formatShortDate(code.validFrom)}, бессрочно`
+                ? `с ${formatShortDate(code.validFrom)}`
                 : `${formatShortDate(code.validFrom)} - ${formatShortDate(code.expiresAt)}`}
             </dd>
           </div>

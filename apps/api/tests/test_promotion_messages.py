@@ -183,11 +183,11 @@ def test_the_start_announcement_says_what_terms_and_until_when() -> None:
     assert "27.11.2026" in text
 
 
-def test_the_start_announcement_of_an_open_ended_promotion_names_no_date() -> None:
+def test_the_start_announcement_of_an_open_ended_promotion_names_only_the_start() -> None:
     text = messages.promotion_started(_promotion(ends_at=None))
 
-    assert "бессрочная" in text
-    assert "идёт до" not in text
+    assert "Акция идёт с 20.11.2026" in text
+    assert "бессрочн" not in text and "идёт до" not in text
 
 
 def test_the_start_announcement_button_points_at_the_promotion_page() -> None:

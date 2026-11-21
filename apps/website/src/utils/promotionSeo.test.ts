@@ -33,6 +33,7 @@ describe('promotionDescription', () => {
         {
           title: 'Весна',
           descriptionHtml: '<p>Скидка на уход.</p>',
+          startsAt: '2026-03-01T00:00:00Z',
           endsAt: '2026-04-01T00:00:00Z',
         },
         format
@@ -43,22 +44,35 @@ describe('promotionDescription', () => {
   it('без текста называет акцию и срок', () => {
     expect(
       promotionDescription(
-        { title: 'Весна', descriptionHtml: null, endsAt: '2026-04-01T00:00:00Z' },
+        {
+          title: 'Весна',
+          descriptionHtml: null,
+          startsAt: '2026-03-01T00:00:00Z',
+          endsAt: '2026-04-01T00:00:00Z',
+        },
         format
       )
     ).toBe('Весна - до 2026-04-01.')
   })
 
-  it('у бессрочной акции без текста срока нет', () => {
+  it('у акции без даты окончания называет только старт', () => {
     expect(
-      promotionDescription({ title: 'Весна', descriptionHtml: null, endsAt: null }, format)
-    ).toBe('Весна - бессрочная акция.')
+      promotionDescription(
+        { title: 'Весна', descriptionHtml: null, startsAt: '2026-03-01T00:00:00Z', endsAt: null },
+        format
+      )
+    ).toBe('Весна - с 2026-03-01.')
   })
 
   it('режет по границе слова до длины сниппета', () => {
     const long = `<p>${'слово '.repeat(60)}</p>`
     const result = promotionDescription(
-      { title: 'Весна', descriptionHtml: long, endsAt: '2026-04-01T00:00:00Z' },
+      {
+        title: 'Весна',
+        descriptionHtml: long,
+        startsAt: '2026-03-01T00:00:00Z',
+        endsAt: '2026-04-01T00:00:00Z',
+      },
       format
     )
 

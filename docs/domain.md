@@ -976,8 +976,10 @@ promotion_ends_before_start`, and a CHECK constraint). A promotion ending at mid
 - **`ends_at` is optional.** `NULL` is an open-ended promotion: running from `starts_at` on,
   never `FINISHED`, until the owner disables or archives it (`not_ended()` is the SQL half of
   the window check). The form makes it an explicit «Бессрочная» switch rather than an empty
-  date, so a forgotten end does not quietly run forever; the page, the admin table, the
-  snippet and the start broadcast say «бессрочно» instead of a date.
+  date, so a forgotten end does not quietly run forever. **Customers are never told it is
+  open-ended**: the page, the snippet, the start broadcast, the `/promocodes` card, an order's
+  issued-code note and the personal-code message name only the start date («Действует с …»).
+  Only the admin tables say «бессрочно».
 - **The status is derived, never stored** (`promotion_status`): `ARCHIVED` (`deleted_at`),
   `DISABLED` (`is_enabled` off), `SCHEDULED`, `ACTIVE`, `FINISHED`. "Running" means enabled,
   not archived and inside the window (`active_promotions`).

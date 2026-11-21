@@ -65,7 +65,7 @@ export const PromotionDetails: FC<IPromotionDetailsProps & IBasicStyling> = ({
 
         <Text tone="secondary">
           {promotion.endsAt === null
-            ? `Действует с ${formatDate(promotion.startsAt)}, бессрочно`
+            ? `Действует с ${formatDate(promotion.startsAt)}`
             : `Действует с ${formatDate(promotion.startsAt)} по ${formatDate(promotion.endsAt)}`}
         </Text>
       </header>
