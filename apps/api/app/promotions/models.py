@@ -258,6 +258,21 @@ def automatic() -> ColumnElement[bool]:
     return Promotion.code.is_(None)
 
 
+def running_promotion_filters(now: datetime) -> tuple[ColumnElement[bool], ...]:
+    """The SQL half of "runs right now": automatic, not archived, enabled, inside the window.
+
+    One definition for everything that asks the question: the promotions' own listings, the
+    carousel feed and the sitemap.
+    """
+    return (
+        automatic(),
+        Promotion.deleted_at.is_(None),
+        Promotion.is_enabled.is_(True),
+        Promotion.starts_at <= now,
+        not_ended(now),
+    )
+
+
 def promotion_status(promotion: Promotion, now: datetime) -> PromotionStatus:
     if promotion.deleted_at is not None:
         return PromotionStatus.ARCHIVED

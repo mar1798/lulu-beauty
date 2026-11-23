@@ -66,8 +66,7 @@ from app.promotions.models import (
     PromoCode,
     PromoCodeStatus,
     Promotion,
-    automatic,
-    not_ended,
+    running_promotion_filters,
 )
 from app.promotions.owner_codes import OwnerCodesService
 from app.promotions.rules import (
@@ -307,20 +306,17 @@ async def resolve_gifts(
 
 
 async def active_promotions(session: AsyncSession, now: datetime) -> list[Promotion]:
-    """Enabled, not archived, inside `[starts_at, ends_at)` — in carousel order.
+    """Promotions running right now, in discount order (`sort_order`).
+
+    The condition is `running_promotion_filters`: enabled, not archived, inside
+    `[starts_at, ends_at)`.
 
     No `ends_at` is an open-ended promotion: it is running from its start on. An owner's
     promo code is not here: it joins an order only when the customer types it.
     """
     result = await session.execute(
         select(Promotion)
-        .where(
-            automatic(),
-            Promotion.deleted_at.is_(None),
-            Promotion.is_enabled.is_(True),
-            Promotion.starts_at <= now,
-            not_ended(now),
-        )
+        .where(*running_promotion_filters(now))
         .order_by(Promotion.sort_order, Promotion.title, Promotion.id)
     )
     return list(result.scalars().all())

@@ -23,7 +23,13 @@ from app.catalog.rich_text import description_from_html
 from app.catalog.service import UNIQUE_VIOLATION
 from app.config import settings
 from app.orders.models import Order
-from app.promotions.models import OrderPromotion, PromoCode, Promotion, automatic, not_ended
+from app.promotions.models import (
+    OrderPromotion,
+    PromoCode,
+    Promotion,
+    automatic,
+    running_promotion_filters,
+)
 from app.promotions.rules import (
     AnyCodeReward,
     AnyCondition,
@@ -140,13 +146,7 @@ class PromotionsService:
     @staticmethod
     def _running(now: datetime) -> tuple[ColumnElement[bool], ...]:
         # An owner's promo code is never on the showcase: it works only when typed.
-        return (
-            automatic(),
-            Promotion.deleted_at.is_(None),
-            Promotion.is_enabled.is_(True),
-            Promotion.starts_at <= now,
-            not_ended(now),
-        )
+        return running_promotion_filters(now)
 
     async def list_active(self, now: datetime | None = None) -> list[Promotion]:
         """Promotions running right now, in the owner's order — the carousel and the sitemap."""
