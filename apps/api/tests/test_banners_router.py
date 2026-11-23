@@ -40,7 +40,7 @@ ADMIN_PATHS: list[tuple[str, str]] = [
 
 def _client_as(role: Role) -> Callable[[], Iterator[AsyncClient]]:
     def fixture() -> Iterator[AsyncClient]:
-        # `require_super_admin` reads the role from the database, not the token.
+        # `require_admin` reads the role from the database, not the token.
         session = AsyncMock()
         session.scalar.return_value = role
         app.dependency_overrides[get_session] = lambda: session
@@ -55,6 +55,7 @@ def _client_as(role: Role) -> Callable[[], Iterator[AsyncClient]]:
 
 owner = pytest.fixture(_client_as(Role.SUPER_ADMIN), name="owner")
 admin = pytest.fixture(_client_as(Role.ADMIN), name="admin")
+customer = pytest.fixture(_client_as(Role.CUSTOMER), name="customer")
 
 
 def _news_item() -> BannerItem:
@@ -91,11 +92,11 @@ async def test_anonymous_callers_are_turned_away(method: str, path: str) -> None
 
 
 @pytest.mark.parametrize(("method", "path"), ADMIN_PATHS)
-async def test_an_admin_is_not_the_owner(admin: AsyncClient, method: str, path: str) -> None:
-    async with admin as client:
+async def test_a_customer_is_turned_away(customer: AsyncClient, method: str, path: str) -> None:
+    async with customer as client:
         response = await client.request(method, path)
     assert response.status_code == 403
-    assert response.json()["detail"] == "super_admin_only"
+    assert response.json()["detail"] == "admin_only"
 
 
 async def test_the_feed_is_public() -> None:
@@ -172,10 +173,10 @@ async def test_create_refusals_are_codes(
     assert response.json()["detail"] == code
 
 
-async def test_a_missing_news_item_is_a_404(owner: AsyncClient) -> None:
+async def test_a_missing_news_item_is_a_404(admin: AsyncClient) -> None:
     with patch("app.banners.router.BannersService") as service_cls:
         service_cls.return_value.news_item = AsyncMock(side_effect=BannerNotFoundError())
-        async with owner as client:
+        async with admin as client:
             response = await client.get(f"/admin/banners/news/{uuid.uuid4()}")
     assert response.status_code == 404
     assert response.json()["detail"] == "banner_not_found"

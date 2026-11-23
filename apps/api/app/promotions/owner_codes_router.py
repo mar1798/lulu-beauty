@@ -1,6 +1,6 @@
 """`/admin/promo-codes`: the owner creates, edits and switches off promo codes.
 
-All routes are the owner's (`require_super_admin`), like promotions. The service does the
+All routes are any admin's (`require_admin`), like promotions. The service does the
 work; each route commits after it.
 """
 
@@ -10,7 +10,7 @@ from datetime import UTC, datetime
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth.dependencies import CurrentUser, require_super_admin
+from app.auth.dependencies import CurrentUser, require_admin
 from app.auth.models import User
 from app.common.schemas import PageResponse
 from app.db import get_session
@@ -125,7 +125,7 @@ async def _respond(service: OwnerCodesService, promotion: Promotion) -> AdminPro
 async def list_promo_codes(
     include_deleted: bool = Query(default=False, alias="includeDeleted"),
     session: AsyncSession = Depends(get_session),
-    _admin: CurrentUser = Depends(require_super_admin),
+    _admin: CurrentUser = Depends(require_admin),
 ) -> list[AdminPromoCodeResponse]:
     service = OwnerCodesService(session)
     promotions = await service.list_all(include_deleted=include_deleted)
@@ -140,7 +140,7 @@ async def create_promo_code(
     body: PromoCodeWriteRequest,
     background_tasks: BackgroundTasks,
     session: AsyncSession = Depends(get_session),
-    _admin: CurrentUser = Depends(require_super_admin),
+    _admin: CurrentUser = Depends(require_admin),
 ) -> AdminPromoCodeResponse:
     service = OwnerCodesService(session)
     try:
@@ -157,7 +157,7 @@ async def create_promo_code(
 async def get_promo_code(
     promo_code_id: uuid.UUID,
     session: AsyncSession = Depends(get_session),
-    _admin: CurrentUser = Depends(require_super_admin),
+    _admin: CurrentUser = Depends(require_admin),
 ) -> AdminPromoCodeResponse:
     service = OwnerCodesService(session)
     try:
@@ -173,7 +173,7 @@ async def update_promo_code(
     body: PromoCodeWriteRequest,
     background_tasks: BackgroundTasks,
     session: AsyncSession = Depends(get_session),
-    _admin: CurrentUser = Depends(require_super_admin),
+    _admin: CurrentUser = Depends(require_admin),
 ) -> AdminPromoCodeResponse:
     service = OwnerCodesService(session)
     try:
@@ -198,7 +198,7 @@ async def set_promo_code_enabled(
     body: PromotionEnabledRequest,
     background_tasks: BackgroundTasks,
     session: AsyncSession = Depends(get_session),
-    _admin: CurrentUser = Depends(require_super_admin),
+    _admin: CurrentUser = Depends(require_admin),
 ) -> AdminPromoCodeResponse:
     service = OwnerCodesService(session)
     try:
@@ -221,7 +221,7 @@ async def set_promo_code_enabled(
 async def delete_promo_code(
     promo_code_id: uuid.UUID,
     session: AsyncSession = Depends(get_session),
-    _admin: CurrentUser = Depends(require_super_admin),
+    _admin: CurrentUser = Depends(require_admin),
 ) -> PromotionDeletionResponse:
     """Deletes a code nobody used; archives one somebody did (its string stays taken).
 
@@ -243,7 +243,7 @@ async def list_promo_code_participants(
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=100, alias="pageSize"),
     session: AsyncSession = Depends(get_session),
-    _admin: CurrentUser = Depends(require_super_admin),
+    _admin: CurrentUser = Depends(require_admin),
 ) -> PageResponse[PromotionParticipantResponse]:
     try:
         participants, total = await OwnerCodesService(session).participants(

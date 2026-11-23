@@ -960,8 +960,8 @@ Client side: `apps/website/src/utils/exportDownload.ts`.
 An owner-run offer with a window, conditions and rewards: «покупка от 2000 сом - скидка
 10%», «от 3 товаров бренда X - подарок», «оплатите заявку - получите промокод». Code in
 `apps/api/app/promotions/`; the arithmetic of the money is still `app/orders/discounts.py`.
-Only a `SUPER_ADMIN` manages them (`require_super_admin` on every `/admin/promotions*`
-route), unlike the rest of the owner panel.
+Any admin manages them (`require_admin` on every `/admin/promotions*` route), like the
+rest of the owner panel.
 
 ### A promotion
 
@@ -1295,8 +1295,6 @@ conditions stop holding.
 - A gift picture the admin uploads and then abandons stays in storage.
 - There is no list page `/promotions` (only the carousel on `/catalog` and `/`, and each promotion's
   own page) and no "Акция" badge on product cards; both were deferred.
-- A customer with a plain `ADMIN` role sees «Акции» and «Промокоды» in the admin menu but every
-  call is refused: both sections are `SUPER_ADMIN`-only on the API.
 
 ## Catalog banners
 
@@ -1336,7 +1334,7 @@ one order the owner arranges in the admin's «Баннеры». Where it lives: 
   under the owner. It never touches `Promotion.sort_order`.
 - **Links** of a news item: a path on this site (`/…`, not `//…`) or an `https://` address;
   nothing else (`http:`, `javascript:`, `data:`). An external link opens in a new tab.
-- **Access**: `SUPER_ADMIN` only, like the promotions. News is not announced in Telegram.
+- **Access**: any admin (`ADMIN` or `SUPER_ADMIN`), like the promotions. News is not announced in Telegram.
 - A start or end by the clock reaches the storefront within the ISR backstop (≤ 60 s), like
   a promotion's.
 

@@ -257,8 +257,7 @@ Rules: [domain.md](domain.md#promotions). The site side:
   and the promo-code dialog. After `POST` the banners are uploaded in follow-up requests and
   the page moves to the promotion's own card, so a failed banner can be retried at once.
   «Duplicate» is `/admin/promotions/add?from=<id>`: conditions and rewards are copied, dates
-  are not, the copy is switched off, unannounced, with a `-copy` slug and no banners. The API
-  refuses non-`SUPER_ADMIN` accounts, while the menu entry shows for any admin.
+  are not, the copy is switched off, unannounced, with a `-copy` slug and no banners.
 - `pages/admin/banners/{index,news/add,news/[id]}.tsx` — «Баннеры» in `AdminShell`, right
   after «Промокоды». The index has a live «Сейчас на витрине» preview (`PromoCarousel` over the
   `SHOWN` rows, in list order, `inert`) and `AdminBannersBoard`; an empty carousel shows a

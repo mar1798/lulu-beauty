@@ -32,7 +32,7 @@ BODY: dict[str, Any] = {
 
 def _client_as(role: Role) -> Callable[[], Iterator[AsyncClient]]:
     def fixture() -> Iterator[AsyncClient]:
-        # `require_super_admin` reads the role from the database, not the token.
+        # `require_admin` reads the role from the database, not the token.
         session = AsyncMock()
         session.scalar.return_value = role
         app.dependency_overrides[get_session] = lambda: session
@@ -47,6 +47,7 @@ def _client_as(role: Role) -> Callable[[], Iterator[AsyncClient]]:
 
 owner = pytest.fixture(_client_as(Role.SUPER_ADMIN), name="owner")
 admin = pytest.fixture(_client_as(Role.ADMIN), name="admin")
+customer = pytest.fixture(_client_as(Role.CUSTOMER), name="customer")
 
 
 def _promotion() -> Promotion:
@@ -71,14 +72,14 @@ def _promotion() -> Promotion:
     )
 
 
-async def test_an_admin_is_not_the_owner(admin: AsyncClient) -> None:
-    async with admin as client:
+async def test_a_customer_is_turned_away(customer: AsyncClient) -> None:
+    async with customer as client:
         response = await client.get("/admin/promotions")
     assert response.status_code == 403
-    assert response.json()["detail"] == "super_admin_only"
+    assert response.json()["detail"] == "admin_only"
 
 
-async def test_list_derives_status_and_counts(owner: AsyncClient) -> None:
+async def test_list_derives_status_and_counts(admin: AsyncClient) -> None:
     promotion = _promotion()
     with (
         patch("app.promotions.router.PromotionsService") as service_cls,
@@ -88,7 +89,7 @@ async def test_list_derives_status_and_counts(owner: AsyncClient) -> None:
         service.list_all = AsyncMock(return_value=[promotion])
         service.participant_counts = AsyncMock(return_value={promotion.id: 3})
         banners_cls.return_value.carousel_flags = AsyncMock(return_value={promotion.id: False})
-        async with owner as client:
+        async with admin as client:
             response = await client.get("/admin/promotions?includeDeleted=true")
 
     assert response.status_code == 200

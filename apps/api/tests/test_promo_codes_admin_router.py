@@ -47,6 +47,7 @@ def _client_as(role: Role) -> Callable[[], Iterator[AsyncClient]]:
 
 owner = pytest.fixture(_client_as(Role.SUPER_ADMIN), name="owner")
 admin = pytest.fixture(_client_as(Role.ADMIN), name="admin")
+customer = pytest.fixture(_client_as(Role.CUSTOMER), name="customer")
 
 
 def _code() -> Promotion:
@@ -82,24 +83,24 @@ _ROUTES: list[tuple[str, str]] = [
 
 
 @pytest.mark.parametrize(("method", "path"), _ROUTES)
-async def test_a_plain_admin_is_refused_everywhere(
-    admin: AsyncClient, method: str, path: str
+async def test_a_customer_is_refused_everywhere(
+    customer: AsyncClient, method: str, path: str
 ) -> None:
-    async with admin as client:
+    async with customer as client:
         response = await client.request(method, path, json=BODY)
 
     assert response.status_code == 403
-    assert response.json()["detail"] == "super_admin_only"
+    assert response.json()["detail"] == "admin_only"
 
 
-async def test_list_derives_status_and_counts(owner: AsyncClient) -> None:
+async def test_list_derives_status_and_counts(admin: AsyncClient) -> None:
     code = _code()
     with patch("app.promotions.owner_codes_router.OwnerCodesService") as service_cls:
         service = service_cls.return_value
         service.list_all = AsyncMock(return_value=[code])
         service.participant_counts = AsyncMock(return_value={code.id: 2})
         service.users_of = AsyncMock(return_value={})
-        async with owner as client:
+        async with admin as client:
             response = await client.get("/admin/promo-codes?includeDeleted=true")
 
     assert response.status_code == 200

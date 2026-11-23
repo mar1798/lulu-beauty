@@ -132,15 +132,15 @@ Owner-only (`ADMIN` or `SUPER_ADMIN`, checked on the API — the frontend gate i
 | `POST`   | `/admin/categories`, `/admin/products`, `/admin/products/{id}/restore`, `/admin/products/{id}/images`, `/admin/catalog/import`, `/admin/cycles`, `/admin/cycles/{id}/close`, `/admin/export/links`, `/admin/orders`, `/admin/orders/{id}/message`, `/admin/checklist/extras` |
 | `DELETE` | `/admin/categories/{id}`, `/admin/products/{id}` (soft), `/admin/products/{id}/images/{image_id}`, `/admin/cycles/{id}`, `/admin/orders/{id}`, `/admin/checklist/extras/{id}`, `/admin/checklist/marks?cycleId=`                                                             |
 
-**Promotions are `SUPER_ADMIN` only** (`require_super_admin`), unlike the rows above:
+**Promotions** (`require_admin`, like the rows above):
 `GET`/`POST /admin/promotions` (`GET` takes `includeDeleted`), `GET`/`PUT`/`DELETE
 /admin/promotions/{id}`, `PATCH /admin/promotions/{id}/enabled`, `POST`/`DELETE
 /admin/promotions/{id}/banner?variant=mobile|desktop`, `GET /admin/promotions/{id}/participants`
-and `POST /admin/promotions/gift-image`. **The carousel's admin** is `SUPER_ADMIN` only as well:
+and `POST /admin/promotions/gift-image`. **The carousel's admin**, the same way:
 `GET /admin/banners`, `PATCH /admin/banners/promotions/{id}`, `PUT /admin/banners/order` and the
 news item's `POST /admin/banners/news`, `GET`/`PUT`/`DELETE /admin/banners/news/{id}`,
 `PATCH …/enabled`, `POST`/`DELETE …/image?variant=mobile|desktop` — see "Catalog banners".
-**The owner's promo codes** are `SUPER_ADMIN` only too:
+**The owner's promo codes**, the same way:
 `GET`/`POST /admin/promo-codes` (`GET` takes `includeDeleted`), `GET`/`PUT`/`DELETE
 /admin/promo-codes/{id}`, `PATCH /admin/promo-codes/{id}/enabled` and
 `GET /admin/promo-codes/{id}/participants`. Details below.
@@ -575,7 +575,7 @@ Rules and meaning: [domain.md](domain.md#catalog-banners). `apps/api/app/banners
 | `links.py`   | `is_valid_banner_link`: `/path` or `https://host` only.                                                                                                                 |
 | `schemas.py` | `NewsBannerWriteRequest`, `BannerShownRequest`, `NewsBannerEnabledRequest`, `BannerOrderRequest`, `BannerSlideResponse`, `AdminBannerItemResponse`.                     |
 | `service.py` | `BannersService` (`feed`, `admin_items`, `set_promotion_shown`, `reorder`, news CRUD and pictures), the errors, `arrange` (the one sort).                               |
-| `router.py`  | `GET /banners` and the `SUPER_ADMIN` `/admin/banners*` routes; the router commits and hands removed files to `discard_files` after the commit.                          |
+| `router.py`  | `GET /banners` and the admin `/admin/banners*` routes; the router commits and hands removed files to `discard_files` after the commit.                                  |
 
 - **One migration, expanding** (`b83e9006c6fe_add_banners`): two new tables, no change to an
   existing one, and a backfill that places today's promotions in today's order

@@ -13,7 +13,7 @@ from fastapi import (
 )
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth.dependencies import CurrentUser, require_super_admin
+from app.auth.dependencies import CurrentUser, require_admin
 from app.banners.service import BannersService
 from app.common.schemas import PageResponse
 from app.common.uploads import read_image
@@ -160,7 +160,7 @@ async def get_public_promotion(
 @router.post("/admin/promotions/gift-image", response_model=GiftImageResponse)
 async def upload_gift_image(
     file: UploadFile = File(...),
-    _admin: CurrentUser = Depends(require_super_admin),
+    _admin: CurrentUser = Depends(require_admin),
 ) -> GiftImageResponse:
     """Stores the picture of a free gift and hands back its address.
 
@@ -180,7 +180,7 @@ async def upload_gift_image(
 async def list_promotions(
     include_deleted: bool = Query(default=False, alias="includeDeleted"),
     session: AsyncSession = Depends(get_session),
-    _admin: CurrentUser = Depends(require_super_admin),
+    _admin: CurrentUser = Depends(require_admin),
 ) -> list[PromotionResponse]:
     service = PromotionsService(session)
     promotions = await service.list_all(include_deleted=include_deleted)
@@ -204,7 +204,7 @@ async def list_promotions(
 async def create_promotion(
     body: PromotionWriteRequest,
     session: AsyncSession = Depends(get_session),
-    _admin: CurrentUser = Depends(require_super_admin),
+    _admin: CurrentUser = Depends(require_admin),
 ) -> PromotionResponse:
     service = PromotionsService(session)
     try:
@@ -220,7 +220,7 @@ async def create_promotion(
 async def get_promotion(
     promotion_id: uuid.UUID,
     session: AsyncSession = Depends(get_session),
-    _admin: CurrentUser = Depends(require_super_admin),
+    _admin: CurrentUser = Depends(require_admin),
 ) -> PromotionResponse:
     service = PromotionsService(session)
     try:
@@ -235,7 +235,7 @@ async def update_promotion(
     promotion_id: uuid.UUID,
     body: PromotionWriteRequest,
     session: AsyncSession = Depends(get_session),
-    _admin: CurrentUser = Depends(require_super_admin),
+    _admin: CurrentUser = Depends(require_admin),
 ) -> PromotionResponse:
     service = PromotionsService(session)
     try:
@@ -252,7 +252,7 @@ async def set_promotion_enabled(
     promotion_id: uuid.UUID,
     body: PromotionEnabledRequest,
     session: AsyncSession = Depends(get_session),
-    _admin: CurrentUser = Depends(require_super_admin),
+    _admin: CurrentUser = Depends(require_admin),
 ) -> PromotionResponse:
     service = PromotionsService(session)
     try:
@@ -269,7 +269,7 @@ async def delete_promotion(
     promotion_id: uuid.UUID,
     background_tasks: BackgroundTasks,
     session: AsyncSession = Depends(get_session),
-    _admin: CurrentUser = Depends(require_super_admin),
+    _admin: CurrentUser = Depends(require_admin),
 ) -> PromotionDeletionResponse:
     """Deletes it, or archives it when somebody already took part — see the service.
 
@@ -291,7 +291,7 @@ async def upload_promotion_banner(
     variant: BannerVariant = Query(),
     file: UploadFile = File(...),
     session: AsyncSession = Depends(get_session),
-    _admin: CurrentUser = Depends(require_super_admin),
+    _admin: CurrentUser = Depends(require_admin),
 ) -> PromotionResponse:
     """Puts up the mobile or the desktop banner; the one it replaces is removed from disk."""
     compressed = await read_image(file)
@@ -323,7 +323,7 @@ async def remove_promotion_banner(
     background_tasks: BackgroundTasks,
     variant: BannerVariant = Query(),
     session: AsyncSession = Depends(get_session),
-    _admin: CurrentUser = Depends(require_super_admin),
+    _admin: CurrentUser = Depends(require_admin),
 ) -> PromotionResponse:
     service = PromotionsService(session)
     try:
@@ -345,7 +345,7 @@ async def list_promotion_participants(
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=100, alias="pageSize"),
     session: AsyncSession = Depends(get_session),
-    _admin: CurrentUser = Depends(require_super_admin),
+    _admin: CurrentUser = Depends(require_admin),
 ) -> PageResponse[PromotionParticipantResponse]:
     try:
         participants, total = await PromotionsService(session).participants(

@@ -14,7 +14,7 @@ from fastapi import (
 )
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth.dependencies import CurrentUser, require_super_admin
+from app.auth.dependencies import CurrentUser, require_admin
 from app.banners.models import BannerKind
 from app.banners.schemas import (
     AdminBannerItemResponse,
@@ -158,7 +158,7 @@ async def list_banner_feed(
 @router.get("/admin/banners", response_model=list[AdminBannerItemResponse])
 async def list_admin_banners(
     session: AsyncSession = Depends(get_session),
-    _admin: CurrentUser = Depends(require_super_admin),
+    _admin: CurrentUser = Depends(require_admin),
 ) -> list[AdminBannerItemResponse]:
     now = datetime.now(UTC)
     return [item_response(item, now) for item in await BannersService(session).admin_items(now)]
@@ -169,7 +169,7 @@ async def set_promotion_shown(
     promotion_id: uuid.UUID,
     body: BannerShownRequest,
     session: AsyncSession = Depends(get_session),
-    _admin: CurrentUser = Depends(require_super_admin),
+    _admin: CurrentUser = Depends(require_admin),
 ) -> AdminBannerItemResponse:
     try:
         item = await BannersService(session).set_promotion_shown(promotion_id, body.is_shown)
@@ -184,7 +184,7 @@ async def set_promotion_shown(
 async def reorder_banners(
     body: BannerOrderRequest,
     session: AsyncSession = Depends(get_session),
-    _admin: CurrentUser = Depends(require_super_admin),
+    _admin: CurrentUser = Depends(require_admin),
 ) -> list[AdminBannerItemResponse]:
     service = BannersService(session)
     try:
@@ -205,7 +205,7 @@ async def reorder_banners(
 async def create_news(
     body: NewsBannerWriteRequest,
     session: AsyncSession = Depends(get_session),
-    _admin: CurrentUser = Depends(require_super_admin),
+    _admin: CurrentUser = Depends(require_admin),
 ) -> AdminBannerItemResponse:
     service = BannersService(session)
     try:
@@ -221,7 +221,7 @@ async def create_news(
 async def get_news(
     news_id: uuid.UUID,
     session: AsyncSession = Depends(get_session),
-    _admin: CurrentUser = Depends(require_super_admin),
+    _admin: CurrentUser = Depends(require_admin),
 ) -> AdminBannerItemResponse:
     try:
         return item_response(await BannersService(session).news_item(news_id))
@@ -234,7 +234,7 @@ async def update_news(
     news_id: uuid.UUID,
     body: NewsBannerWriteRequest,
     session: AsyncSession = Depends(get_session),
-    _admin: CurrentUser = Depends(require_super_admin),
+    _admin: CurrentUser = Depends(require_admin),
 ) -> AdminBannerItemResponse:
     service = BannersService(session)
     try:
@@ -251,7 +251,7 @@ async def set_news_enabled(
     news_id: uuid.UUID,
     body: NewsBannerEnabledRequest,
     session: AsyncSession = Depends(get_session),
-    _admin: CurrentUser = Depends(require_super_admin),
+    _admin: CurrentUser = Depends(require_admin),
 ) -> AdminBannerItemResponse:
     service = BannersService(session)
     try:
@@ -268,7 +268,7 @@ async def delete_news(
     news_id: uuid.UUID,
     background_tasks: BackgroundTasks,
     session: AsyncSession = Depends(get_session),
-    _admin: CurrentUser = Depends(require_super_admin),
+    _admin: CurrentUser = Depends(require_admin),
 ) -> Response:
     try:
         urls = await BannersService(session).delete_news(news_id)
@@ -286,7 +286,7 @@ async def upload_news_image(
     variant: BannerVariant = Query(),
     file: UploadFile = File(...),
     session: AsyncSession = Depends(get_session),
-    _admin: CurrentUser = Depends(require_super_admin),
+    _admin: CurrentUser = Depends(require_admin),
 ) -> AdminBannerItemResponse:
     """Puts up the mobile or the desktop picture; the one it replaces is removed from disk."""
     compressed = await read_image(file)
@@ -318,7 +318,7 @@ async def remove_news_image(
     background_tasks: BackgroundTasks,
     variant: BannerVariant = Query(),
     session: AsyncSession = Depends(get_session),
-    _admin: CurrentUser = Depends(require_super_admin),
+    _admin: CurrentUser = Depends(require_admin),
 ) -> AdminBannerItemResponse:
     service = BannersService(session)
     try:
