@@ -2,7 +2,14 @@ import clsx from 'clsx'
 import React, { useCallback, useMemo } from 'react'
 import useSWR from 'swr'
 import type { GetStaticProps } from 'next'
-import type { ICategory, IPage, IProduct, IPublicPromotion, ISelectOption } from 'widgets/types'
+import type {
+  IBannerSlide,
+  IBannerSlideDto,
+  ICategory,
+  IPage,
+  IProduct,
+  ISelectOption,
+} from 'widgets/types'
 import { Alert, Button, Select } from 'widgets/atoms'
 import { CategoryFilter, Pagination, SearchField } from 'widgets/molecules'
 import { ProductGrid, PromoCarousel } from 'widgets/organisms'
@@ -33,8 +40,9 @@ import {
   type ICatalogSort,
 } from '@/services/endpoints/catalog'
 import { getActiveCycleOrNull } from '@/services/endpoints/cycles'
-import { listPublicPromotions } from '@/services/endpoints/promotions'
+import { listBannerFeed } from '@/services/endpoints/banners'
 import { activeCycleFallback, isFreshRender, type ISwrFallback } from '@/services/swrFallback'
+import { toBannerSlides } from '@/utils/banners'
 import { productListLd } from '@/utils/jsonLd'
 import { scrollToTop } from '@/utils/scroll'
 import { CATALOG_DESCRIPTION, CATALOG_TITLE } from '@/utils/seo'
@@ -97,18 +105,19 @@ interface ICatalogPageProps {
   /** Состояние сбора для кеша SWR — чтобы витрина сразу встала правильной. */
   fallback: ISwrFallback
   /**
-   * Идущие акции для карусели. Пусто и при недоступном API: карусель - украшение
-   * витрины, и каталог из-за неё не падает.
+   * Лента карусели: идущие акции с баннером и новости владельца в его порядке
+   * (`GET /banners`). Пусто и при недоступном API: карусель - украшение витрины,
+   * и каталог из-за неё не падает.
    */
-  promotions: IPublicPromotion[]
+  slides: IBannerSlide[]
 }
 
 export const getStaticProps: GetStaticProps<ICatalogPageProps> = async () => {
   // Со своим `catch`: отсутствие сбора — штатное состояние, и оно не должно
   // ни ронять сборку, ни утаскивать за собой каталог.
   const cycle = await getActiveCycleOrNull().catch(() => null)
-  // Так же молча: нет акций - нет карусели, а каталог остаётся каталогом.
-  const promotions = await listPublicPromotions().catch((): IPublicPromotion[] => [])
+  // Так же молча: нет ленты - нет карусели, а каталог остаётся каталогом.
+  const slides = toBannerSlides(await listBannerFeed().catch((): IBannerSlideDto[] => []))
 
   try {
     const [categories, brands, initial] = await Promise.all([
@@ -118,7 +127,7 @@ export const getStaticProps: GetStaticProps<ICatalogPageProps> = async () => {
     ])
 
     return {
-      props: { categories, brands, initial, fallback: activeCycleFallback(cycle), promotions },
+      props: { categories, brands, initial, fallback: activeCycleFallback(cycle), slides },
       revalidate: REVALIDATE_SECONDS,
     }
   } catch {
@@ -129,7 +138,7 @@ export const getStaticProps: GetStaticProps<ICatalogPageProps> = async () => {
         brands: [],
         initial: null,
         fallback: activeCycleFallback(cycle),
-        promotions,
+        slides,
       },
       revalidate: REVALIDATE_SECONDS,
     }
@@ -173,7 +182,7 @@ const CatalogPage: React.FC<ICatalogPageProps> = ({
   brands,
   initial,
   fallback,
-  promotions,
+  slides,
 }) => {
   const [{ category: categorySlug, brand, q, sort, page: pageNumber }, setParams] = useQueryParams({
     category: optionalTextParam,
@@ -327,18 +336,13 @@ const CatalogPage: React.FC<ICatalogPageProps> = ({
         className={clsx(halloween.host, halloween.catalogPage)}
         title="Каталог"
         /*
-          Над заголовком: акции, под ними врезка «Приём заказов закрыт». Без
-          баннеров (нет акций, нет мобильного баннера) карусели нет вовсе, а
+          Над заголовком: акции и новости, под ними врезка «Приём заказов закрыт». Без
+          слайдов (ничего не идёт или всё скрыто владельцем) карусели нет вовсе, а
           врезка при открытом сборе сама рисует `null`.
         */
         banner={
           <>
-            {promotions.some(promotion => promotion.bannerMobileUrl !== null) && (
-              <PromoCarousel
-                promotions={promotions}
-                buildPromotionHref={slug => `/promotions/${slug}`}
-              />
-            )}
+            {slides.length > 0 && <PromoCarousel slides={slides} />}
             <ClosedCycleNotice decor={<HalloweenScene variant="catalog-banner" />} />
           </>
         }

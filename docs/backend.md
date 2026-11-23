@@ -64,6 +64,7 @@ Each domain module under `app/` is roughly `router.py` / `service.py` / `schemas
 | `orders/`     | Checkout, customer edit/cancel/restore, admin status changes, repricing.                                                                                                        |
 | `cycles/`     | Cycle CRUD, `reminders.py` (stage definitions), `scheduler_service.py` (sweeps).                                                                                                |
 | `promotions/` | Promotions, their rules and the order/cart side of them — see "Promotions and promo codes" below.                                                                               |
+| `banners/`    | The catalogue carousel: the feed (`GET /banners`), the owner's list, order and news items — see "Catalog banners" below.                                                        |
 | `wishlist/`   | Saved products, cycle-independent.                                                                                                                                              |
 | `wanted/`     | Wishes for products the catalog does not stock, written under an empty search. Write-only.                                                                                      |
 | `payments/`   | Payment receipts sent to the bot and the owner's verdict on them; accepting one moves the order to CONFIRMED and stamps `orders.paid_at`. No router — the bot is its only door. |
@@ -107,7 +108,8 @@ Public and customer-facing:
 | `POST`                        | `/wanted-products`                            | A wish for something the catalog lacks. Signed-in (live account); strict rate-limit budget.                                                                    |
 | `POST`                        | `/cart/promo-code/check`                      | Signed-in. Validates a code against the cart (`{code}`), writes nothing. Refusals: see "Promotions and promo codes".                                           |
 | `POST`                        | `/orders/checkout`                            | Body `note`, optional `promoCode` (checked and reserved with the order; a refusal creates nothing).                                                            |
-| `GET`                         | `/promotions`, `/promotions/{slug}`           | **Public.** Running promotions only (carousel, sitemap, the page); anything else, archived or not started included, is a 404.                                  |
+| `GET`                         | `/promotions`, `/promotions/{slug}`           | **Public.** Running promotions only (sitemap, the page); anything else, archived or not started included, is a 404. The carousel reads `GET /banners` instead. |
+| `GET`                         | `/banners`                                    | **Public.** The carousel's slides in order: running promotions with a mobile banner and live news. See "Catalog banners".                                      |
 | `GET`                         | `/me/promo-codes`                             | Every code the caller was ever given, newest first, `REVOKED` included, plus the personal owner codes assigned to them.                                        |
 | `POST`                        | `/orders/{id}/edit-preview`                   | The customer's edit run and rolled back: which promotions it would take off or bring. Body `revision`, `itemId` or `variantId`, `quantity` (0 removes a line). |
 | `GET`                         | `/orders`, `/orders/{id}`                     |                                                                                                                                                                |
@@ -134,7 +136,11 @@ Owner-only (`ADMIN` or `SUPER_ADMIN`, checked on the API — the frontend gate i
 `GET`/`POST /admin/promotions` (`GET` takes `includeDeleted`), `GET`/`PUT`/`DELETE
 /admin/promotions/{id}`, `PATCH /admin/promotions/{id}/enabled`, `POST`/`DELETE
 /admin/promotions/{id}/banner?variant=mobile|desktop`, `GET /admin/promotions/{id}/participants`
-and `POST /admin/promotions/gift-image`. **The owner's promo codes** are `SUPER_ADMIN` only too:
+and `POST /admin/promotions/gift-image`. **The carousel's admin** is `SUPER_ADMIN` only as well:
+`GET /admin/banners`, `PATCH /admin/banners/promotions/{id}`, `PUT /admin/banners/order` and the
+news item's `POST /admin/banners/news`, `GET`/`PUT`/`DELETE /admin/banners/news/{id}`,
+`PATCH …/enabled`, `POST`/`DELETE …/image?variant=mobile|desktop` — see "Catalog banners".
+**The owner's promo codes** are `SUPER_ADMIN` only too:
 `GET`/`POST /admin/promo-codes` (`GET` takes `includeDeleted`), `GET`/`PUT`/`DELETE
 /admin/promo-codes/{id}`, `PATCH /admin/promo-codes/{id}/enabled` and
 `GET /admin/promo-codes/{id}/participants`. Details below.
@@ -379,7 +385,10 @@ than a relationship, which would go stale inside the transaction.
   Files of a deleted promotion's banners are removed after the commit.
 - `POST /admin/promotions/{id}/banner?variant=mobile|desktop` (multipart `file`) puts a banner up
   and removes the file it replaced from disk after the commit; `DELETE` takes it down. The
-  mobile banner is what puts a promotion in the carousel; the API does not demand it.
+  mobile banner is what puts a promotion in the carousel; the API does not demand it. The
+  carousel's order and the owner's «hide from the carousel» switch are **not** on the promotion:
+  they live in `promotion_banner_settings` (see "Catalog banners"), and `PromotionResponse`
+  only carries `showInCarousel` (default `true`) for the card's «Карусель: …» line.
 - `POST /admin/promotions/gift-image` — stores a picture for a free gift and returns `{url}`.
   **Writes nothing to the database**: the form holds a gift as a row before the promotion
   exists, and the address goes into `GIFT.imageUrl` on save, where only our own storage is
@@ -555,6 +564,34 @@ back the whole brand list to throw all but five of it away. `q` is one character
 `priceVaries`: when its variants cost different amounts, `priceCents` is the cheapest of
 them, and the row says "от N" exactly as the catalogue card does. Not `variantCount > 1`
 (still sent, for older clients): a lipstick in ten shades has ten variants and one price.
+
+## Catalog banners
+
+Rules and meaning: [domain.md](domain.md#catalog-banners). `apps/api/app/banners/`:
+
+| File         | What it holds                                                                                                                                                           |
+| ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `models.py`  | `PromotionBannerSetting` (PK = `promotion_id`, FK `ON DELETE CASCADE`, `show_in_carousel`, `position`), `NewsBanner`, `BannerKind`, `BannerState`, `news_banner_state`. |
+| `links.py`   | `is_valid_banner_link`: `/path` or `https://host` only.                                                                                                                 |
+| `schemas.py` | `NewsBannerWriteRequest`, `BannerShownRequest`, `NewsBannerEnabledRequest`, `BannerOrderRequest`, `BannerSlideResponse`, `AdminBannerItemResponse`.                     |
+| `service.py` | `BannersService` (`feed`, `admin_items`, `set_promotion_shown`, `reorder`, news CRUD and pictures), the errors, `arrange` (the one sort).                               |
+| `router.py`  | `GET /banners` and the `SUPER_ADMIN` `/admin/banners*` routes; the router commits and hands removed files to `discard_files` after the commit.                          |
+
+- **One migration, expanding** (`b83e9006c6fe_add_banners`): two new tables, no change to an
+  existing one, and a backfill that places today's promotions in today's order
+  (`sort_order, starts_at DESC, id`) so the carousel looks the same on release day.
+- `running_promotion_filters(now)` in `promotions/models.py` is the single definition of
+  «running»; `PromotionsService._running` and the feed both use it.
+- A promotion's settings row is created on the owner's first decision about it
+  (`INSERT … ON CONFLICT (promotion_id) DO UPDATE`), never by `Promotion` creation, so
+  the older release (which does not know the table) and the new one coexist.
+- `PUT /admin/banners/order` takes `{keys}` — **all** of them; a different set is
+  `409 banner_order_mismatch`, a malformed or duplicated key is 422. Precedent:
+  `arrange_product_images`.
+- Errors: `404 banner_not_found` (news), `404 promotion_not_found` (not there, an owner's code
+  or archived), `409 banner_order_mismatch`, `409 too_many_news_banners`,
+  `422 banner_ends_before_start`, `422 banner_link_invalid`, plus the image codes of
+  `read_image`.
 
 ## Rate limiting
 

@@ -20,6 +20,7 @@ const promotion = (overrides: Partial<IPromotion> = {}): IPromotion => ({
   rewards: [{ type: 'DISCOUNT', kind: 'PERCENT', value: 10, target: null }],
   status: 'ACTIVE',
   participantsCount: 0,
+  showInCarousel: true,
   deletedAt: null,
   createdAt: '2026-02-01T00:00:00Z',
   updatedAt: '2026-02-01T00:00:00Z',

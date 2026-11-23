@@ -191,6 +191,17 @@ export const adminPromotionParticipantsKey = (id: string, page: number) =>
 export const adminPromotionProductLabelsKey = (ids: string) =>
   ['admin-promotion-product-labels', ids] as const
 
+export const ADMIN_BANNERS_TAG = 'admin-banners'
+
+/** Список баннеров карусели: акции и новости в порядке витрины. */
+export const adminBannersKey = () => [ADMIN_BANNERS_TAG] as const
+
+/** Список устарел после правки акции, новости или порядка - ключ для `mutate`. */
+export const isAdminBannersKey = (key: unknown): boolean =>
+  Array.isArray(key) && key[0] === ADMIN_BANNERS_TAG
+
+export const adminNewsBannerKey = (id: string) => ['admin-news-banner', id] as const
+
 export const PROMO_CODES_TAG = 'promo-codes'
 
 /** Свои промокоды: с `userId`, как корзина, - ответ про конкретного человека. */

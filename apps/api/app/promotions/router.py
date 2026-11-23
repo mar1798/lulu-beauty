@@ -14,6 +14,7 @@ from fastapi import (
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import CurrentUser, require_super_admin
+from app.banners.service import BannersService
 from app.common.schemas import PageResponse
 from app.common.uploads import read_image
 from app.db import get_session
@@ -59,7 +60,10 @@ def _draft(body: PromotionWriteRequest) -> PromotionDraft:
 
 
 def promotion_response(
-    promotion: Promotion, participants_count: int, now: datetime | None = None
+    promotion: Promotion,
+    participants_count: int,
+    now: datetime | None = None,
+    show_in_carousel: bool = True,
 ) -> PromotionResponse:
     return PromotionResponse(
         id=promotion.id,
@@ -78,15 +82,21 @@ def promotion_response(
         rewards=load_rewards(promotion.rewards),
         status=promotion_status(promotion, now or datetime.now(UTC)),
         participants_count=participants_count,
+        show_in_carousel=show_in_carousel,
         deleted_at=promotion.deleted_at,
         created_at=promotion.created_at,
         updated_at=promotion.updated_at,
     )
 
 
-async def _respond(service: PromotionsService, promotion: Promotion) -> PromotionResponse:
+async def _respond(
+    session: AsyncSession, service: PromotionsService, promotion: Promotion
+) -> PromotionResponse:
     counts = await service.participant_counts([promotion.id])
-    return promotion_response(promotion, counts.get(promotion.id, 0))
+    flags = await BannersService(session).carousel_flags([promotion.id])
+    return promotion_response(
+        promotion, counts.get(promotion.id, 0), show_in_carousel=flags.get(promotion.id, True)
+    )
 
 
 def public_promotion_response(promotion: Promotion) -> PublicPromotionResponse:
@@ -130,7 +140,7 @@ _WRITE_ERRORS = (
 async def list_public_promotions(
     session: AsyncSession = Depends(get_session),
 ) -> list[PublicPromotionResponse]:
-    """Running promotions for the carousel and the sitemap; the site drops ones without a banner."""
+    """Running promotions for the sitemap and the promotion page (the carousel: `/banners`)."""
     promotions = await PromotionsService(session).list_active()
     return [public_promotion_response(promotion) for promotion in promotions]
 
@@ -175,9 +185,16 @@ async def list_promotions(
     service = PromotionsService(session)
     promotions = await service.list_all(include_deleted=include_deleted)
     counts = await service.participant_counts([promotion.id for promotion in promotions])
+    flags = await BannersService(session).carousel_flags([promotion.id for promotion in promotions])
     now = datetime.now(UTC)
     return [
-        promotion_response(promotion, counts.get(promotion.id, 0), now) for promotion in promotions
+        promotion_response(
+            promotion,
+            counts.get(promotion.id, 0),
+            now,
+            show_in_carousel=flags.get(promotion.id, True),
+        )
+        for promotion in promotions
     ]
 
 
@@ -210,7 +227,7 @@ async def get_promotion(
         promotion = await service.get(promotion_id)
     except PromotionNotFoundError as error:
         raise _write_error(error) from error
-    return await _respond(service, promotion)
+    return await _respond(session, service, promotion)
 
 
 @router.put("/admin/promotions/{promotion_id}", response_model=PromotionResponse)
@@ -225,7 +242,7 @@ async def update_promotion(
         promotion = await service.update(promotion_id, _draft(body))
     except _WRITE_ERRORS as error:
         raise _write_error(error) from error
-    response = await _respond(service, promotion)
+    response = await _respond(session, service, promotion)
     await session.commit()
     return response
 
@@ -242,7 +259,7 @@ async def set_promotion_enabled(
         promotion = await service.set_enabled(promotion_id, body.is_enabled)
     except PromotionNotFoundError as error:
         raise _write_error(error) from error
-    response = await _respond(service, promotion)
+    response = await _respond(session, service, promotion)
     await session.commit()
     return response
 
@@ -294,7 +311,7 @@ async def upload_promotion_banner(
         await discard_files([url])
         raise _write_error(error) from error
 
-    response = await _respond(service, promotion)
+    response = await _respond(session, service, promotion)
     await session.commit()
     background_tasks.add_task(discard_files, [previous] if previous else [])
     return response
@@ -313,7 +330,7 @@ async def remove_promotion_banner(
         promotion, previous = await service.remove_banner(promotion_id, variant)
     except PromotionNotFoundError as error:
         raise _write_error(error) from error
-    response = await _respond(service, promotion)
+    response = await _respond(session, service, promotion)
     await session.commit()
     background_tasks.add_task(discard_files, [previous] if previous else [])
     return response

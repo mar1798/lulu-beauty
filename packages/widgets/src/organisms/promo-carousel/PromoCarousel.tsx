@@ -1,9 +1,10 @@
 import clsx from 'clsx'
 import { type FC, useCallback, useEffect, useRef, useState } from 'react'
 import { m, useInView, useReducedMotion } from 'motion/react'
-import type { IBasicStyling, IPromoCarouselProps } from '../../types'
+import type { IBannerSlide, IBasicStyling, IPromoCarouselProps } from '../../types'
 import { breakpoints } from '../../breakpoints'
 import { AppLink } from '../../atoms/app-link'
+import { DEFAULT_CTA_LABEL } from '../../utils/banner'
 import {
   PROMO_CAROUSEL_INTERVAL_MS,
   PROMO_DOT_ACTIVE_SCALE,
@@ -13,7 +14,15 @@ import { BANNER_SPECS } from '../../utils/promotion'
 import * as styles from './PromoCarousel.css'
 
 /**
- * Карусель акций над каталогом: один баннер на слайд, слайд во всю ширину.
+ * Карусель над каталогом: один слайд на экран, слайд во всю ширину. Слайд - акция
+ * или новость владельца; кто и в каком порядке в ней стоит, решает бэкенд
+ * (`GET /banners`), виджет только рисует то, что пришло.
+ *
+ * Слайд бывает двух видов. Картиночный (есть мобильная картинка) - баннер, как у
+ * акции. Текстовый (картинки нет, так бывает только у новости) - карточка в тех
+ * же пропорциях: заголовок, текст (три строки на телефоне, две с `md`) и кнопка. Слайд без ссылки - не
+ * ссылка, а обычный блок: фокусироваться в нём нечему. Внешняя ссылка открывается
+ * в новой вкладке (`noopener noreferrer`).
  *
  * Листает не скрипт, а сам браузер: слайды лежат в ряду с `scroll-snap`, поэтому
  * свайп на телефоне нативный (инерция, остановка ровно на слайде), клавиатура и
@@ -29,21 +38,55 @@ import * as styles from './PromoCarousel.css'
  * Пропорции фиксированы и общие для всех слайдов (3:2 на телефоне, 3:1 с `md`,
  * как `BANNER_SPECS`), поэтому страница не прыгает ни при загрузке картинок, ни
  * при смене слайда. Слайд без десктопного баннера на широком экране кадрируется
- * (`cover`) из мобильного. Акция без мобильного баннера в карусель не попадает:
- * ей нечем быть на телефоне, а телефон - основной экран.
+ * (`cover`) из мобильного. Акция без мобильного баннера в карусель не попадает
+ * (это решает бэкенд): ей нечем быть на телефоне, а телефон - основной экран.
  */
 
 /** Слайд считается переключённым, когда скролл ушёл дальше половины его ширины. */
 const roundIndex = (scrollLeft: number, width: number): number =>
   width === 0 ? 0 : Math.round(scrollLeft / width)
 
+const SlideContent: FC<{ slide: IBannerSlide; isFirst: boolean }> = ({ slide, isFirst }) => {
+  if (slide.imageMobileUrl === null) {
+    return (
+      <div className={styles.textCard}>
+        <p className={styles.textTitle}>{slide.title}</p>
+        {slide.text !== null && <p className={styles.textBody}>{slide.text}</p>}
+        {/* Подпись, а не кнопка: вся карточка - одна ссылка, вложенный интерактив был бы лишним. */}
+        {slide.href !== null && (
+          <span className={styles.cta}>{slide.ctaLabel ?? DEFAULT_CTA_LABEL}</span>
+        )}
+      </div>
+    )
+  }
+
+  return (
+    <picture>
+      {slide.imageDesktopUrl !== null && (
+        <source media={`(min-width: ${breakpoints.md}px)`} srcSet={slide.imageDesktopUrl} />
+      )}
+
+      <img
+        className={styles.image}
+        src={slide.imageMobileUrl}
+        alt={slide.title}
+        width={BANNER_SPECS.mobile.width}
+        height={BANNER_SPECS.mobile.height}
+        // Первый баннер - то, что видно сразу; остальные ждут своей очереди.
+        loading={isFirst ? 'eager' : 'lazy'}
+        fetchPriority={isFirst ? 'high' : 'auto'}
+        decoding="async"
+        draggable={false}
+      />
+    </picture>
+  )
+}
+
 export const PromoCarousel: FC<IPromoCarouselProps & IBasicStyling> = ({
-  promotions,
-  buildPromotionHref,
+  slides,
   intervalMs = PROMO_CAROUSEL_INTERVAL_MS,
   className,
 }) => {
-  const slides = promotions.filter(promotion => promotion.bannerMobileUrl !== null)
   const count = slides.length
   const isReduced = useReducedMotion() ?? false
   const rootRef = useRef<HTMLElement>(null)
@@ -100,7 +143,7 @@ export const PromoCarousel: FC<IPromoCarouselProps & IBasicStyling> = ({
       ref={rootRef}
       className={clsx(styles.container, className)}
       aria-roledescription="carousel"
-      aria-label="Акции"
+      aria-label="Акции и новости"
       onPointerEnter={event => {
         // Палец «наводится» только на время касания, и его ведёт `onTouchStart`.
         if (event.pointerType === 'mouse') {
@@ -140,45 +183,31 @@ export const PromoCarousel: FC<IPromoCarouselProps & IBasicStyling> = ({
           setIndex(current => (current === next ? current : next))
         }}
       >
-        {slides.map((promotion, position) => {
+        {slides.map((slide, position) => {
           const isCurrent = position === index
+          const content = <SlideContent slide={slide} isFirst={position === 0} />
 
           return (
             <div
-              key={promotion.id}
+              key={slide.key}
               className={styles.slide}
               role="group"
               aria-roledescription="slide"
               aria-label={`${position + 1} из ${count}`}
             >
-              <AppLink
-                href={buildPromotionHref(promotion.slug)}
-                className={styles.link}
-                // Не текущие слайды вне порядка табуляции: фокус не должен уезжать за кадр.
-                {...(isCurrent ? {} : { tabIndex: -1 })}
-              >
-                <picture>
-                  {promotion.bannerDesktopUrl !== null && (
-                    <source
-                      media={`(min-width: ${breakpoints.md}px)`}
-                      srcSet={promotion.bannerDesktopUrl}
-                    />
-                  )}
-
-                  <img
-                    className={styles.image}
-                    src={promotion.bannerMobileUrl ?? ''}
-                    alt={promotion.title}
-                    width={BANNER_SPECS.mobile.width}
-                    height={BANNER_SPECS.mobile.height}
-                    // Первый баннер - то, что видно сразу; остальные ждут своей очереди.
-                    loading={position === 0 ? 'eager' : 'lazy'}
-                    fetchPriority={position === 0 ? 'high' : 'auto'}
-                    decoding="async"
-                    draggable={false}
-                  />
-                </picture>
-              </AppLink>
+              {slide.href === null ? (
+                <div className={styles.link}>{content}</div>
+              ) : (
+                <AppLink
+                  href={slide.href}
+                  className={styles.link}
+                  // Не текущие слайды вне порядка табуляции: фокус не должен уезжать за кадр.
+                  {...(isCurrent ? {} : { tabIndex: -1 })}
+                  {...(slide.isExternal ? { target: '_blank', rel: 'noopener noreferrer' } : {})}
+                >
+                  {content}
+                </AppLink>
+              )}
             </div>
           )
         })}
@@ -186,15 +215,15 @@ export const PromoCarousel: FC<IPromoCarouselProps & IBasicStyling> = ({
 
       {count > 1 && (
         <div className={styles.controls}>
-          {slides.map((promotion, position) => {
+          {slides.map((slide, position) => {
             const isCurrent = position === index
 
             return (
               <button
-                key={promotion.id}
+                key={slide.key}
                 type="button"
                 className={styles.control}
-                aria-label={`Акция ${position + 1} из ${count}: ${promotion.title}`}
+                aria-label={`Слайд ${position + 1} из ${count}: ${slide.title}`}
                 aria-current={isCurrent ? 'true' : undefined}
                 onClick={() => {
                   goTo(position)

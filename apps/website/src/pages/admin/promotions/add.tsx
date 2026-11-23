@@ -14,7 +14,7 @@ import {
   uploadPromotionBanner,
 } from '@/services/endpoints/promotions'
 import { SHOWCASE_PATHS, promotionPath, refreshPublicPages } from '@/services/endpoints/revalidate'
-import { adminPromotionKey, isAdminPromotionsKey } from '@/services/swrKeys'
+import { adminPromotionKey, isAdminBannersKey, isAdminPromotionsKey } from '@/services/swrKeys'
 import { duplicateOf, toPromotionInput } from '@/utils/promotions'
 
 /**
@@ -85,6 +85,7 @@ const AdminPromotionCreatePage: React.FC = () => {
 
       refreshPublicPages(...SHOWCASE_PATHS, promotionPath(promotion.slug))
       void globalMutate(isAdminPromotionsKey)
+      void globalMutate(isAdminBannersKey)
       await router.push(`/admin/promotions/${promotion.id}`)
     } catch (cause: unknown) {
       setError(messageForError(cause, 'admin.promotion.create'))

@@ -4,8 +4,9 @@ import type {
   ICategory,
   IDecorSpot,
   IOrderCycle,
+  IBannerSlide,
+  IBannerSlideDto,
   IProduct,
-  IPublicPromotion,
   IStep,
 } from 'widgets/types'
 import { Badge, Button, Float, Parallax, Reveal } from 'widgets/atoms'
@@ -36,8 +37,9 @@ import { useCycleExpiryRefresh } from '@/hooks/useCycleExpiryRefresh'
 import { useTelegramWebview } from '@/hooks/useTelegramWebview'
 import { getActiveCycleOrNull } from '@/services/endpoints/cycles'
 import { listBrands, listCategories, listProducts } from '@/services/endpoints/catalog'
-import { listPublicPromotions } from '@/services/endpoints/promotions'
+import { listBannerFeed } from '@/services/endpoints/banners'
 import { activeCycleFallback, type ISwrFallback } from '@/services/swrFallback'
+import { toBannerSlides } from '@/utils/banners'
 import { INSTAGRAM_URL } from '@/utils/contacts'
 import { faqLd } from '@/utils/jsonLd'
 import { SITE_DESCRIPTION, SITE_TITLE } from '@/utils/seo'
@@ -311,10 +313,11 @@ interface IHomePageProps {
   categories: ICategory[]
   brands: string[]
   /**
-   * Идущие акции для карусели под блоком «Заявка вместо оплаты». Пусто и при
-   * недоступном API: карусель - украшение, главная из-за неё не падает.
+   * Лента карусели под блоком «Заявка вместо оплаты»: идущие акции с баннером и
+   * новости владельца в его порядке (`GET /banners`). Пусто и при недоступном
+   * API: карусель - украшение, главная из-за неё не падает.
    */
-  promotions: IPublicPromotion[]
+  slides: IBannerSlide[]
   /** Тот же сбор, но для кеша SWR: его читают кнопки «в корзину» в подборке. */
   fallback: ISwrFallback
 }
@@ -324,7 +327,7 @@ export const getStaticProps: GetStaticProps<IHomePageProps> = async () => {
     Каждый запрос со своим `catch`: недоступный на сборке API не должен ронять
     `next build`, а пустая подборка не повод прятать сбор (и наоборот).
   */
-  const [cycle, page, all, picked, categories, brands, promotions] = await Promise.all([
+  const [cycle, page, all, picked, categories, brands, feed] = await Promise.all([
     getActiveCycleOrNull().catch(() => null),
     listProducts({ pageSize: FRESH_COUNT, inStock: true }).catch((): { items: IProduct[] } => ({
       items: [],
@@ -344,7 +347,7 @@ export const getStaticProps: GetStaticProps<IHomePageProps> = async () => {
     })),
     listCategories().catch((): ICategory[] => []),
     listBrands().catch((): string[] => []),
-    listPublicPromotions().catch((): IPublicPromotion[] => []),
+    listBannerFeed().catch((): IBannerSlideDto[] => []),
   ])
 
   const pickedIds = new Set(picked.items.map(product => product.id))
@@ -361,7 +364,7 @@ export const getStaticProps: GetStaticProps<IHomePageProps> = async () => {
       productCount: all.total,
       categories,
       brands,
-      promotions,
+      slides: toBannerSlides(feed),
       fallback: activeCycleFallback(cycle),
     },
     revalidate: REVALIDATE_SECONDS,
@@ -515,7 +518,7 @@ const HomePage: React.FC<IHomePageProps> = ({
   productCount,
   categories,
   brands,
-  promotions,
+  slides,
 }) => {
   /*
     Приписка под кнопками — только объём каталога, счётчиками. Считаем все
@@ -649,16 +652,13 @@ const HomePage: React.FC<IHomePageProps> = ({
         </HomeSection>
 
         {/*
-          Акции - сразу под блоком «Заявка вместо оплаты». Как и в каталоге,
-          в счёт идут только акции с мобильным баннером: без него слайду нечего
-          показать.
+          Акции и новости - сразу под блоком «Заявка вместо оплаты». Состав и порядок
+          те же, что в каталоге: их решает бэкенд (`GET /banners`). Нечего показать -
+          нет и секции.
         */}
-        {promotions.some(promotion => promotion.bannerMobileUrl !== null) && (
+        {slides.length > 0 && (
           <HomeSection density="compact">
-            <PromoCarousel
-              promotions={promotions}
-              buildPromotionHref={slug => `/promotions/${slug}`}
-            />
+            <PromoCarousel slides={slides} />
           </HomeSection>
         )}
 

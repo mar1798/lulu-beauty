@@ -81,3 +81,15 @@ MAX_GIFT_QUANTITY = 10
 
 # How long a promo code may be valid for when given as a number of days from issue.
 MAX_PROMO_CODE_VALID_DAYS = 365
+
+# Own news in the catalogue carousel, switched-off ones included. The carousel is read whole
+# on every page build and a slide is a thing the owner looks after by hand, so the ceiling is
+# a handful of screens, not a feed.
+MAX_NEWS_BANNERS = 20
+
+# A news slide's texts. The title is also the picture's alt text; the text is clipped to three
+# lines on the slide, so a longer one would only be paid for in the payload. The columns
+# behind them are wider (255 / 500 / 64), so a limit change never needs a migration.
+MAX_NEWS_TITLE_LENGTH = 120
+MAX_NEWS_TEXT_LENGTH = 300
+MAX_NEWS_CTA_LENGTH = 40

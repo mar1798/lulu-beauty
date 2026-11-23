@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app import scheduler
 from app.auth.router import router as auth_router
+from app.banners.router import router as banners_router
 from app.cart.router import router as cart_router
 from app.catalog.router import router as catalog_router
 from app.checklist.router import router as checklist_router
@@ -72,6 +73,7 @@ def create_app() -> FastAPI:
     app.include_router(wishlist_router)
     app.include_router(orders_router)
     app.include_router(promotions_router)
+    app.include_router(banners_router)
     app.include_router(promo_codes_router)
     app.include_router(owner_promo_codes_router)
     app.include_router(export_router)

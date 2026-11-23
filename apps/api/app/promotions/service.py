@@ -149,7 +149,9 @@ class PromotionsService:
         return running_promotion_filters(now)
 
     async def list_active(self, now: datetime | None = None) -> list[Promotion]:
-        """Promotions running right now, in the owner's order — the carousel and the sitemap."""
+        """Promotions running right now, in the owner's order — the sitemap and the promotion page.
+
+        The carousel reads `GET /banners`, not this."""
         query = (
             select(Promotion)
             .where(*self._running(now or datetime.now(UTC)))

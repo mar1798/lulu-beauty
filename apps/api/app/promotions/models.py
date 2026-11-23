@@ -89,7 +89,7 @@ class Promotion(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     rewards: Mapped[list[dict[str, Any]]] = mapped_column(
         JSONB, default=list, server_default=text("'[]'::jsonb")
     )
-    # The carousel's order, and the order cart-wide discounts are taken in.
+    # The order cart-wide discounts are taken in. The carousel has its own (`app/banners`).
     sort_order: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"))
     # Set instead of deleting a promotion somebody already took part in: the orders and
     # codes that point at it are a record, and a FK keeps them from losing it.

@@ -16,7 +16,7 @@ import {
   setPromotionEnabled,
 } from '@/services/endpoints/promotions'
 import { SHOWCASE_PATHS, promotionPath, refreshPublicPages } from '@/services/endpoints/revalidate'
-import { adminPromotionsKey, isAdminPromotionsKey } from '@/services/swrKeys'
+import { adminPromotionsKey, isAdminBannersKey, isAdminPromotionsKey } from '@/services/swrKeys'
 import { deleteConfirmation } from '@/utils/promotions'
 import * as styles from '@/styles/admin.css'
 
@@ -32,7 +32,8 @@ import * as styles from '@/styles/admin.css'
  * сказано в подтверждении (`deleteConfirmation`).
  *
  * Карусель на витрине живёт в статике каталога, поэтому каждое изменение просит
- * пересобрать `/` и `/catalog`.
+ * пересобрать `/` и `/catalog`. Список «Баннеров» перечитывается тоже: акция в нём
+ * стоит как слайд, и выключение или удаление меняет его состояние.
  */
 const AdminPromotionsPage: React.FC = () => {
   const { notify } = useToast()
@@ -75,6 +76,8 @@ const AdminPromotionsPage: React.FC = () => {
       await mutate()
       // Другие варианты списка (с архивом и без) тоже устарели.
       void globalMutate(isAdminPromotionsKey)
+      // Список баннеров показывает ту же акцию: её состояние и баннер могли измениться.
+      void globalMutate(isAdminBannersKey)
     } catch (cause: unknown) {
       const message = messageForError(cause, scope)
 

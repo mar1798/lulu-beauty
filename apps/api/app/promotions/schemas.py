@@ -89,6 +89,8 @@ class PromotionResponse(CamelModel):
     status: PromotionStatus
     # Live participations — orders not cancelled or released from it.
     participants_count: int
+    # The owner's switch in the banners section; the discount works either way.
+    show_in_carousel: bool = True
     deleted_at: datetime | None
     created_at: datetime
     updated_at: datetime

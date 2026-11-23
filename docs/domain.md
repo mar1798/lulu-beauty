@@ -986,7 +986,9 @@ promotion_ends_before_start`, and a CHECK constraint). A promotion ending at mid
 - **`announce` defaults to `false`.** A broadcast to everyone is an act towards the outside,
   so it is switched on per promotion. `announced_at` is the stamp that it went out
   ([telegram.md](telegram.md#promotions-and-promo-codes)).
-- **`sort_order`** is the carousel's order and the order cart-wide discounts are taken in.
+- **`sort_order`** is only the order cart-wide discounts are taken in. The carousel has its own
+  order (`position`, see [Catalog banners](#catalog-banners)), so rearranging slides can never
+  change the arithmetic of a cart.
 - **No cap on participants** — only "once per customer" below.
 - **Archive vs delete.** `DELETE /admin/promotions/{id}` removes the row only when nothing
   points at it: no `order_promotions` row (released ones count — they are history) and no
@@ -1291,10 +1293,52 @@ conditions stop holding.
   are never sent to anyone.
 - Orders the owner places on a customer's behalf (`AdminOrderDialog`) take no promo code.
 - A gift picture the admin uploads and then abandons stays in storage.
-- There is no list page `/promotions` (only the carousel on `/catalog` and each promotion's
+- There is no list page `/promotions` (only the carousel on `/catalog` and `/`, and each promotion's
   own page) and no "Акция" badge on product cards; both were deferred.
 - A customer with a plain `ADMIN` role sees «Акции» and «Промокоды» in the admin menu but every
   call is refused: both sections are `SUPER_ADMIN`-only on the API.
+
+## Catalog banners
+
+The carousel above the catalogue and on the home page, below «Заявка вместо оплаты».
+Its slides are **running promotions with a mobile banner** and **the owner's own news**, in
+one order the owner arranges in the admin's «Баннеры». Where it lives: `apps/api/app/banners/`
+([backend.md](backend.md#catalog-banners)); the site side is in
+[frontend.md](frontend.md#catalog-banners).
+
+- **A promotion's slide is derived, not stored.** Its title, pictures, slug and window are read
+  from the promotion when the feed is built, so editing a promotion cannot drift from its
+  slide. The owner stores only a decision (`promotion_banner_settings`: `show_in_carousel`,
+  `position`). **No row means «shown, not yet placed»** — which is also what a promotion made
+  by an older release looks like after a rollback, so a release can be rolled back safely.
+- **News is a row** (`news_banners`): a title, optional text, link and button label, optional
+  mobile/desktop pictures, an optional window `[starts_at, ends_at)` (a missing bound is open)
+  and `is_enabled`. With a mobile picture it is a picture slide; without one, a text card in
+  the same proportions, so a news item needs no designer. At most **20** (`MAX_NEWS_BANNERS`,
+  switched-off ones included). News is deleted for good — nothing refers to it.
+- **The feed** (`BannersService.feed`, `GET /banners`) is one function: a promotion is in it
+  when it is _running_ (`running_promotion_filters`, the same definition the cart and the
+  sitemap use), has a mobile banner and is not hidden by the owner; a news item when it is
+  enabled and inside its window. Archived promotions and the owner's promo codes are never in it.
+- **Order.** One numeric space `position` for both kinds. Items without a position («new,
+  not placed») come first, newest first; then by `position`; ties by newest, then id. So a
+  new promotion or news item appears **first** until the owner places it.
+- **State in the admin list** (derived like `promotion_status`, checked in this order):
+  `PROMOTION_OFF` (the promotion is switched off), `FINISHED` («Завершена»; for news «Истекла»),
+  `SCHEDULED`, `NO_IMAGE` (a promotion without a mobile banner), `HIDDEN` (the owner's switch
+  is off), `SHOWN`.
+- **Hiding a slide is not switching the promotion off.** `show_in_carousel = false` only takes
+  the slide out of the carousel; the promotion keeps running and its discount keeps applying.
+  Switching a promotion off removes both, but its `show_in_carousel` and `position` are kept,
+  so switching it back on returns the slide to its place.
+- **Reordering** sends the whole list of keys (`promotion:<id>` / `news:<id>`) and is refused
+  with `banner_order_mismatch` when the set differs from the current one — the list changed
+  under the owner. It never touches `Promotion.sort_order`.
+- **Links** of a news item: a path on this site (`/…`, not `//…`) or an `https://` address;
+  nothing else (`http:`, `javascript:`, `data:`). An external link opens in a new tab.
+- **Access**: `SUPER_ADMIN` only, like the promotions. News is not announced in Telegram.
+- A start or end by the clock reaches the storefront within the ISR backstop (≤ 60 s), like
+  a promotion's.
 
 ## Money
 

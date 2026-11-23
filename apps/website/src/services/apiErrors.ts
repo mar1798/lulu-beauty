@@ -68,6 +68,16 @@ export type ErrorScope =
   | 'admin.promotion.banner'
   | 'admin.promotion.giftImage'
   | 'admin.promotion.participants'
+  // баннеры карусели
+  | 'admin.banners.load'
+  | 'admin.banner.toggle'
+  | 'admin.banner.reorder'
+  | 'admin.news.load'
+  | 'admin.news.create'
+  | 'admin.news.update'
+  | 'admin.news.toggle'
+  | 'admin.news.delete'
+  | 'admin.news.image'
   // промокоды владельца
   | 'admin.promoCodes.load'
   | 'admin.promoCode.create'
@@ -225,6 +235,14 @@ const MESSAGES: Record<string, string> = {
   // больше нет (сняли с продажи, пока форма была открыта).
   promotion_invalid_rules:
     'В условиях или наградах есть товар или категория, которых больше нет в каталоге. Выберите их заново.',
+
+  // --- баннеры карусели ---
+  banner_not_found: 'Новость не найдена - возможно, её уже удалили',
+  banner_order_mismatch:
+    'Список баннеров изменился, пока вы его правили - порядок обновлён, повторите',
+  banner_ends_before_start: 'Конец показа должен быть позже начала',
+  banner_link_invalid: 'Ссылка должна начинаться с / или https://',
+  too_many_news_banners: 'Новостей не больше 20 - удалите ненужные',
 
   // --- промокоды владельца ---
   // Строка кода одна на все виды промокодов: и владельца, и выданные покупателям.
@@ -524,6 +542,13 @@ const SCOPED: Partial<Record<ErrorScope, Record<string, string>>> = {
   'admin.promotion.participants': {
     promotion_not_found: 'Акцию уже удалили. Обновите список.',
   },
+  'admin.banner.toggle': {
+    promotion_not_found: 'Акция не найдена - возможно, её удалили или убрали в архив',
+  },
+  'admin.news.image': {
+    ...PROMOTION_IMAGE_ERRORS,
+    banner_not_found: 'Новость уже удалили - картинку загружать некуда',
+  },
   'admin.promoCode.create': {
     promotion_ends_before_start: 'Промокод должен заканчиваться позже, чем начинается',
     promotion_invalid_rules:
@@ -637,6 +662,15 @@ const SCOPE_FALLBACKS: Record<ErrorScope, string> = {
   'admin.promotion.banner': 'Не удалось изменить баннер',
   'admin.promotion.giftImage': 'Не удалось загрузить картинку подарка',
   'admin.promotion.participants': 'Не удалось загрузить участников акции',
+  'admin.banners.load': 'Не удалось загрузить баннеры',
+  'admin.banner.toggle': 'Не удалось изменить показ акции в карусели',
+  'admin.banner.reorder': 'Не удалось сохранить порядок баннеров',
+  'admin.news.load': 'Не удалось загрузить новость',
+  'admin.news.create': 'Не удалось создать новость',
+  'admin.news.update': 'Не удалось сохранить новость',
+  'admin.news.toggle': 'Не удалось включить или выключить новость',
+  'admin.news.delete': 'Не удалось удалить новость',
+  'admin.news.image': 'Не удалось изменить картинку новости',
   'admin.promoCodes.load': 'Не удалось загрузить промокоды',
   'admin.promoCode.create': 'Не удалось создать промокод',
   'admin.promoCode.update': 'Не удалось сохранить промокод',

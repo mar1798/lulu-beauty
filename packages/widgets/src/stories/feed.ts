@@ -49,6 +49,10 @@ import {
   ICartItem,
   ICartPromotions,
   IGiftLineProps,
+  IAdminBannerItem,
+  IAdminBannersBoardProps,
+  IAdminNewsBannerFormProps,
+  IBannerSlide,
   IPromoCarouselProps,
   IPromotionDetailsProps,
   IPromoCode,
@@ -1722,6 +1726,7 @@ export const feedPromotion = (overrides: Partial<IPromotion> = {}): IPromotion =
   ],
   status: 'ACTIVE',
   participantsCount: 12,
+  showInCarousel: true,
   deletedAt: null,
   createdAt: new Date(Date.now() - 5 * DAY_MS).toISOString(),
   updatedAt: new Date(Date.now() - DAY_MS).toISOString(),
@@ -2063,29 +2068,228 @@ export const feedPublicPromotion = (
   ...overrides,
 })
 
-export const feedPromoCarousel = (): IPromoCarouselProps => ({
-  promotions: [
-    feedPublicPromotion(),
-    // Только мобильный баннер: на широком экране он кадрируется под 3:1.
-    feedPublicPromotion({
-      id: 'promo-box',
-      slug: 'mystery-box',
-      title: 'Mystery box в подарок',
-      bannerMobileUrl: bannerImage('Mystery box - 1080x720', 1080, 720, 20),
-      bannerDesktopUrl: null,
-    }),
-    feedPublicPromotion({
-      id: 'promo-code',
-      slug: 'repeat-order',
-      title: 'Промокод за вторую заявку',
-      bannerMobileUrl: bannerImage('Промокод - 1080x720', 1080, 720, 180),
-      bannerDesktopUrl: bannerImage('Промокод - 1920x640', 1920, 640, 180),
-    }),
-    // Без мобильного баннера в карусель не попадает.
-    feedPublicPromotion({ id: 'promo-hidden', slug: 'hidden', bannerMobileUrl: null }),
-  ],
-  buildPromotionHref: slug => `/promotions/${slug}`,
+/** Акционный слайд: как его собирает сайт из `GET /banners`. */
+export const feedBannerSlide = (overrides: Partial<IBannerSlide> = {}): IBannerSlide => ({
+  key: 'promotion:promo-spring',
+  kind: 'PROMOTION',
+  title: 'Весенняя распродажа',
+  text: null,
+  imageMobileUrl: bannerImage('Весенняя распродажа - 1080x720', 1080, 720, 320),
+  imageDesktopUrl: bannerImage('Весенняя распродажа - 1920x640', 1920, 640, 320),
+  href: '/promotions/spring-sale',
+  isExternal: false,
+  ctaLabel: null,
+  ...overrides,
 })
+
+/** Текстовая новость без картинки: карточка из заголовка, текста и кнопки. */
+export const feedNewsTextSlide = (overrides: Partial<IBannerSlide> = {}): IBannerSlide =>
+  feedBannerSlide({
+    key: 'news:news-cycle',
+    kind: 'NEWS',
+    title: 'Новый сбор открыт',
+    text: 'Принимаем заявки до пятницы - успейте собрать любимое к весне.',
+    imageMobileUrl: null,
+    imageDesktopUrl: null,
+    href: '/catalog',
+    ctaLabel: 'В каталог',
+    ...overrides,
+  })
+
+export const feedBannerSlides = (): IBannerSlide[] => [
+  feedBannerSlide(),
+  // Только мобильный баннер: на широком экране он кадрируется под 3:1.
+  feedBannerSlide({
+    key: 'promotion:promo-box',
+    title: 'Mystery box в подарок',
+    imageMobileUrl: bannerImage('Mystery box - 1080x720', 1080, 720, 20),
+    imageDesktopUrl: null,
+    href: '/promotions/mystery-box',
+  }),
+  feedNewsTextSlide(),
+  // Новость с картинкой и внешней ссылкой.
+  feedBannerSlide({
+    key: 'news:news-channel',
+    kind: 'NEWS',
+    title: 'Мы в Telegram',
+    imageMobileUrl: bannerImage('Telegram - 1080x720', 1080, 720, 200),
+    imageDesktopUrl: bannerImage('Telegram - 1920x640', 1920, 640, 200),
+    href: 'https://t.me/sululu',
+    isExternal: true,
+  }),
+]
+
+export const feedPromoCarousel = (): IPromoCarouselProps => ({
+  slides: feedBannerSlides(),
+})
+
+/** Строка списка баннеров; по умолчанию - идущая акция с баннером. */
+export const feedAdminBannerItem = (
+  overrides: Partial<IAdminBannerItem> = {}
+): IAdminBannerItem => ({
+  key: 'promotion:promo-spring',
+  id: 'promo-spring',
+  kind: 'PROMOTION',
+  state: 'SHOWN',
+  isShown: true,
+  position: 0,
+  slide: {
+    key: 'promotion:promo-spring',
+    kind: 'PROMOTION',
+    title: 'Весенняя распродажа',
+    text: null,
+    imageMobileUrl: bannerImage('Весенняя распродажа - 1080x720', 1080, 720, 320),
+    imageDesktopUrl: null,
+    promotionSlug: 'spring-sale',
+    linkUrl: null,
+    ctaLabel: null,
+  },
+  promotionId: 'promo-spring',
+  promotionStatus: 'ACTIVE',
+  startsAt: new Date(Date.now() - DAY_MS).toISOString(),
+  endsAt: new Date(Date.now() + 14 * DAY_MS).toISOString(),
+  news: null,
+  createdAt: new Date(Date.now() - 5 * DAY_MS).toISOString(),
+  ...overrides,
+})
+
+export const feedAdminBannersBoard = (): IAdminBannersBoardProps => ({
+  items: feedAdminBannerItems(),
+  buildPromotionHref: item => `/admin/promotions/${item.id}`,
+  buildNewsEditHref: item => `/admin/banners/news/${item.id}`,
+  onToggleShown: () => {},
+  onReorder: () => {},
+  onDeleteNews: () => {},
+})
+
+/** Форма сохранённой новости: текстовый слайд со ссылкой, без картинок. */
+export const feedAdminNewsBannerForm = (): IAdminNewsBannerFormProps => ({
+  initialValues: {
+    title: 'Новый сбор открыт',
+    text: 'Принимаем заявки до пятницы - успейте собрать любимое к весне.',
+    linkUrl: '/catalog',
+    ctaLabel: 'В каталог',
+    imageMobileUrl: null,
+    imageDesktopUrl: null,
+    startsAt: null,
+    endsAt: null,
+    isEnabled: true,
+  },
+  savedImages: { mobile: null, desktop: null },
+  onImageUpload: () => {},
+  onImageRemove: () => {},
+  onSubmit: () => {},
+})
+
+const feedNewsItem = (
+  id: string,
+  overrides: Partial<IAdminBannerItem> = {},
+  news: Partial<NonNullable<IAdminBannerItem['news']>> = {}
+): IAdminBannerItem => {
+  const fields = {
+    title: 'Новый сбор открыт',
+    text: 'Принимаем заявки до пятницы',
+    linkUrl: '/catalog',
+    ctaLabel: 'В каталог',
+    imageMobileUrl: null,
+    imageDesktopUrl: null,
+    startsAt: null,
+    endsAt: null,
+    isEnabled: true,
+    ...news,
+  }
+
+  return feedAdminBannerItem({
+    key: `news:${id}`,
+    id,
+    kind: 'NEWS',
+    isShown: fields.isEnabled,
+    slide: {
+      key: `news:${id}`,
+      kind: 'NEWS',
+      title: fields.title,
+      text: fields.text,
+      imageMobileUrl: fields.imageMobileUrl,
+      imageDesktopUrl: fields.imageDesktopUrl,
+      promotionSlug: null,
+      linkUrl: fields.linkUrl,
+      ctaLabel: fields.ctaLabel,
+    },
+    promotionId: null,
+    promotionStatus: null,
+    startsAt: fields.startsAt,
+    endsAt: fields.endsAt,
+    news: fields,
+    ...overrides,
+  })
+}
+
+/** Смешанный список: показанные, скрытые, завершённые, без баннера, выключенная акция. */
+export const feedAdminBannerItems = (): IAdminBannerItem[] => [
+  feedNewsItem('news-cycle', { position: 0 }),
+  feedAdminBannerItem({ position: 1 }),
+  feedAdminBannerItem({
+    key: 'promotion:promo-box',
+    id: 'promo-box',
+    promotionId: 'promo-box',
+    state: 'HIDDEN',
+    isShown: false,
+    position: 2,
+    slide: {
+      ...feedAdminBannerItem().slide,
+      key: 'promotion:promo-box',
+      title: 'Mystery box в подарок',
+      promotionSlug: 'mystery-box',
+    },
+  }),
+  feedAdminBannerItem({
+    key: 'promotion:promo-plain',
+    id: 'promo-plain',
+    promotionId: 'promo-plain',
+    state: 'NO_IMAGE',
+    position: 3,
+    slide: {
+      ...feedAdminBannerItem().slide,
+      key: 'promotion:promo-plain',
+      title: 'Скидка без баннера',
+      imageMobileUrl: null,
+      promotionSlug: 'plain',
+    },
+  }),
+  feedAdminBannerItem({
+    key: 'promotion:promo-off',
+    id: 'promo-off',
+    promotionId: 'promo-off',
+    state: 'PROMOTION_OFF',
+    promotionStatus: 'DISABLED',
+    position: 4,
+    slide: {
+      ...feedAdminBannerItem().slide,
+      key: 'promotion:promo-off',
+      title: 'Выключенная акция',
+      promotionSlug: 'off',
+    },
+  }),
+  feedNewsItem(
+    'news-old',
+    { state: 'FINISHED', position: 5 },
+    {
+      title: 'Прошлый сбор закрыт',
+      text: null,
+      linkUrl: null,
+      ctaLabel: null,
+      endsAt: new Date(Date.now() - 3 * DAY_MS).toISOString(),
+    }
+  ),
+  feedNewsItem(
+    'news-later',
+    { state: 'SCHEDULED', position: 6 },
+    {
+      title: 'Скоро: новое поступление',
+      startsAt: new Date(Date.now() + 2 * DAY_MS).toISOString(),
+    }
+  ),
+]
 
 export const feedCartGift = (overrides: Partial<ICartGift> = {}): ICartGift => ({
   kind: 'CUSTOM',

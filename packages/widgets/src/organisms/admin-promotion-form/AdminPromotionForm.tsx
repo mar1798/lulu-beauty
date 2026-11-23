@@ -412,7 +412,7 @@ export const AdminPromotionForm: FC<IAdminPromotionFormProps & IBasicStyling> = 
           value={fields.sortOrder}
           inputMode="numeric"
           maxLength={String(SORT_ORDER_MAX).length}
-          hint="Меньше - раньше: в карусели и при подсчёте скидок. Скидки акций идут от остатка друг друга по этому порядку."
+          hint="Меньше - раньше при подсчёте скидок: скидки акций идут от остатка друг друга по этому порядку. Порядок в карусели - в разделе «Баннеры»."
           error={isSubmitted ? errors.sortOrder : null}
           onChange={next => {
             patch({ sortOrder: next.replace(/\D/g, '') })

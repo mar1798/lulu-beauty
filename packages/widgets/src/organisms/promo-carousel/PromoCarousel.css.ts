@@ -1,7 +1,7 @@
 import { style } from '@vanilla-extract/css'
-import { color, rem } from '../../styling/lib'
+import { color, font, rem } from '../../styling/lib'
 import { media } from '../../styling/lib/media'
-import { focusVisibleRing } from '../../styling/mixin'
+import { focusVisibleRing, lineClamp } from '../../styling/mixin'
 import { vars } from '../../styling/themes/contract.css'
 
 /**
@@ -129,4 +129,69 @@ export const dot = style({
   height: rem(6),
   borderRadius: vars.radius.circle,
   backgroundColor: '#ffffff',
+})
+
+/**
+ * Текстовый слайд новости: карточка в тех же пропорциях, что и баннер, на мягкой
+ * марочной плашке. Содержимое прижато к левому краю и по центру по высоте; снизу
+ * оставлено место под точки, чтобы они не ложились на кнопку.
+ */
+export const textCard = style({
+  boxSizing: 'border-box',
+  display: 'flex',
+  flexDirection: 'column',
+  alignItems: 'flex-start',
+  justifyContent: 'center',
+  gap: vars.space.sm,
+  width: '100%',
+  height: '100%',
+  paddingInline: vars.space.lg,
+  paddingTop: rem(16),
+  paddingBottom: rem(36),
+  backgroundColor: color.surface('soft'),
+  color: color.text('primary'),
+  ...media({
+    md: {
+      paddingInline: vars.space.xxl,
+      gap: vars.space.sm,
+      paddingTop: rem(20),
+      paddingBottom: rem(32),
+    },
+  }),
+})
+
+export const textTitle = style({
+  margin: 0,
+  maxWidth: '28ch',
+  // Кегль фиксирован, а не `displaySm` с `clamp()`: у слайда жёсткая высота (3:2 и 3:1),
+  // и заголовок в 56px вместе с текстом и кнопкой в неё не помещался бы.
+  font: font('22/28', 600, 'display'),
+  letterSpacing: vars.tracking.tight,
+  textWrap: 'balance',
+  ...lineClamp(2),
+  ...media({
+    md: { font: font('28/36', 600, 'display') },
+  }),
+})
+
+export const textBody = style({
+  margin: 0,
+  maxWidth: '52ch',
+  font: font('14/20'),
+  color: color.text('secondary'),
+  ...lineClamp(3),
+  ...media({
+    md: { font: font('16/24'), ...lineClamp(2) },
+  }),
+})
+
+export const cta = style({
+  display: 'inline-flex',
+  alignItems: 'center',
+  minHeight: rem(32),
+  paddingInline: vars.space.md,
+  font: font('14/20', 600),
+  color: color.brand('700'),
+  border: `1px solid ${color.brand('700')}`,
+  borderRadius: vars.radius.pill,
 })

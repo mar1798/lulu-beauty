@@ -24,15 +24,15 @@ vanilla-extract plugin wired in here is the webpack one. **Don't drop that flag.
 
 ## Pages
 
-| Group         | Pages                                                                                                                                                                                                                             | Rendering                          |
-| ------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------- |
-| Public        | `index`, `catalog/index`, `catalog/[slug]`, `promotions/[slug]`, `privacy`                                                                                                                                                        | SSG + ISR (`privacy` is plain SSG) |
-| Behind login  | `checkout`, `orders/index`, `orders/[id]`, `promocodes`, `account`                                                                                                                                                                | Static shell, client-rendered data |
-| Guest or user | `cart`, `wishlist` — a guest's lives in the browser (`utils/guestStorage`)                                                                                                                                                        | Static shell, client-rendered data |
-| Auth          | `login` — **this is the registration too**                                                                                                                                                                                        | Static                             |
-| Owner-only    | `admin/index`, `admin/products/{index,add,[id]}`, `admin/categories`, `admin/import`, `admin/cycles`, `admin/orders`, `admin/checklist`, `admin/users`, `admin/promotions/{index,add,[id]}`, `admin/promo-codes/{index,add,[id]}` | Static, gated on the client        |
-| Errors        | `404`, `500`                                                                                                                                                                                                                      | Static                             |
-| Crawlers      | `sitemap.xml`                                                                                                                                                                                                                     | `getServerSideProps`, per request  |
+| Group         | Pages                                                                                                                                                                                                                                                                         | Rendering                          |
+| ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------- |
+| Public        | `index`, `catalog/index`, `catalog/[slug]`, `promotions/[slug]`, `privacy`                                                                                                                                                                                                    | SSG + ISR (`privacy` is plain SSG) |
+| Behind login  | `checkout`, `orders/index`, `orders/[id]`, `promocodes`, `account`                                                                                                                                                                                                            | Static shell, client-rendered data |
+| Guest or user | `cart`, `wishlist` — a guest's lives in the browser (`utils/guestStorage`)                                                                                                                                                                                                    | Static shell, client-rendered data |
+| Auth          | `login` — **this is the registration too**                                                                                                                                                                                                                                    | Static                             |
+| Owner-only    | `admin/index`, `admin/products/{index,add,[id]}`, `admin/categories`, `admin/import`, `admin/cycles`, `admin/orders`, `admin/checklist`, `admin/users`, `admin/promotions/{index,add,[id]}`, `admin/banners/{index,news/add,news/[id]}`, `admin/promo-codes/{index,add,[id]}` | Static, gated on the client        |
+| Errors        | `404`, `500`                                                                                                                                                                                                                                                                  | Static                             |
+| Crawlers      | `sitemap.xml`                                                                                                                                                                                                                                                                 | `getServerSideProps`, per request  |
 
 Every page a person can open is static, which is why `next build` reports `/admin/*` as
 `○ (Static)`. The one `getServerSideProps` in the app is `sitemap.xml`, which nobody visits:
@@ -83,9 +83,20 @@ is still there as the backstop, so a failed rebuild belongs in the console, not 
 Every admin mutation that changes what a visitor sees calls it: product create/update/delete/
 restore and its photo (plus the **previous** slug when the slug changed — old links still
 point at it), categories, cycles, promotions (save, switch, delete — `/`, `/catalog` for the
-carousel and `promotionPath(slug)`, the old slug too) and the xlsx import. The import names only `/` and
+carousel and `promotionPath(slug)`, the old slug too), the banners section (switch, order, news
+save/delete/picture — `/` and `/catalog`) and the xlsx import. The import names only `/` and
 `/catalog`: it can touch hundreds of products at once, and their pages are left to the
 60-second backstop.
+
+## Catalog banners
+
+Rules: [domain.md](domain.md#catalog-banners). The data layer: `services/endpoints/banners.ts`
+(the public `listBannerFeed` and every admin call), `swrKeys.ts` (`adminBannersKey`,
+`isAdminBannersKey`, `adminNewsBannerKey`), `apiErrors.ts` (codes `banner_*`,
+`too_many_news_banners`; scopes `admin.banners.load`, `admin.banner.{toggle,reorder}`,
+`admin.news.{load,create,update,toggle,delete,image}`) and `utils/banners.ts` (feed → widget
+slides, optimistic helpers). `utils/banners.ts` keeps its own `isExternal` rather than importing
+`widgets/utils`, because the site's vitest cannot build vanilla-extract.
 
 ## Auth and token handling
 
@@ -232,13 +243,14 @@ Rules: [domain.md](domain.md#promotions). The site side:
   «Профиль») and the footer, but not the header menu.
 - `pages/catalog/index.tsx` — the `PromoCarousel` goes into `CatalogTemplate`'s `banner` slot,
   above the title, with the «Приём заказов закрыт» notice (`ClosedCycleNotice`) right under it
-  in the same slot. The promotions come from `getStaticProps` (`GET /promotions`, an API failure
-  means an empty list), so the carousel is part of the ISR page and refreshed by `/catalog`
-  revalidation. The page drops promotions without a mobile banner on the client; with none
-  left, there is no carousel. The API returns every running promotion.
-- `pages/index.tsx` — the same `PromoCarousel`, fetched the same way, in its own compact
+  in the same slot. The slides come from `getStaticProps` (`GET /banners` mapped by
+  `utils/banners.ts::toBannerSlides`; an API failure means an empty list), so the carousel is
+  part of the ISR page and refreshed by `/catalog` revalidation. What is in it and in which
+  order is decided by the backend (see [Catalog banners](#catalog-banners)); with no slides
+  there is no carousel.
+- `pages/index.tsx` — the same `PromoCarousel` and the same feed, in its own compact
   `HomeSection` right after the «Заявка вместо оплаты» section and before the fresh picks;
-  refreshed by `/` revalidation. No promotion with a mobile banner — no section.
+  refreshed by `/` revalidation. No slides — no section.
 - `pages/admin/promotions/{index,add,[id]}.tsx` — owner-only, like the rest of `admin/`, with
   «Акции» in `AdminShell`. The table (`AdminPromotionsTable`) has icon buttons with tooltips only;
   the form (`AdminPromotionForm`) holds two banner fields, the condition and reward builders
@@ -247,6 +259,20 @@ Rules: [domain.md](domain.md#promotions). The site side:
   «Duplicate» is `/admin/promotions/add?from=<id>`: conditions and rewards are copied, dates
   are not, the copy is switched off, unannounced, with a `-copy` slug and no banners. The API
   refuses non-`SUPER_ADMIN` accounts, while the menu entry shows for any admin.
+- `pages/admin/banners/{index,news/add,news/[id]}.tsx` — «Баннеры» in `AdminShell`, right
+  after «Промокоды». The index has a live «Сейчас на витрине» preview (`PromoCarousel` over the
+  `SHOWN` rows, in list order, `inert`) and `AdminBannersBoard`; an empty carousel shows a
+  warning (not after a failed load). The switch and the arrows update the SWR cache **optimistically** and roll back on
+  error; a `banner_order_mismatch` re-reads the list. News goes through `AdminNewsBannerForm`;
+  after `POST` the pictures upload in follow-up requests and the page moves to the news card,
+  like promotions. Every success calls `refreshPublicPages(...SHOWCASE_PATHS)` and invalidates
+  `isAdminBannersKey` (and, for a promotion, `adminPromotionKey(id)`); the promotion pages
+  invalidate `isAdminBannersKey` back, and the promotion card shows a line from `carouselLine` («Карусель: показывается», or why
+  the slide is not there: hidden by the owner, no mobile banner, switched off, not started, finished)
+  with a link to the section. Toggling or deleting news also invalidates `adminNewsBannerKey(id)`,
+  and the news card re-mounts its form when the fresh `isEnabled` differs from the cached one.
+  When the list fails to load, neither the «carousel is empty» warning nor the empty state is
+  shown. The board takes `busyKeys` (a set), so several rows can be in flight at once.
 - `pages/admin/promo-codes/{index,add,[id]}.tsx` — the owner's promo codes, «Промокоды» in
   `AdminShell` right after «Акции». The list (`AdminPromoCodesTable`) copies a code with
   `navigator.clipboard` («Код скопирован»); there is no showcase to rebuild, so no

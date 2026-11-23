@@ -9,6 +9,8 @@ export interface IWrapperComponent {
 export interface ILink {
   href: string
   target?: React.HTMLAttributeAnchorTarget
+  /** Для внешней ссылки в новой вкладке: `noopener noreferrer`. */
+  rel?: string
   ['aria-label']?: string
   /** Подсказка по наведению — для ссылок, чей текст обрезается многоточием. */
   title?: string
@@ -2924,6 +2926,8 @@ export interface IPromotion {
   status: PromotionStatus
   /** Живые участия: заявки, не отменённые и не снятые с акции. */
   participantsCount: number
+  /** Выбор владельца в разделе «Баннеры»; скидка акции от него не зависит. */
+  showInCarousel: boolean
   deletedAt: string | null
   createdAt: string
   updatedAt: string
@@ -3193,6 +3197,8 @@ export interface IPromotionPeriodFieldsProps extends IPromotionPeriod {
   openEndedLabel?: string
   /** Подсказка под временем конца; по умолчанию - как у акции. */
   endHint?: string
+  /** Начала нет (новость «показывать сразу»): поля начала не рисуются. */
+  hideStart?: boolean
 }
 
 /** Промокод владельца, как его отдаёт `GET /admin/promo-codes`. */
@@ -3459,12 +3465,127 @@ export interface IPromoCodeFieldProps {
   disabled?: boolean
 }
 
+/** Откуда слайд: акция или своя новость владельца. */
+export type BannerKind = 'PROMOTION' | 'NEWS'
+
+/** Что показывает админский список про слайд; считает бэкенд, не хранится. */
+export type BannerState =
+  'PROMOTION_OFF' | 'FINISHED' | 'SCHEDULED' | 'NO_IMAGE' | 'HIDDEN' | 'SHOWN'
+
+/** Слайд карусели в том виде, в каком его рисует витрина: ссылка уже собрана. */
+export interface IBannerSlide {
+  /** `promotion:<id>` или `news:<id>`; ключ в списке и в порядке. */
+  key: string
+  kind: BannerKind
+  /** Заголовок текстового слайда и `alt` картинки. */
+  title: string
+  text: string | null
+  /** Есть - слайд картиночный; нет - текстовый (только у новости). */
+  imageMobileUrl: string | null
+  imageDesktopUrl: string | null
+  /** Куда ведёт слайд; `null` - не ссылка. */
+  href: string | null
+  /** Внешняя ссылка (`https://`): открывается в новой вкладке. */
+  isExternal: boolean
+  /** Подпись кнопки текстового слайда; по умолчанию «Подробнее». */
+  ctaLabel: string | null
+}
+
 export interface IPromoCarouselProps {
-  promotions: IPublicPromotion[]
-  /** Адрес страницы акции: слайд - ссылка на неё. */
-  buildPromotionHref: (slug: string) => string
+  slides: IBannerSlide[]
   /** Пауза между слайдами, мс. */
   intervalMs?: number
+}
+
+/** Слайд, как его отдаёт `GET /banners`. */
+export interface IBannerSlideDto {
+  key: string
+  kind: BannerKind
+  title: string
+  text: string | null
+  imageMobileUrl: string | null
+  imageDesktopUrl: string | null
+  promotionSlug: string | null
+  linkUrl: string | null
+  ctaLabel: string | null
+}
+
+/** Поля своей новости в админском списке и в форме. */
+export interface IAdminNewsBanner {
+  title: string
+  text: string | null
+  linkUrl: string | null
+  ctaLabel: string | null
+  imageMobileUrl: string | null
+  imageDesktopUrl: string | null
+  /** `null` - показывать сразу. */
+  startsAt: string | null
+  /** `null` - без даты окончания. */
+  endsAt: string | null
+  isEnabled: boolean
+}
+
+/** Строка списка `GET /admin/banners`: акция или новость. */
+export interface IAdminBannerItem {
+  key: string
+  /** Id акции или новости. */
+  id: string
+  kind: BannerKind
+  state: BannerState
+  /** Выбор владельца: «Показывать в карусели» у акции, `isEnabled` у новости. */
+  isShown: boolean
+  position: number | null
+  slide: IBannerSlideDto
+  promotionId: string | null
+  promotionStatus: PromotionStatus | null
+  startsAt: string | null
+  endsAt: string | null
+  news: IAdminNewsBanner | null
+  createdAt: string
+}
+
+export interface IAdminBannersBoardProps {
+  /** Весь список в порядке карусели. */
+  items: IAdminBannerItem[]
+  buildPromotionHref: (item: IAdminBannerItem) => string
+  buildNewsEditHref: (item: IAdminBannerItem) => string
+  onToggleShown: (item: IAdminBannerItem, isShown: boolean) => void
+  /** Полный порядок ключей после перестановки: бэкенд принимает список целиком. */
+  onReorder: (keys: string[]) => void
+  onDeleteNews: (item: IAdminBannerItem) => void
+  isLoading?: boolean
+  skeletonRows?: number
+  /** Строки, над которыми идёт запрос: их действия недоступны. */
+  busyKeys?: ReadonlySet<string>
+  /** Идёт сохранение порядка: стрелки всех строк недоступны. */
+  isReordering?: boolean
+  emptyState?: ReactNode
+}
+
+/** Что уходит из формы новости; файлы - только при создании, у сохранённой они грузятся сразу. */
+export interface INewsBannerDraft {
+  title: string
+  text: string | null
+  linkUrl: string | null
+  ctaLabel: string | null
+  startsAt: string | null
+  endsAt: string | null
+  isEnabled: boolean
+  images: Record<PromotionBannerVariant, File | null>
+}
+
+export interface IAdminNewsBannerFormProps {
+  initialValues?: IAdminNewsBanner
+  /** Задано вместе с `onImageUpload`: новость сохранена, файл уходит на сервер сразу. */
+  savedImages?: Record<PromotionBannerVariant, string | null>
+  onImageUpload?: (variant: PromotionBannerVariant, file: File) => void
+  onImageRemove?: (variant: PromotionBannerVariant) => void
+  isImageBusy?: boolean
+  imageError?: string | null
+  onSubmit: (values: INewsBannerDraft) => void
+  isSubmitting?: boolean
+  error?: string | null
+  footer?: ReactNode
 }
 
 export interface IPromotionDetailsProps {

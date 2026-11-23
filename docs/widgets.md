@@ -24,12 +24,12 @@ Storybook is the primary dev loop here — build a widget against stories, not a
 [Atomic design](https://bradfrost.com/blog/post/atomic-web-design/); all four tiers are
 populated.
 
-| Tier            | Examples                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
-| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `src/atoms`     | `Button`, `Input`, `Price`, `Badge`, `Chip`, `Select`, `Combobox`, `Tooltip`, `Skeleton`, `Appear`, `Reveal`, `Parallax`, `AppLink`, `AppImage`, `RichText`                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
-| `src/molecules` | `ProductCard`, `VariantSelector`, `QuantityStepper`, `SearchField`, `CustomerSelect`, `Pagination`, `OrderCard`, `OrderStatusBadge`, `DeadlineCountdown`, `Toast`, `EmptyState`, `FileDropzone`, `RichTextEditor`, `ActionMenu`                                                                                                                                                                                                                                                                                                                                                                                           |
-| `src/organisms` | `Header`, `HeaderSearch`, `Footer`, `CartPanel`, `CheckoutForm`, `ProductGrid`, `ProductDetails`, `OrderDetails`, `Modal`, `ConfirmDialog`, `ToastViewport`, `MobileMenu`, `TelegramLoginPanel`, `AdminOrdersTable`, `AdminMessageDialog`, `AdminOrderDialog`, `AdminOrderEditDialog`, `AdminOrderDiscountDialog`, `AdminProductsTable`, `AdminProductForm`, `AdminProductGallery`, `AdminCycleCalendar`, `AdminUsersTable`, `AdminImportPanel`, `AdminCategoriesPanel`, `ProductPicker`, `PromoCarousel`, `PromotionDetails`, `AdminPromotionsTable`, `AdminPromotionForm`, `AdminPromoCodesTable`, `AdminPromoCodeForm` |
-| `src/templates` | `BaseLayout`, `AdminLayout`, `HomeTemplate`, `CatalogTemplate`, `ProductTemplate`, `CartTemplate`, `AccountTemplate`, `AuthTemplate`, `LegalTemplate`, `ErrorTemplate`                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| Tier            | Examples                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/atoms`     | `Button`, `Input`, `Price`, `Badge`, `Chip`, `Select`, `Combobox`, `Tooltip`, `Skeleton`, `Appear`, `Reveal`, `Parallax`, `AppLink`, `AppImage`, `RichText`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| `src/molecules` | `ProductCard`, `VariantSelector`, `QuantityStepper`, `SearchField`, `CustomerSelect`, `Pagination`, `OrderCard`, `OrderStatusBadge`, `DeadlineCountdown`, `Toast`, `EmptyState`, `FileDropzone`, `RichTextEditor`, `ActionMenu`                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `src/organisms` | `Header`, `HeaderSearch`, `Footer`, `CartPanel`, `CheckoutForm`, `ProductGrid`, `ProductDetails`, `OrderDetails`, `Modal`, `ConfirmDialog`, `ToastViewport`, `MobileMenu`, `TelegramLoginPanel`, `AdminOrdersTable`, `AdminMessageDialog`, `AdminOrderDialog`, `AdminOrderEditDialog`, `AdminOrderDiscountDialog`, `AdminProductsTable`, `AdminProductForm`, `AdminProductGallery`, `AdminCycleCalendar`, `AdminUsersTable`, `AdminImportPanel`, `AdminCategoriesPanel`, `ProductPicker`, `PromoCarousel`, `AdminBannersBoard`, `AdminNewsBannerForm`, `PromotionDetails`, `AdminPromotionsTable`, `AdminPromotionForm`, `AdminPromoCodesTable`, `AdminPromoCodeForm` |
+| `src/templates` | `BaseLayout`, `AdminLayout`, `HomeTemplate`, `CatalogTemplate`, `ProductTemplate`, `CartTemplate`, `AccountTemplate`, `AuthTemplate`, `LegalTemplate`, `ErrorTemplate`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 
 Supporting directories:
 
@@ -92,16 +92,31 @@ sum, discount and condition comes from the API, and the widgets only draw and wo
 
 Storefront:
 
-- `PromoCarousel` (organism) — one banner per slide, **a slide is 100% of the width on every
-  screen**. The browser does the scrolling (`scroll-snap`, so a swipe is native and works
-  before hydration); `motion` only moves the dots (`scaleX`). **There is no pause button** —
-  the carousel always plays; autoplay only waits while it is hovered, focused, touched or
-  off-screen, and does not exist under `prefers-reduced-motion`. The frame has a soft shadow
-  and a translucent inset hairline (`::after`), so a light banner does not melt into the page;
-  the dots are 6px on a thin, light pill, with 20×24 hit areas. A slide uses `<picture>`: the
-  desktop banner from `md` up when there is one, otherwise the mobile one, cropped (`cover`).
-  Ratios are fixed so the layout does not jump: 3:2 on a phone, 3:1 from `md`. It goes into `CatalogTemplate`'s optional
-  **`banner`** slot.
+- `PromoCarousel` (organism) — takes `slides: IBannerSlide[]` (the site maps `GET /banners` into
+  them; the widget knows nothing about promotions or news), **a slide is 100% of the width on
+  every screen**. A slide is a **picture** (`<picture>`: the desktop banner from `md` up when
+  there is one, otherwise the mobile one, cropped with `cover`) or, with no mobile picture, a
+  **text card** (title, text clipped to three lines on a phone and two from `md`, a button label — «Подробнее» by default —
+  only when the slide has a link). A slide with no `href` is a plain `div`, not a link; an
+  `isExternal` one opens in a new tab with `rel="noopener noreferrer"`. The browser does the
+  scrolling (`scroll-snap`, so a swipe is native and works before hydration); `motion` only moves
+  the dots (`scaleX`). **There is no pause button** — the carousel always plays; autoplay only
+  waits while it is hovered, focused, touched or off-screen, and does not exist under
+  `prefers-reduced-motion`. The dots are named «Слайд N из M: <title>»; the section is «Акции и
+  новости». The frame has a soft shadow and a translucent inset hairline (`::after`), so a light
+  banner does not melt into the page; the dots are 6px on a thin, light pill, with 20×24 hit
+  areas. Ratios are fixed so the layout does not jump: 3:2 on a phone, 3:1 from `md`. It goes
+  into `CatalogTemplate`'s optional **`banner`** slot. With no slides it renders `null`.
+- `AdminBannersBoard` (organism) — the owner's list of slides: thumbnail (or a «Текст» plate),
+  kind and state badges (`utils/banner.ts`: `BANNER_STATE_LABELS`, `bannerStateLabel` — a
+  finished news item reads «Истекла»), period, the «Показывать в карусели» switch and
+  «Выше»/«Ниже» icon buttons (a move swaps with the neighbouring **visible** row and hands the
+  whole key order to `onReorder`). Finished rows are hidden by default behind a switch.
+  Everything is a callback; requests, toasts and rollback live on the page.
+- `AdminNewsBannerForm` (organism) — a news item: fields, period (`PromotionPeriodFields` with
+  `hideStart` for «Показывать сразу»), two `PromotionBannerField`s and a live preview — the same
+  `PromoCarousel` with one draft slide, `inert`. Validation repeats the backend
+  (`isValidBannerLink`, `NEWS_*_MAX` in `utils/banner.ts`).
 - `PromotionDetails` (organism) — a promotion's page: banner, term, the owner's text
   (`RichText`), conditions and rewards in words.
 - `GiftLine` (molecule) — a gift in the cart, checkout and order: picture, title and a «Подарок»

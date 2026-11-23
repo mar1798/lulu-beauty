@@ -2,7 +2,7 @@ import { act, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { PromoCarousel } from '.'
-import { feedPromoCarousel } from '../../stories/feed'
+import { feedBannerSlide, feedBannerSlides, feedNewsTextSlide } from '../../stories/feed'
 import { renderWidget } from '../../testing/render'
 
 /*
@@ -38,29 +38,75 @@ afterEach(() => {
 
 describe('PromoCarousel', () => {
   it('рендерится с фикстурой из feed', () => {
-    const { container } = renderWidget(<PromoCarousel {...feedPromoCarousel()} />)
+    const { container } = renderWidget(<PromoCarousel slides={feedBannerSlides()} />)
 
     expect(container.firstElementChild).not.toBeNull()
+    expect(screen.getAllByRole('group')).toHaveLength(4)
+    expect(screen.getByRole('region', { name: 'Акции и новости' })).toBeInTheDocument()
   })
 
-  it('акция без мобильного баннера в карусель не попадает', () => {
-    renderWidget(<PromoCarousel {...feedPromoCarousel()} />)
+  it('картиночный слайд - ссылка на страницу акции', () => {
+    renderWidget(<PromoCarousel slides={feedBannerSlides()} />)
 
-    expect(screen.getAllByRole('group')).toHaveLength(3)
     expect(screen.queryByRole('img', { name: 'Весенняя распродажа' })).not.toBeNull()
-  })
-
-  it('слайд - ссылка на страницу акции', () => {
-    renderWidget(<PromoCarousel {...feedPromoCarousel()} />)
-
     expect(screen.getAllByRole('link', { hidden: true })[0]).toHaveAttribute(
       'href',
       '/promotions/spring-sale'
     )
   })
 
+  it('текстовый слайд: заголовок, текст и подпись кнопки, картинки нет', () => {
+    renderWidget(<PromoCarousel slides={[feedNewsTextSlide()]} />)
+
+    expect(screen.getByText('Новый сбор открыт')).toBeInTheDocument()
+    expect(screen.getByText(/Принимаем заявки/)).toBeInTheDocument()
+    expect(screen.getByText('В каталог')).toBeInTheDocument()
+    expect(screen.queryByRole('img')).toBeNull()
+    expect(screen.getByRole('link')).toHaveAttribute('href', '/catalog')
+  })
+
+  it('у текстового слайда без подписи кнопка называется «Подробнее»', () => {
+    renderWidget(<PromoCarousel slides={[feedNewsTextSlide({ ctaLabel: null })]} />)
+
+    expect(screen.getByText('Подробнее')).toBeInTheDocument()
+  })
+
+  it('слайд без ссылки - не <a> и без кнопки', () => {
+    const { container } = renderWidget(
+      <PromoCarousel slides={[feedNewsTextSlide({ href: null })]} />
+    )
+
+    expect(container.querySelector('a')).toBeNull()
+    expect(screen.queryByRole('link')).toBeNull()
+    expect(screen.queryByText('В каталог')).toBeNull()
+    expect(screen.getByText('Новый сбор открыт')).toBeInTheDocument()
+  })
+
+  it('внешняя ссылка открывается в новой вкладке с noopener noreferrer', () => {
+    renderWidget(
+      <PromoCarousel
+        slides={[feedNewsTextSlide({ href: 'https://t.me/sululu', isExternal: true })]}
+      />
+    )
+
+    const link = screen.getByRole('link')
+
+    expect(link).toHaveAttribute('href', 'https://t.me/sululu')
+    expect(link).toHaveAttribute('target', '_blank')
+    expect(link).toHaveAttribute('rel', 'noopener noreferrer')
+  })
+
+  it('внутренняя ссылка остаётся в той же вкладке', () => {
+    renderWidget(<PromoCarousel slides={[feedNewsTextSlide()]} />)
+
+    const link = screen.getByRole('link')
+
+    expect(link).not.toHaveAttribute('target')
+    expect(link).not.toHaveAttribute('rel')
+  })
+
   it('десктопный баннер идёт через <picture> с брейкпоинта md, мобильный - по умолчанию', () => {
-    const { container } = renderWidget(<PromoCarousel {...feedPromoCarousel()} />)
+    const { container } = renderWidget(<PromoCarousel slides={feedBannerSlides()} />)
     const [first, second] = Array.from(container.querySelectorAll('picture'))
 
     expect(first?.querySelector('source')?.getAttribute('media')).toBe('(min-width: 768px)')
@@ -70,17 +116,17 @@ describe('PromoCarousel', () => {
   })
 
   it('держит фиксированную пропорцию слайда, чтобы страница не прыгала', () => {
-    const { container } = renderWidget(<PromoCarousel {...feedPromoCarousel()} />)
+    const { container } = renderWidget(<PromoCarousel slides={[feedBannerSlide()]} />)
     const img = container.querySelector('img')
 
     expect(img).toHaveAttribute('width', '1080')
     expect(img).toHaveAttribute('height', '720')
   })
 
-  it('точки листают на выбранный слайд', async () => {
-    renderWidget(<PromoCarousel {...feedPromoCarousel()} />)
+  it('точки листают на выбранный слайд и называют слайд', async () => {
+    renderWidget(<PromoCarousel slides={feedBannerSlides()} />)
 
-    await userEvent.click(screen.getByRole('button', { name: /Акция 2 из 3/ }))
+    await userEvent.click(screen.getByRole('button', { name: /Слайд 2 из 4: Mystery box/ }))
 
     expect(scrollTo).toHaveBeenCalledWith(expect.objectContaining({ left: expect.any(Number) }))
   })
@@ -88,7 +134,9 @@ describe('PromoCarousel', () => {
   it('автопрокрутка листает дальше по таймеру и встаёт на паузу под мышью', () => {
     vi.useFakeTimers()
 
-    const { container } = renderWidget(<PromoCarousel {...feedPromoCarousel()} intervalMs={1000} />)
+    const { container } = renderWidget(
+      <PromoCarousel slides={feedBannerSlides()} intervalMs={1000} />
+    )
 
     act(() => {
       vi.advanceTimersByTime(1000)
@@ -113,24 +161,19 @@ describe('PromoCarousel', () => {
   })
 
   it('кнопки паузы нет - карусель листается сама', () => {
-    renderWidget(<PromoCarousel {...feedPromoCarousel()} />)
+    renderWidget(<PromoCarousel slides={feedBannerSlides()} />)
 
-    expect(screen.queryByRole('button', { name: /прокрутку акций/ })).toBeNull()
+    expect(screen.queryByRole('button', { name: /прокрутку/ })).toBeNull()
   })
 
-  it('одна акция - без точек', () => {
-    renderWidget(
-      <PromoCarousel
-        {...feedPromoCarousel()}
-        promotions={feedPromoCarousel().promotions.slice(0, 1)}
-      />
-    )
+  it('один слайд - без точек', () => {
+    renderWidget(<PromoCarousel slides={feedBannerSlides().slice(0, 1)} />)
 
     expect(screen.queryByRole('button')).toBeNull()
   })
 
-  it('без подходящих акций ничего не рисует', () => {
-    const { container } = renderWidget(<PromoCarousel {...feedPromoCarousel()} promotions={[]} />)
+  it('без слайдов ничего не рисует', () => {
+    const { container } = renderWidget(<PromoCarousel slides={[]} />)
 
     expect(container.querySelector('section')).toBeNull()
   })

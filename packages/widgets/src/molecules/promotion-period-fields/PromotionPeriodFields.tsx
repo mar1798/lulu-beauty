@@ -15,6 +15,9 @@ import * as styles from './PromotionPeriodFields.css'
  * назван момент, а не «день». «Бессрочная» прячет конец и уводит `endsAt: null`:
  * забытая дата не должна молча делать предложение вечным, поэтому это явный
  * выбор, а не пустое поле.
+ *
+ * `hideStart` прячет начало: у новости оно необязательно («показывать сразу»),
+ * и форма сама решает, когда поля начала нужны.
  */
 
 const DEFAULT_OPEN_ENDED_LABEL = 'Бессрочная - без даты окончания'
@@ -31,30 +34,33 @@ export const PromotionPeriodFields: FC<IPromotionPeriodFieldsProps & IBasicStyli
   onOpenEndedChange,
   openEndedLabel = DEFAULT_OPEN_ENDED_LABEL,
   endHint = DEFAULT_END_HINT,
+  hideStart = false,
   className,
 }) => (
   <div className={clsx(styles.container, className)}>
-    <div className={styles.pair}>
-      <Input
-        label="Начало, дата"
-        type="date"
-        value={startDate}
-        required={true}
-        error={errors.start}
-        onChange={next => {
-          onChange({ startDate: next })
-        }}
-      />
-      <Input
-        label="Начало, время"
-        type="time"
-        value={startTime}
-        required={true}
-        onChange={next => {
-          onChange({ startTime: next })
-        }}
-      />
-    </div>
+    {!hideStart && (
+      <div className={styles.pair}>
+        <Input
+          label="Начало, дата"
+          type="date"
+          value={startDate}
+          required={true}
+          error={errors.start}
+          onChange={next => {
+            onChange({ startDate: next })
+          }}
+        />
+        <Input
+          label="Начало, время"
+          type="time"
+          value={startTime}
+          required={true}
+          onChange={next => {
+            onChange({ startTime: next })
+          }}
+        />
+      </div>
+    )}
 
     <Switch label={openEndedLabel} checked={isOpenEnded} onChange={onOpenEndedChange} />
 

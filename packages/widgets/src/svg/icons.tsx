@@ -43,6 +43,20 @@ export const IconChevronDown: FC<IBasicStyling> = ({ className }) => (
   </svg>
 )
 
+export const IconChevronUp: FC<IBasicStyling> = ({ className }) => (
+  <svg {...base} className={className}>
+    <path d="m6 15 6-6 6 6" />
+  </svg>
+)
+
+export const IconImage: FC<IBasicStyling> = ({ className }) => (
+  <svg {...base} className={className}>
+    <rect x="3" y="4" width="18" height="16" rx="2.5" />
+    <circle cx="9" cy="10" r="1.75" />
+    <path d="m21 16-5-5-9 9" />
+  </svg>
+)
+
 export const IconCheck: FC<IBasicStyling> = ({ className }) => (
   <svg {...base} className={className} strokeWidth={2.5}>
     <path d="m5 12.5 4.5 4.5L19 7" />

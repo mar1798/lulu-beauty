@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react'
 import { useRouter } from 'next/router'
 import useSWR, { mutate as globalMutate } from 'swr'
 import type { IAdminPromotionValues, IPromotion, PromotionBannerVariant } from 'widgets/types'
-import { Alert, Button, Skeleton } from 'widgets/atoms'
+import { Alert, Button, Skeleton, Text } from 'widgets/atoms'
 import { EmptyState } from 'widgets/molecules'
 import { AdminPromotionForm } from 'widgets/organisms'
 import { useConfirm, useToast } from 'widgets/contexts'
@@ -18,8 +18,10 @@ import {
   uploadPromotionBanner,
 } from '@/services/endpoints/promotions'
 import { SHOWCASE_PATHS, promotionPath, refreshPublicPages } from '@/services/endpoints/revalidate'
-import { adminPromotionKey, isAdminPromotionsKey } from '@/services/swrKeys'
+import { adminPromotionKey, isAdminBannersKey, isAdminPromotionsKey } from '@/services/swrKeys'
+import { carouselLine } from '@/utils/banners'
 import { deleteConfirmation, initialValuesOf, toPromotionInput } from '@/utils/promotions'
+import * as styles from '@/styles/admin.css'
 
 /**
  * Карточка акции: поля, баннеры, условия и награды.
@@ -29,6 +31,9 @@ import { deleteConfirmation, initialValuesOf, toPromotionInput } from '@/utils/p
  * форму (иначе несохранённые правки полей пропали бы, как у галереи товара).
  * После «Сохранить», наоборот, форма пересоздаётся (`saveVersion`) и показывает
  * то, что вернул бэкенд: нормализованный slug, подрезанное название.
+ *
+ * Строка «Карусель: …» говорит, показывается ли акция в карусели: это выбор владельца в
+ * «Баннерах», отдельный от «Акция включена» (скидка от него не зависит). Ссылка ведёт туда же.
  *
  * Архивная акция открывается как обычно, но с предупреждением: покупатели её уже
  * не видят, а адрес остаётся занят.
@@ -81,6 +86,8 @@ const AdminPromotionPage: React.FC = () => {
       )
     )
     void globalMutate(isAdminPromotionsKey)
+    // Слайд акции в «Баннерах»: баннер, окно и включённость меняют его состояние.
+    void globalMutate(isAdminBannersKey)
   }
 
   const handleSubmit = async (values: IAdminPromotionValues): Promise<void> => {
@@ -185,6 +192,17 @@ const AdminPromotionPage: React.FC = () => {
             Покупатели её не видят, а адрес (slug) остаётся занят. Участие и выданные промокоды
             сохранены в заявках.
           </Alert>
+        )}
+
+        {promotion.deletedAt === null && (
+          <div className={styles.row}>
+            <Text tone="secondary" size="sm">
+              {carouselLine(promotion)}
+            </Text>
+            <Button size="sm" variant="secondary" link={{ href: '/admin/banners' }}>
+              Настроить
+            </Button>
+          </div>
         )}
 
         <AdminPromotionForm

@@ -80,10 +80,14 @@ async def test_an_admin_is_not_the_owner(admin: AsyncClient) -> None:
 
 async def test_list_derives_status_and_counts(owner: AsyncClient) -> None:
     promotion = _promotion()
-    with patch("app.promotions.router.PromotionsService") as service_cls:
+    with (
+        patch("app.promotions.router.PromotionsService") as service_cls,
+        patch("app.promotions.router.BannersService") as banners_cls,
+    ):
         service = service_cls.return_value
         service.list_all = AsyncMock(return_value=[promotion])
         service.participant_counts = AsyncMock(return_value={promotion.id: 3})
+        banners_cls.return_value.carousel_flags = AsyncMock(return_value={promotion.id: False})
         async with owner as client:
             response = await client.get("/admin/promotions?includeDeleted=true")
 
@@ -91,6 +95,7 @@ async def test_list_derives_status_and_counts(owner: AsyncClient) -> None:
     service.list_all.assert_awaited_once_with(include_deleted=True)
     [row] = response.json()
     assert row["status"] == "ACTIVE"
+    assert row["showInCarousel"] is False
     assert row["participantsCount"] == 3
     assert row["rewards"][0]["title"] == "Mystery box"
 
@@ -162,7 +167,9 @@ async def test_replacing_a_banner_discards_the_old_file(owner: AsyncClient) -> N
         patch("app.promotions.router.storage_service") as storage,
         patch("app.promotions.router.discard_files", AsyncMock()) as discard,
         patch("app.promotions.router.PromotionsService") as service_cls,
+        patch("app.promotions.router.BannersService") as banners_cls,
     ):
+        banners_cls.return_value.carousel_flags = AsyncMock(return_value={})
         storage.save = AsyncMock(return_value="new.webp")
         storage.url_for = lambda key: f"http://files/{key}"
         service = service_cls.return_value
