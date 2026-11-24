@@ -15,6 +15,10 @@ import * as styles from './Input.css'
  * считается — он исчезает при первом же символе, а часть скринридеров его
  * и вовсе не читает. При заданном `label` он игнорируется, иначе перебил бы
  * подпись, уже связанную через `htmlFor`.
+ *
+ * Пустое поле даты/времени помечено `data-empty`: Safari рисует в нём сегодняшнюю
+ * дату тем же цветом, что и выбранную, и незаполненный «конец» выглядит
+ * проставленным. Стиль прячет этот текст, пока поле не в фокусе.
  */
 export const Input: FC<IInputProps & IBasicStyling> = ({
   value,
@@ -46,6 +50,7 @@ export const Input: FC<IInputProps & IBasicStyling> = ({
   const hintId = `${fieldId}-hint`
   const errorId = `${fieldId}-error`
   const hasError = error !== undefined && error !== null && error !== ''
+  const isDateLike = type === 'date' || type === 'time'
 
   const describedBy =
     [hasError ? errorId : null, hint !== undefined ? hintId : null].filter(Boolean).join(' ') ||
@@ -76,6 +81,7 @@ export const Input: FC<IInputProps & IBasicStyling> = ({
           disabled={disabled}
           required={required}
           readOnly={readOnly}
+          data-empty={isDateLike && value === '' ? 'true' : undefined}
           aria-label={label === undefined ? ariaLabel : undefined}
           aria-invalid={hasError}
           aria-describedby={describedBy}
