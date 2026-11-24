@@ -8,13 +8,19 @@ from app.cycles.models import OrderCycle
 from app.orders.discounts import line_discount_cents, line_subtotal_cents, order_totals
 from app.orders.models import DiscountKind, Order, OrderItem, OrderStatus
 from app.promotions.models import OrderGift, OrderPromotion, PromoCode, Promotion
+from app.promotions.names import NamedRef, RuleNames
 from app.promotions.rules import (
     ConditionType,
+    ContainsCondition,
+    ContainsMode,
     DiscountReward,
     GiftKind,
     GiftReward,
+    PromoCodeReward,
+    QuantityCondition,
     RewardType,
     SubtotalCondition,
+    Target,
     dump_conditions,
     dump_rewards,
 )
@@ -188,6 +194,82 @@ def test_the_start_announcement_of_an_open_ended_promotion_names_only_the_start(
 
     assert "Акция идёт с 20.11.2026" in text
     assert "бессрочн" not in text and "идёт до" not in text
+
+
+TONER = uuid.uuid4()
+SERUM = uuid.uuid4()
+SKINCARE = uuid.uuid4()
+NAMES = RuleNames(
+    products={
+        TONER: NamedRef(TONER, "Тоник", "toner"),
+        SERUM: NamedRef(SERUM, "Сыворотка", "serum"),
+    },
+    categories={SKINCARE: NamedRef(SKINCARE, "Уход за лицом", "skincare")},
+)
+CHOSEN = Target(product_ids=[TONER, SERUM], category_ids=[SKINCARE], brands=["Anua"])
+
+
+def test_conditions_name_the_chosen_products_categories_and_brands() -> None:
+    subtotal = SubtotalCondition(type=ConditionType.SUBTOTAL, min_cents=200_000, target=CHOSEN)
+    quantity = QuantityCondition(type=ConditionType.QUANTITY, min_quantity=3, target=CHOSEN)
+    any_of = ContainsCondition(type=ConditionType.CONTAINS, target=CHOSEN)
+    all_of = ContainsCondition(type=ConditionType.CONTAINS, target=CHOSEN, mode=ContainsMode.ALL)
+    listed = "«Тоник», «Сыворотка», {0} из категории «Уход за лицом», {0} бренда Anua"
+
+    assert messages.describe_condition(subtotal, NAMES).endswith("на " + listed.format("товары"))
+    assert messages.describe_condition(quantity, NAMES) == "от 3 товаров из: " + listed.format(
+        "товары"
+    )
+    assert messages.describe_condition(any_of, NAMES) == (
+        "в заявке есть хотя бы один из: " + listed.format("товар")
+    )
+    assert messages.describe_condition(all_of, NAMES) == (
+        "в заявке есть каждый из: " + listed.format("товар")
+    )
+
+
+def test_without_names_a_target_stays_the_chosen_products() -> None:
+    subtotal = SubtotalCondition(type=ConditionType.SUBTOTAL, min_cents=200_000, target=CHOSEN)
+    assert messages.describe_condition(subtotal).endswith("на выбранные товары")
+
+
+def test_a_deleted_product_is_left_out_and_a_long_list_is_counted() -> None:
+    gone = Target(product_ids=[uuid.uuid4()])
+    assert messages.describe_target(gone, NAMES, single=False) is None
+    many = Target(brands=[f"Brand {index}" for index in range(13)])
+    assert messages.describe_target(
+        many,
+        NAMES,
+        single=False,
+    ).endswith("и ещё 3")
+
+
+def test_the_start_announcement_describes_the_promised_code_in_full() -> None:
+    code = PromoCodeReward(
+        type=RewardType.PROMO_CODE,
+        valid_days=30,
+        conditions=[SubtotalCondition(type=ConditionType.SUBTOTAL, min_cents=150_000)],
+        rewards=[_percent(15)],
+    )
+    promotion = _promotion()
+    promotion.rewards = dump_rewards(
+        [
+            DiscountReward(
+                type=RewardType.DISCOUNT,
+                kind=DiscountKind.PERCENT,
+                value=10,
+                target=Target(product_ids=[TONER]),
+            ),
+            code,
+        ]
+    )
+
+    text = messages.promotion_started(promotion, NAMES)
+
+    assert "• скидка 10% на «Тоник»" in text
+    assert "промокод после оплаты заявки: скидка 15%" in text
+    assert "действует 30 дней с момента выдачи" in text
+    assert "условия кода: покупка от 1" in text
 
 
 def test_the_start_announcement_button_points_at_the_promotion_page() -> None:

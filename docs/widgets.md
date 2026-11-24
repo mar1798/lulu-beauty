@@ -118,7 +118,10 @@ Storefront:
   `PromoCarousel` with one draft slide, `inert`. Validation repeats the backend
   (`isValidBannerLink`, `NEWS_*_MAX` in `utils/banner.ts`).
 - `PromotionDetails` (organism) — a promotion's page: banner, term, the owner's text
-  (`RichText`), conditions and rewards in words.
+  (`RichText`), conditions and rewards in words. Targets are named from the promotion's own
+  `products`/`categories` (`promotionNames`, `describeTarget`), and a promised promo code is
+  spelled out (`describePromoCodeTerms`: what it gives, validity, its conditions). Without names
+  the describers fall back to «выбранные товары», as the admin tables use them.
 - `GiftLine` (molecule) — a gift in the cart, checkout and order: picture, title and a «Подарок»
   mark instead of a price; no quantity control, it is not a line. A custom gift without a
   picture gets a placeholder.

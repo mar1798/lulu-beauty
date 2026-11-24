@@ -34,6 +34,7 @@ from app.orders.service import (
     OrderPriceChange,
 )
 from app.promotions.models import PromoCode, Promotion
+from app.promotions.names import RuleNames
 from app.promotions.rules import (
     AnyCodeReward,
     AnyCondition,
@@ -45,6 +46,7 @@ from app.promotions.rules import (
     PromoCodeReward,
     QuantityCondition,
     SubtotalCondition,
+    Target,
     load_code_rewards,
     load_conditions,
     load_rewards,
@@ -1083,34 +1085,121 @@ def _gift_text(title: str, quantity: int) -> str:
     return f"{title} × {quantity}" if quantity > 1 else title
 
 
-def describe_condition(condition: AnyCondition) -> str:
-    """One condition in the customer's words: "покупка от 2000 сом"."""
+# A target can name up to 200 entries of each kind; a message lists this many and counts
+# the rest, so one generous promotion cannot push the text past Telegram's 4096 characters.
+TARGET_ENTRIES_SHOWN = 10
+
+
+def describe_target(target: Target | None, names: RuleNames | None, *, single: bool) -> str | None:
+    """The products, categories and brands of a target in words: «Тоник», товары бренда Anua.
+
+    `single` is for "есть в заявке" (товар из категории), otherwise the plural reads as what
+    counts (товары из категории). None when there is nothing to name: no target, no names to
+    name it with, or only entries that have gone since (a deleted product matches nothing).
+    """
+    if target is None or target.is_empty or names is None:
+        return None
+    noun = "товар" if single else "товары"
+    entries = [
+        f"«{names.products[product_id].name}»"
+        for product_id in target.product_ids
+        if product_id in names.products
+    ]
+    entries += [
+        f"{noun} из категории «{names.categories[category_id].name}»"
+        for category_id in target.category_ids
+        if category_id in names.categories
+    ]
+    entries += [f"{noun} бренда {brand}" for brand in target.brands]
+    if not entries:
+        return None
+    text = ", ".join(entries[:TARGET_ENTRIES_SHOWN])
+    hidden = len(entries) - TARGET_ENTRIES_SHOWN
+    return f"{text} и ещё {hidden}" if hidden > 0 else text
+
+
+def describe_condition(condition: AnyCondition, names: RuleNames | None = None) -> str:
+    """One condition in the customer's words: "покупка от 2000 сом".
+
+    With `names` a target is spelled out («покупка от 2000 сом на «Тоник», товары бренда
+    Anua»); without them it is "выбранные товары".
+    """
+    named = describe_target(
+        condition.target, names, single=isinstance(condition, ContainsCondition)
+    )
     if isinstance(condition, SubtotalCondition):
+        if named is not None:
+            return f"покупка от {format_price(condition.min_cents)} на {named}"
         scope = " на выбранные товары" if condition.target and not condition.target.is_empty else ""
         return f"покупка от {format_price(condition.min_cents)}{scope}"
     if isinstance(condition, QuantityCondition):
         count = condition.min_quantity
+        units = f"от {count} {plural(count, 'товара', 'товаров', 'товаров')}"
+        if named is not None:
+            return f"{units} из: {named}"
         scope = " из выбранных" if condition.target and not condition.target.is_empty else ""
-        return f"от {count} {plural(count, 'товара', 'товаров', 'товаров')}{scope}"
+        return f"{units}{scope}"
     assert isinstance(condition, ContainsCondition)
     if condition.mode is ContainsMode.ALL:
+        if named is not None:
+            return f"в заявке есть каждый из: {named}"
         return "в заявке есть все выбранные товары"
+    if named is not None:
+        return f"в заявке есть хотя бы один из: {named}"
     return "в заявке есть выбранные товары"
 
 
-def describe_rewards(rewards: Sequence[AnyReward] | Sequence[AnyCodeReward]) -> list[str]:
-    """What a promotion or a code gives, one phrase per reward: "скидка 10%", "подарок X"."""
+def _format_day(moment: datetime) -> str:
+    """A date in the shop's timezone, without the time: "31.12.2026"."""
+    return format_deadline(moment).split(" в ", 1)[0]
+
+
+def describe_code_validity(reward: PromoCodeReward) -> str:
+    """How long a promised code lives: from its issue, or a fixed window."""
+    if reward.valid_days is not None:
+        days = reward.valid_days
+        return f"действует {days} {plural(days, 'день', 'дня', 'дней')} с момента выдачи"
+    parts = ["действует"]
+    if reward.valid_from is not None:
+        parts.append(f"с {_format_day(reward.valid_from)}")
+    if reward.valid_until is not None:
+        parts.append(f"по {_format_day(reward.valid_until)}")
+    return " ".join(parts)
+
+
+def describe_rewards(
+    rewards: Sequence[AnyReward] | Sequence[AnyCodeReward],
+    names: RuleNames | None = None,
+    *,
+    detailed_code: bool = False,
+) -> list[str]:
+    """What a promotion or a code gives, one phrase per reward: "скидка 10%", "подарок X".
+
+    `names` spells out the products a discount is on. `detailed_code` describes a promised
+    promo code in full — what it gives, how long it lives, its own conditions — for the
+    texts that announce the promotion; an order's lines keep the short form.
+    """
     parts: list[str] = []
     for reward in rewards:
         if isinstance(reward, DiscountReward):
             tag = discount_label(reward.kind, reward.value)
-            scope = " на выбранные товары" if reward.is_on_items else ""
-            parts.append(f"скидка {tag}{scope}")
+            named = describe_target(reward.target, names, single=False)
+            if named is not None:
+                parts.append(f"скидка {tag} на {named}")
+            else:
+                parts.append(f"скидка {tag}{' на выбранные товары' if reward.is_on_items else ''}")
         elif isinstance(reward, GiftReward):
             parts.append(f"подарок {_gift_text(reward.title, reward.quantity)}")
         elif isinstance(reward, PromoCodeReward):
-            inner = ", ".join(describe_rewards(reward.rewards))
-            parts.append(f"промокод ({inner}) после оплаты заявки")
+            inner = ", ".join(describe_rewards(reward.rewards, names))
+            if not detailed_code:
+                parts.append(f"промокод ({inner}) после оплаты заявки")
+                continue
+            terms = [f"промокод после оплаты заявки: {inner}", describe_code_validity(reward)]
+            if reward.conditions:
+                code_conditions = "; ".join(describe_condition(c, names) for c in reward.conditions)
+                terms.append(f"условия кода: {code_conditions}")
+            parts.append("; ".join(terms))
     return parts
 
 
@@ -1163,19 +1252,25 @@ def _gift_lines_for_owner(order: Order) -> list[str]:
     ]
 
 
-def promotion_started(promotion: Promotion) -> str:
-    """The broadcast that an offer has begun: what it gives, on what terms, until when (if ever)."""
+def promotion_started(promotion: Promotion, names: RuleNames | None = None) -> str:
+    """The broadcast that an offer has begun: what it gives, on what terms, until when (if ever).
+
+    `names` spells out the products, categories and brands the terms are about; a promised
+    promo code is described in full (what it gives, how long, its own conditions).
+    """
     lines = [f"🎁 Началась акция «{promotion.title}»"]
     try:
-        rewards = describe_rewards(load_rewards(promotion.rewards))
-        conditions = [describe_condition(c) for c in load_conditions(promotion.conditions)]
+        rewards = describe_rewards(load_rewards(promotion.rewards), names, detailed_code=True)
+        conditions = [describe_condition(c, names) for c in load_conditions(promotion.conditions)]
     except ValidationError:
         logger.exception("promotion %s has rules that do not parse", promotion.id)
         rewards, conditions = [], []
     if rewards:
-        lines.append(f"Что получите: {', '.join(rewards)}")
+        lines.append("Что получите:")
+        lines.extend(f"• {reward}" for reward in rewards)
     if conditions:
-        lines.append(f"Условия: {', '.join(conditions)}")
+        lines.append("Условия:")
+        lines.extend(f"• {condition}" for condition in conditions)
     # Without an end date only the start is named: the customer is not told it is open-ended.
     if promotion.ends_at is None:
         lines.append(f"Акция идёт с {format_deadline(promotion.starts_at)}")
@@ -1184,24 +1279,26 @@ def promotion_started(promotion: Promotion) -> str:
     return "\n".join(lines)
 
 
-def _code_terms(code: PromoCode | Promotion) -> list[str]:
+def _code_terms(code: PromoCode | Promotion, names: RuleNames | None = None) -> list[str]:
     """What a code gives and on what terms: an issued code's snapshot, or an owner's code's
     own rules."""
     lines: list[str] = []
     try:
-        rewards = describe_rewards(load_code_rewards(code.rewards))
-        conditions = [describe_condition(c) for c in load_conditions(code.conditions)]
+        rewards = describe_rewards(load_code_rewards(code.rewards), names)
+        conditions = [describe_condition(c, names) for c in load_conditions(code.conditions)]
     except ValidationError:
         logger.exception("promo code %s has rules that do not parse", code.id)
         return lines
     if rewards:
         lines.append(f"Даёт: {', '.join(rewards)}")
     if conditions:
-        lines.append(f"Условия: {', '.join(conditions)}")
+        lines.append(f"Условия: {'; '.join(conditions)}")
     return lines
 
 
-def promo_code_issued(code: PromoCode, promotion_title: str, *, now: datetime) -> str:
+def promo_code_issued(
+    code: PromoCode, promotion_title: str, *, now: datetime, names: RuleNames | None = None
+) -> str:
     """The code the customer earned by paying: HTML, so the code is tap-to-copy.
 
     The title is the owner's text and is escaped; the code itself is from a fixed alphabet.
@@ -1209,7 +1306,7 @@ def promo_code_issued(code: PromoCode, promotion_title: str, *, now: datetime) -
     lines = [
         f"🎟 Промокод за участие в акции «{html.escape(promotion_title)}»",
         f"Код: <code>{code.code}</code>",
-        *(html.escape(line) for line in _code_terms(code)),
+        *(html.escape(line) for line in _code_terms(code, names)),
     ]
     if code.valid_from > now:
         lines.append(
@@ -1221,7 +1318,9 @@ def promo_code_issued(code: PromoCode, promotion_title: str, *, now: datetime) -
     return "\n".join(lines)
 
 
-def personal_promo_code(promotion: Promotion, *, now: datetime) -> str:
+def personal_promo_code(
+    promotion: Promotion, *, now: datetime, names: RuleNames | None = None
+) -> str:
     """The owner gave this customer a code of their own: HTML, so the code is tap-to-copy.
 
     The title is the owner's text and is escaped; the code string is validated on write.
@@ -1230,7 +1329,7 @@ def personal_promo_code(promotion: Promotion, *, now: datetime) -> str:
     lines = [
         f"🎟 Для вас персональный промокод «{html.escape(promotion.title)}»",
         f"Код: <code>{html.escape(promotion.code)}</code>",
-        *(html.escape(line) for line in _code_terms(promotion)),
+        *(html.escape(line) for line in _code_terms(promotion, names)),
     ]
     # Without an end date only the start is named: the customer is not told it is open-ended.
     if promotion.ends_at is None:
@@ -1246,11 +1345,13 @@ def personal_promo_code(promotion: Promotion, *, now: datetime) -> str:
     return "\n".join(lines)
 
 
-def promo_code_expiring(code: PromoCode, promotion_title: str) -> str:
+def promo_code_expiring(
+    code: PromoCode, promotion_title: str, names: RuleNames | None = None
+) -> str:
     lines = [
         f"⏳ Промокод {code.code} скоро сгорит",
         f"Акция «{promotion_title}»",
-        *_code_terms(code),
+        *_code_terms(code, names),
         f"Действует до {format_deadline(code.expires_at)}",
     ]
     return "\n".join(lines)

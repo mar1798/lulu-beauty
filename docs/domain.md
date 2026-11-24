@@ -1016,7 +1016,9 @@ above it). Brands are compared case-insensitively without edge spaces. Gifts are
 so a gift cannot help its own order over a threshold.
 
 A reference to a product or category that has since gone does not break the promotion on read
-— it just stops matching. Only a write checks the ids exist (`409 promotion_invalid_rules`:
+— it just stops matching (and is left out where the terms are named for a customer: the public
+`GET /promotions*` returns `products`/`categories`, the names behind the ids, and the bot's
+messages use the same lookup, `promotions/names.py`). Only a write checks the ids exist (`409 promotion_invalid_rules`:
 live products, existing categories, a gift variant that is still on sale). Structural errors
 (unknown type, a percent above 100, two `PROMO_CODE` rewards, a bad code term) are an ordinary
 `422` from pydantic. A `PROMO_CODE` template whose fixed window has already ended is refused on

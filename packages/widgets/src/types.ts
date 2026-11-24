@@ -3380,6 +3380,23 @@ export interface IPublicPromotion {
   endsAt: string | null
   conditions: IPromotionCondition[]
   rewards: IPromotionReward[]
+  /** Названия товаров из условий и наград (и вложенного промокода); снятых с продажи нет. */
+  products: INamedRef[]
+  /** Названия категорий из условий и наград. */
+  categories: INamedRef[]
+}
+
+/** Товар или категория, которые называет акция: id из правил и то, как его зовут. */
+export interface INamedRef {
+  id: string
+  name: string
+  slug: string
+}
+
+/** Названия по id - чем `describeCondition`/`describeReward` называют цель словами. */
+export interface IPromotionNames {
+  products: Record<string, string>
+  categories: Record<string, string>
 }
 
 /** Код покупателя на странице «Промокоды». */

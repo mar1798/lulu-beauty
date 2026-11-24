@@ -304,7 +304,7 @@ async def test_a_reminder_that_failed_is_tried_again_and_a_blocked_one_is_settle
     unbound = await _code(
         sweep_session, promotion, expires_in=timedelta(days=2), telegram_chat_id=None
     )
-    sends["expiring"].side_effect = lambda user, code, title: (
+    sends["expiring"].side_effect = lambda user, code, title, names: (
         Delivery.FAILED if code.id == flaky.id else Delivery.BLOCKED
     )
     await sweep_session.commit()

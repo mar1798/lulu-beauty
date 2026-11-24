@@ -2065,6 +2065,8 @@ export const feedPublicPromotion = (
       quantity: 1,
     },
   ],
+  products: [],
+  categories: [],
   ...overrides,
 })
 

@@ -42,6 +42,15 @@ export const list = style({
   paddingLeft: vars.space.lg,
 })
 
+/**
+ * Строка промокода за участие: что даёт, а под ним - срок и условия кода. Блочные
+ * строки, а не flex у самого `<li>`: flex отнял бы у пункта маркер списка.
+ */
+export const codeLine = style({
+  display: 'block',
+  marginTop: vars.space.xxs,
+})
+
 export const actions = style({
   display: 'flex',
 })

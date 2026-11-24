@@ -8,7 +8,13 @@ import { RichText } from '../../atoms/rich-text'
 import { Text } from '../../atoms/text'
 import { GiftLine } from '../../molecules/gift-line'
 import { formatDate } from '../../utils/datetime'
-import { BANNER_SPECS, describeCondition, describeReward } from '../../utils/promotion'
+import {
+  BANNER_SPECS,
+  describeCondition,
+  describePromoCodeTerms,
+  describeReward,
+  promotionNames,
+} from '../../utils/promotion'
 import * as styles from './PromotionDetails.css'
 
 /**
@@ -20,17 +26,24 @@ import * as styles from './PromotionDetails.css'
  * страница начинается с заголовка.
  *
  * Условия и награды называются теми же словами, что и в админке
- * (`describeCondition` / `describeReward`): владелец видит ровно то, что прочтёт
- * покупатель. Подарок рисуется строкой с картинкой, остальное - списком. Что
+ * (`describeCondition` / `describeReward`), но с названиями: «от 2 000 сом на
+ * «Тоник», товары бренда Anua», а не «на выбранное» - названия приходят в самой
+ * акции (`products`, `categories`). Промокод за участие расписан целиком: что даёт,
+ * сколько действует и его собственные условия. Подарок рисуется строкой с
+ * картинкой, остальное - списком. Что
  * скидки и подарки применяются сами, при оформлении, сказано под списком: кнопки
  * «получить» у акции нет, участие не требует действий.
  */
+/** «Скидка 15%» → «скидка 15%»: после двоеточия, но названия товаров внутри не трогаем. */
+const lowerFirst = (text: string): string => text.charAt(0).toLowerCase() + text.slice(1)
+
 export const PromotionDetails: FC<IPromotionDetailsProps & IBasicStyling> = ({
   promotion,
   catalogHref,
   className,
 }) => {
   const { conditions, rewards } = promotion
+  const names = promotionNames(promotion)
   const gifts = rewards.flatMap(reward => (reward.type === 'GIFT' ? [reward] : []))
   const others = rewards.filter(reward => reward.type !== 'GIFT')
   const hasCodeReward = rewards.some(reward => reward.type === 'PROMO_CODE')
@@ -86,7 +99,7 @@ export const PromotionDetails: FC<IPromotionDetailsProps & IBasicStyling> = ({
             {conditions.map((condition, index) => (
               // Условия не переставляются и не имеют id: порядок в ответе и есть ключ.
               // eslint-disable-next-line react/no-array-index-key
-              <li key={index}>{describeCondition(condition)}</li>
+              <li key={index}>{describeCondition(condition, names)}</li>
             ))}
           </ul>
         )}
@@ -99,10 +112,31 @@ export const PromotionDetails: FC<IPromotionDetailsProps & IBasicStyling> = ({
 
         {others.length > 0 && (
           <ul className={styles.list}>
-            {others.map((reward, index) => (
-              // eslint-disable-next-line react/no-array-index-key
-              <li key={index}>{describeReward(reward)}</li>
-            ))}
+            {others.map((reward, index) => {
+              if (reward.type !== 'PROMO_CODE') {
+                // eslint-disable-next-line react/no-array-index-key
+                return <li key={index}>{describeReward(reward, names)}</li>
+              }
+
+              const terms = describePromoCodeTerms(reward, names)
+
+              return (
+                // eslint-disable-next-line react/no-array-index-key
+                <li key={index}>
+                  <span>{`Промокод после оплаты заявки: ${terms.rewards.map(lowerFirst).join(', ')}`}</span>
+
+                  <Text size="sm" tone="secondary" as="span" className={styles.codeLine}>
+                    {terms.validity}
+                  </Text>
+
+                  {terms.conditions.length > 0 && (
+                    <Text size="sm" tone="secondary" as="span" className={styles.codeLine}>
+                      {`Сработает при условии: ${terms.conditions.join('; ')}`}
+                    </Text>
+                  )}
+                </li>
+              )
+            })}
           </ul>
         )}
 

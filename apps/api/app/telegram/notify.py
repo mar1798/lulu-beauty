@@ -18,6 +18,7 @@ import uuid
 from collections.abc import Sequence
 from datetime import UTC, datetime
 
+from pydantic import ValidationError
 from sqlalchemy import exists, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -36,6 +37,8 @@ from app.orders.service import (
 )
 from app.payments.models import PaymentReceipt
 from app.promotions.models import OrderPromotion, PromoCode, PromoCodeStatus, Promotion
+from app.promotions.names import RuleNames, load_rule_names
+from app.promotions.rules import load_code_rewards, load_conditions, load_rewards
 from app.telegram import messages, recipients, relay
 from app.telegram.client import notifications_service
 from app.telegram.service import CartRescueNotice, Delivery
@@ -783,7 +786,8 @@ async def notify_promotion_started(promotion_id: uuid.UUID) -> bool:
                 return False
 
             audience = await recipients.get_broadcast_audience(session)
-            result = await notifications_service.send_promotion_started(audience, promotion)
+            names = await _rule_names(session, promotion)
+            result = await notifications_service.send_promotion_started(audience, promotion, names)
 
             promotion.announced_at = datetime.now(UTC)
             cleared = await recipients.clear_stale_bindings(session, result.blocked_chat_ids)
@@ -802,6 +806,19 @@ async def notify_promotion_started(promotion_id: uuid.UUID) -> bool:
         return False
     finally:
         _announcing_promotions.discard(promotion_id)
+
+
+async def _rule_names(session: AsyncSession, holder: PromoCode | Promotion) -> RuleNames | None:
+    """The product and category names a promotion's or a code's rules refer to, so the
+    message can name them. None when the rules do not parse: the message builder logs that
+    and leaves the terms out anyway."""
+    try:
+        conditions = load_conditions(holder.conditions)
+        if isinstance(holder, Promotion) and holder.code is None:
+            return await load_rule_names(session, conditions, load_rewards(holder.rewards))
+        return await load_rule_names(session, conditions, load_code_rewards(holder.rewards))
+    except ValidationError:
+        return None
 
 
 async def notify_promo_codes_issued(code_ids: Sequence[uuid.UUID]) -> None:
@@ -835,7 +852,8 @@ async def notify_promo_code_issued(session: AsyncSession, code: PromoCode) -> No
         return
     promotion = await session.get(Promotion, code.promotion_id)
     title = promotion.title if promotion is not None else ""
-    outcome = await notifications_service.send_promo_code_issued(customer, code, title)
+    names = await _rule_names(session, code)
+    outcome = await notifications_service.send_promo_code_issued(customer, code, title, names)
     if outcome is Delivery.BLOCKED and customer.telegram_chat_id is not None:
         await recipients.clear_stale_bindings(session, [customer.telegram_chat_id])
 
@@ -875,7 +893,10 @@ async def notify_personal_promo_code(promotion_id: uuid.UUID, user_id: uuid.UUID
             customer = await _load_customer(session, user_id)
             if customer is None:
                 return
-            outcome = await notifications_service.send_personal_promo_code(customer, promotion)
+            names = await _rule_names(session, promotion)
+            outcome = await notifications_service.send_personal_promo_code(
+                customer, promotion, names
+            )
             if outcome is Delivery.BLOCKED and customer.telegram_chat_id is not None:
                 await recipients.clear_stale_bindings(session, [customer.telegram_chat_id])
             await session.commit()
@@ -899,7 +920,8 @@ async def notify_promo_code_expiring(session: AsyncSession, code: PromoCode) -> 
             return True
         promotion = await session.get(Promotion, code.promotion_id)
         title = promotion.title if promotion is not None else ""
-        outcome = await notifications_service.send_promo_code_expiring(customer, code, title)
+        names = await _rule_names(session, code)
+        outcome = await notifications_service.send_promo_code_expiring(customer, code, title, names)
         if outcome is Delivery.BLOCKED:
             await recipients.clear_stale_bindings(session, [customer.telegram_chat_id])
         return outcome in (Delivery.SENT, Delivery.BLOCKED)

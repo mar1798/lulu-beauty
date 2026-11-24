@@ -401,6 +401,15 @@ and the fan-out in `notify.py`.
 **`announce` is off by default**, so a new promotion is silent until the owner turns the
 broadcast on. The announcement is text without a URL; the link is the button.
 
+**Terms name what they are about.** The notifier reads the names behind a promotion's or a
+code's targets (`promotions/names.py`, `load_rule_names`: live products, existing categories)
+and hands them to the builder, so a condition reads «покупка от 2 000 сом на «Тоник», товары
+бренда Anua» rather than «на выбранные товары» — in the start broadcast, the issued, personal
+and expiring code messages. At most `TARGET_ENTRIES_SHOWN` (10) entries per target, then «и
+ещё N». The start broadcast lists rewards and conditions as bullets and spells a promised
+promo code out in full: what it gives, «действует N дней с момента выдачи» or its dates, and
+its own conditions. An order's promotion lines keep the short form (no names).
+
 **The sweep** — `_run_promotion_sweep` in `app/scheduler.py`, job `promotion_sweep` on the
 shared interval (`SCHEDULER_INTERVAL_SECONDS`). Its queries are in `promotions/sweep.py`
 (read-only: "what is due"); stamping happens in the notifier. Three independent steps, each in

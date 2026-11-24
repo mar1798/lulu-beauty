@@ -10,11 +10,13 @@ import type {
   IPromotionConditionDraft,
   IPromotionDiscountReward,
   IPromotionGiftReward,
+  IPromotionNames,
   IPromotionPromoCodeReward,
   IPromotionReward,
   IPromotionRewardDraft,
   IPromotionRowErrors,
   IPromotionTarget,
+  IPublicPromotion,
   PromoCodeView,
   PromotionBannerVariant,
   PromotionConditionType,
@@ -22,7 +24,7 @@ import type {
   PromotionStatus,
 } from '../types'
 import { formatPrice } from '../atoms/price/Price'
-import { storeIso, toStoreParts } from './datetime'
+import { formatDate, storeIso, toStoreParts } from './datetime'
 import { MAX_PRICE_CENTS, parsePrice, priceToInput } from './priceInput'
 import { pluralize } from './plural'
 
@@ -137,22 +139,79 @@ export const isTargetEmpty = (target: IPromotionTarget | null | undefined): bool
 const describeTargetSuffix = (target: IPromotionTarget | null | undefined): string =>
   isTargetEmpty(target) ? '' : ' на выбранное'
 
-const describeCondition = (condition: IPromotionCondition): string => {
+/** Названия из публичного ответа акции - словарями по id. */
+export const promotionNames = (
+  promotion: Pick<IPublicPromotion, 'products' | 'categories'>
+): IPromotionNames => ({
+  products: Object.fromEntries(promotion.products.map(ref => [ref.id, ref.name])),
+  categories: Object.fromEntries(promotion.categories.map(ref => [ref.id, ref.name])),
+})
+
+/**
+ * Цель словами: «Тоник», «Сыворотка», товары из категории «Уход», товары бренда Anua.
+ * `single` - для «есть в заявке» (товар из категории), иначе множественное: что идёт в
+ * зачёт. `null`, когда назвать нечего: цели нет, названий не передали или все записи
+ * пропали (снятый с продажи товар ничему не соответствует) - тогда остаётся «выбранные».
+ */
+export const describeTarget = (
+  target: IPromotionTarget | null | undefined,
+  names: IPromotionNames | undefined,
+  single: boolean
+): string | null => {
+  if (target === null || target === undefined || names === undefined || isTargetEmpty(target)) {
+    return null
+  }
+
+  const noun = single ? 'товар' : 'товары'
+  const entries = [
+    ...target.productIds.flatMap(id =>
+      names.products[id] === undefined ? [] : [`«${names.products[id]}»`]
+    ),
+    ...target.categoryIds.flatMap(id =>
+      names.categories[id] === undefined ? [] : [`${noun} из категории «${names.categories[id]}»`]
+    ),
+    ...target.brands.map(brand => `${noun} бренда ${brand}`),
+  ]
+
+  return entries.length === 0 ? null : entries.join(', ')
+}
+
+const describeCondition = (condition: IPromotionCondition, names?: IPromotionNames): string => {
+  const named = describeTarget(condition.target, names, condition.type === 'CONTAINS')
+
   switch (condition.type) {
     case 'SUBTOTAL':
-      return `от ${formatPrice(condition.minCents)}${describeTargetSuffix(condition.target)}`
-    case 'QUANTITY':
-      return `от ${pluralize(condition.minQuantity, ['штуки', 'штук', 'штук'])}${describeTargetSuffix(condition.target)}`
+      return named === null
+        ? `от ${formatPrice(condition.minCents)}${describeTargetSuffix(condition.target)}`
+        : `от ${formatPrice(condition.minCents)} на ${named}`
+    case 'QUANTITY': {
+      const units = `от ${pluralize(condition.minQuantity, ['штуки', 'штук', 'штук'])}`
+
+      return named === null
+        ? `${units}${describeTargetSuffix(condition.target)}`
+        : `${units} из: ${named}`
+    }
     case 'CONTAINS':
+      if (named !== null) {
+        return condition.mode === 'ALL'
+          ? `в заявке есть каждый из: ${named}`
+          : `в заявке есть хотя бы один из: ${named}`
+      }
+
       return condition.mode === 'ALL' ? 'все выбранные товары' : 'любой из выбранных товаров'
   }
 }
 
 export const describeConditions = (conditions: IPromotionCondition[]): string =>
-  conditions.length === 0 ? 'без условий' : conditions.map(describeCondition).join(', ')
+  conditions.length === 0 ? 'без условий' : conditions.map(c => describeCondition(c)).join(', ')
 
-const describeDiscount = (reward: IPromotionDiscountReward): string => {
+const describeDiscount = (reward: IPromotionDiscountReward, names?: IPromotionNames): string => {
   const amount = reward.kind === 'PERCENT' ? `${reward.value}%` : formatPrice(reward.value)
+  const named = describeTarget(reward.target, names, false)
+
+  if (named !== null) {
+    return `Скидка ${amount} на ${named}`
+  }
 
   return `Скидка ${amount}${isTargetEmpty(reward.target) ? '' : ' на выбранные товары'}`
 }
@@ -165,19 +224,57 @@ const describePromoCode = (reward: IPromotionPromoCodeReward): string => {
     reward.validDays === null
       ? 'на период'
       : `на ${pluralize(reward.validDays, ['день', 'дня', 'дней'])}`
-  const inside = reward.rewards.map(describeRewardOnly).join(', ')
+  const inside = reward.rewards.map(r => describeRewardOnly(r)).join(', ')
 
   return `Промокод ${validity}: ${inside.toLowerCase()}`
 }
 
-function describeRewardOnly(reward: IPromotionCodeReward): string {
-  return reward.type === 'DISCOUNT' ? describeDiscount(reward) : describeGift(reward)
+function describeRewardOnly(reward: IPromotionCodeReward, names?: IPromotionNames): string {
+  return reward.type === 'DISCOUNT' ? describeDiscount(reward, names) : describeGift(reward)
 }
 
-export const describeReward = (reward: IPromotionReward): string => {
+export interface IPromoCodeTerms {
+  /** Что даёт код: «Скидка 15%», «Подарок: Mystery box». */
+  rewards: string[]
+  /** «Действует 30 дней с момента выдачи» или «Действует с 1 декабря по 31 декабря». */
+  validity: string
+  /** Условия самого кода, по строке; пусто - без условий. */
+  conditions: string[]
+}
+
+/**
+ * Обещанный акцией промокод целиком - для страницы акции: что даёт, сколько живёт и при
+ * каких условиях сработает. Таблица админки обходится короткой строкой (`describeReward`).
+ */
+export const describePromoCodeTerms = (
+  reward: IPromotionPromoCodeReward,
+  names?: IPromotionNames
+): IPromoCodeTerms => {
+  let validity: string
+
+  if (reward.validDays !== null) {
+    validity = `Действует ${pluralize(reward.validDays, ['день', 'дня', 'дней'])} с момента выдачи`
+  } else {
+    validity = [
+      'Действует',
+      reward.validFrom === null ? null : `с ${formatDate(reward.validFrom)}`,
+      reward.validUntil === null ? null : `по ${formatDate(reward.validUntil)}`,
+    ]
+      .filter(part => part !== null)
+      .join(' ')
+  }
+
+  return {
+    rewards: reward.rewards.map(r => describeRewardOnly(r, names)),
+    validity,
+    conditions: reward.conditions.map(c => describeCondition(c, names)),
+  }
+}
+
+export const describeReward = (reward: IPromotionReward, names?: IPromotionNames): string => {
   switch (reward.type) {
     case 'DISCOUNT':
-      return describeDiscount(reward)
+      return describeDiscount(reward, names)
     case 'GIFT':
       return describeGift(reward)
     case 'PROMO_CODE':
@@ -187,7 +284,7 @@ export const describeReward = (reward: IPromotionReward): string => {
 
 /** Награды акции короткими строками — для ячейки таблицы и списка участников. */
 export const describeRewards = (rewards: IPromotionReward[]): string[] =>
-  rewards.map(describeReward)
+  rewards.map(reward => describeReward(reward))
 
 /** «Скидка 10% · Подарок: Mystery box» — одной строкой. */
 export const describeRewardsLine = (rewards: IPromotionReward[]): string =>

@@ -96,8 +96,20 @@ class PromotionResponse(CamelModel):
     updated_at: datetime
 
 
+class NamedRefResponse(CamelModel):
+    """A product or category a promotion's rules name, so the page can say which."""
+
+    id: uuid.UUID
+    name: str
+    slug: str
+
+
 class PublicPromotionResponse(CamelModel):
-    """What the storefront sees of a running promotion: no flags, no counters, no history."""
+    """What the storefront sees of a running promotion: no flags, no counters, no history.
+
+    `products` and `categories` are the names behind the ids in the rules (the promised
+    promo code's included); a soft-deleted product or a gone category is not listed.
+    """
 
     id: uuid.UUID
     slug: str
@@ -109,6 +121,8 @@ class PublicPromotionResponse(CamelModel):
     ends_at: datetime | None
     conditions: list[Condition]
     rewards: list[Reward]
+    products: list[NamedRefResponse] = []
+    categories: list[NamedRefResponse] = []
 
 
 class PromotionParticipantResponse(CamelModel):

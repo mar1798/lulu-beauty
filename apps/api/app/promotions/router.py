@@ -19,9 +19,11 @@ from app.common.schemas import PageResponse
 from app.common.uploads import read_image
 from app.db import get_session
 from app.promotions.models import Promotion, promotion_status
+from app.promotions.names import load_rule_names
 from app.promotions.rules import load_conditions, load_rewards
 from app.promotions.schemas import (
     GiftImageResponse,
+    NamedRefResponse,
     PromotionDeletionResponse,
     PromotionEnabledRequest,
     PromotionParticipantResponse,
@@ -99,7 +101,12 @@ async def _respond(
     )
 
 
-def public_promotion_response(promotion: Promotion) -> PublicPromotionResponse:
+async def public_promotion_response(
+    session: AsyncSession, promotion: Promotion
+) -> PublicPromotionResponse:
+    conditions = load_conditions(promotion.conditions)
+    rewards = load_rewards(promotion.rewards)
+    names = await load_rule_names(session, conditions, rewards)
     return PublicPromotionResponse(
         id=promotion.id,
         slug=promotion.slug,
@@ -109,8 +116,16 @@ def public_promotion_response(promotion: Promotion) -> PublicPromotionResponse:
         banner_desktop_url=promotion.banner_desktop_url,
         starts_at=promotion.starts_at,
         ends_at=promotion.ends_at,
-        conditions=load_conditions(promotion.conditions),
-        rewards=load_rewards(promotion.rewards),
+        conditions=conditions,
+        rewards=rewards,
+        products=[
+            NamedRefResponse(id=ref.id, name=ref.name, slug=ref.slug)
+            for ref in names.products.values()
+        ],
+        categories=[
+            NamedRefResponse(id=ref.id, name=ref.name, slug=ref.slug)
+            for ref in names.categories.values()
+        ],
     )
 
 
@@ -142,7 +157,7 @@ async def list_public_promotions(
 ) -> list[PublicPromotionResponse]:
     """Running promotions for the sitemap and the promotion page (the carousel: `/banners`)."""
     promotions = await PromotionsService(session).list_active()
-    return [public_promotion_response(promotion) for promotion in promotions]
+    return [await public_promotion_response(session, promotion) for promotion in promotions]
 
 
 @router.get("/promotions/{slug}", response_model=PublicPromotionResponse)
@@ -154,7 +169,7 @@ async def get_public_promotion(
         promotion = await PromotionsService(session).get_active(slug)
     except PromotionNotFoundError as error:
         raise _write_error(error) from error
-    return public_promotion_response(promotion)
+    return await public_promotion_response(session, promotion)
 
 
 @router.post("/admin/promotions/gift-image", response_model=GiftImageResponse)
