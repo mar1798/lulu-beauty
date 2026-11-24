@@ -2327,6 +2327,7 @@ export const feedCartPromotions = (totalCents: number): ICartPromotions => {
         slug: 'big-order',
         title: 'Подарок за большую заявку',
         missingCents: 120_000,
+        missingQuantity: 0,
       },
     ],
     gifts: [gift],

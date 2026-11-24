@@ -432,7 +432,7 @@ existing promotion (`?from=<id>`).
 **New fields.** `OrderResponse`/`AdminOrderResponse`: `promotions` (live participations, each
 with `discountCents`), `gifts`, `promoItemsDiscountCents`, `promoOrderDiscountCents`,
 `promoCode` (the code the order holds or spent) and `issuedPromoCodes` (codes it earned,
-revoked ones too). `CartResponse.promotions`: `applied`, `hints` («ещё N сом»), `gifts`,
+revoked ones too). `CartResponse.promotions`: `applied`, `hints` («ещё N сом и M товаров», whole-cart promotions only), `gifts`,
 `itemsDiscountCents`, `orderDiscountCents`, `discountCents`, `payableCents`; `totalCents`
 stays price × quantity. The block is in every cart answer, the guest `POST /cart/preview`
 too (a guest has joined nothing, so "once per customer" only shows after sign-in).

@@ -283,7 +283,7 @@ Rules: [domain.md](domain.md#promotions). The site side:
   and, for an archived code, a warning.
 
 **Cart, checkout and orders.** `CartPanel`, `CheckoutPanel`/`CheckoutForm` and `OrderDetails`
-show the promotions' discount lines, gift cards (`GiftLine`) and «ещё N сом» hints; they take
+show the promotions' discount lines, gift cards (`GiftLine`) and «ещё N сом / M товаров» hints; they take
 every figure from the API (`promotions.payableCents` is «К оплате») and add nothing up. The
 guest's cart-preview SWR key includes **quantities**, since a threshold is
 crossed by pressing «+»; until the answer arrives the block keeps its previous state and the

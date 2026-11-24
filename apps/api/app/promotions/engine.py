@@ -66,15 +66,17 @@ class Offer:
 
 @dataclass(frozen=True)
 class Shortfall:
-    """An offer missing only money — «ещё 300 сом до подарка».
+    """An offer the whole cart misses by money or units — «ещё 300 сом и 2 товара до акции».
 
-    Reported only when every other condition already holds: a hint that names a sum and
-    then turns out to need a particular product too would be a promise the cart cannot
-    keep by adding that sum.
+    Reported only for an offer whose every condition is a whole-cart threshold (`SUBTOTAL` or
+    `QUANTITY` without a target): a hint is what adding *anything* to the cart wins. One
+    that names a sum and then turns out to need a particular product, brand or category
+    would be a promise the cart cannot keep by adding that sum.
     """
 
     offer: Offer
     missing_cents: int
+    missing_quantity: int = 0
 
 
 @dataclass(frozen=True)
@@ -124,8 +126,7 @@ def condition_holds(lines: Sequence[Line], condition: AnyCondition) -> bool:
     if isinstance(condition, SubtotalCondition):
         return subtotal_shortfall(lines, condition) == 0
     if isinstance(condition, QuantityCondition):
-        units = sum(line.quantity for line in matching_lines(lines, condition.target))
-        return units >= condition.min_quantity
+        return quantity_shortfall(lines, condition) == 0
     assert isinstance(condition, ContainsCondition)
     if condition.mode is ContainsMode.ALL:
         return _contains_all(lines, condition.target)
@@ -139,15 +140,29 @@ def qualifies(lines: Sequence[Line], offer: Offer) -> bool:
     return all(condition_holds(lines, condition) for condition in offer.conditions)
 
 
-def _shortfall(lines: Sequence[Line], offer: Offer) -> int | None:
-    """The money still missing, when money is the only thing missing; None otherwise."""
-    missing = 0
+def quantity_shortfall(lines: Sequence[Line], condition: QuantityCondition) -> int:
+    """How many more units the matching lines need; 0 once they reach the threshold."""
+    reached = sum(line.quantity for line in matching_lines(lines, condition.target))
+    return max(0, condition.min_quantity - reached)
+
+
+def _shortfall(lines: Sequence[Line], offer: Offer) -> tuple[int, int] | None:
+    """The money and units still missing, when the offer only asks the whole cart for a sum
+    or a count; None otherwise (a target or a `CONTAINS` anywhere, or nothing missing)."""
+    missing_cents = 0
+    missing_quantity = 0
     for condition in offer.conditions:
-        if isinstance(condition, SubtotalCondition):
-            missing = max(missing, subtotal_shortfall(lines, condition))
-        elif not condition_holds(lines, condition):
+        if isinstance(condition, ContainsCondition):
             return None
-    return missing or None
+        if condition.target is not None and not condition.target.is_empty:
+            return None
+        if isinstance(condition, SubtotalCondition):
+            missing_cents = max(missing_cents, subtotal_shortfall(lines, condition))
+        else:
+            missing_quantity = max(missing_quantity, quantity_shortfall(lines, condition))
+    if missing_cents == 0 and missing_quantity == 0:
+        return None
+    return missing_cents, missing_quantity
 
 
 def evaluate(
@@ -156,7 +171,7 @@ def evaluate(
     *,
     already_joined: frozenset[uuid.UUID] = frozenset(),
 ) -> Evaluation:
-    """The offers the lines qualify for, and the ones a little more money would win.
+    """The offers the lines qualify for, and the ones a little more money or units would win.
 
     `already_joined` are offers this customer holds through *another* live order — «один
     раз на покупателя» — and are skipped outright, hints included. Both lists come back in
@@ -176,5 +191,8 @@ def evaluate(
         if live:
             missing = _shortfall(live, offer)
             if missing is not None:
-                shortfalls.append(Shortfall(offer=offer, missing_cents=missing))
+                cents, quantity = missing
+                shortfalls.append(
+                    Shortfall(offer=offer, missing_cents=cents, missing_quantity=quantity)
+                )
     return Evaluation(applied=applied, shortfalls=shortfalls)

@@ -49,12 +49,14 @@ class CartPromotionResponse(CamelModel):
 
 
 class CartPromotionHintResponse(CamelModel):
-    """«Ещё 300 сом до подарка»: a promotion the cart misses by money alone."""
+    """«Ещё 300 сом и 2 товара до акции»: a whole-cart promotion the cart misses by a sum
+    or a count of units (either may be 0, not both)."""
 
     promotion_id: uuid.UUID
     slug: str
     title: str
     missing_cents: int
+    missing_quantity: int
 
 
 class CartPromotionsResponse(CamelModel):
@@ -105,6 +107,7 @@ def cart_promotions_response(preview: CartPromotionsPreview) -> CartPromotionsRe
                 slug=hint.promotion.slug,
                 title=hint.promotion.title,
                 missing_cents=hint.missing_cents,
+                missing_quantity=hint.missing_quantity,
             )
             for hint in preview.hints
         ],

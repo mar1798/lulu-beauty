@@ -3343,11 +3343,17 @@ export interface ICartPromotion {
 }
 
 /** «Ещё 300 сом до подарка»: корзина не добирает до акции одной суммой. */
+/**
+ * Акция по всей корзине, до которой не хватает суммы и/или штук: «Ещё 300 сом и
+ * 2 товара до акции». Одно из чисел может быть нулём, оба - никогда. Акции с
+ * выбранными товарами, категориями или брендами подсказок не дают.
+ */
 export interface ICartPromotionHint {
   promotionId: string
   slug: string
   title: string
   missingCents: number
+  missingQuantity: number
 }
 
 export interface ICartPromotions {

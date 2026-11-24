@@ -794,6 +794,7 @@ class AppliedPreview:
 class HintPreview:
     promotion: Promotion
     missing_cents: int
+    missing_quantity: int
 
 
 @dataclass(frozen=True)
@@ -922,5 +923,7 @@ async def preview_cart(
 
 def _hint(promotions: dict[uuid.UUID, Promotion], shortfall: Shortfall) -> HintPreview:
     return HintPreview(
-        promotion=promotions[shortfall.offer.id], missing_cents=shortfall.missing_cents
+        promotion=promotions[shortfall.offer.id],
+        missing_cents=shortfall.missing_cents,
+        missing_quantity=shortfall.missing_quantity,
     )

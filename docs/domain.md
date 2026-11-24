@@ -1101,8 +1101,10 @@ and the order made of it agree.
 What holds stays; what no longer meets its conditions is released (`released_at`, and its
 `order_gifts` are deleted — the row stays as history); a finished promotion never attaches
 afresh. The pure decision is `promotions/engine.py` (`evaluate`, no session, no clock — the
-caller chooses which offers to try). It also returns **shortfalls**: «ещё 300 сом до
-подарка», only when money is the single thing missing.
+caller chooses which offers to try). It also returns **shortfalls**: «ещё 300 сом и 2 товара
+до акции» (`missing_cents`, `missing_quantity`), only for a promotion whose every condition is
+a whole-cart `SUBTOTAL` or `QUANTITY` (no target, no `CONTAINS`): a hint promises that adding
+anything wins it, which a promotion about chosen products, categories or brands cannot keep.
 
 The site warns before an edit that would lose a promotion
 (`POST /orders/{id}/edit-preview`, [frontend.md](frontend.md#hooks-worth-knowing)).

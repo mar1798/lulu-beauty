@@ -60,4 +60,26 @@ describe('PromotionLines', () => {
 
     expect(container.querySelector('ul')).toBeNull()
   })
+
+  it('hints: недостающие сомы и штуки одной строкой', () => {
+    const props = feedPromotionLines()
+    const hint = { promotionId: 'p', slug: 's', title: 'Тройка' }
+
+    renderWidget(
+      <PromotionLines
+        {...props}
+        kind="hints"
+        promotions={{
+          ...props.promotions,
+          hints: [
+            { ...hint, promotionId: 'a', missingCents: 30_000, missingQuantity: 2 },
+            { ...hint, promotionId: 'b', missingCents: 0, missingQuantity: 1 },
+          ],
+        }}
+      />
+    )
+
+    expect(screen.getByText(/^Ещё 300.сом и 2 товара до акции/)).toBeInTheDocument()
+    expect(screen.getByText(/^Ещё 1 товар до акции/)).toBeInTheDocument()
+  })
 })

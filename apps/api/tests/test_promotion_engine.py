@@ -145,12 +145,32 @@ def test_already_joined_offers_are_skipped_entirely() -> None:
     assert result.shortfalls == []
 
 
+def _quantity(min_quantity: int, target: Target | None = None) -> QuantityCondition:
+    return QuantityCondition(type=ConditionType.QUANTITY, min_quantity=min_quantity, target=target)
+
+
 def test_shortfall_names_the_money_still_missing() -> None:
-    offer = _offer(_subtotal(200_000), _subtotal(250_000, Target(brands=["Anua"])))
-    result = evaluate([_line(price=180_000, brand="Anua")], [offer])
+    offer = _offer(_subtotal(200_000), _subtotal(250_000))
+    result = evaluate([_line(price=180_000)], [offer])
 
     assert result.applied == []
-    assert [(s.offer, s.missing_cents) for s in result.shortfalls] == [(offer, 70_000)]
+    assert [(s.offer, s.missing_cents, s.missing_quantity) for s in result.shortfalls] == [
+        (offer, 70_000, 0)
+    ]
+
+
+def test_shortfall_names_the_units_still_missing() -> None:
+    offer = _offer(_quantity(3))
+    result = evaluate([_line(quantity=1)], [offer])
+
+    assert [(s.missing_cents, s.missing_quantity) for s in result.shortfalls] == [(0, 2)]
+
+
+def test_shortfall_names_money_and_units_together() -> None:
+    offer = _offer(_subtotal(300_000), _quantity(3))
+    result = evaluate([_line(price=100_000, quantity=2)], [offer])
+
+    assert [(s.missing_cents, s.missing_quantity) for s in result.shortfalls] == [(100_000, 1)]
 
 
 def test_no_shortfall_when_something_besides_money_is_missing() -> None:
@@ -159,6 +179,19 @@ def test_no_shortfall_when_something_besides_money_is_missing() -> None:
         ContainsCondition(type=ConditionType.CONTAINS, target=Target(product_ids=[SERUM])),
     )
     assert evaluate([_line(price=100_000)], [offer]).shortfalls == []
+
+
+def test_no_shortfall_for_a_promotion_about_chosen_products() -> None:
+    by_money = _offer(_subtotal(250_000, Target(brands=["Anua"])))
+    by_units = _offer(_quantity(3, Target(product_ids=[SERUM])))
+    # Even with the product already in the cart: the hint is only for whole-cart thresholds.
+    with_contains = _offer(
+        _subtotal(300_000),
+        ContainsCondition(type=ConditionType.CONTAINS, target=Target(product_ids=[SERUM])),
+    )
+    lines = [_line(price=100_000, product_id=SERUM, brand="Anua")]
+
+    assert evaluate(lines, [by_money, by_units, with_contains]).shortfalls == []
 
 
 def test_no_shortfall_for_an_empty_cart() -> None:

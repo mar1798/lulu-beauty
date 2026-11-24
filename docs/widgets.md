@@ -123,7 +123,7 @@ Storefront:
   mark instead of a price; no quantity control, it is not a line. A custom gift without a
   picture gets a placeholder.
 - `PromotionLines` (molecule) — the cart's promotions as two pieces: discount rows
-  («Акция «…» - 500 сом»; a gift-only promotion gets none) and the «Ещё 300 сом до акции» hints.
+  («Акция «…» - 500 сом»; a gift-only promotion gets none) and the «Ещё 300 сом и 2 товара до акции» hints.
 - `PromoCodeField` (molecule) — the checkout field: input, the server's verdict, an accepted
   code as a row with «Убрать», and a picker among the customer's codes.
 - `PromoCodeCard` (molecule) — a code on «Промокоды», drawn as a coupon: a stub with the code

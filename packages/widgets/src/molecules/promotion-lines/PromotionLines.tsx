@@ -5,15 +5,28 @@ import { IconPercent } from '../../svg/icons'
 import { AppLink } from '../../atoms/app-link'
 import { formatPrice } from '../../atoms/price'
 import { Text } from '../../atoms/text'
+import { pluralize } from '../../utils/plural'
 import * as styles from './PromotionLines.css'
+
+/** Чего не хватает до акции: «300 сом», «2 товара», «300 сом и 2 товара». */
+const describeMissing = (hint: { missingCents: number; missingQuantity: number }): string =>
+  [
+    hint.missingCents > 0 ? formatPrice(hint.missingCents) : null,
+    hint.missingQuantity > 0
+      ? pluralize(hint.missingQuantity, ['товар', 'товара', 'товаров'])
+      : null,
+  ]
+    .filter(part => part !== null)
+    .join(' и ')
 
 /**
  * Акции корзины двумя кусками из одного ответа сервера.
  *
  * `discounts` - строки итогов: «Акция «…» - 500 сом». Акция, которая дала только
  * подарок, строки не получает: снимать с суммы нечего, подарок рисуется своей
- * строкой (`GiftLine`). `hints` - «Ещё 300 сом до акции «…»»: корзине не хватает
- * одной суммы, и это единственное, что человеку здесь нужно знать.
+ * строкой (`GiftLine`). `hints` - «Ещё 300 сом и 2 товара до акции «…»»: акция по
+ * всей корзине, которой не хватает суммы и/или штук. Акции с выбранными товарами
+ * сервер в подсказки не отдаёт - «добавьте 300 сом» им ничего не обещает.
  *
  * Суммы приходят готовыми - ничего не считается и не округляется на клиенте.
  */
@@ -38,7 +51,7 @@ export const PromotionLines: FC<IPromotionLinesProps & IBasicStyling> = ({
             </span>
 
             <Text size="sm" as="span">
-              {`Ещё ${formatPrice(hint.missingCents)} до акции `}
+              {`Ещё ${describeMissing(hint)} до акции `}
               {buildPromotionHref === undefined ? (
                 `«${hint.title}»`
               ) : (
