@@ -3,11 +3,9 @@ import { type FC, type FormEvent } from 'react'
 import type { IBasicStyling, IPromoCodeFieldProps } from '../../types'
 import { AppLink } from '../../atoms/app-link'
 import { Button } from '../../atoms/button'
-import { IconButton } from '../../atoms/icon-button'
 import { Input } from '../../atoms/input'
 import { formatPrice } from '../../atoms/price'
 import { Text } from '../../atoms/text'
-import { IconCheck } from '../../svg/icons'
 import * as styles from './PromoCodeField.css'
 
 /**
@@ -19,8 +17,7 @@ import * as styles from './PromoCodeField.css'
  * до отправки заявки.
  *
  * Это не вложенная форма: поле живёт внутри формы оформления, а `<form>` в
- * `<form>` недопустим, поэтому «Применить» - обычная иконочная кнопка (галочка с подписью для
- * скринридера), а Enter в поле
+ * `<form>` недопустим, поэтому «Применить» - обычная кнопка, а Enter в поле
  * перехватывается и применяет код вместо отправки заявки.
  */
 export const PromoCodeField: FC<IPromoCodeFieldProps & IBasicStyling> = ({
@@ -95,16 +92,16 @@ export const PromoCodeField: FC<IPromoCodeFieldProps & IBasicStyling> = ({
           }}
         />
 
-        <IconButton
-          icon={<IconCheck />}
-          label="Применить"
+        <Button
           variant="primary"
-          size="lg"
+          size="md"
           className={styles.apply}
           isLoading={isChecking}
           disabled={disabled || value.trim() === ''}
           onClick={onApply}
-        />
+        >
+          Применить
+        </Button>
       </div>
 
       {options.length > 0 && (

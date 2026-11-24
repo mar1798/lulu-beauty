@@ -461,7 +461,8 @@ const CheckoutPage: React.FC = () => {
                   onPickOption={code => {
                     void promo.apply(code)
                   }}
-                  allCodesHref="/promocodes"
+                  // Ссылка - к своим кодам; когда применить нечего, она ведёт в пустоту.
+                  allCodesHref={codeOptions.length > 0 ? '/promocodes' : undefined}
                   disabled={isSubmitting}
                 />
               }

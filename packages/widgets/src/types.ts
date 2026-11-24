@@ -3489,7 +3489,7 @@ export interface IPromoCodeFieldProps {
   /** Коды покупателя, которые можно применить одним нажатием. */
   options?: IPromoCodeOption[]
   onPickOption?: (code: string) => void
-  /** Ссылка «Все промокоды» под списком. */
+  /** Ссылка «Все мои промокоды» под списком; без неё ссылки нет (нечего показывать). */
   allCodesHref?: string
   disabled?: boolean
 }

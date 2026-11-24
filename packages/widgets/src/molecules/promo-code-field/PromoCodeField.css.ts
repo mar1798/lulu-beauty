@@ -10,7 +10,7 @@ export const container = style({
 })
 
 /**
- * Поле и иконочная кнопка в одну строку на любой ширине. `flex-start`: под полем
+ * Поле и кнопка «Применить» в одну строку на любой ширине. `flex-start`: под полем
  * может появиться текст ошибки, и кнопка остаётся вровень с самим полем.
  */
 export const inputRow = style({
@@ -23,10 +23,9 @@ export const input = style({
   minWidth: 0,
 })
 
-/** Квадрат высотой с поле: `lg` у `IconButton` на 4px выше и выбивался бы из строки. */
+/** Высотой с поле (`md` у `Button` - те же 44px), ширина по подписи. */
 export const apply = style({
   flexShrink: 0,
-  width: rem(FIELD_HEIGHT),
   height: rem(FIELD_HEIGHT),
 })
 

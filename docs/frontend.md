@@ -291,7 +291,9 @@ total is the optimistic `totalCents` (`cartPayableCents` in `widgets/utils`). `I
 `utils/cartPromotions.ts` has the empty `NO_PROMOTIONS`.
 
 **The code field exists only at checkout** (checking needs a sign-in; the guest's `/cart` shows
-promotions, gifts and hints). It is `PromoCodeField`, driven by `usePromoCode`.
+promotions, gifts and hints). It is `PromoCodeField`, driven by `usePromoCode`. It has a text
+«Применить» button beside the input, the customer's `ACTIVE` codes as a quick-pick, and the
+«Все мои промокоды» link only when that quick-pick has something in it.
 
 **Hooks worth knowing**
 
