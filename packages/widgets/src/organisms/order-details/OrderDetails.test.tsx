@@ -379,6 +379,75 @@ describe('OrderDetails', () => {
       expect(screen.getByText(`-${formatPrice(20_000)}`)).toBeInTheDocument()
     })
 
+    it('код владельца - промокод, а не акция, хотя у него есть promotionId', () => {
+      const order = feedOrderWithPromotions()
+
+      renderWidget(
+        <OrderDetails
+          {...feedOrderDetails()}
+          order={{
+            ...order,
+            promotions: order.promotions.map(entry =>
+              entry.isPromoCode ? { ...entry, promotionId: 'owner-1', promoCodeId: null } : entry
+            ),
+          }}
+        />
+      )
+
+      expect(screen.getByText('Промокод K7M2XQ9R')).toBeInTheDocument()
+      expect(screen.queryByText('Акция «Промокод K7M2XQ9R»')).toBeNull()
+    })
+
+    it('слот промокода живёт по тем же условиям, что и правка', () => {
+      const props = { ...feedOrderDetails(), promoCode: <p>Поле промокода</p> }
+      const { unmount } = renderWidget(
+        <OrderDetails
+          {...props}
+          order={feedOrder({ isEditable: true })}
+          onItemQuantityChange={vi.fn()}
+        />
+      )
+
+      expect(screen.getByText('Поле промокода')).toBeInTheDocument()
+      unmount()
+
+      renderWidget(
+        <OrderDetails
+          {...props}
+          order={feedOrder({ isEditable: false })}
+          onItemQuantityChange={vi.fn()}
+        />
+      )
+
+      expect(screen.queryByText('Поле промокода')).toBeNull()
+    })
+
+    it('код без скидки в деньгах: в чтении строкой, в правке - только слотом', () => {
+      const base = feedOrderWithPromotions()
+      const order = {
+        ...base,
+        isEditable: true,
+        promotions: base.promotions.map(entry =>
+          entry.isPromoCode ? { ...entry, discountCents: 0 } : entry
+        ),
+      }
+      const { unmount } = renderWidget(<OrderDetails {...feedOrderDetails()} order={order} />)
+
+      expect(screen.getByText(/^Промокод K7M2XQ9R - /)).toBeInTheDocument()
+      unmount()
+
+      renderWidget(
+        <OrderDetails
+          {...feedOrderDetails()}
+          order={order}
+          onItemQuantityChange={vi.fn()}
+          promoCode={<p>Поле промокода</p>}
+        />
+      )
+
+      expect(screen.queryByText(/^Промокод K7M2XQ9R - /)).toBeNull()
+    })
+
     it('выданный за заявку код объявлен со ссылкой на «Промокоды»', () => {
       renderWidget(
         <OrderDetails

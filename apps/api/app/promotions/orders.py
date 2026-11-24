@@ -169,6 +169,18 @@ def code_title_of(code: str) -> str:
     return f"Промокод {code}"
 
 
+def code_of_title(title: str) -> str:
+    """The code string a participation's title was made of (`code_title_of`): the one the
+    customer typed, whatever the owner has renamed the code to since."""
+    return title.removeprefix(code_title_of(""))
+
+
+def is_code_participation(participation: OrderPromotion) -> bool:
+    """Whether this participation is a promo code's, issued or the owner's, and not an
+    automatic promotion's."""
+    return participation.promo_code_id is not None or participation.code_cycle_id is not None
+
+
 def code_title(code: PromoCode) -> str:
     """What a participation through this code is called — a snapshot, like a promotion's title."""
     return code_title_of(code.code)
@@ -407,7 +419,7 @@ class OrderPromotionsService:
         if held_codes:
             # A code the order holds stays while its conditions hold, whether or not it has
             # expired since — the same promise a promotion keeps. It never *joins* here: a
-            # code is entered at checkout and nowhere else.
+            # code is on an order only because the customer entered it.
             codes = (
                 await self._session.scalars(select(PromoCode).where(PromoCode.id.in_(held_codes)))
             ).all()
@@ -666,8 +678,8 @@ class OrderPromotionsService:
         await self._code_offer_for(order, code)
 
     async def attach_code(self, order: Order, code: PromoCode) -> OrderPromotion:
-        """Put a promo code on an order and reserve it — at checkout, the only place a code
-        is entered.
+        """Put a promo code on an order and reserve it — at checkout, or on a PENDING order
+        the customer may still edit (`OrdersService.add_promo_code`).
 
         The code must already be the customer's, unused and inside its dates
         (`PromoCodesService.usable`); what is checked here is the one thing that depends on
@@ -705,6 +717,22 @@ class OrderPromotionsService:
             # database, which never saw the participation that was refused.
             await self._session.refresh(order, ["promotions"])
             raise PromoCodeUsedThisCycleError from error
+
+    async def release_codes(self, order: Order) -> list[OrderPromotion]:
+        """The customer takes the promo code off a PENDING order: its participation ends and
+        the code is free again (`_free_code`). The caller recounts the total. The promotions
+        stay: a code takes money off and adds gifts, and no condition reads either.
+        """
+        now = datetime.now(UTC)
+        released = [
+            p for p in order.promotions if p.released_at is None and is_code_participation(p)
+        ]
+        for participation in released:
+            self._release(order, participation, now)
+            await self._free_code(participation)
+        if released:
+            await self._session.flush()
+        return released
 
     async def release_all(self, order: Order, *, was_status: OrderStatus) -> list[OrderPromotion]:
         """The order is off (cancelled): every live participation ends, the customer is free

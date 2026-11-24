@@ -1,14 +1,14 @@
 import React, { useEffect, useRef, useState } from 'react'
 import Head from 'next/head'
 import { useRouter } from 'next/router'
-import useSWR, { mutate as globalMutate } from 'swr'
+import { mutate as globalMutate } from 'swr'
 import type { IOrder } from 'widgets/types'
 import { Alert, AppLink, Button, Text, formatPrice } from 'widgets/atoms'
 import { EmptyState, PromoCodeField } from 'widgets/molecules'
 import { CheckoutForm, CheckoutPanel, ProductPicker } from 'widgets/organisms'
 import { ITEM_FORMS, orderNumber } from 'widgets/molecules'
 import { useToast } from 'widgets/contexts'
-import { describePromoCodeConditions, describePromoCodeRewards, pluralize } from 'widgets/utils'
+import { pluralize } from 'widgets/utils'
 import { CartTemplate } from 'widgets/templates'
 import { SiteLayout } from '@/layouts/SiteLayout'
 import { EditableOrderNotice } from '@/components/EditableOrderNotice'
@@ -19,9 +19,9 @@ import { useProductSearch } from '@/hooks/useProductSearch'
 import { linesOfVariants, useDiscountLossConfirm } from '@/hooks/useDiscountLossConfirm'
 import { isApiError, messageForError } from '@/services/apiErrors'
 import { addMyOrderItem, checkout, getMyOrder } from '@/services/endpoints/orders'
-import { listMyPromoCodes } from '@/services/endpoints/promotions'
-import { isOrdersKey, isPromoCodesKey, promoCodesKey } from '@/services/swrKeys'
+import { isOrdersKey, isPromoCodesKey } from '@/services/swrKeys'
 import { usePromoCode } from '@/hooks/usePromoCode'
+import { promoCodeSummary, usePromoCodeOptions } from '@/hooks/usePromoCodeOptions'
 import { useLoginHref } from '@/hooks/useLoginHref'
 import { useCycleExpiryRefresh } from '@/hooks/useCycleExpiryRefresh'
 
@@ -80,16 +80,7 @@ const CheckoutPage: React.FC = () => {
     cart?.items.map(item => `${item.variantId}:${item.quantity}`).join(',') ?? '',
     settled
   )
-  const { data: myCodes } = useSWR(userId === null ? null : promoCodesKey(userId), listMyPromoCodes)
-  const codeOptions = (myCodes ?? [])
-    // «Ещё не начал действовать» код всё равно ответит сам при проверке: сервер знает время.
-    .filter(code => code.status === 'ACTIVE')
-    .map(code => ({
-      code: code.code,
-      label: [describePromoCodeRewards(code), describePromoCodeConditions(code)]
-        .filter(part => part !== '')
-        .join(' · '),
-    }))
+  const codeOptions = usePromoCodeOptions(userId)
   const appliedCode = promo.applied
 
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -446,12 +437,7 @@ const CheckoutPage: React.FC = () => {
                       : {
                           code: appliedCode.code.code,
                           discountCents: appliedCode.discountCents,
-                          description: [
-                            describePromoCodeRewards(appliedCode.code),
-                            describePromoCodeConditions(appliedCode.code),
-                          ]
-                            .filter(part => part !== '')
-                            .join(' · '),
+                          description: promoCodeSummary(appliedCode.code),
                         }
                   }
                   onRemove={promo.remove}

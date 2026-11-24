@@ -1,4 +1,4 @@
-"""Promo codes: issued when an order is paid for, entered at checkout, used when that order is.
+"""Promo codes: issued when an order is paid for, entered on another one, used when that one is.
 
 A code is the reward of a promotion's `PROMO_CODE` row. The promotion's template (its
 conditions, rewards and validity) is copied onto the code when it is issued, so editing
@@ -11,7 +11,8 @@ The life of a code (`PromoCodeStatus`, see `docs/domain.md`):
   both through `PromoCodesService.on_paid`. A sweep (`issue_missing_promo_codes`) catches
   an order whose event was lost; both are idempotent, which `uq_promo_codes_live_owner`
   guarantees in the database and not just here.
-- **Reserved** at checkout (`OrderPromotionsService.attach_code`): the code sits on one
+- **Reserved** when entered, at checkout or on a placed order
+  (`OrderPromotionsService.attach_code`): the code sits on one
   PENDING order, and the order's participation points at it.
 - **Used** when that order is paid for (`on_paid`).
 - **Revoked** when the order that earned it is cancelled before anybody used it.
@@ -127,10 +128,20 @@ def code_status(code: PromoCode, now: datetime) -> PromoCodeView:
 
 
 @dataclass(frozen=True)
+class OwnerCodeUse:
+    """An owner's code on an order: the code as it is now, and the order's snapshot of it."""
+
+    promotion: Promotion
+    participation: OrderPromotion
+
+
+@dataclass(frozen=True)
 class OrderCodes:
-    """The codes one order is about: the one it holds, and the ones it earned."""
+    """The codes one order is about: the one it holds, and the ones it earned. The held one
+    is an issued code (`used`) or an owner's (`owner`), never both."""
 
     used: PromoCode | None = None
+    owner: OwnerCodeUse | None = None
     issued: list[PromoCode] = field(default_factory=list)
 
 
@@ -294,7 +305,8 @@ class PromoCodesService:
         return [(code, title) for code, title in rows.tuples()]
 
     async def for_orders(self, orders: Sequence[Order]) -> dict[uuid.UUID, OrderCodes]:
-        """The code each order holds and the codes it earned — two directions, one query.
+        """The code each order holds and the codes it earned — two directions, one query for
+        the issued codes and one for the owner's.
 
         Read fresh from the database (`populate_existing`): a status changed a moment ago in
         this same transaction must show in the response built right after.
@@ -355,8 +367,25 @@ class PromoCodesService:
             for order_id, released_at, code in rows:
                 if released_at == latest.get(order_id):
                     used[order_id] = code
+        held = await self._session.execute(
+            select(OrderPromotion, Promotion)
+            .join(Promotion, Promotion.id == OrderPromotion.promotion_id)
+            .where(
+                OrderPromotion.order_id.in_(ids),
+                OrderPromotion.released_at.is_(None),
+                Promotion.code.is_not(None),
+            )
+        )
+        owner = {
+            participation.order_id: OwnerCodeUse(promotion, participation)
+            for participation, promotion in held.tuples()
+        }
         return {
-            order_id: OrderCodes(used=used.get(order_id), issued=issued.get(order_id, []))
+            order_id: OrderCodes(
+                used=used.get(order_id),
+                owner=owner.get(order_id),
+                issued=issued.get(order_id, []),
+            )
             for order_id in ids
         }
 

@@ -91,6 +91,22 @@ export const removeMyOrderItem = (
     query: { revision },
   })
 
+/**
+ * Промокод в уже поданную заявку - по правилам оформления, но без отдельной проверки:
+ * код применяется сразу, а отказ (`promo_code_*`, `order_has_promo_code`) заявку не трогает.
+ * Состав код не меняет, поэтому скидок магазина и акций он не снимает.
+ */
+export const addMyOrderPromoCode = (
+  orderId: string,
+  revision: number,
+  code: string
+): Promise<IOrder> =>
+  api.post(`/orders/${encodeURIComponent(orderId)}/promo-code`, { body: { revision, code } })
+
+/** Убирает промокод из заявки - он снова свободен. У DELETE нет тела, как у позиций. */
+export const removeMyOrderPromoCode = (orderId: string, revision: number): Promise<IOrder> =>
+  api.remove(`/orders/${encodeURIComponent(orderId)}/promo-code`, { query: { revision } })
+
 export const updateMyOrderNote = (orderId: string, note: string | null): Promise<IOrder> =>
   api.patch(`/orders/${encodeURIComponent(orderId)}`, { body: { note } })
 

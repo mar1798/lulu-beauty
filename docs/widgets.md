@@ -127,13 +127,14 @@ Storefront:
   picture gets a placeholder.
 - `PromotionLines` (molecule) — the cart's promotions as two pieces: discount rows
   («Акция «…» - 500 сом»; a gift-only promotion gets none) and the «Ещё 300 сом и 2 товара до акции» hints.
-- `PromoCodeField` (molecule) — the checkout field: input, the server's verdict, an accepted
+- `PromoCodeField` (molecule) — the field at checkout and on a placed order (`OrderDetails`'
+  `promoCode` slot, shown while the order is editable): input, the server's verdict, an accepted
   code as a row with «Убрать», and a picker among the customer's codes.
 - `PromoCodeCard` (molecule) — a code on «Промокоды», drawn as a coupon: a stub with the code
   and tap-to-copy, a perforation with notches (CSS masks, shadow via `drop-shadow`), then what
   it gives, conditions, term, status badge (the status comes from the API; `EXPIRED` is
   computed there). A personal owner code (`isOwnerCode`) shows its own title without the «Акция»
-  prefix and its `descriptionHtml` through `RichText`. No «Использовать» — the code is typed in at checkout. One per row.
+  prefix and its `descriptionHtml` through `RichText`. No «Использовать» — the code is typed in at checkout or on the order. One per row.
 - `CartPanel`, `CheckoutPanel`, `CheckoutForm` and `OrderDetails` got promotions, gifts and
   hints props (`ICart.promotions` is required); `buildPromotionHref` makes the links.
 

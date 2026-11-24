@@ -75,6 +75,7 @@ export const OrderDetails: FC<IOrderDetailsProps & IBasicStyling> = ({
   onItemQuantityChange,
   onItemRemove,
   addItem,
+  promoCode,
   promoCodesHref,
   onNoteSave,
   onCancel,
@@ -159,9 +160,11 @@ export const OrderDetails: FC<IOrderDetailsProps & IBasicStyling> = ({
   const isRestorable = order.isRestorable && onRestore !== undefined
   const isCancellable = order.isCancellable && onCancel !== undefined
 
-  /* Акции со скидкой в деньгах; у кода строка - его же «Промокод XXXX» (`promoCodeId`). */
+  const isPromoCodeShown = isEditable && promoCode !== undefined
+
+  /* Акции со скидкой в деньгах; у кода строка - его же «Промокод XXXX» (`isPromoCode`). */
   const discountedPromotions = order.promotions.filter(entry => entry.discountCents > 0)
-  const isCodeInDiscounts = discountedPromotions.some(entry => entry.promoCodeId !== null)
+  const isCodeInDiscounts = discountedPromotions.some(entry => entry.isPromoCode)
   /* Отозванный код - не новость: его уже отобрали, показывать «вы получили» нечего. */
   const issuedCodes = order.issuedPromoCodes.filter(issued => issued.status !== 'REVOKED')
 
@@ -437,6 +440,9 @@ export const OrderDetails: FC<IOrderDetailsProps & IBasicStyling> = ({
       */}
       {isEditable && addItem}
 
+      {/* Промокод - следом за составом: от состава зависят его условия, от него - сумма. */}
+      {isPromoCodeShown && promoCode}
+
       {/*
         Скидка на всю заявку — своей строкой над итогом, с причиной: сумма ниже
         каталожной без слова о том, откуда она, читалась бы как ошибка.
@@ -464,16 +470,15 @@ export const OrderDetails: FC<IOrderDetailsProps & IBasicStyling> = ({
         <div className={styles.promotions}>
           {discountedPromotions.map(entry => (
             <div key={entry.id} className={styles.discountRow}>
-              <Text size="sm">
-                {entry.promotionId === null ? entry.title : `Акция «${entry.title}»`}
-              </Text>
+              <Text size="sm">{entry.isPromoCode ? entry.title : `Акция «${entry.title}»`}</Text>
               <Text size="sm" tone="success">{`-${formatPrice(entry.discountCents)}`}</Text>
             </div>
           ))}
         </div>
       )}
 
-      {order.promoCode !== null && !isCodeInDiscounts && (
+      {/* Код без скидки в деньгах. У правимой заявки его показывает сам слот промокода. */}
+      {order.promoCode !== null && !isCodeInDiscounts && !isPromoCodeShown && (
         <Text size="sm" tone="muted">
           {`Промокод ${order.promoCode.code} - ${PROMO_CODE_STATUS_LABELS[order.promoCode.status]}`}
         </Text>

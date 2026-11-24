@@ -208,8 +208,9 @@ export const PROMO_CODES_TAG = 'promo-codes'
 export const promoCodesKey = (userId: string) => [PROMO_CODES_TAG, userId] as const
 
 /**
- * Любые промокоды: после оформления код уходит в резерв, после оплаты выдаются
- * новые, так что страница «Промокоды» и подсказки на оформлении устаревают разом.
+ * Любые промокоды: после оформления и правки заявки код уходит в резерв или возвращается,
+ * после оплаты выдаются новые, так что страница «Промокоды» и подсказки под полем ввода
+ * устаревают разом.
  */
 export const isPromoCodesKey = (key: unknown): boolean =>
   Array.isArray(key) && key[0] === PROMO_CODES_TAG

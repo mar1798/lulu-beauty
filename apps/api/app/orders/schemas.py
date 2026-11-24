@@ -129,6 +129,14 @@ class OrderItemAddRequest(CamelModel):
     quantity: int = Field(default=1, ge=1, le=MAX_ITEM_QUANTITY)
 
 
+class OrderPromoCodeRequest(CamelModel):
+    """A promo code for an order that's already been placed. `revision` as in
+    `OrderItemQuantityRequest`; `code` as generous as `PromoCodeCheckRequest.code`."""
+
+    revision: int = Field(ge=0)
+    code: str = Field(max_length=64)
+
+
 class AdminOrderLine(CamelModel):
     variant_id: uuid.UUID
     quantity: int = Field(default=1, ge=1, le=MAX_ITEM_QUANTITY)
@@ -314,7 +322,8 @@ class OrderResponse(CamelModel):
     promo_items_discount_cents: int = 0
     promo_order_discount_cents: int = 0
     # The promo code the order holds (reserved by it, or spent when it was paid for) — its
-    # discount is the `promotions` entry with the same `promoCodeId`.
+    # discount is the `promotions` entry with `isPromoCode`. One issued to the customer or
+    # an owner's; at most one per order.
     promo_code: OrderPromoCodeResponse | None = None
     # The codes this order earned when it was paid for, revoked ones included.
     issued_promo_codes: list[OrderPromoCodeResponse] = []

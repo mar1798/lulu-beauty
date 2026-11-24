@@ -36,9 +36,14 @@ from app.orders.models import (
     PendingStage,
 )
 from app.orders.schemas import MAX_ITEM_QUANTITY
+from app.promotions.code_errors import OrderHasPromoCodeError
 from app.promotions.codes import OrderCodes, PromoCodesService
 from app.promotions.models import PromoCode
-from app.promotions.orders import OrderPromotionsService, PromotionDelta
+from app.promotions.orders import (
+    OrderPromotionsService,
+    PromotionDelta,
+    is_code_participation,
+)
 from app.promotions.owner_codes import resolve_code
 
 # How many product ids go into one `IN (...)` when a price list reprices in bulk.
@@ -1127,6 +1132,48 @@ class OrdersService:
         await self._recount(order)
         await self._session.flush()
         return order, loss
+
+    async def add_promo_code(
+        self, user_id: uuid.UUID, order_id: uuid.UUID, code: str, *, revision: int | None = None
+    ) -> Order:
+        """Put a promo code on an order that's already been placed, by checkout's own rules.
+
+        The gate is the one every edit of the customer's has (`_get_editable`), the code is
+        checked like at checkout (`resolve_code`, then the order's lines against the
+        conditions), and a `PromoCodeError` leaves the order as it was. One code per order:
+        another is refused until the held one is taken off. The once-per-cycle rule of an
+        owner's code reads the order's own cycle.
+
+        The lines do not change, so neither the owner's discounts come off
+        (`_customer_changed` is about the composition) nor are the promotions asked again:
+        the customer typed a code, and must not lose a promotion to it without a warning.
+        """
+        order = await self._get_editable(user_id, order_id, revision)
+        if any(p.released_at is None and is_code_participation(p) for p in order.promotions):
+            raise OrderHasPromoCodeError
+        found = await resolve_code(
+            self._session, user_id, code, cycle_id=order.cycle_id, for_update=True
+        )
+        if isinstance(found, PromoCode):
+            await self._promos.attach_code(order, found)
+        else:
+            await self._promos.attach_owner_code(order, found)
+        self._recalculate_total(order)
+        await self._session.flush()
+        return order
+
+    async def remove_promo_code(
+        self, user_id: uuid.UUID, order_id: uuid.UUID, *, revision: int | None = None
+    ) -> Order:
+        """Take the promo code off an order; it goes back to the customer.
+
+        An order without a code is left as it is, revision included.
+        """
+        order = await self._get_editable(user_id, order_id, revision)
+        if await self._promos.release_codes(order):
+            self._recalculate_total(order)
+            await self._session.flush()
+        return order
 
     @staticmethod
     def _customer_changed(

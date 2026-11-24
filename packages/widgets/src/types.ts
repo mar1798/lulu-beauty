@@ -420,7 +420,7 @@ export interface IOrder extends IDiscountFields {
   /** Скидки акций на строки и на всю заявку, в тыйынах (уже вычтены из `totalCents`). */
   promoItemsDiscountCents: number
   promoOrderDiscountCents: number
-  /** Промокод, который заявка держит (резерв) или потратила; `null` — без кода. */
+  /** Промокод (выданный или владельца), который заявка держит или потратила; `null` — без кода. */
   promoCode: IOrderPromoCode | null
   /** Коды, выданные за эту заявку, — в том числе отозванные. */
   issuedPromoCodes: IOrderPromoCode[]
@@ -1988,6 +1988,8 @@ export interface IOrderDetailsProps {
    * заявки в API не ходит.
    */
   addItem?: ReactNode
+  /** Слот под промокод (`PromoCodeField`): условия те же, что у `addItem`. */
+  promoCode?: ReactNode
   /** Страница «Промокоды»: на неё ведёт строка о выданном коде. Без адреса - просто текст. */
   promoCodesHref?: string
   /**
@@ -2953,6 +2955,8 @@ export interface IOrderPromotion {
   id: string
   promotionId: string | null
   promoCodeId: string | null
+  /** Это промокод - выданный или владельца (у второго задан `promotionId`), а не акция. */
+  isPromoCode: boolean
   title: string
   discountCents: number
 }
@@ -3468,7 +3472,7 @@ export interface IPromoCodeCardProps {
   buildOrderHref?: (orderId: string) => string
 }
 
-/** Код из «Моих промокодов» в списке выбора на оформлении. */
+/** Код из «Моих промокодов» в списке выбора под полем промокода. */
 export interface IPromoCodeOption {
   code: string
   /** «Скидка 10% · от 3 000 сом» - что даёт, по-русски. */
@@ -3483,7 +3487,7 @@ export interface IPromoCodeFieldProps {
   /** Применённый и проверенный код: показывается вместо поля. */
   applied: { code: string; discountCents: number; description: string } | null
   onRemove: () => void
-  /** Идёт проверка (`POST /cart/promo-code/check`). */
+  /** Идёт проверка (на оформлении) или применение к поданной заявке. */
   isChecking?: boolean
   error?: string | null
   /** Коды покупателя, которые можно применить одним нажатием. */

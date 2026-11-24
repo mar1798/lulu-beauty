@@ -143,7 +143,14 @@ describe('lostPromotions', () => {
   const withPromotion = (): IOrder =>
     order({
       promotions: [
-        { id: 'op', promotionId: 'p1', promoCodeId: null, title: 'Весна', discountCents: 100 },
+        {
+          id: 'op',
+          promotionId: 'p1',
+          promoCodeId: null,
+          isPromoCode: false,
+          title: 'Весна',
+          discountCents: 100,
+        },
       ],
     })
 

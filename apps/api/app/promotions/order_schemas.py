@@ -5,7 +5,7 @@ import uuid
 from app.common.schemas import CamelModel
 from app.orders.discounts import OrderTotals
 from app.orders.models import Order
-from app.promotions.orders import CartPromotionsPreview, GiftSpec
+from app.promotions.orders import CartPromotionsPreview, GiftSpec, is_code_participation
 from app.promotions.rules import GiftKind
 
 
@@ -31,9 +31,11 @@ class OrderPromotionResponse(CamelModel):
     """A promotion an order holds — a live participation, released ones are not shown."""
 
     id: uuid.UUID
-    # Exactly one of the two is set; the promo code arrives with stage 3.
+    # Exactly one of the two is set. An owner's promo code is a promotion too, so its entry
+    # has a `promotion_id`: what tells a code from an automatic promotion is `is_promo_code`.
     promotion_id: uuid.UUID | None
     promo_code_id: uuid.UUID | None
+    is_promo_code: bool = False
     # A snapshot, like the rewards: renaming the promotion later does not rename this.
     title: str
     # What it takes off the order in money, in all (a promotion that only gives a gift: 0).
@@ -125,6 +127,7 @@ def order_promotion_responses(order: Order, totals: OrderTotals) -> list[OrderPr
             id=participation.id,
             promotion_id=participation.promotion_id,
             promo_code_id=participation.promo_code_id,
+            is_promo_code=is_code_participation(participation),
             title=participation.title,
             discount_cents=totals.promo_by_layer.get(participation.id, 0),
         )

@@ -1168,7 +1168,7 @@ and `rewards`, `valid_from`, `expires_at`, `status`, `used_order_id`, `reminded_
 | Status     | Meaning                                                                                                  |
 | ---------- | -------------------------------------------------------------------------------------------------------- |
 | `ACTIVE`   | Issued, waiting to be used.                                                                              |
-| `RESERVED` | Entered at checkout; the order holding it is not paid yet.                                               |
+| `RESERVED` | On an order (entered at checkout or later); that order is not paid yet.                                  |
 | `USED`     | The order that held it was paid for.                                                                     |
 | `REVOKED`  | The order that earned it was cancelled before the code was used.                                         |
 | `EXPIRED`  | **Computed**, never stored: an `ACTIVE` code whose `expires_at` has passed. Only an unused code expires. |
@@ -1188,8 +1188,18 @@ and `rewards`, `valid_from`, `expires_at`, `status`, `used_order_id`, `reminded_
   (a refusal leaves no order and an untouched cart), and attaches it as an `order_promotions`
   row with `promo_code_id` titled «Промокод XXXXXXXX» — the code becomes `RESERVED` with
   `used_order_id` set. One live order per code (`uq_order_promotions_live_code`). Input is
-  normalised (upper case, whitespace removed; a dash is part of the code). A code is **attached at checkout only**; the API cannot
-  add one to an existing order.
+  normalised (upper case, whitespace removed; a dash is part of the code). A code is attached only because the
+  customer entered it: at checkout, or on a placed order.
+- **On a placed order.** `POST /orders/{id}/promo-code` (`OrdersService.add_promo_code`) puts a
+  code of either kind on an order the customer may still edit (`isEditable`), by checkout's
+  rules and with its refusals; an owner code's once-per-cycle rule reads the **order's** cycle.
+  It applies at once (no separate check), and a refusal leaves the order as it was. One code
+  per order: `409 order_has_promo_code` until the held one is taken off with
+  `DELETE /orders/{id}/promo-code`, which frees the code (an expired one comes back expired).
+  Both take the order's `revision` and move it. The lines do not change, so the admin's
+  discounts stay and the promotions are **not** asked again: typing a code must not lose a
+  promotion unwarned. Known limit: an admin's `AMOUNT` discount on the order is settled against what
+  a line-targeted code leaves, as on any recount, and does not grow back when the code is taken off.
 - **Refusals**, in order: unknown, someone else's or `REVOKED` → `404 promo_code_not_found`
   (a stranger's code looks exactly like a missing one); `USED`/`RESERVED` →
   `409 promo_code_already_used`; past `expires_at` → `409 promo_code_expired`; before
@@ -1216,7 +1226,8 @@ and the participants list. The differences:
 - **Never automatic.** Every query that picks promotions for a cart leaves code rows out
   (`active_promotions`, the carousel/sitemap/public page reads, `unannounced_promotions`), and
   `/admin/promotions*` answers 404 for a code row just as `/admin/promo-codes*` does for an
-  automatic one. A code joins an order only when the customer types it at checkout.
+  automatic one. A code joins an order only when the customer types it, at checkout or on a
+  placed order.
 - **Rewards: `DISCOUNT` and `GIFT` only**, the same `CodeReward` an issued code gives. No
   `PROMO_CODE` reward: a code does not hand out codes.
 - **General or personal.** No rows in `promotion_code_users`: any customer may use it. Rows:

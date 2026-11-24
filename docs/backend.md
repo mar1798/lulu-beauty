@@ -115,9 +115,10 @@ Public and customer-facing:
 | `GET`                         | `/orders`, `/orders/{id}`                     |                                                                                                                                                                |
 | `PATCH`                       | `/orders/{id}`                                | Note only.                                                                                                                                                     |
 | `POST`/`PATCH`/`DELETE`       | `/orders/{id}/items[/{item_id}]`              | Add / change quantity / remove. `POST` takes `variantId`.                                                                                                      |
+| `POST`/`DELETE`               | `/orders/{id}/promo-code`                     | Put a code on a placed order (`{revision, code}`) / take it off (`revision` in the query). Returns the order.                                                  |
 | `POST`                        | `/orders/{id}/cancel`, `/orders/{id}/restore` |                                                                                                                                                                |
 
-The three item edits take the order's `revision` as the page read it (`DELETE` in the query
+The three item edits and both promo code calls take the order's `revision` as the page read it (`DELETE` in the query
 string): one stale by a discount given since is `409 order_changed`, so a discount never
 comes off unwarned.
 
@@ -439,7 +440,7 @@ existing promotion (`?from=<id>`).
   goes through `POST /admin/promotions/gift-image`.
 - Applying: `resolve_code` (`owner_codes.py`) tries the customer's issued codes first, then the
   owner's, and takes the `cycle_id` the order goes into (the cart check passes the collecting
-  cycle, or `None` when there is none). The cart check and `checkout` use it;
+  cycle, or `None` when there is none). The cart check, `checkout` and `POST /orders/{id}/promo-code` use it;
   `OrderPromotionsService.attach_owner_code` makes the participation with `code_cycle_id` set.
   `preview_cart` leaves the owner code's id out of the customer's «already joined» set, since
   `usable` has already ruled on reuse. `OrderPromoCodeResponse.expiresAt` is **nullable** (an open-ended
@@ -454,7 +455,9 @@ existing promotion (`?from=<id>`).
 
 **New fields.** `OrderResponse`/`AdminOrderResponse`: `promotions` (live participations, each
 with `discountCents`), `gifts`, `promoItemsDiscountCents`, `promoOrderDiscountCents`,
-`promoCode` (the code the order holds or spent) and `issuedPromoCodes` (codes it earned,
+`promoCode` (the code the order holds or spent, issued or the owner's: an owner's shows the string
+and rewards the order took and the code's own conditions; `promotions[].isPromoCode` marks its
+participation, which for an owner's code has a `promotionId`) and `issuedPromoCodes` (codes it earned,
 revoked ones too). `CartResponse.promotions`: `applied`, `hints` («ещё N сом и M товаров», whole-cart promotions only), `gifts`,
 `itemsDiscountCents`, `orderDiscountCents`, `discountCents`, `payableCents`; `totalCents`
 stays price × quantity. The block is in every cart answer, the guest `POST /cart/preview`
@@ -478,13 +481,14 @@ too (a guest has joined nothing, so "once per customer" only shows after sign-in
 | `promo_code_already_used`       | 409    | `USED`, or `RESERVED` by another order; for an owner code, every use spent.                                                                                                         |
 | `promo_code_used_this_cycle`    | 409    | An owner code with uses left that an order of the customer's in this cycle already holds (a lost race for the index too).                                                           |
 | `promo_code_conditions_not_met` | 409    | Including an empty cart.                                                                                                                                                            |
+| `order_has_promo_code`          | 409    | `POST /orders/{id}/promo-code` on an order already holding a code.                                                                                                                  |
 | `promo_code_taken`              | 409    | Owner code string used by another owner code (archived too) or an issued one.                                                                                                       |
 | `promo_code_invalid`            | 422    | Owner code string is not 4-16 characters after removing whitespace.                                                                                                                 |
 | `promo_code_user_not_found`     | 422    | One of the newly given `assignedUserIds` is unknown or an erased account.                                                                                                           |
 
 Structural mistakes in the rules (an unknown type, a percent over 100, two `PROMO_CODE`
 rewards, a bad code term) are plain pydantic `422`s without a code. The website has Russian
-text for each code, per scope, in `apiErrors.ts` (`promoCode.check`, `promoCodes.load`, and the
+text for each code, per scope, in `apiErrors.ts` (`promoCode.check`, `promoCodes.load`, `order.promoCode.*`, and the
 `admin.promotion*` and `admin.promoCode*` areas).
 
 **Known limitations**: no brute-force limit on `POST /cart/promo-code/check` beyond the global

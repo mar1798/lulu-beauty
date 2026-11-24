@@ -56,6 +56,13 @@ class PromoCodeConditionsNotMetError(PromoCodeError):
     status_code = status.HTTP_409_CONFLICT
 
 
+class OrderHasPromoCodeError(PromoCodeError):
+    """The order already holds a code: one order, one code. It is taken off first."""
+
+    code = "order_has_promo_code"
+    status_code = status.HTTP_409_CONFLICT
+
+
 class PromoCodeTakenError(PromoCodeError):
     """The owner's code string already belongs to another owner code (archived ones
     included) or to a code issued to a customer."""

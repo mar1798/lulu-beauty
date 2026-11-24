@@ -290,8 +290,9 @@ crossed by pressing «+»; until the answer arrives the block keeps its previous
 total is the optimistic `totalCents` (`cartPayableCents` in `widgets/utils`). `ICart.promotions` is required —
 `utils/cartPromotions.ts` has the empty `NO_PROMOTIONS`.
 
-**The code field exists only at checkout** (checking needs a sign-in; the guest's `/cart` shows
-promotions, gifts and hints). It is `PromoCodeField`, driven by `usePromoCode`. It has a text
+**The code field is at checkout and on a placed order** (`orders/[id]`, while `isEditable`), not in
+the cart (checking needs a sign-in; the guest's `/cart` shows promotions, gifts and hints). It is
+`PromoCodeField`, driven by `usePromoCode` at checkout and `useOrderPromoCode` on the order: a text
 «Применить» button beside the input, the customer's `ACTIVE` codes as a quick-pick, and the
 «Все мои промокоды» link only when that quick-pick has something in it.
 
@@ -302,13 +303,19 @@ promotions, gifts and hints). It is `PromoCodeField`, driven by `usePromoCode`. 
   the order will not give. The accepted answer is kept whole (`applied`); a code that stops
   fitting is dropped and the reason stays in `error`. It reserves nothing — only `checkout`
   does. The «Ваши промокоды» picker passes a code to `apply(code)`.
+- `useOrderPromoCode(order, handlers)` — the same field on a placed order. No check step: `apply`
+  sends `POST /orders/{id}/promo-code` with the order's `revision`, and the accepted code is
+  shown from the order itself (`order.promoCode`). A refusal stays under the field and the
+  order is re-read. «Убрать» asks first, then goes through the page's `runAction`.
+- `usePromoCodeOptions(userId)` — the «Ваши промокоды» quick-pick of both fields
+  (`promoCodeSummary` words a code's rewards and conditions).
 - `useDiscountLossConfirm` — asks before an edit that would lose the owner's discount or a
   promotion. Discounts are counted by the client mirror (`discountLoss`); promotions come from
   the server: `lostPromotions` calls `previewMyOrderEdit` (`POST /orders/{id}/edit-preview`)
   for each edit described by `edits` (`{itemId|variantId, quantity}`, `0` removes), merges the
   results by promotion and `promotionLoss` words them. A failed preview is silent — it is a
   warning, not a decision — and an order with no promotions asks nothing. Without `edits`,
-  only discounts are checked (the pre-promotion behaviour). It says nothing about promo codes.
+  only discounts are checked (the pre-promotion behaviour). It says nothing about issued promo codes.
 - `usePromotionCatalog` (admin) — categories, brands, product search, gift image upload and
   the names of products already chosen (the promotion stores ids only; names are read with
   one `GET /admin/products/{id}` each, since there is no "products by ids" endpoint).
@@ -327,9 +334,9 @@ search is `listAdminUsers`, the gift picture `uploadGiftImage`). `services/endpo
 `isAdminPromotionsKey` for both variants), `adminPromotionKey`, `adminPromotionParticipantsKey`,
 `adminPromotionProductLabelsKey`, `adminPromoCodesKey(includeDeleted)` (with `isAdminPromoCodesKey`),
 `adminPromoCodeKey`, `adminPromoCodeParticipantsKey`, `promoCodesKey(userId)` and `isPromoCodesKey` (a checkout
-reserves a code and a payment issues new ones, so the page and the checkout picker go stale
-together). `apiErrors.ts` has the five `promo_code_*` codes under checkout and the scopes
-`promoCode.check` and `promoCodes.load`, the four `promotion_*` codes under seven
+or an order edit reserves or frees a code and a payment issues new ones, so the page and the
+pickers go stale together). `apiErrors.ts` has the five `promo_code_*` codes under checkout and the scopes
+`promoCode.check`, `promoCodes.load` and `order.promoCode.apply`/`.remove`, the four `promotion_*` codes under seven
 `admin.promotion.*` error-map scopes (`create`, `update`, `toggle`, `delete`, `banner`, `giftImage`, `participants`; the title map adds `admin.promotions.load`), and teaches the 422 parser the nested rule fields. The owner's codes have the `admin.promoCode.*` scopes (`create`, `update`, `toggle`, `delete`, `participants`; the title map adds `admin.promoCodes.load`) and the codes `promo_code_taken`, `promo_code_invalid` and `promo_code_user_not_found`.
 
 ## State and layout

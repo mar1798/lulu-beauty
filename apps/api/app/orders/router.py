@@ -28,6 +28,7 @@ from app.orders.schemas import (
     OrderItemQuantityRequest,
     OrderItemResponse,
     OrderNoteUpdateRequest,
+    OrderPromoCodeRequest,
     OrderResponse,
     OrderStatusUpdateRequest,
 )
@@ -58,8 +59,12 @@ from app.orders.service import (
 )
 from app.payments.service import PaymentsService
 from app.promotions.code_errors import PromoCodeError
-from app.promotions.code_schemas import OrderPromoCodeResponse, order_promo_code_response
-from app.promotions.codes import OrderCodes
+from app.promotions.code_schemas import (
+    OrderPromoCodeResponse,
+    order_owner_code_response,
+    order_promo_code_response,
+)
+from app.promotions.codes import PAID_STATUSES, OrderCodes
 from app.promotions.order_schemas import (
     PromotionRefResponse,
     order_gift_responses,
@@ -126,10 +131,16 @@ _NO_ACTIONS = OrderFlags(
 )
 
 
-def _used_code(codes: OrderCodes | None, now: datetime) -> OrderPromoCodeResponse | None:
-    if codes is None or codes.used is None:
+def _used_code(
+    order: Order, codes: OrderCodes | None, now: datetime
+) -> OrderPromoCodeResponse | None:
+    if codes is None:
         return None
-    return order_promo_code_response(codes.used, now)
+    if codes.used is not None:
+        return order_promo_code_response(codes.used, now)
+    if codes.owner is not None:
+        return order_owner_code_response(codes.owner, is_paid=order.status in PAID_STATUSES)
+    return None
 
 
 def _issued_codes(codes: OrderCodes | None, now: datetime) -> list[OrderPromoCodeResponse]:
@@ -167,7 +178,7 @@ def _order_response(
         gifts=order_gift_responses(order),
         promo_items_discount_cents=totals.promo_items_discount_cents,
         promo_order_discount_cents=totals.promo_order_discount_cents,
-        promo_code=_used_code(codes, now),
+        promo_code=_used_code(order, codes, now),
         issued_promo_codes=_issued_codes(codes, now),
     )
 
@@ -222,7 +233,7 @@ def _admin_order_response(
         gifts=order_gift_responses(order),
         promo_items_discount_cents=totals.promo_items_discount_cents,
         promo_order_discount_cents=totals.promo_order_discount_cents,
-        promo_code=_used_code(codes, now),
+        promo_code=_used_code(order, codes, now),
         issued_promo_codes=_issued_codes(codes, now),
     )
 
@@ -461,6 +472,53 @@ async def remove_my_order_item(
     await session.commit()
     if loss is not None:
         background_tasks.add_task(notify_discount_lost, order.id, loss)
+    return response
+
+
+@router.post("/orders/{order_id}/promo-code", response_model=OrderResponse)
+async def add_my_order_promo_code(
+    order_id: uuid.UUID,
+    body: OrderPromoCodeRequest,
+    session: AsyncSession = Depends(get_session),
+    current_user: CurrentUser = Depends(get_current_user),
+) -> OrderResponse:
+    """Puts a promo code on an order that's already been placed, by checkout's rules.
+
+    Applied at once, like every edit of a placed order: there is no separate check, a
+    refusal leaves the order as it was.
+    """
+    service = OrdersService(session)
+    try:
+        order = await service.add_promo_code(
+            current_user.id, order_id, body.code, revision=body.revision
+        )
+    except PromoCodeError as error:
+        raise HTTPException(error.status_code, error.code) from error
+    except (OrderNotFoundError, OrderNotEditableError, OrderChangedError) as error:
+        raise _editing_error(error) from error
+
+    response = await _one_order_response(service, order)
+    await session.commit()
+    return response
+
+
+@router.delete("/orders/{order_id}/promo-code", response_model=OrderResponse)
+async def remove_my_order_promo_code(
+    order_id: uuid.UUID,
+    # In the query: a DELETE carries no body. See `OrderItemQuantityRequest.revision`.
+    revision: int = Query(ge=0),
+    session: AsyncSession = Depends(get_session),
+    current_user: CurrentUser = Depends(get_current_user),
+) -> OrderResponse:
+    """Takes the promo code off an order; the code goes back to the customer."""
+    service = OrdersService(session)
+    try:
+        order = await service.remove_promo_code(current_user.id, order_id, revision=revision)
+    except (OrderNotFoundError, OrderNotEditableError, OrderChangedError) as error:
+        raise _editing_error(error) from error
+
+    response = await _one_order_response(service, order)
+    await session.commit()
     return response
 
 

@@ -6,9 +6,10 @@ from datetime import datetime
 from pydantic import Field, ValidationError
 
 from app.common.schemas import CamelModel
-from app.promotions.codes import PromoCodeView, code_status
+from app.promotions.codes import OwnerCodeUse, PromoCodeView, code_status
 from app.promotions.models import PromoCode, Promotion
 from app.promotions.order_schemas import CartPromotionsResponse, GiftResponse
+from app.promotions.orders import code_of_title
 from app.promotions.rules import (
     AnyCodeReward,
     AnyCondition,
@@ -126,6 +127,25 @@ def personal_promo_code_response(
         source_order_id=None,
         used_order_id=used_order_id,
         created_at=promotion.created_at,
+    )
+
+
+def order_owner_code_response(use: OwnerCodeUse, *, is_paid: bool) -> OrderPromoCodeResponse:
+    """The owner's code an order holds. The string and the rewards are the order's snapshot;
+    the conditions are the code's own, as they are what keeps it on a PENDING order."""
+    conditions, _ = _safe_rules(use.promotion)
+    try:
+        rewards = load_code_rewards(use.participation.rewards)
+    except ValidationError:
+        rewards = []
+    return OrderPromoCodeResponse(
+        id=use.promotion.id,
+        code=code_of_title(use.participation.title),
+        status=PromoCodeView.USED if is_paid else PromoCodeView.RESERVED,
+        conditions=conditions,
+        rewards=rewards,
+        valid_from=use.promotion.starts_at,
+        expires_at=use.promotion.ends_at,
     )
 
 

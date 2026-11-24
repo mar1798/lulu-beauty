@@ -588,7 +588,7 @@ async def test_the_code_goes_when_its_conditions_stop_holding(db_session: AsyncS
     await service.set_item_quantity(user.id, order.id, order.items[0].id, 1)
 
     assert _live(order) == [] and order.total_cents == 10_000
-    # A code is entered at checkout and nowhere else: a recount never takes it again.
+    # A code is on an order only because it was entered: a recount never takes it again.
     await service.set_item_quantity(user.id, order.id, order.items[0].id, 3)
     assert _live(order) == [] and order.total_cents == 30_000
 
