@@ -33,24 +33,24 @@ def test_a_generated_code_uses_the_alphabet() -> None:
     assert set(code) <= set(CODE_ALPHABET)
 
 
-def _personal(user_id: uuid.UUID | None, *, enabled: bool = True) -> Promotion:
-    return Promotion(code="LETO2026", assigned_user_id=user_id, is_enabled=enabled, deleted_at=None)
+def _code(*, enabled: bool = True) -> Promotion:
+    return Promotion(code="LETO2026", is_enabled=enabled, deleted_at=None)
 
 
-def test_a_new_personal_code_goes_to_its_customer() -> None:
-    user_id = uuid.uuid4()
-    assert handed_to(_personal(user_id)) == user_id
+def test_a_new_personal_code_goes_to_its_customers() -> None:
+    alice, bob = uuid.uuid4(), uuid.uuid4()
+    assert handed_to(_code(), [alice, bob]) == [alice, bob]
 
 
 def test_a_general_or_switched_off_code_goes_to_nobody() -> None:
-    assert handed_to(_personal(None)) is None
-    assert handed_to(_personal(uuid.uuid4(), enabled=False)) is None
+    assert handed_to(_code(), []) == []
+    assert handed_to(_code(enabled=False), [uuid.uuid4()]) == []
 
 
-def test_moving_or_switching_on_a_code_hands_it_over_but_an_edit_does_not() -> None:
-    user_id = uuid.uuid4()
-    code = _personal(user_id)
+def test_adding_or_switching_on_hands_it_over_but_an_edit_does_not() -> None:
+    alice, bob = uuid.uuid4(), uuid.uuid4()
+    code = _code()
 
-    assert handed_to(code, was_user_id=uuid.uuid4(), was_enabled=True) == user_id
-    assert handed_to(code, was_user_id=user_id, was_enabled=False) == user_id
-    assert handed_to(code, was_user_id=user_id, was_enabled=True) is None
+    assert handed_to(code, [alice, bob], was_user_ids=[alice], was_enabled=True) == [bob]
+    assert handed_to(code, [alice], was_user_ids=[alice], was_enabled=False) == [alice]
+    assert handed_to(code, [alice], was_user_ids=[alice, bob], was_enabled=True) == []

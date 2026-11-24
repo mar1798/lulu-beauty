@@ -36,7 +36,13 @@ from app.orders.service import (
     OrderPriceChange,
 )
 from app.payments.models import PaymentReceipt
-from app.promotions.models import OrderPromotion, PromoCode, PromoCodeStatus, Promotion
+from app.promotions.models import (
+    OrderPromotion,
+    PromoCode,
+    PromoCodeStatus,
+    Promotion,
+    PromotionCodeUser,
+)
 from app.promotions.names import RuleNames, load_rule_names
 from app.promotions.rules import load_code_rewards, load_conditions, load_rewards
 from app.telegram import messages, recipients, relay
@@ -873,7 +879,14 @@ async def notify_personal_promo_code(promotion_id: uuid.UUID, user_id: uuid.UUID
             if (
                 promotion is None
                 or promotion.code is None
-                or promotion.assigned_user_id != user_id
+                or not await session.scalar(
+                    select(
+                        exists().where(
+                            PromotionCodeUser.promotion_id == promotion_id,
+                            PromotionCodeUser.user_id == user_id,
+                        )
+                    )
+                )
                 or not promotion.is_enabled
                 or promotion.deleted_at is not None
                 or (promotion.ends_at is not None and now >= promotion.ends_at)

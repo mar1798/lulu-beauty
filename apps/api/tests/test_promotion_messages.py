@@ -4,6 +4,8 @@ import re
 import uuid
 from datetime import UTC, datetime, timedelta
 
+import pytest
+
 from app.cycles.models import OrderCycle
 from app.orders.discounts import line_discount_cents, line_subtotal_cents, order_totals
 from app.orders.models import DiscountKind, Order, OrderItem, OrderStatus
@@ -490,3 +492,19 @@ def test_a_personal_code_that_starts_later_says_from_and_until_when() -> None:
     )
 
     assert "Действует с 21.11.2026" in text and "до 23.11.2026" in text
+
+
+@pytest.mark.parametrize(
+    ("uses", "said"),
+    [
+        (1, "сработает один раз"),
+        (3, "сработает 3 раза, не чаще раза за сбор"),
+        (5, "сработает 5 раз, не чаще раза за сбор"),
+        (None, "работает в каждом сборе, раз за сбор"),
+    ],
+)
+def test_a_personal_code_message_says_how_often_it_works(uses: int | None, said: str) -> None:
+    code = _personal()
+    code.uses_per_customer = uses
+
+    assert said in messages.personal_promo_code(code, now=NOW)

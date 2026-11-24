@@ -43,6 +43,14 @@ class PromoCodeAlreadyUsedError(PromoCodeError):
     status_code = status.HTTP_409_CONFLICT
 
 
+class PromoCodeUsedThisCycleError(PromoCodeError):
+    """An owner's code this customer may use again, but not twice in one cycle: an order of
+    theirs in this cycle already holds it."""
+
+    code = "promo_code_used_this_cycle"
+    status_code = status.HTTP_409_CONFLICT
+
+
 class PromoCodeConditionsNotMetError(PromoCodeError):
     code = "promo_code_conditions_not_met"
     status_code = status.HTTP_409_CONFLICT

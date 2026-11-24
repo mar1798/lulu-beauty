@@ -11,7 +11,7 @@ import type { IDeleteConfirmation } from '@/utils/promotions'
  * тексты подтверждений. Живёт в приложении, а не в виджетах: это знание страниц.
  */
 
-/** Значения формы → тело `POST`/`PUT`. Пустое описание - `null`; без покупателя код общий. */
+/** Значения формы → тело `POST`/`PUT`. Пустое описание - `null`; без покупателей код общий. */
 export const toPromoCodeInput = (values: IAdminPromoCodeValues): IPromoCodeInput => ({
   code: values.code,
   title: values.title,
@@ -19,7 +19,8 @@ export const toPromoCodeInput = (values: IAdminPromoCodeValues): IPromoCodeInput
   startsAt: values.startsAt,
   endsAt: values.endsAt,
   isEnabled: values.isEnabled,
-  assignedUserId: values.assignedUser?.id ?? null,
+  assignedUserIds: values.assignedUsers.map(user => user.id),
+  usesPerCustomer: values.usesPerCustomer,
   conditions: values.conditions,
   rewards: values.rewards,
 })
@@ -32,7 +33,8 @@ export const initialValuesOf = (promoCode: IAdminPromoCode): IAdminPromoCodeInit
   startsAt: promoCode.startsAt,
   endsAt: promoCode.endsAt,
   isEnabled: promoCode.isEnabled,
-  assignedUser: promoCode.assignedUser,
+  assignedUsers: promoCode.assignedUsers,
+  usesPerCustomer: promoCode.usesPerCustomer,
   conditions: promoCode.conditions,
   rewards: promoCode.rewards,
 })
@@ -44,8 +46,8 @@ export const initialValuesOf = (promoCode: IAdminPromoCode): IAdminPromoCodeInit
  *
  * Что намеренно не копируется: сам код (форма подставит копии новый - строка уникальна),
  * даты (их придётся выбрать заново; бессрочный остаётся бессрочным), включённость
- * (копия не должна сработать, пока её не проверили) и покупатель (персональный код
- * одноразовый, копия для того же человека была бы вторым).
+ * (копия не должна сработать, пока её не проверили) и покупатели (копия для тех же людей
+ * дала бы им второй такой же код).
  */
 export const duplicateOf = (promoCode: IAdminPromoCode): IAdminPromoCodeInitialValues => ({
   ...initialValuesOf(promoCode),
@@ -54,7 +56,7 @@ export const duplicateOf = (promoCode: IAdminPromoCode): IAdminPromoCodeInitialV
   startsAt: '',
   endsAt: promoCode.endsAt === null ? null : '',
   isEnabled: false,
-  assignedUser: null,
+  assignedUsers: [],
 })
 
 /**

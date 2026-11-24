@@ -1,3 +1,4 @@
+import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -19,8 +20,31 @@ def test_a_minimal_code_is_valid_and_open_ended() -> None:
 
     assert request.code is None
     assert request.ends_at is None
-    assert request.assigned_user_id is None
+    assert request.assigned_user_ids == []
+    assert request.uses_per_customer == 1
     assert request.is_enabled is True
+
+
+def test_customers_are_deduplicated_in_order() -> None:
+    a, b = uuid.uuid4(), uuid.uuid4()
+    request = PromoCodeWriteRequest.model_validate(
+        {**BODY, "assignedUserIds": [str(a), str(b), str(a)]}
+    )
+
+    assert request.assigned_user_ids == [a, b]
+
+
+def test_uses_are_a_number_or_unlimited() -> None:
+    assert (
+        PromoCodeWriteRequest.model_validate({**BODY, "usesPerCustomer": None}).uses_per_customer
+        is None
+    )
+    assert (
+        PromoCodeWriteRequest.model_validate({**BODY, "usesPerCustomer": 5}).uses_per_customer == 5
+    )
+    for bad in (0, -1, 101):
+        with pytest.raises(ValidationError):
+            PromoCodeWriteRequest.model_validate({**BODY, "usesPerCustomer": bad})
 
 
 def test_the_title_is_stripped() -> None:

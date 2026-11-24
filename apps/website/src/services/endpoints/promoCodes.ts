@@ -26,8 +26,10 @@ export interface IPromoCodeInput {
   startsAt: string
   endsAt: string | null
   isEnabled: boolean
-  /** Персональный код - id покупателя; `null` - общий. */
-  assignedUserId: string | null
+  /** Персональный код - id покупателей, которым он выдан; пустой список - общий. */
+  assignedUserIds: string[]
+  /** Сколько раз один покупатель может применить код, не чаще раза за сбор; `null` - без ограничений. */
+  usesPerCustomer: number | null
   conditions: IPromotionCondition[]
   rewards: IPromotionCodeReward[]
 }

@@ -97,14 +97,41 @@ class Promotion(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     # Set: an owner's promo code. It is never applied automatically, only when typed at
     # checkout. NULL: an automatic promotion.
     code: Mapped[str | None] = mapped_column(String(16))
-    # Personal code: only this account may use it. NULL: general.
+    # Legacy: the one account a personal code used to be limited to. Who may use a code is
+    # now `promotion_code_users`; this is still written (the first of them, or NULL) so the
+    # previous release, if rolled back to, keeps treating a personal code as personal.
+    # Nothing reads it. Drop it in a later, contracting release.
     assigned_user_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    # An owner's code: how many times one customer may use it, at most once per cycle.
+    # NULL: as many times as there are cycles, until it is switched off or ends. The server
+    # default is what the previous release's rows get: one use, its only rule. Meaningless on
+    # an automatic promotion (once per customer, by `uq_order_promotions_live_participant`).
+    # `evaluates_none`: an explicit None is written as NULL. Without it the ORM drops a
+    # None from the INSERT and the default turns «без ограничений» into one use.
+    uses_per_customer: Mapped[int | None] = mapped_column(
+        Integer().evaluates_none(), default=1, server_default=text("1")
     )
 
     @property
     def is_code(self) -> bool:
         return self.code is not None
+
+
+class PromotionCodeUser(Base):
+    """A customer a personal owner's code is given to. A code with none is general."""
+
+    __tablename__ = "promotion_code_users"
+
+    promotion_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("promotions.id", ondelete="CASCADE"), primary_key=True
+    )
+    # Looked up by customer: «my personal codes» on `/promocodes`.
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), primary_key=True, index=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class OrderPromotion(UUIDPrimaryKeyMixin, Base):
@@ -123,13 +150,26 @@ class OrderPromotion(UUIDPrimaryKeyMixin, Base):
             name="ck_order_promotions_one_source",
         ),
         # «Один раз на покупателя», held by the database: two tabs checking out at once
-        # cannot both join.
+        # cannot both join. An owner's code is the exception (`code_cycle_id` set): it may
+        # be used again, so its own rule is the next index.
         Index(
             "uq_order_promotions_live_participant",
             "promotion_id",
             "user_id",
             unique=True,
-            postgresql_where=text("released_at IS NULL AND promotion_id IS NOT NULL"),
+            postgresql_where=text(
+                "released_at IS NULL AND promotion_id IS NOT NULL AND code_cycle_id IS NULL"
+            ),
+        ),
+        # An owner's code: at most once per customer per cycle. How many cycles in all is
+        # `promotions.uses_per_customer`, counted under the customer's row lock.
+        Index(
+            "uq_order_promotions_live_code_cycle",
+            "promotion_id",
+            "user_id",
+            "code_cycle_id",
+            unique=True,
+            postgresql_where=text("released_at IS NULL AND code_cycle_id IS NOT NULL"),
         ),
         # A code is used by one live order at a time.
         Index(
@@ -149,6 +189,12 @@ class OrderPromotion(UUIDPrimaryKeyMixin, Base):
     # No ON DELETE: a promotion anybody took part in is archived, never deleted.
     promotion_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("promotions.id"), index=True)
     promo_code_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("promo_codes.id"))
+    # Set on a participation through an owner's code: the cycle of its order (an order never
+    # changes cycles), copied here so the once-per-cycle rule is an index. NULL on an
+    # automatic promotion's and an issued code's.
+    code_cycle_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("order_cycles.id", ondelete="CASCADE")
+    )
     title: Mapped[str] = mapped_column(String(255))
     rewards: Mapped[list[dict[str, Any]]] = mapped_column(JSONB)
     # The promotion's `sort_order` when the order joined — a snapshot like the rewards, so

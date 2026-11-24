@@ -3211,12 +3211,14 @@ export interface IAdminPromoCode {
   /** `null` - без даты окончания: действует, пока код не выключат или не уберут в архив. */
   endsAt: string | null
   isEnabled: boolean
-  /** Персональный код: пользоваться им может только этот покупатель. `null` - общий. */
-  assignedUser: IAssignedUser | null
+  /** Персональный код: пользоваться им могут только эти покупатели. Пустой список - общий. */
+  assignedUsers: IAssignedUser[]
+  /** Сколько раз один покупатель может применить код, не чаще раза за сбор. `null` - без ограничений. */
+  usesPerCustomer: number | null
   conditions: IPromotionCondition[]
   rewards: IPromotionCodeReward[]
   status: PromotionStatus
-  /** Живые использования; у персонального кода больше нуля значит «использован». */
+  /** Живые использования - все, всеми покупателями. */
   participantsCount: number
   deletedAt: string | null
   createdAt: string
@@ -3237,7 +3239,8 @@ export type IAdminPromoCodeInitialValues = Pick<
   | 'startsAt'
   | 'endsAt'
   | 'isEnabled'
-  | 'assignedUser'
+  | 'assignedUsers'
+  | 'usesPerCustomer'
   | 'conditions'
   | 'rewards'
 > & {
@@ -3258,7 +3261,10 @@ export interface IAdminPromoCodeValues {
   startsAt: string
   endsAt: string | null
   isEnabled: boolean
-  assignedUser: ICustomerOption | null
+  /** Пустой список - общий код. */
+  assignedUsers: ICustomerOption[]
+  /** `null` - без ограничений (не чаще раза за сбор). */
+  usesPerCustomer: number | null
   conditions: IPromotionCondition[]
   rewards: IPromotionCodeReward[]
 }

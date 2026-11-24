@@ -427,6 +427,8 @@ const SCOPED: Partial<Record<ErrorScope, Record<string, string>>> = {
     promo_code_not_yet_valid: 'Этот промокод ещё не начал действовать.',
     promo_code_already_used:
       'Вы уже использовали этот промокод, или он лежит в другой вашей заявке.',
+    promo_code_used_this_cycle:
+      'Этот промокод уже есть в вашей заявке в этом сборе - он срабатывает не чаще раза за сбор.',
     promo_code_conditions_not_met: 'Корзина не подходит под условия промокода.',
   },
   'promoCode.check': {
@@ -435,6 +437,8 @@ const SCOPED: Partial<Record<ErrorScope, Record<string, string>>> = {
     promo_code_not_yet_valid: 'Этот промокод ещё не начал действовать.',
     promo_code_already_used:
       'Вы уже использовали этот промокод, или он лежит в другой вашей заявке.',
+    promo_code_used_this_cycle:
+      'Этот промокод уже есть в вашей заявке в этом сборе - он срабатывает не чаще раза за сбор.',
     promo_code_conditions_not_met: 'Корзина не подходит под условия промокода.',
     not_authenticated: 'Промокоды привязаны к аккаунту - войдите, чтобы применить промокод',
     invalid_token: 'Сессия истекла. Войдите заново и введите промокод ещё раз.',

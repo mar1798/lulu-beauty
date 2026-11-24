@@ -1219,11 +1219,17 @@ and the participants list. The differences:
   automatic one. A code joins an order only when the customer types it at checkout.
 - **Rewards: `DISCOUNT` and `GIFT` only**, the same `CodeReward` an issued code gives. No
   `PROMO_CODE` reward: a code does not hand out codes.
-- **General or personal.** `assigned_user_id` NULL: any customer may use it, **each once**.
-  Set: only that account, once, which makes it single-use. Both come from one database
-  guarantee, `uq_order_promotions_live_participant`, because on use the code becomes an
-  ordinary `order_promotions` participation (`promotion_id` set, `promo_code_id` NULL).
-  Cancelling the order releases the participation, so the customer may use the code again.
+- **General or personal.** No rows in `promotion_code_users`: any customer may use it. Rows:
+  only those customers (one or many, up to `MAX_PROMO_CODE_ASSIGNEES`). Taking a customer off
+  the list closes the code to them but leaves an order that already holds it alone.
+- **How many times.** `uses_per_customer` is how many times **each** customer may use it (1 by
+  default, up to `MAX_PROMO_CODE_USES`), or NULL: no limit, until it is switched off or ends.
+  Either way **never twice in one cycle**. On use the code becomes an ordinary `order_promotions`
+  participation (`promotion_id` set, `promo_code_id` NULL) carrying its order's cycle
+  (`code_cycle_id`); the once-per-cycle rule is the database's
+  (`uq_order_promotions_live_code_cycle`), the count is `usable`'s, under the customer's row
+  lock. Every live participation counts as a use — in a `PENDING` order too. Cancelling the order
+  releases the participation, which gives the use (and the cycle) back.
 - **Format and uniqueness.** The string is normalised (upper case, whitespace removed — and
   nothing else: `LETO-2026` and `LETO2026` are two codes) and must be 4-16 characters of any
   kind, Cyrillic and punctuation included (`422 promo_code_invalid`). The owner may type `0/O/1/I`; only generated codes (the form's `SULU-` plus 5
@@ -1235,11 +1241,12 @@ and the participants list. The differences:
   orders keep the old one in their title snapshot.
 - **Refusals**, in the same order as issued codes: missing, archived, switched off or someone
   else's personal code → `404 promo_code_not_found` (a paused campaign is not revealed);
-  already used by this customer in a live participation → `409 promo_code_already_used`; past
+  every use spent by this customer → `409 promo_code_already_used`; one of their orders in the
+  cycle the order goes into already holds it → `409 promo_code_used_this_cycle`; past
   `ends_at` → `promo_code_expired`; before `starts_at` → `promo_code_not_yet_valid`; conditions
   not met → `promo_code_conditions_not_met`, with no order created. `OwnerCodesService.usable`
   locks the customer's row for update (the lock `refresh` takes), and a unique violation that
-  still gets through maps to `promo_code_already_used`, not a 500.
+  still gets through maps to `promo_code_used_this_cycle`, not a 500.
 - **Counted last.** A participation through an owner code carries `CODE_SORT_ORDER` and the
   title «Промокод XXXX», so its cart-wide discount is taken after every promotion's, like an
   issued code's. While `PENDING` a held owner code stays while its conditions hold, even after
@@ -1248,7 +1255,8 @@ and the participants list. The differences:
 - **Delete/archive.** Unused: the row is deleted. Ever used (a participation, released ones
   included): archived (`deleted_at`), still unusable, and its string stays taken.
 - **The customer sees** a personal code on `/promocodes` (and in the checkout quick-pick) as
-  `ACTIVE`, `RESERVED` (in an unpaid order), `USED` (in a paid one) or `EXPIRED`. The check
+  `ACTIVE` (uses left and none in this cycle), `RESERVED`/`USED` (an order in this cycle holds
+  it, or every use is spent — unpaid/paid) or `EXPIRED`. The check
   answer for an open-ended code has `expiresAt: null`, as does `IOrderPromoCode` on the site.
 
 ### Gifts
@@ -1283,15 +1291,18 @@ conditions stop holding.
 - The «code issued» Telegram message is **not retried**: the code row is the record, and
   `/promocodes` shows it whether or not the message arrived
   ([telegram.md](telegram.md#promotions-and-promo-codes)).
-- An owner code has **no total cap** ("the first 100"): it is once per customer, with no limit on
-  customers.
+- An owner code has **no total cap** ("the first 100"): the limit is per customer
+  (`uses_per_customer`), with no limit on customers. The admin's «Использован» mark on a personal
+  code is an estimate from the total (`participantsCount` ≥ customers × uses).
 - An issued code and an owner code live in different tables (`promo_codes`, `promotions`), so no
   unique index spans both. Creating or editing an owner code checks `promo_codes` too
   (`code_string_taken`) and issuing skips strings an owner code holds, so a duplicate needs two
   such inserts to race. If it ever happens, `resolve_code` gives the string to the customer the
   issued code belongs to and the owner code to everyone else.
 - A customer **is told** (Telegram, `personal_promo_code`) when a personal code becomes theirs:
-  created switched on for them, moved to them, or switched on while assigned to them. An edit
+  created switched on for them, added to its customers, or switched on while theirs — each
+  customer separately. The message says how often it works (once, N times or every cycle, never
+  twice in one). An edit
   that changes neither (title, dates, rules) is silent, and so is a code they have already
   used. Nothing is stamped: a code switched off and on again is announced again. General codes
   are never sent to anyone.

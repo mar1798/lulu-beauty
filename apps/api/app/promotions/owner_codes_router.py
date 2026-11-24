@@ -39,11 +39,11 @@ router = APIRouter(prefix="/admin/promo-codes", tags=["admin-promo-codes"])
 
 
 def _tell(
-    background_tasks: BackgroundTasks, promotion: Promotion, user_id: uuid.UUID | None
+    background_tasks: BackgroundTasks, promotion: Promotion, user_ids: list[uuid.UUID]
 ) -> None:
-    """Queues the bot's message to the customer a write gave a personal code to. Call it
-    after the commit: the task runs once the response is out."""
-    if user_id is not None:
+    """Queues the bot's message to each customer a write gave a personal code to. Call it
+    after the commit: the tasks run once the response is out."""
+    for user_id in user_ids:
         background_tasks.add_task(notify_personal_promo_code, promotion.id, user_id)
 
 
@@ -55,7 +55,8 @@ def _draft(body: PromoCodeWriteRequest) -> OwnerCodeDraft:
         starts_at=body.starts_at,
         ends_at=body.ends_at,
         is_enabled=body.is_enabled,
-        assigned_user_id=body.assigned_user_id,
+        assigned_user_ids=body.assigned_user_ids,
+        uses_per_customer=body.uses_per_customer,
         conditions=body.conditions,
         rewards=body.rewards,
     )
@@ -82,10 +83,9 @@ _ERRORS = (
 
 
 def _response(
-    promotion: Promotion, users: dict[uuid.UUID, User], participants_count: int, now: datetime
+    promotion: Promotion, users: dict[uuid.UUID, list[User]], participants_count: int, now: datetime
 ) -> AdminPromoCodeResponse:
     assert promotion.code is not None
-    user = users.get(promotion.assigned_user_id) if promotion.assigned_user_id else None
     return AdminPromoCodeResponse(
         id=promotion.id,
         code=promotion.code,
@@ -94,7 +94,7 @@ def _response(
         starts_at=promotion.starts_at,
         ends_at=promotion.ends_at,
         is_enabled=promotion.is_enabled,
-        assigned_user=(
+        assigned_users=[
             AssignedUserResponse(
                 id=user.id,
                 name=user.name,
@@ -102,9 +102,9 @@ def _response(
                 telegram_linked=user.telegram_chat_id is not None,
                 is_deleted=user.deleted_at is not None,
             )
-            if user is not None
-            else None
-        ),
+            for user in users.get(promotion.id, [])
+        ],
+        uses_per_customer=promotion.uses_per_customer,
         conditions=load_conditions(promotion.conditions),
         rewards=load_code_rewards(promotion.rewards),
         status=promotion_status(promotion, now),
@@ -149,7 +149,7 @@ async def create_promo_code(
         raise _error(error) from error
     response = await _respond(service, promotion)
     await session.commit()
-    _tell(background_tasks, promotion, handed_to(promotion))
+    _tell(background_tasks, promotion, handed_to(promotion, body.assigned_user_ids))
     return response
 
 
@@ -178,7 +178,7 @@ async def update_promo_code(
     service = OwnerCodesService(session)
     try:
         before = await service.get(promo_code_id)
-        was_user_id, was_enabled = before.assigned_user_id, before.is_enabled
+        was_user_ids, was_enabled = await service.assignees(promo_code_id), before.is_enabled
         promotion = await service.update(promo_code_id, _draft(body))
     except _ERRORS as error:
         raise _error(error) from error
@@ -187,7 +187,9 @@ async def update_promo_code(
     _tell(
         background_tasks,
         promotion,
-        handed_to(promotion, was_user_id=was_user_id, was_enabled=was_enabled),
+        handed_to(
+            promotion, body.assigned_user_ids, was_user_ids=was_user_ids, was_enabled=was_enabled
+        ),
     )
     return response
 
@@ -203,7 +205,8 @@ async def set_promo_code_enabled(
     service = OwnerCodesService(session)
     try:
         before = await service.get(promo_code_id)
-        was_user_id, was_enabled = before.assigned_user_id, before.is_enabled
+        was_enabled = before.is_enabled
+        user_ids = await service.assignees(promo_code_id)
         promotion = await service.set_enabled(promo_code_id, body.is_enabled)
     except PromotionNotFoundError as error:
         raise _error(error) from error
@@ -212,7 +215,7 @@ async def set_promo_code_enabled(
     _tell(
         background_tasks,
         promotion,
-        handed_to(promotion, was_user_id=was_user_id, was_enabled=was_enabled),
+        handed_to(promotion, user_ids, was_user_ids=user_ids, was_enabled=was_enabled),
     )
     return response
 

@@ -31,20 +31,48 @@ describe('AdminPromoCodesTable', () => {
 
   it('у стёртого аккаунта вместо телефона - «Аккаунт удалён»', () => {
     const props = feedAdminPromoCodesTable()
-    const assignedUser = {
-      id: 'u-1',
-      name: 'Айгуль',
-      phone: '+996000000000',
-      telegramLinked: false,
-      isDeleted: true,
-    }
+    const assignedUsers = [
+      { id: 'u-1', name: 'Айгуль', phone: '+996000000000', telegramLinked: false, isDeleted: true },
+    ]
 
     renderWidget(
-      <AdminPromoCodesTable {...props} promoCodes={[feedAdminPromoCode({ assignedUser })]} />
+      <AdminPromoCodesTable {...props} promoCodes={[feedAdminPromoCode({ assignedUsers })]} />
     )
 
     expect(screen.getByText('Аккаунт удалён')).toBeInTheDocument()
     expect(screen.queryByText('+996000000000')).toBeNull()
+  })
+
+  it('у кода на нескольких покупателей - первый и «ещё N», и сколько раз', () => {
+    const props = feedAdminPromoCodesTable()
+    const person = (
+      id: string,
+      name: string
+    ): (typeof props.promoCodes)[0]['assignedUsers'][0] => ({
+      id,
+      name,
+      phone: '+996',
+      telegramLinked: true,
+      isDeleted: false,
+    })
+
+    renderWidget(
+      <AdminPromoCodesTable
+        {...props}
+        promoCodes={[
+          feedAdminPromoCode({
+            assignedUsers: [person('1', 'Айгуль'), person('2', 'Бермет'), person('3', 'Чолпон')],
+            usesPerCustomer: null,
+            participantsCount: 9,
+          }),
+        ]}
+      />
+    )
+
+    expect(screen.getByText('Айгуль и ещё 2 покупателя')).toBeInTheDocument()
+    expect(screen.getByText('без ограничений, раз за сбор')).toBeInTheDocument()
+    // Без ограничений код не «использован», сколько бы его ни применяли.
+    expect(screen.queryByText('Использован')).toBeNull()
   })
 
   it('бессрочный код - «бессрочно», с датой окончания - диапазон', () => {

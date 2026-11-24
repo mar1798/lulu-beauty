@@ -22,6 +22,7 @@ import {
   PROMOTION_STATUS_TONES,
   describeRewards,
 } from '../../utils/promotion'
+import { pluralize } from '../../utils/plural'
 import * as styles from './AdminPromoCodesTable.css'
 
 /**
@@ -122,8 +123,20 @@ export const AdminPromoCodesTable: FC<IAdminPromoCodesTableProps & IBasicStyling
                 const name = `«${promoCode.code}»`
                 const toggleAction = promoCode.isEnabled ? 'Выключить' : 'Включить'
                 const deleteAction = promoCode.participantsCount > 0 ? 'В архив' : 'Удалить'
-                const isPersonal = promoCode.assignedUser !== null
-                const isSpent = isPersonal && promoCode.participantsCount > 0
+                const users = promoCode.assignedUsers
+                const isPersonal = users.length > 0
+                // Все выданные применения исчерпаны: каждый выбранный покупатель использовал код
+                // столько раз, сколько можно. Счёт общий, поэтому это оценка «по сумме».
+                const isSpent =
+                  isPersonal &&
+                  promoCode.usesPerCustomer !== null &&
+                  promoCode.participantsCount >= users.length * promoCode.usesPerCustomer
+                const usesLabel =
+                  promoCode.usesPerCustomer === null
+                    ? 'без ограничений, раз за сбор'
+                    : promoCode.usesPerCustomer === 1
+                      ? 'один раз'
+                      : `${pluralize(promoCode.usesPerCustomer, ['раз', 'раза', 'раз'])}, раз за сбор`
 
                 return (
                   <tr
@@ -164,16 +177,33 @@ export const AdminPromoCodesTable: FC<IAdminPromoCodesTableProps & IBasicStyling
                     </td>
 
                     <td className={styles.cell} role="cell" data-label="Кому">
-                      {promoCode.assignedUser === null ? (
-                        <span className={styles.period}>Все</span>
-                      ) : (
+                      {!isPersonal ? (
                         <div className={styles.person}>
-                          <span>{promoCode.assignedUser.name}</span>
+                          <span className={styles.period}>Все</span>
+                          <span className={styles.personPhone}>{usesLabel}</span>
+                        </div>
+                      ) : users.length === 1 ? (
+                        <div className={styles.person}>
+                          <span>{users[0].name}</span>
                           <span className={styles.personPhone}>
-                            {promoCode.assignedUser.isDeleted
-                              ? 'Аккаунт удалён'
-                              : promoCode.assignedUser.phone}
+                            {users[0].isDeleted ? 'Аккаунт удалён' : users[0].phone}
                           </span>
+                          <span className={styles.personPhone}>{usesLabel}</span>
+                        </div>
+                      ) : (
+                        <div
+                          className={styles.person}
+                          title={users.map(user => user.name).join(', ')}
+                        >
+                          <span>
+                            {users[0].name} и ещё{' '}
+                            {pluralize(users.length - 1, [
+                              'покупатель',
+                              'покупателя',
+                              'покупателей',
+                            ])}
+                          </span>
+                          <span className={styles.personPhone}>{usesLabel}</span>
                         </div>
                       )}
                     </td>

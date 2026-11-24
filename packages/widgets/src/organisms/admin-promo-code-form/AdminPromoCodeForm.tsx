@@ -10,6 +10,7 @@ import type {
   IPromotionRewardDraft,
 } from '../../types'
 import { Alert } from '../../atoms/alert'
+import { Badge } from '../../atoms/badge'
 import { Button } from '../../atoms/button'
 import { IconButton } from '../../atoms/icon-button'
 import { Input } from '../../atoms/input'
@@ -19,7 +20,7 @@ import { CustomerSelect } from '../../molecules/customer-select'
 import { FormSection } from '../../molecules/form-section'
 import { PromotionPeriodFields } from '../../molecules/promotion-period-fields'
 import { RichTextEditor } from '../../molecules/rich-text-editor'
-import { IconRefresh } from '../../svg/icons'
+import { IconClose, IconRefresh } from '../../svg/icons'
 import { storeIso, storeToday, toStoreParts } from '../../utils/datetime'
 import {
   MAX_PROMOTION_CONDITIONS,
@@ -52,10 +53,14 @@ import * as styles from './AdminPromoCodeForm.css'
  * дефисом, и покупатель набирает его тоже с дефисом. Если сгенерированный код вдруг занят, сервер ответит `promo_code_taken` -
  * хватит перегенерировать.
  *
- * «Кому». Общий код может применить любой покупатель, каждый раз по разу.
- * Персональный привязан к одному аккаунту, которого владелец находит поиском:
- * сам поиск ведёт страница (`customerSelect`), а выбранный покупатель - состояние
- * формы. Выбор покупателя без включённого «Персональный» не уходит.
+ * «Кому». Общий код может применить любой покупатель. Персональный - только
+ * выбранные: владелец добавляет их по одному поиском (сам поиск ведёт страница,
+ * `customerSelect`), список выбранных - состояние формы. Выбор без включённого
+ * «Персональный» не уходит.
+ *
+ * «Сколько раз». Число применений на одного покупателя (1-100) или «Без ограничений» -
+ * пока код не выключат или не кончится срок. Чаще раза за сбор код не срабатывает
+ * в любом случае: это правило сервера, форма о нём только говорит.
  *
  * Четыре секции сворачиваются так же, как у формы акции (`FormSection`): открыта
  * только «Основное», у остальных в заголовке сводка. При ошибке форма раскрывает
@@ -72,6 +77,10 @@ const isValidCode = (code: string): boolean => {
 }
 /** `MAX_DESCRIPTION_HTML_LENGTH` отсекает сервер; видимый предел - как у акции. */
 const DESCRIPTION_MAX_LENGTH = 2000
+/** `MAX_PROMO_CODE_USES` сервера. */
+const MAX_USES = 100
+/** `MAX_PROMO_CODE_ASSIGNEES` сервера. */
+const MAX_ASSIGNEES = 200
 const START_TIME = '00:00'
 const END_TIME = '23:59'
 
@@ -106,6 +115,18 @@ interface IFields {
   startTime: string
   endDate: string
   endTime: string
+  /** Число применений как набрано; при «Без ограничений» не читается. */
+  uses: string
+}
+
+/** Целое 1-`MAX_USES` из набранного, иначе `null`. */
+const parseUses = (raw: string): number | null => {
+  if (!/^\d+$/.test(raw.trim())) {
+    return null
+  }
+  const value = Number(raw.trim())
+
+  return value >= 1 && value <= MAX_USES ? value : null
 }
 
 type SectionKey = 'main' | 'whom' | 'conditions' | 'rewards'
@@ -139,7 +160,11 @@ export const AdminPromoCodeForm: FC<IAdminPromoCodeFormProps & IBasicStyling> = 
     startTime: start.date === '' ? START_TIME : start.time,
     endDate: end.date,
     endTime: end.date === '' ? END_TIME : end.time,
+    uses: String(initialValues?.usesPerCustomer ?? 1),
   }))
+  const [isUnlimited, setIsUnlimited] = useState(
+    initialValues !== undefined && initialValues.usesPerCustomer === null
+  )
   const [descriptionHtml, setDescriptionHtml] = useState(
     () => initialValues?.descriptionHtml ?? plainTextToHtml('')
   )
@@ -147,9 +172,9 @@ export const AdminPromoCodeForm: FC<IAdminPromoCodeFormProps & IBasicStyling> = 
   const [isOpenEnded, setIsOpenEnded] = useState(
     initialValues === undefined || initialValues.endsAt === null
   )
-  const [isPersonal, setIsPersonal] = useState((initialValues?.assignedUser ?? null) !== null)
-  const [assignedUser, setAssignedUser] = useState<ICustomerOption | null>(
-    initialValues?.assignedUser ?? null
+  const [isPersonal, setIsPersonal] = useState((initialValues?.assignedUsers.length ?? 0) > 0)
+  const [assignedUsers, setAssignedUsers] = useState<ICustomerOption[]>(
+    initialValues?.assignedUsers ?? []
   )
   const [conditions, setConditions] = useState<IPromotionConditionDraft[]>(
     () => initialValues?.conditions.map(conditionToDraft) ?? []
@@ -207,13 +232,16 @@ export const AdminPromoCodeForm: FC<IAdminPromoCodeFormProps & IBasicStyling> = 
         : startIso !== '' && endIso <= startIso
           ? 'Промокод должен заканчиваться позже, чем начинается'
           : null,
-    customer: isPersonal && assignedUser === null ? 'Выберите покупателя' : null,
+    customer:
+      isPersonal && assignedUsers.length === 0 ? 'Выберите хотя бы одного покупателя' : null,
+    uses:
+      isUnlimited || parseUses(fields.uses) !== null ? null : `Введите число от 1 до ${MAX_USES}`,
     rewards: rewards.length === 0 ? 'Добавьте хотя бы одну награду' : null,
   }
 
   const sectionErrors: Record<SectionKey, boolean> = {
     main: [errors.code, errors.title, errors.start, errors.end].some(message => message !== null),
-    whom: errors.customer !== null,
+    whom: errors.customer !== null || errors.uses !== null,
     conditions: Object.keys(builtConditions.errors).length > 0,
     rewards: errors.rewards !== null || Object.keys(builtRewards.errors).length > 0,
   }
@@ -249,7 +277,8 @@ export const AdminPromoCodeForm: FC<IAdminPromoCodeFormProps & IBasicStyling> = 
       startsAt: startIso,
       endsAt: isOpenEnded ? null : endIso,
       isEnabled,
-      assignedUser: isPersonal ? assignedUser : null,
+      assignedUsers: isPersonal ? assignedUsers : [],
+      usesPerCustomer: isUnlimited ? null : parseUses(fields.uses),
       conditions: builtConditions.value,
       rewards: builtRewards.value.filter(isCodeReward),
     })
@@ -266,6 +295,31 @@ export const AdminPromoCodeForm: FC<IAdminPromoCodeFormProps & IBasicStyling> = 
   const mainSummary = [fields.code.trim(), fields.title.trim()]
     .filter(part => part !== '')
     .join(' - ')
+  const usesSummary = isUnlimited
+    ? 'без ограничений'
+    : pluralize(parseUses(fields.uses) ?? 0, ['раз', 'раза', 'раз'])
+  const whomSummary = isPersonal
+    ? assignedUsers.length === 0
+      ? 'Покупатели не выбраны'
+      : assignedUsers.length === 1
+        ? assignedUsers[0].name
+        : pluralize(assignedUsers.length, ['покупатель', 'покупателя', 'покупателей'])
+    : 'Всем'
+  const chosenIds = new Set(assignedUsers.map(user => user.id))
+
+  const addCustomer = (customer: ICustomerOption | null): void => {
+    if (customer === null || chosenIds.has(customer.id)) {
+      return
+    }
+    setAssignedUsers(current => [...current, customer])
+    // Поиск очищается: следующего покупателя ищут с чистого поля.
+    customerSelect.onQueryChange('')
+  }
+
+  const removeCustomer = (id: string): void => {
+    setAssignedUsers(current => current.filter(user => user.id !== id))
+  }
+
   const isCodeReplaced = savedCode !== null && normalizedCode !== normalizeCode(savedCode)
 
   return (
@@ -354,25 +408,62 @@ export const AdminPromoCodeForm: FC<IAdminPromoCodeFormProps & IBasicStyling> = 
 
       <FormSection
         title="Кому"
-        summary={isPersonal ? (assignedUser?.name ?? 'Покупатель не выбран') : 'Всем'}
+        summary={`${whomSummary}, ${usesSummary}`}
         isOpen={openSections.whom}
         onToggle={() => {
           toggleSection('whom')
         }}
       >
         <Text tone="secondary" size="sm">
-          Общий код может применить любой покупатель, каждый - один раз. Персональный - только
-          выбранный, один раз.
+          Общий код может применить любой покупатель. Персональный - только выбранные. Каждый
+          применяет его столько раз, сколько указано ниже, и не чаще раза за сбор.
         </Text>
 
         <Switch
-          label="Персональный - только для одного покупателя"
+          label="Персональный - только для выбранных покупателей"
           checked={isPersonal}
           onChange={setIsPersonal}
         />
 
-        {isPersonal && (
-          <CustomerSelect {...customerSelect} value={assignedUser} onChange={setAssignedUser} />
+        {isPersonal && assignedUsers.length > 0 && (
+          <ul className={styles.customers} aria-label="Выбранные покупатели">
+            {assignedUsers.map(user => (
+              <li key={user.id} className={styles.customer}>
+                <span className={styles.person}>
+                  <Text as="span" size="sm" weight="medium" clamp={1}>
+                    {user.name}
+                  </Text>
+                  <Text as="span" size="sm" tone="muted">
+                    {user.phone}
+                  </Text>
+                </span>
+                {!user.telegramLinked && <Badge tone="warning">Не в боте</Badge>}
+                <IconButton
+                  size="sm"
+                  variant="ghost"
+                  icon={<IconClose />}
+                  label={`Убрать ${user.name}`}
+                  onClick={() => {
+                    removeCustomer(user.id)
+                  }}
+                />
+              </li>
+            ))}
+          </ul>
+        )}
+
+        {isPersonal && assignedUsers.length < MAX_ASSIGNEES && (
+          <CustomerSelect
+            {...customerSelect}
+            label={assignedUsers.length === 0 ? 'Покупатель' : 'Добавить покупателя'}
+            results={
+              customerSelect.results === null
+                ? null
+                : customerSelect.results.filter(customer => !chosenIds.has(customer.id))
+            }
+            value={null}
+            onChange={addCustomer}
+          />
         )}
 
         {/* Ошибка проверки - у поля, а не вместо выдачи: поиск покупателя должен работать. */}
@@ -380,6 +471,26 @@ export const AdminPromoCodeForm: FC<IAdminPromoCodeFormProps & IBasicStyling> = 
           <Text size="sm" tone="danger">
             {errors.customer}
           </Text>
+        )}
+
+        <Switch
+          label="Без ограничений - в каждом сборе, пока код включён"
+          checked={isUnlimited}
+          onChange={setIsUnlimited}
+        />
+
+        {!isUnlimited && (
+          <Input
+            label="Сколько раз один покупатель может применить код"
+            value={fields.uses}
+            inputMode="numeric"
+            maxLength={String(MAX_USES).length}
+            hint="Не чаще раза за сбор."
+            error={isSubmitted ? errors.uses : null}
+            onChange={next => {
+              patch({ uses: next.replace(/\D/g, '') })
+            }}
+          />
         )}
       </FormSection>
 

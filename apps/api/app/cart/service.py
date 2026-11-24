@@ -295,8 +295,10 @@ class CartService:
         expired, not valid yet, or a cart that does not meet its conditions. Writes nothing —
         reserving is checkout's.
         """
-        code = await resolve_code(self._session, user_id, raw_code)
         cycle = await CyclesService(self._session).get_active_cycle()
+        code = await resolve_code(
+            self._session, user_id, raw_code, cycle_id=cycle.id if cycle is not None else None
+        )
         lines: list[CartLine] = []
         if cycle is not None:
             cart = await self._find_cart(user_id, cycle.id)

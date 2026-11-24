@@ -82,6 +82,14 @@ MAX_GIFT_QUANTITY = 10
 # How long a promo code may be valid for when given as a number of days from issue.
 MAX_PROMO_CODE_VALID_DAYS = 365
 
+# How many times one customer may use one owner's code (once per cycle at most). Unlimited
+# is its own setting (no number), so the ceiling only stops a typo like 1000.
+MAX_PROMO_CODE_USES = 100
+
+# Customers one personal owner's code is given to. The form picks them one by one; a code
+# for a crowd is a general one.
+MAX_PROMO_CODE_ASSIGNEES = 200
+
 # Own news in the catalogue carousel, switched-off ones included. The carousel is read whole
 # on every page build and a slide is a thing the owner looks after by hand, so the ceiling is
 # a handful of screens, not a feed.

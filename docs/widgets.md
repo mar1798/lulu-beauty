@@ -160,12 +160,18 @@ Admin:
 - `AdminPromoCodesTable` — modelled on `AdminPromotionsTable` (same `ActionMenu`, cards below
   `xl`). Columns: the code (monospace, with a copy `IconButton` whose click
   goes to the page's `onCopy`: the widget knows nothing about the clipboard), name, «Кому» («Все»,
-  or name and phone, «Аккаунт удалён» for an erased account), period («бессрочно» for an open
-  end), rewards, the derived status (labels in the masculine, `ADMIN_PROMO_CODE_STATUS_LABELS`; plus «Использован» for a personal code with a use). No uses-count column — «Использования»
+  or name and phone, «Аккаунт удалён» for an erased account; with several customers the first name
+  and «и ещё N», all names in the cell's `title`; below, how often: «один раз», «N раз, раз за
+  сбор» or «без ограничений, раз за сбор»), period («бессрочно» for an open
+  end), rewards, the derived status (labels in the masculine, `ADMIN_PROMO_CODE_STATUS_LABELS`; plus «Использован» for a personal code whose uses all look spent: `participantsCount` ≥
+  customers × `usesPerCustomer`, never for an unlimited one). No uses-count column — «Использования»
   in the menu shows them. Delete reads «В архив» once a code was applied.
 - `AdminPromoCodeForm` — an owner's promo code in one PUT/POST. Four `FormSection`s: «Основное»
-  (code, name, description, `PromotionPeriodFields`, enabled), «Кому» (a personal switch and
-  `CustomerSelect`, whose search the page drives through `customerSelect`), «Условия» and «Награды»
+  (code, name, description, `PromotionPeriodFields`, enabled), «Кому» (a personal switch, the chosen
+  customers as a list with a remove button each, and a `CustomerSelect` that adds one more — its
+  search the page drives through `customerSelect`; the form filters the chosen ones out of the
+  results and clears the query after each pick; then «Без ограничений» or the number of uses per
+  customer, 1-100), «Условия» and «Награды»
   (the same builders as the promotion, with `allowPromoCode={false}`). A new code (and a
   duplicate) opens with a `SULU-XXXXX` already in the field, generated client-side from the
   server's unambiguous alphabet; the «Перегенерировать» icon inside the field draws another, for a
@@ -173,7 +179,8 @@ Admin:
   upper-cased, stripped of whitespace (only that: dashes, Cyrillic and punctuation are part of the
   code), checked for 4-16 characters and sent in that form — `SULU-AB3CD` is stored with its
   dash; a taken one comes back as
-  `promo_code_taken`. A personal code without a customer does not submit and opens «Кому».
+  `promo_code_taken`. A personal code without a customer, or a uses number outside 1-100, does not submit and opens
+  «Кому».
 - `AdminPromotionForm` — the whole promotion in one PUT/POST: fields, two `PromotionBannerField`s,
   `PromotionConditionBuilder`, `PromotionRewardBuilder` and `AdminPromoCodeDialog` (a
   `PROMO_CODE` reward: validity, conditions, what it gives — a code cannot hold another code).

@@ -1341,8 +1341,18 @@ def personal_promo_code(
         )
     else:
         lines.append(f"Действует до {format_deadline(promotion.ends_at)}")
-    lines.append("Введите его при оформлении заявки - он сработает один раз")
+    lines.append(_personal_code_uses(promotion.uses_per_customer))
     return "\n".join(lines)
+
+
+def _personal_code_uses(uses: int | None) -> str:
+    """How often a personal code works: once, a number of times, or in every cycle."""
+    if uses == 1:
+        return "Введите его при оформлении заявки - он сработает один раз"
+    if uses is None:
+        return "Введите его при оформлении заявки - он работает в каждом сборе, раз за сбор"
+    times = plural(uses, "раз", "раза", "раз")
+    return f"Введите его при оформлении заявки - он сработает {uses} {times}, не чаще раза за сбор"
 
 
 def promo_code_expiring(

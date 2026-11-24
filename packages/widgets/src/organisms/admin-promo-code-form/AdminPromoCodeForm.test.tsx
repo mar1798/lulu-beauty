@@ -73,7 +73,7 @@ describe('AdminPromoCodeForm', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Создать промокод' }))
 
     expect(onSubmit).not.toHaveBeenCalled()
-    expect(screen.getByText('Выберите покупателя')).toBeInTheDocument()
+    expect(screen.getByText('Выберите хотя бы одного покупателя')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Кому/ })).toHaveAttribute('aria-expanded', 'true')
   })
 
@@ -87,12 +87,12 @@ describe('AdminPromoCodeForm', () => {
     await userEvent.click(screen.getByRole('switch', { name: /Персональный/ }))
     await userEvent.click(screen.getByRole('button', { name: 'Создать промокод' }))
 
-    expect(screen.getByText('Выберите покупателя')).toBeInTheDocument()
+    expect(screen.getByText('Выберите хотя бы одного покупателя')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Айгуль/ })).toBeInTheDocument()
 
     await userEvent.click(screen.getByRole('button', { name: /Айгуль/ }))
 
-    expect(screen.queryByText('Выберите покупателя')).toBeNull()
+    expect(screen.queryByText('Выберите хотя бы одного покупателя')).toBeNull()
   })
 
   it('ошибка прошлого сохранения не стоит рядом с баннером «Проверьте форму»', async () => {
@@ -141,7 +141,8 @@ describe('AdminPromoCodeForm', () => {
           startsAt: new Date(Date.now() - 86_400_000).toISOString(),
           endsAt: null,
           isEnabled: true,
-          assignedUser: { ...aygul, isDeleted: false },
+          assignedUsers: [{ ...aygul, isDeleted: false }],
+          usesPerCustomer: null,
           conditions: [],
           rewards: [{ type: 'DISCOUNT', kind: 'PERCENT', value: 10, target: null }],
         }}
@@ -156,7 +157,8 @@ describe('AdminPromoCodeForm', () => {
       expect.objectContaining({
         code: 'LETO2026',
         endsAt: null,
-        assignedUser: expect.objectContaining({ id: 'u-1' }),
+        assignedUsers: [expect.objectContaining({ id: 'u-1' })],
+        usesPerCustomer: null,
       })
     )
 
@@ -185,9 +187,61 @@ describe('AdminPromoCodeForm', () => {
       expect.objectContaining({
         code: expect.stringMatching(SENT),
         title: 'Скидка',
-        assignedUser: null,
+        assignedUsers: [],
+        usesPerCustomer: 1,
         endsAt: null,
       })
     )
+  })
+
+  it('персональный код можно выдать нескольким покупателям и убрать лишнего', async () => {
+    const onSubmit = vi.fn()
+    const props = feedAdminPromoCodeForm()
+    const bermet = { id: 'u-2', name: 'Бермет', phone: '+996555987654', telegramLinked: true }
+
+    renderWidget(
+      <AdminPromoCodeForm
+        {...props}
+        onSubmit={onSubmit}
+        customerSelect={{ ...props.customerSelect, query: 'а', results: [aygul, bermet] }}
+      />
+    )
+    await fillMinimum()
+    await userEvent.click(screen.getByRole('button', { name: /Кому/ }))
+    await userEvent.click(screen.getByRole('switch', { name: /Персональный/ }))
+    await userEvent.click(screen.getByRole('button', { name: /Айгуль/ }))
+    // Выбранный уходит из выдачи - второй раз его не добавить.
+    expect(screen.queryByRole('button', { name: /^Айгуль/ })).toBeNull()
+    await userEvent.click(screen.getByRole('button', { name: /Бермет/ }))
+    await userEvent.click(screen.getByRole('button', { name: 'Убрать Айгуль' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Создать промокод' }))
+
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({ assignedUsers: [expect.objectContaining({ id: 'u-2' })] })
+    )
+  })
+
+  it('число применений: число от 1 до 100 или «Без ограничений»', async () => {
+    const onSubmit = vi.fn()
+
+    renderWidget(<AdminPromoCodeForm {...feedAdminPromoCodeForm()} onSubmit={onSubmit} />)
+    await fillMinimum()
+    await userEvent.click(screen.getByRole('button', { name: /Кому/ }))
+    const uses = screen.getByLabelText(/Сколько раз/)
+    await userEvent.clear(uses)
+    await userEvent.type(uses, '0')
+    await userEvent.click(screen.getByRole('button', { name: 'Создать промокод' }))
+
+    expect(onSubmit).not.toHaveBeenCalled()
+    expect(screen.getByText('Введите число от 1 до 100')).toBeInTheDocument()
+
+    await userEvent.clear(uses)
+    await userEvent.type(uses, '3')
+    await userEvent.click(screen.getByRole('button', { name: 'Создать промокод' }))
+    expect(onSubmit).toHaveBeenLastCalledWith(expect.objectContaining({ usesPerCustomer: 3 }))
+
+    await userEvent.click(screen.getByRole('switch', { name: /Без ограничений/ }))
+    await userEvent.click(screen.getByRole('button', { name: 'Создать промокод' }))
+    expect(onSubmit).toHaveBeenLastCalledWith(expect.objectContaining({ usesPerCustomer: null }))
   })
 })

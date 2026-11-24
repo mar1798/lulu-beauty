@@ -289,6 +289,7 @@ promotion_code_window_past
 promotion_invalid_rules   promo_code_not_found      promo_code_expired
 promo_code_not_yet_valid  promo_code_already_used   promo_code_conditions_not_met
 promo_code_taken          promo_code_invalid        promo_code_user_not_found
+promo_code_used_this_cycle
 ```
 
 (plus `image_unreadable`, `image_too_large`, `image_too_many_pixels`, `import_file_too_large`,
@@ -347,19 +348,33 @@ nullable or have a default):
   `code` (NULL: an automatic promotion; set: an owner's promo code, unique through
   `uq_promotions_code`, archived rows included) and `assigned_user_id` (a personal code's
   customer; FK `ON DELETE CASCADE`, indexed). Both nullable with no default, so the migration
-  passes the release guard. **Every query that picks automatic promotions filters
+  passes the release guard. `c5e81f3a9d42` added `uses_per_customer` (an owner code's uses per
+  customer, `server_default 1`, NULL for no limit; the column type is
+  `Integer().evaluates_none()`, because the ORM would otherwise drop an explicit `None` from the
+  INSERT and the default would make an unlimited code single-use) and the table
+  `promotion_code_users (promotion_id, user_id)` — the customers a personal code is given to,
+  filled from `assigned_user_id`. That column is **legacy**: nothing reads it, and it is still
+  written (the first customer) only so a rolled-back release keeps personal codes personal.
+  Drop it in a later, contracting release. **Every query that picks automatic promotions filters
   `Promotion.code IS NULL`** (`automatic()`): `active_promotions`, `PromotionsService._running`
   and `list_all`, `unannounced_promotions`. `PromotionsService.get`/`set_enabled`/`delete`/
   `participants` take `owner_code=` and answer `PromotionNotFoundError` for the other kind, so
   `/admin/promotions/{id}` is 404 for a code row and `/admin/promo-codes/{id}` for a plain
-  promotion. No new model: `Promotion` is already in `app/models.py`.
+  promotion. `PromotionCodeUser` is imported in `app/models.py`.
 - `order_promotions` — CHECK that exactly one of `promotion_id`/`promo_code_id` is set;
   **partial unique** `uq_order_promotions_live_participant (promotion_id, user_id) WHERE
-released_at IS NULL AND promotion_id IS NOT NULL` (once per customer) and
+released_at IS NULL AND promotion_id IS NOT NULL AND code_cycle_id IS NULL` (once per customer),
+  `uq_order_promotions_live_code_cycle (promotion_id, user_id, code_cycle_id) WHERE released_at IS
+NULL AND code_cycle_id IS NOT NULL` (an owner code: once per customer per cycle — `code_cycle_id`
+  is set only on an owner code's participation, to its order's cycle) and
   `uq_order_promotions_live_code (promo_code_id) WHERE released_at IS NULL AND promo_code_id IS
 NOT NULL` (one live order per code). The promotion FK has **no `ON DELETE`** — that is why a
   promotion with history is archived. `sort_order` and `item_scopes` came with the second
-  migration.
+  migration, `code_cycle_id` with `c5e81f3a9d42`. That migration recreates the first index
+  with the extra `code_cycle_id IS NULL` and adds the second; neither refuses a row the previous
+  release writes (it never sets `code_cycle_id`), but the `Migration guard` reports both unique
+  indexes, so **the release carrying it needs the `[contracting]` marker** — the migration's
+  docstring says why it is safe.
 - `order_gifts` — cascades from the order and from its `order_promotion`; the product and
   variant FKs are `SET NULL`.
 - `promo_codes` — `code` unique, CHECK `expires_at > valid_from`; **partial unique**
@@ -409,24 +424,32 @@ existing promotion (`?from=<id>`).
 [domain.md](domain.md#owners-promo-codes)):
 
 - `GET /admin/promo-codes?includeDeleted=` — unpaginated, like promotions; `AdminPromoCodeResponse`
-  has `code`, `assignedUser` (`id`, `name`, `phone`, `telegramLinked`, `isDeleted`), `status`
-  (the promotions' derived one) and `participantsCount`.
+  has `code`, `assignedUsers` (each `id`, `name`, `phone`, `telegramLinked`, `isDeleted`; empty
+  for a general code), `usesPerCustomer` (`null`: no limit), `status` (the promotions' derived
+  one) and `participantsCount` (every live use, by every customer).
 - `POST /admin/promo-codes`, `PUT /admin/promo-codes/{id}` — `PromoCodeWriteRequest`: `code`
   (`null`: generate; on a PUT, replace with a new one), `title`, `descriptionHtml`, `startsAt`,
-  `endsAt` (optional), `isEnabled`, `assignedUserId`, `conditions`, `rewards` (`CodeReward`s: a
-  `PROMO_CODE` reward is a plain `422`).
+  `endsAt` (optional), `isEnabled`, `assignedUserIds` (up to `MAX_PROMO_CODE_ASSIGNEES`,
+  deduplicated; empty: general), `usesPerCustomer` (1-`MAX_PROMO_CODE_USES`, default 1, `null`:
+  no limit), `conditions`, `rewards` (`CodeReward`s: a `PROMO_CODE` reward is a plain `422`).
+  Each customer newly given an enabled code gets the bot's message (`handed_to`).
 - `PATCH /admin/promo-codes/{id}/enabled`, `DELETE /admin/promo-codes/{id}` (`200 {deleted}`, as for
   promotions), `GET /admin/promo-codes/{id}/participants?page=&pageSize=`.
 - The customer is picked with `GET /admin/users?q=` (no endpoint of its own); a gift picture
   goes through `POST /admin/promotions/gift-image`.
 - Applying: `resolve_code` (`owner_codes.py`) tries the customer's issued codes first, then the
-  owner's. The cart check and `checkout` use it; `OrderPromotionsService.attach_owner_code`
-  makes the participation. `OrderPromoCodeResponse.expiresAt` is **nullable** (an open-ended
+  owner's, and takes the `cycle_id` the order goes into (the cart check passes the collecting
+  cycle, or `None` when there is none). The cart check and `checkout` use it;
+  `OrderPromotionsService.attach_owner_code` makes the participation with `code_cycle_id` set.
+  `preview_cart` leaves the owner code's id out of the customer's «already joined» set, since
+  `usable` has already ruled on reuse. `OrderPromoCodeResponse.expiresAt` is **nullable** (an open-ended
   owner code); `AppliedCodePreview.code` is a `PromoCode | Promotion`.
-- `GET /me/promo-codes` appends the personal owner codes assigned to the caller
-  (`OwnerCodesService.personal_for_user`), with a status derived from their live participation. A
-  switched-off personal code is listed only while one of the caller's orders holds it (as
-  `RESERVED`/`USED`). `PromoCodeResponse` carries `isOwnerCode` (its `promotionTitle` is then the
+- `GET /me/promo-codes` appends the personal owner codes given to the caller
+  (`OwnerCodesService.personal_for_user`). The status comes from the order that stands for the
+  code: one in the collecting cycle holding it, or — once every use is spent, or the code is
+  switched off — the latest one (`RESERVED`/`USED`); with uses left and none in this cycle the
+  code is `ACTIVE` (or `EXPIRED`). A switched-off personal code is listed only while one of the
+  caller's orders holds it. `PromoCodeResponse` carries `isOwnerCode` (its `promotionTitle` is then the
   code's own name) and `descriptionHtml` (the owner's note; `null` for an issued code).
 
 **New fields.** `OrderResponse`/`AdminOrderResponse`: `promotions` (live participations, each
@@ -452,11 +475,12 @@ too (a guest has joined nothing, so "once per customer" only shows after sign-in
 | `promo_code_not_found`          | 404    | No such code, someone else's, `REVOKED`, a disabled or archived owner code — indistinguishable on purpose. On `/admin/promo-codes/{id}`: an unknown id or an automatic promotion's. |
 | `promo_code_expired`            | 409    |                                                                                                                                                                                     |
 | `promo_code_not_yet_valid`      | 409    |                                                                                                                                                                                     |
-| `promo_code_already_used`       | 409    | `USED`, or `RESERVED` by another order.                                                                                                                                             |
+| `promo_code_already_used`       | 409    | `USED`, or `RESERVED` by another order; for an owner code, every use spent.                                                                                                         |
+| `promo_code_used_this_cycle`    | 409    | An owner code with uses left that an order of the customer's in this cycle already holds (a lost race for the index too).                                                           |
 | `promo_code_conditions_not_met` | 409    | Including an empty cart.                                                                                                                                                            |
 | `promo_code_taken`              | 409    | Owner code string used by another owner code (archived too) or an issued one.                                                                                                       |
 | `promo_code_invalid`            | 422    | Owner code string is not 4-16 characters after removing whitespace.                                                                                                                 |
-| `promo_code_user_not_found`     | 422    | `assignedUserId` is unknown or an erased account.                                                                                                                                   |
+| `promo_code_user_not_found`     | 422    | One of the newly given `assignedUserIds` is unknown or an erased account.                                                                                                           |
 
 Structural mistakes in the rules (an unknown type, a percent over 100, two `PROMO_CODE`
 rewards, a bad code term) are plain pydantic `422`s without a code. The website has Russian

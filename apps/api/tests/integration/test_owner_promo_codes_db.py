@@ -16,6 +16,8 @@ from app.auth.models import Role
 from app.cart.models import CartItem
 from app.cart.service import CartService
 from app.catalog.models import Product
+from app.cycles.models import CycleStatus
+from app.cycles.service import CyclesService
 from app.db import get_session
 from app.main import app
 from app.orders.discounts import order_totals
@@ -29,6 +31,7 @@ from app.promotions.code_errors import (
     PromoCodeNotFoundError,
     PromoCodeNotYetValidError,
     PromoCodeTakenError,
+    PromoCodeUsedThisCycleError,
     PromoCodeUserNotFoundError,
 )
 from app.promotions.code_schemas import personal_promo_code_response
@@ -73,7 +76,8 @@ async def _make_code(
     session: AsyncSession,
     *,
     code: str | None = None,
-    assigned_user_id: uuid.UUID | None = None,
+    assigned_user_ids: Sequence[uuid.UUID] = (),
+    uses_per_customer: int | None = 1,
     conditions: Sequence[AnyCondition] = (),
     rewards: Sequence[AnyCodeReward] | None = None,
     starts_at: datetime | None = None,
@@ -88,7 +92,8 @@ async def _make_code(
             starts_at=starts_at or NOW - timedelta(days=1),
             ends_at=ends_at,
             is_enabled=is_enabled,
-            assigned_user_id=assigned_user_id,
+            assigned_user_ids=assigned_user_ids,
+            uses_per_customer=uses_per_customer,
             conditions=conditions,
             rewards=rewards if rewards is not None else [_percent(10)],
         )
@@ -104,6 +109,21 @@ async def _checkout(
     for product, quantity in lines:
         await CartService(session).add_item(user_id, variant_id(product), quantity)
     return await OrdersService(session).checkout(user_id, note=None, promo_code=promo_code)
+
+
+async def _cycle_id(session: AsyncSession) -> uuid.UUID:
+    cycle = await CyclesService(session).get_active_cycle()
+    assert cycle is not None
+    return cycle.id
+
+
+async def _next_cycle(session: AsyncSession) -> None:
+    """Closes the collecting cycle and opens another."""
+    cycle = await CyclesService(session).get_active_cycle()
+    assert cycle is not None
+    cycle.status = CycleStatus.CLOSED
+    await session.flush()
+    await make_cycle(session, deadline_at=cycle.deadline_at + timedelta(days=7))
 
 
 def _live(order: Order) -> list[OrderPromotion]:
@@ -173,12 +193,12 @@ async def test_a_code_string_is_unique_against_issued_codes(db_session: AsyncSes
 
 async def test_an_unknown_or_erased_customer_cannot_be_assigned(db_session: AsyncSession) -> None:
     with pytest.raises(PromoCodeUserNotFoundError):
-        await _make_code(db_session, assigned_user_id=uuid.uuid4())
+        await _make_code(db_session, assigned_user_ids=[uuid.uuid4()])
     erased = await make_user(db_session)
     erased.deleted_at = NOW
     await db_session.flush()
     with pytest.raises(PromoCodeUserNotFoundError):
-        await _make_code(db_session, assigned_user_id=erased.id)
+        await _make_code(db_session, assigned_user_ids=[erased.id])
 
 
 async def test_updating_keeps_or_replaces_the_string(db_session: AsyncSession) -> None:
@@ -194,7 +214,8 @@ async def test_updating_keeps_or_replaces_the_string(db_session: AsyncSession) -
             starts_at=NOW,
             ends_at=None,
             is_enabled=True,
-            assigned_user_id=None,
+            assigned_user_ids=[],
+            uses_per_customer=1,
             conditions=[],
             rewards=[_percent(5)],
         )
@@ -374,7 +395,7 @@ async def test_a_personal_code_is_for_its_customer_alone(db_session: AsyncSessio
     alice = await make_user(db_session)
     bob = await make_user(db_session)
     product = await _shop(db_session)
-    await _make_code(db_session, code="ALICE100", assigned_user_id=alice.id)
+    await _make_code(db_session, code="ALICE100", assigned_user_ids=[alice.id])
 
     await CartService(db_session).add_item(bob.id, variant_id(product), 1)
     with pytest.raises(PromoCodeNotFoundError):
@@ -387,6 +408,124 @@ async def test_a_personal_code_is_for_its_customer_alone(db_session: AsyncSessio
     await CartService(db_session).add_item(alice.id, variant_id(product), 1)
     with pytest.raises(PromoCodeAlreadyUsedError):
         await OrdersService(db_session).checkout(alice.id, None, "ALICE100")
+
+
+async def test_a_personal_code_may_be_given_to_several_customers(
+    db_session: AsyncSession,
+) -> None:
+    alice = await make_user(db_session)
+    bob = await make_user(db_session)
+    carol = await make_user(db_session)
+    product = await _shop(db_session)
+    await _make_code(db_session, code="FRIENDS1", assigned_user_ids=[alice.id, bob.id])
+
+    for user in (alice, bob):
+        order = await _checkout(db_session, user.id, (product, 1), promo_code="FRIENDS1")
+        assert order.total_cents == 9_000
+    await CartService(db_session).add_item(carol.id, variant_id(product), 1)
+    with pytest.raises(PromoCodeNotFoundError):
+        await CartService(db_session).check_promo_code(carol.id, "FRIENDS1")
+
+
+async def test_taking_a_customer_off_a_code_closes_it_to_them(db_session: AsyncSession) -> None:
+    alice = await make_user(db_session)
+    bob = await make_user(db_session)
+    product = await _shop(db_session)
+    service = OwnerCodesService(db_session)
+    promotion = await _make_code(db_session, code="FRIENDS1", assigned_user_ids=[alice.id, bob.id])
+
+    await service.update(
+        promotion.id,
+        OwnerCodeDraft(
+            code="FRIENDS1",
+            title="Скидка",
+            description_html=None,
+            starts_at=NOW - timedelta(days=1),
+            ends_at=None,
+            is_enabled=True,
+            assigned_user_ids=[bob.id],
+            uses_per_customer=1,
+            conditions=[],
+            rewards=[_percent(10)],
+        ),
+    )
+
+    assert await service.assignees(promotion.id) == [bob.id]
+    assert promotion.assigned_user_id == bob.id
+    await CartService(db_session).add_item(alice.id, variant_id(product), 1)
+    with pytest.raises(PromoCodeNotFoundError):
+        await CartService(db_session).check_promo_code(alice.id, "FRIENDS1")
+
+
+async def test_a_code_with_uses_works_once_per_cycle_until_they_run_out(
+    db_session: AsyncSession,
+) -> None:
+    alice = await make_user(db_session)
+    product = await _shop(db_session)
+    await _make_code(db_session, code="TWICE001", uses_per_customer=2)
+
+    first = await _checkout(db_session, alice.id, (product, 1), promo_code="TWICE001")
+    assert first.total_cents == 9_000
+    await CartService(db_session).add_item(alice.id, variant_id(product), 1)
+    with pytest.raises(PromoCodeUsedThisCycleError):
+        await CartService(db_session).check_promo_code(alice.id, "TWICE001")
+    with pytest.raises(PromoCodeUsedThisCycleError):
+        await OrdersService(db_session).checkout(alice.id, None, "TWICE001")
+
+    await _next_cycle(db_session)
+    second = await _checkout(db_session, alice.id, (product, 1), promo_code="TWICE001")
+    assert second.total_cents == 9_000 and second.cycle_id != first.cycle_id
+
+    await _next_cycle(db_session)
+    await CartService(db_session).add_item(alice.id, variant_id(product), 1)
+    with pytest.raises(PromoCodeAlreadyUsedError):
+        await OrdersService(db_session).checkout(alice.id, None, "TWICE001")
+
+
+async def test_an_unlimited_code_works_in_every_cycle(db_session: AsyncSession) -> None:
+    alice = await make_user(db_session)
+    product = await _shop(db_session)
+    promotion = await _make_code(db_session, code="ALWAYS01", uses_per_customer=None)
+    # Stored as NULL, not turned into the column's default of one use.
+    await db_session.refresh(promotion)
+    assert promotion.uses_per_customer is None
+
+    for _ in range(3):
+        order = await _checkout(db_session, alice.id, (product, 1), promo_code="ALWAYS01")
+        assert order.total_cents == 9_000
+        await _next_cycle(db_session)
+
+
+async def test_a_cancelled_use_frees_the_cycle(db_session: AsyncSession) -> None:
+    alice = await make_user(db_session)
+    product = await _shop(db_session)
+    await _make_code(db_session, code="ALWAYS01", uses_per_customer=None)
+    order = await _checkout(db_session, alice.id, (product, 1), promo_code="ALWAYS01")
+
+    await OrdersService(db_session).cancel(alice.id, order.id)
+
+    again = await _checkout(db_session, alice.id, (product, 1), promo_code="ALWAYS01")
+    assert again.total_cents == 9_000
+
+
+async def test_my_codes_show_a_reusable_code_as_usable_in_a_new_cycle(
+    db_session: AsyncSession,
+) -> None:
+    alice = await make_user(db_session)
+    product = await _shop(db_session)
+    await _make_code(db_session, code="ALICE200", assigned_user_ids=[alice.id], uses_per_customer=2)
+    service = OwnerCodesService(db_session)
+    await _checkout(db_session, alice.id, (product, 1), promo_code="ALICE200")
+
+    [(_, held_by, _)] = await service.personal_for_user(alice.id, await _cycle_id(db_session))
+    assert held_by is not None
+    await _next_cycle(db_session)
+    [(_, held_by, _)] = await service.personal_for_user(alice.id, await _cycle_id(db_session))
+    assert held_by is None
+    await _checkout(db_session, alice.id, (product, 1), promo_code="ALICE200")
+    await _next_cycle(db_session)
+    [(_, held_by, _)] = await service.personal_for_user(alice.id, await _cycle_id(db_session))
+    assert held_by is not None
 
 
 async def test_refusals_of_an_owner_code(db_session: AsyncSession) -> None:
@@ -543,9 +682,9 @@ async def test_my_codes_show_a_personal_code_and_its_life(db_session: AsyncSessi
     alice = await make_user(db_session)
     bob = await make_user(db_session)
     product = await _shop(db_session)
-    promotion = await _make_code(db_session, code="ALICE100", assigned_user_id=alice.id)
+    promotion = await _make_code(db_session, code="ALICE100", assigned_user_ids=[alice.id])
     await _make_code(db_session, code="GENERAL01")
-    await _make_code(db_session, code="OFF000001", assigned_user_id=alice.id, is_enabled=False)
+    await _make_code(db_session, code="OFF000001", assigned_user_ids=[alice.id], is_enabled=False)
     service = OwnerCodesService(db_session)
 
     def status(rows: list[tuple[Promotion, uuid.UUID | None, bool]]) -> PromoCodeView:
@@ -555,14 +694,15 @@ async def test_my_codes_show_a_personal_code_and_its_life(db_session: AsyncSessi
             found, datetime.now(UTC), used_order_id=order_id, used_order_paid=paid
         ).status
 
-    assert await service.personal_for_user(bob.id) == []
-    assert status(await service.personal_for_user(alice.id)) is PromoCodeView.ACTIVE
+    cycle_id = await _cycle_id(db_session)
+    assert await service.personal_for_user(bob.id, cycle_id) == []
+    assert status(await service.personal_for_user(alice.id, cycle_id)) is PromoCodeView.ACTIVE
     order = await _checkout(db_session, alice.id, (product, 1), promo_code="ALICE100")
-    assert status(await service.personal_for_user(alice.id)) is PromoCodeView.RESERVED
+    assert status(await service.personal_for_user(alice.id, cycle_id)) is PromoCodeView.RESERVED
     orders = OrdersService(db_session)
     await orders.update_status(order.id, OrderStatus.AWAITING_PAYMENT)
     await orders.update_status(order.id, OrderStatus.CONFIRMED)
-    assert status(await service.personal_for_user(alice.id)) is PromoCodeView.USED
+    assert status(await service.personal_for_user(alice.id, cycle_id)) is PromoCodeView.USED
 
 
 async def test_a_personal_code_past_its_end_reads_as_expired(db_session: AsyncSession) -> None:
@@ -570,12 +710,14 @@ async def test_a_personal_code_past_its_end_reads_as_expired(db_session: AsyncSe
     promotion = await _make_code(
         db_session,
         code="OLD000001",
-        assigned_user_id=alice.id,
+        assigned_user_ids=[alice.id],
         starts_at=NOW - timedelta(days=5),
         ends_at=NOW - timedelta(days=1),
     )
 
-    [(found, order_id, paid)] = await OwnerCodesService(db_session).personal_for_user(alice.id)
+    [(found, order_id, paid)] = await OwnerCodesService(db_session).personal_for_user(
+        alice.id, None
+    )
 
     response = personal_promo_code_response(
         found, datetime.now(UTC), used_order_id=order_id, used_order_paid=paid
@@ -588,12 +730,12 @@ async def test_a_disabled_personal_code_that_was_used_stays_listed(
 ) -> None:
     alice = await make_user(db_session)
     product = await _shop(db_session)
-    promotion = await _make_code(db_session, code="ALICE100", assigned_user_id=alice.id)
-    await _make_code(db_session, code="OFF000001", assigned_user_id=alice.id, is_enabled=False)
+    promotion = await _make_code(db_session, code="ALICE100", assigned_user_ids=[alice.id])
+    await _make_code(db_session, code="OFF000001", assigned_user_ids=[alice.id], is_enabled=False)
     await _checkout(db_session, alice.id, (product, 1), promo_code="ALICE100")
     await OwnerCodesService(db_session).set_enabled(promotion.id, False)
 
-    rows = await OwnerCodesService(db_session).personal_for_user(alice.id)
+    rows = await OwnerCodesService(db_session).personal_for_user(alice.id, None)
 
     assert [found.id for found, _order, _paid in rows] == [promotion.id]
     assert rows[0][1] is not None
@@ -604,7 +746,7 @@ async def test_editing_a_code_of_a_deleted_customer_keeps_the_assignment(
 ) -> None:
     alice = await make_user(db_session)
     bob = await make_user(db_session)
-    promotion = await _make_code(db_session, code="ALICE100", assigned_user_id=alice.id)
+    promotion = await _make_code(db_session, code="ALICE100", assigned_user_ids=[alice.id])
     alice.deleted_at = datetime.now(UTC)
     await db_session.flush()
     service = OwnerCodesService(db_session)
@@ -617,13 +759,15 @@ async def test_editing_a_code_of_a_deleted_customer_keeps_the_assignment(
             starts_at=NOW - timedelta(days=1),
             ends_at=None,
             is_enabled=True,
-            assigned_user_id=user_id,
+            assigned_user_ids=[user_id],
+            uses_per_customer=1,
             conditions=[],
             rewards=[_percent(10)],
         )
 
     updated = await service.update(promotion.id, draft(alice.id))
-    assert updated.title == "Новое имя" and updated.assigned_user_id == alice.id
+    assert updated.title == "Новое имя"
+    assert await service.assignees(promotion.id) == [alice.id]
     # A new assignment to a deleted customer is still refused.
     bob.deleted_at = datetime.now(UTC)
     await db_session.flush()
@@ -631,7 +775,7 @@ async def test_editing_a_code_of_a_deleted_customer_keeps_the_assignment(
         await service.update(promotion.id, draft(bob.id))
 
 
-async def test_a_lost_race_for_the_participation_is_already_used(
+async def test_a_lost_race_for_the_participation_is_used_this_cycle(
     db_session: AsyncSession,
 ) -> None:
     alice = await make_user(db_session)
@@ -647,6 +791,7 @@ async def test_a_lost_race_for_the_participation_is_already_used(
             order_id=first.id,
             user_id=alice.id,
             promotion_id=promotion.id,
+            code_cycle_id=first.cycle_id,
             title="Скидка",
             rewards=dump_rewards([_percent(10)]),
             sort_order=CODE_SORT_ORDER,
@@ -654,7 +799,7 @@ async def test_a_lost_race_for_the_participation_is_already_used(
     )
     await db_session.flush()
 
-    with pytest.raises(PromoCodeAlreadyUsedError):
+    with pytest.raises(PromoCodeUsedThisCycleError):
         await OrderPromotionsService(db_session).attach_owner_code(second, promotion)
 
     held = await db_session.scalars(
@@ -709,7 +854,7 @@ async def test_the_customer_hears_of_a_personal_code(
     db_session: AsyncSession, personal_sends: AsyncMock
 ) -> None:
     user = await make_user(db_session, telegram_chat_id=101)
-    promotion = await _make_code(db_session, assigned_user_id=user.id)
+    promotion = await _make_code(db_session, assigned_user_ids=[user.id])
 
     await notify_personal_promo_code(promotion.id, user.id)
 
@@ -723,8 +868,8 @@ async def test_a_code_that_is_off_or_moved_on_is_not_announced(
 ) -> None:
     user = await make_user(db_session, telegram_chat_id=102)
     other = await make_user(db_session, telegram_chat_id=103)
-    switched_off = await _make_code(db_session, assigned_user_id=user.id, is_enabled=False)
-    moved = await _make_code(db_session, assigned_user_id=other.id)
+    switched_off = await _make_code(db_session, assigned_user_ids=[user.id], is_enabled=False)
+    moved = await _make_code(db_session, assigned_user_ids=[other.id])
 
     await notify_personal_promo_code(switched_off.id, user.id)
     await notify_personal_promo_code(moved.id, user.id)
@@ -732,12 +877,25 @@ async def test_a_code_that_is_off_or_moved_on_is_not_announced(
     personal_sends.assert_not_awaited()
 
 
+async def test_each_customer_of_a_shared_code_hears_of_it(
+    db_session: AsyncSession, personal_sends: AsyncMock
+) -> None:
+    alice = await make_user(db_session, telegram_chat_id=105)
+    bob = await make_user(db_session, telegram_chat_id=106)
+    promotion = await _make_code(db_session, assigned_user_ids=[alice.id, bob.id])
+
+    await notify_personal_promo_code(promotion.id, alice.id)
+    await notify_personal_promo_code(promotion.id, bob.id)
+
+    assert personal_sends.await_count == 2
+
+
 async def test_a_code_already_on_an_order_is_not_announced_again(
     db_session: AsyncSession, personal_sends: AsyncMock
 ) -> None:
     product = await _shop(db_session)
     user = await make_user(db_session, telegram_chat_id=104)
-    promotion = await _make_code(db_session, code="LICHNYI1", assigned_user_id=user.id)
+    promotion = await _make_code(db_session, code="LICHNYI1", assigned_user_ids=[user.id])
     await _checkout(db_session, user.id, (product, 1), promo_code="LICHNYI1")
 
     await notify_personal_promo_code(promotion.id, user.id)
@@ -750,5 +908,6 @@ async def test_a_dash_is_part_of_the_code(db_session: AsyncSession) -> None:
     await _make_code(db_session, code="LETO-2026")
 
     with pytest.raises(PromoCodeNotFoundError):
-        await OwnerCodesService(db_session).usable(user.id, "LETO2026")
-    assert (await OwnerCodesService(db_session).usable(user.id, "leto-2026")).code == "LETO-2026"
+        await OwnerCodesService(db_session).usable(user.id, "LETO2026", cycle_id=None)
+    found = await OwnerCodesService(db_session).usable(user.id, "leto-2026", cycle_id=None)
+    assert found.code == "LETO-2026"

@@ -9,7 +9,8 @@ const values = (overrides: Partial<IAdminPromoCodeValues> = {}): IAdminPromoCode
   startsAt: '2026-12-01T00:00:00+06:00',
   endsAt: null,
   isEnabled: true,
-  assignedUser: null,
+  assignedUsers: [],
+  usesPerCustomer: 1,
   conditions: [],
   rewards: [{ type: 'DISCOUNT', kind: 'PERCENT', value: 10, target: null }],
   ...overrides,
@@ -23,13 +24,10 @@ const promoCode = (overrides: Partial<IAdminPromoCode> = {}): IAdminPromoCode =>
   startsAt: '2026-12-01T00:00:00+06:00',
   endsAt: '2026-12-31T23:59:00+06:00',
   isEnabled: true,
-  assignedUser: {
-    id: 'u-1',
-    name: 'Айгуль',
-    phone: '+996700123456',
-    telegramLinked: true,
-    isDeleted: false,
-  },
+  assignedUsers: [
+    { id: 'u-1', name: 'Айгуль', phone: '+996700123456', telegramLinked: true, isDeleted: false },
+  ],
+  usesPerCustomer: 2,
   conditions: [],
   rewards: [{ type: 'DISCOUNT', kind: 'PERCENT', value: 10, target: null }],
   status: 'ACTIVE',
@@ -49,12 +47,20 @@ describe('toPromoCodeInput', () => {
     expect(toPromoCodeInput(values({ code: 'LETO2026' })).code).toBe('LETO2026')
   })
 
-  it('общий код - assignedUserId: null, персональный - id покупателя', () => {
-    expect(toPromoCodeInput(values()).assignedUserId).toBeNull()
+  it('общий код - пустой список, персональный - id покупателей', () => {
+    expect(toPromoCodeInput(values()).assignedUserIds).toEqual([])
 
-    const assignedUser = { id: 'u-1', name: 'Айгуль', phone: '+996', telegramLinked: true }
+    const assignedUsers = [
+      { id: 'u-1', name: 'Айгуль', phone: '+996', telegramLinked: true },
+      { id: 'u-2', name: 'Бермет', phone: '+996', telegramLinked: true },
+    ]
 
-    expect(toPromoCodeInput(values({ assignedUser })).assignedUserId).toBe('u-1')
+    expect(toPromoCodeInput(values({ assignedUsers })).assignedUserIds).toEqual(['u-1', 'u-2'])
+  })
+
+  it('число применений уходит как есть, «без ограничений» - null', () => {
+    expect(toPromoCodeInput(values({ usesPerCustomer: 3 })).usesPerCustomer).toBe(3)
+    expect(toPromoCodeInput(values({ usesPerCustomer: null })).usesPerCustomer).toBeNull()
   })
 
   it('пустое описание - null', () => {
@@ -71,7 +77,8 @@ describe('duplicateOf', () => {
 
     expect(copy.code).toBeNull()
     expect(copy.title).toBe('Лето (копия)')
-    expect(copy.assignedUser).toBeNull()
+    expect(copy.assignedUsers).toEqual([])
+    expect(copy.usesPerCustomer).toBe(2)
     expect(copy.startsAt).toBe('')
     expect(copy.endsAt).toBe('')
     expect(copy.isEnabled).toBe(false)

@@ -8,6 +8,8 @@ from pydantic import AwareDatetime, Field, field_validator
 from app.catalog.schemas import require_description_length
 from app.common.limits import (
     MAX_DESCRIPTION_HTML_LENGTH,
+    MAX_PROMO_CODE_ASSIGNEES,
+    MAX_PROMO_CODE_USES,
     MAX_PROMOTION_CONDITIONS,
     MAX_PROMOTION_REWARDS,
 )
@@ -32,8 +34,13 @@ class PromoCodeWriteRequest(CamelModel):
     # Omitted or null: open-ended, valid until disabled or archived.
     ends_at: AwareDatetime | None = None
     is_enabled: bool = True
-    # Set: a personal code, usable by this account only. Null: general.
-    assigned_user_id: uuid.UUID | None = None
+    # Non-empty: a personal code, usable by these accounts only. Empty: general.
+    assigned_user_ids: list[uuid.UUID] = Field(
+        default_factory=list, max_length=MAX_PROMO_CODE_ASSIGNEES
+    )
+    # How many times one customer may use it, never twice in one cycle. Null: no limit,
+    # until it is switched off or ends.
+    uses_per_customer: int | None = Field(default=1, ge=1, le=MAX_PROMO_CODE_USES)
     conditions: list[Condition] = Field(default_factory=list, max_length=MAX_PROMOTION_CONDITIONS)
     rewards: list[CodeReward] = Field(min_length=1, max_length=MAX_PROMOTION_REWARDS)
 
@@ -45,6 +52,11 @@ class PromoCodeWriteRequest(CamelModel):
             raise ValueError("название не может быть пустым")
         return stripped
 
+    @field_validator("assigned_user_ids")
+    @classmethod
+    def _dedupe_users(cls, value: list[uuid.UUID]) -> list[uuid.UUID]:
+        return list(dict.fromkeys(value))
+
     @field_validator("description_html")
     @classmethod
     def _validate_description_html(cls, value: str | None) -> str | None:
@@ -52,7 +64,7 @@ class PromoCodeWriteRequest(CamelModel):
 
 
 class AssignedUserResponse(CamelModel):
-    """The customer a personal code belongs to — a superset of the admin's customer picker."""
+    """A customer a personal code is given to — a superset of the admin's customer picker."""
 
     id: uuid.UUID
     name: str
@@ -70,11 +82,13 @@ class AdminPromoCodeResponse(CamelModel):
     starts_at: datetime
     ends_at: datetime | None
     is_enabled: bool
-    assigned_user: AssignedUserResponse | None
+    # Empty: a general code.
+    assigned_users: list[AssignedUserResponse]
+    uses_per_customer: int | None
     conditions: list[Condition]
     rewards: list[CodeReward]
     status: PromotionStatus
-    # Live participations; for a personal code, more than zero means it was used.
+    # Live participations: every use, by every customer.
     participants_count: int
     deleted_at: datetime | None
     created_at: datetime

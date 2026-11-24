@@ -473,7 +473,9 @@ class OrdersService:
         # code locks the customer's row instead: the second checkout of one customer then
         # finds the first one's participation.
         code = (
-            await resolve_code(self._session, user_id, promo_code, for_update=True)
+            await resolve_code(
+                self._session, user_id, promo_code, cycle_id=cycle.id, for_update=True
+            )
             if promo_code
             else None
         )

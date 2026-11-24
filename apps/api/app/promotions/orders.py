@@ -47,9 +47,9 @@ from app.orders.discounts import (
 )
 from app.orders.models import CANCELLED_STATUSES, Order, OrderStatus
 from app.promotions.code_errors import (
-    PromoCodeAlreadyUsedError,
     PromoCodeConditionsNotMetError,
     PromoCodeError,
+    PromoCodeUsedThisCycleError,
 )
 from app.promotions.engine import (
     Evaluation,
@@ -479,6 +479,8 @@ class OrderPromotionsService:
         offer: Offer,
         lines: Sequence[Line],
         code: PromoCode | None = None,
+        *,
+        owner_code: bool = False,
     ) -> OrderPromotion:
         rewards = list(offer.rewards)
         participation = OrderPromotion(
@@ -487,6 +489,8 @@ class OrderPromotionsService:
             user_id=order.user_id,
             promotion_id=None if code is not None else offer.id,
             promo_code_id=code.id if code is not None else None,
+            # An owner's code is once per cycle, which the index reads off this column.
+            code_cycle_id=order.cycle_id if owner_code else None,
             title=offer.title,
             rewards=dump_rewards(rewards),
             sort_order=offer.sort_order,
@@ -595,7 +599,11 @@ class OrderPromotionsService:
                 assert promotion.code is not None
                 try:
                     usable = await OwnerCodesService(self._session).usable(
-                        order.user_id, promotion.code, for_update=True, except_order_id=order.id
+                        order.user_id,
+                        promotion.code,
+                        cycle_id=order.cycle_id,
+                        for_update=True,
+                        except_order_id=order.id,
                     )
                     attached.append(await self.attach_owner_code(order, usable))
                 except PromoCodeError:
@@ -677,25 +685,26 @@ class OrderPromotionsService:
 
     async def attach_owner_code(self, order: Order, promotion: Promotion) -> OrderPromotion:
         """Put an owner's promo code on an order: an ordinary participation in the promotion
-        behind it, so «один раз на покупателя» is `uq_order_promotions_live_participant`'s.
+        behind it, marked with the order's cycle, so «не больше раза за сбор» is
+        `uq_order_promotions_live_code_cycle`'s.
 
-        `OwnerCodesService.usable` has already vouched for the customer, the dates and the
-        switch; the lines against the conditions are checked here. If the index still
-        refuses (a race `usable`'s lock did not cover) the answer is the same
-        `PromoCodeAlreadyUsedError`, not a 500. Needs `order.items`.
+        `OwnerCodesService.usable` has already vouched for the customer, the uses, the dates
+        and the switch; the lines against the conditions are checked here. If the index
+        still refuses (a race `usable`'s lock did not cover) the answer is the same
+        `PromoCodeUsedThisCycleError`, not a 500. Needs `order.items`.
         """
         await self._session.flush()
         offer, lines = await self._code_offer_for(order, promotion)
         try:
             async with self._session.begin_nested():
-                return await self._attach(order, offer, lines)
+                return await self._attach(order, offer, lines, owner_code=True)
         except IntegrityError as error:
             if getattr(error.orig, "sqlstate", None) != UNIQUE_VIOLATION:
                 raise
             # The savepoint's rollback expired the order: reload the collection from the
             # database, which never saw the participation that was refused.
             await self._session.refresh(order, ["promotions"])
-            raise PromoCodeAlreadyUsedError from error
+            raise PromoCodeUsedThisCycleError from error
 
     async def release_all(self, order: Order, *, was_status: OrderStatus) -> list[OrderPromotion]:
         """The order is off (cancelled): every live participation ends, the customer is free
@@ -868,6 +877,10 @@ async def preview_cart(
     ]
     offers = [offer for p in promotions.values() if (offer := _offer(p)) is not None]
     joined = await joined_promotion_ids(session, user_id) if user_id is not None else frozenset()
+    if isinstance(promo_code, Promotion):
+        # An owner's code may be used again: whether this customer may use it now is
+        # `OwnerCodesService.usable`'s, which has already said yes.
+        joined = joined - {promo_code.id}
     code_offer_: Offer | None = None
     if isinstance(promo_code, PromoCode):
         code_offer_ = code_offer(promo_code)

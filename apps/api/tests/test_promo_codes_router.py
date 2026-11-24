@@ -156,7 +156,9 @@ async def test_my_promo_codes(client: AsyncClient) -> None:
     with (
         patch("app.promotions.codes_router.PromoCodesService") as service_cls,
         patch("app.promotions.codes_router.OwnerCodesService") as owner_cls,
+        patch("app.promotions.codes_router.CyclesService") as cycles_cls,
     ):
+        cycles_cls.return_value.get_active_cycle = AsyncMock(return_value=None)
         service_cls.return_value.list_for_user = AsyncMock(return_value=[(code, "Акция")])
         owner_cls.return_value.personal_for_user = AsyncMock(return_value=[])
         async with client as c:

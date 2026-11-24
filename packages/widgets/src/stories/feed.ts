@@ -1819,7 +1819,8 @@ export const feedAdminPromoCode = (overrides: Partial<IAdminPromoCode> = {}): IA
   startsAt: new Date(Date.now() - DAY_MS).toISOString(),
   endsAt: null,
   isEnabled: true,
-  assignedUser: null,
+  assignedUsers: [],
+  usesPerCustomer: 1,
   conditions: [{ type: 'SUBTOTAL', minCents: 200_000, target: null }],
   rewards: [{ type: 'DISCOUNT', kind: 'PERCENT', value: 10, target: null }],
   status: 'ACTIVE',
@@ -1837,10 +1838,9 @@ export const feedAdminPromoCodesTable = (): IAdminPromoCodesTableProps => ({
       code: 'K7M2XQ9R',
       title: 'Персональная скидка для Айгуль',
       endsAt: new Date(Date.now() + 14 * DAY_MS).toISOString(),
-      assignedUser: {
-        ...feedCustomerOption({ name: 'Айгуль', phone: '+996700123456' }),
-        isDeleted: false,
-      },
+      assignedUsers: [
+        { ...feedCustomerOption({ name: 'Айгуль', phone: '+996700123456' }), isDeleted: false },
+      ],
       participantsCount: 1,
       rewards: [
         {
