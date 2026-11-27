@@ -19,7 +19,7 @@ export const body = style({
   ...media({
     lg: {
       display: 'grid',
-      gridTemplateColumns: `${rem(220)} minmax(0, 1fr)`,
+      gridTemplateColumns: `${rem(160)} minmax(0, 1fr)`,
       gap: vars.space.xl,
       alignItems: 'start',
     },

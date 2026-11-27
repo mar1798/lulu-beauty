@@ -4,7 +4,7 @@ import { useRouter } from 'next/router'
 import useSWR, { mutate as globalMutate } from 'swr'
 import type { IOrder, IToastTone } from 'widgets/types'
 import { Alert, Button } from 'widgets/atoms'
-import { EmptyState } from 'widgets/molecules'
+import { EmptyState, PromoCodeField } from 'widgets/molecules'
 import { OrderDetails, ProductPicker } from 'widgets/organisms'
 import { useConfirm, useToast } from 'widgets/contexts'
 import { AccountTemplate } from 'widgets/templates'
@@ -12,9 +12,13 @@ import { SiteLayout } from '@/layouts/SiteLayout'
 import { ACCOUNT_NAVIGATION } from '@/layouts/accountNavigation'
 import { useAuth } from '@/contexts/AuthContext'
 import { useProductSearch } from '@/hooks/useProductSearch'
+import { useOrderPromoCode } from '@/hooks/useOrderPromoCode'
+import { promoCodeSummary, usePromoCodeOptions } from '@/hooks/usePromoCodeOptions'
 import {
   discountLoss,
   linesOfVariants,
+  lostPromotions,
+  promotionLoss,
   useDiscountLossConfirm,
 } from '@/hooks/useDiscountLossConfirm'
 import { isApiError, messageForError, type ErrorScope } from '@/services/apiErrors'
@@ -24,11 +28,12 @@ import {
   cancelMyOrder,
   getMyOrder,
   removeMyOrderItem,
+  removeMyOrderPromoCode,
   restoreMyOrder,
   updateMyOrderItemQuantity,
   updateMyOrderNote,
 } from '@/services/endpoints/orders'
-import { activeCycleKey, isOrdersKey, orderKey } from '@/services/swrKeys'
+import { activeCycleKey, isOrdersKey, isPromoCodesKey, orderKey } from '@/services/swrKeys'
 import { INSTAGRAM_URL } from '@/utils/contacts'
 import { useLoginHref } from '@/hooks/useLoginHref'
 
@@ -49,6 +54,10 @@ import { useLoginHref } from '@/hooks/useLoginHref'
  *
  * Товар добавляется прямо в заявку (`POST /orders/{id}/items`), а не через
  * корзину: корзина копится под следующую заявку и эту не изменила бы.
+ *
+ * Промокод — та же правка: поле с оформления (`PromoCodeField`) применяет код к заявке
+ * сразу, без отдельной проверки, и убрать его можно здесь же. Что заявка держит код,
+ * говорит сервер (`order.promoCode`).
  *
  * Отмена живёт дольше правки (`isCancellable`): против неподтверждённой заявки
  * ничего не куплено, поэтому отозвать её можно и из закрытого сбора — раньше
@@ -130,6 +139,8 @@ const OrderPage: React.FC = () => {
         // Тегом, а не одним ключом: список постраничный, и правка заявки меняет
         // не только ту страницу, на которой её открыли.
         void globalMutate(isOrdersKey)
+        // Правка или отмена могла отпустить код заявки - он снова в «Ваших промокодах».
+        void globalMutate(isPromoCodesKey)
       }
 
       notify({
@@ -158,6 +169,40 @@ const OrderPage: React.FC = () => {
     } finally {
       setIsBusy(false)
       setBusyItemId(null)
+    }
+  }
+
+  const promo = useOrderPromoCode(order, {
+    onApplied: async updated => {
+      setActionError(null)
+      await mutate(updated, { revalidate: false })
+      void globalMutate(isOrdersKey)
+      void globalMutate(isPromoCodesKey)
+      notify({ tone: 'success', title: 'Промокод применён', subject: updated.promoCode?.code })
+    },
+    onRefused: () => mutate(),
+  })
+  // Список нужен только полю ввода: у заявки, которую не править, его нет.
+  const codeOptions = usePromoCodeOptions(order?.isEditable === true ? userId : null)
+
+  const handlePromoCodeRemove = async (current: IOrder): Promise<void> => {
+    const confirmed = await confirm({
+      title: 'Убрать промокод из заявки?',
+      description:
+        'Его скидка и подарки уйдут из заявки. Применить промокод снова можно, пока он действует',
+      confirmLabel: 'Убрать',
+      cancelLabel: 'Оставить',
+      tone: 'danger',
+    })
+
+    if (confirmed) {
+      await runAction(
+        () => removeMyOrderPromoCode(current.id, current.revision),
+        'Промокод убран из заявки',
+        'order.promoCode.remove',
+        null,
+        { tone: 'warning', subject: current.promoCode?.code }
+      )
     }
   }
 
@@ -289,10 +334,11 @@ const OrderPage: React.FC = () => {
           уведомлением бота об этой же отмене.
         */
         contactLink={{ href: INSTAGRAM_URL, target: '_blank' }}
+        promoCodesHref="/promocodes"
         onItemQuantityChange={(itemId, quantity) => {
           void (async (): Promise<void> => {
             // Отказ ничего не откатывает: степпер показывает количество из заявки.
-            if (!(await confirmDiscountLoss(order, [itemId]))) {
+            if (!(await confirmDiscountLoss(order, [itemId], [{ itemId, quantity }]))) {
               return
             }
 
@@ -326,12 +372,6 @@ const OrderPage: React.FC = () => {
             «Вернуть» из тоста товар возвращает, а скидку — нет.
           */
           const loss = discountLoss(order, [itemId])
-          const description = [
-            name === undefined ? null : `«${name}» больше не будет в этой заявке`,
-            loss,
-          ]
-            .filter((line): line is string => line !== null)
-            .join('. ')
 
           /*
             «Вернуть» идёт уже после удаления — с `revision`, которую вернуло
@@ -340,6 +380,16 @@ const OrderPage: React.FC = () => {
           let revisionAfter = order.revision
 
           void (async (): Promise<void> => {
+            // Акции, которые потеряет заявка, называет сервер (`edit-preview`): тот же диалог.
+            const promotions = promotionLoss(await lostPromotions(order, [{ itemId, quantity: 0 }]))
+            const description = [
+              name === undefined ? null : `«${name}» больше не будет в этой заявке`,
+              loss,
+              promotions,
+            ]
+              .filter((line): line is string => line !== null)
+              .join('. ')
+
             const confirmed = await confirm({
               title: 'Удалить товар из заявки?',
               description: description === '' ? undefined : description,
@@ -394,7 +444,11 @@ const OrderPage: React.FC = () => {
               .filter((variantId): variantId is string => variantId !== null)}
             onAdd={variantId => {
               void (async (): Promise<void> => {
-                if (!(await confirmDiscountLoss(order, linesOfVariants(order, [variantId])))) {
+                const edits = [{ variantId, quantity: 1 }]
+
+                if (
+                  !(await confirmDiscountLoss(order, linesOfVariants(order, [variantId]), edits))
+                ) {
                   return
                 }
 
@@ -405,7 +459,38 @@ const OrderPage: React.FC = () => {
                 )
               })()
             }}
-            isBusy={isBusy}
+            isBusy={isBusy || promo.isApplying}
+          />
+        }
+        promoCode={
+          <PromoCodeField
+            value={promo.value}
+            onChange={promo.setValue}
+            onApply={() => {
+              void promo.apply()
+            }}
+            applied={
+              order.promoCode === null
+                ? null
+                : {
+                    code: order.promoCode.code,
+                    discountCents: order.promotions
+                      .filter(entry => entry.isPromoCode)
+                      .reduce((sum, entry) => sum + entry.discountCents, 0),
+                    description: promoCodeSummary(order.promoCode),
+                  }
+            }
+            onRemove={() => {
+              void handlePromoCodeRemove(order)
+            }}
+            isChecking={promo.isApplying}
+            error={promo.error}
+            options={codeOptions}
+            onPickOption={code => {
+              void promo.apply(code)
+            }}
+            allCodesHref={codeOptions.length > 0 ? '/promocodes' : undefined}
+            disabled={isBusy}
           />
         }
         onNoteSave={note =>
@@ -421,7 +506,7 @@ const OrderPage: React.FC = () => {
         onRestore={() => {
           void runAction(() => restoreMyOrder(order.id), 'Заявка снова в работе', 'order.restore')
         }}
-        isBusy={isBusy}
+        isBusy={isBusy || promo.isApplying}
         busyItemId={busyItemId}
         error={actionError}
       />

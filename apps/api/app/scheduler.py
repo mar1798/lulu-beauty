@@ -1,4 +1,5 @@
 import logging
+from datetime import UTC, datetime
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
@@ -7,12 +8,17 @@ from app.auth.telegram_login import TelegramLoginService
 from app.config import settings
 from app.cycles.scheduler_service import CycleSchedulerService
 from app.db import async_session
+from app.promotions.codes import issue_missing_promo_codes
+from app.promotions.sweep import expiring_promo_codes, unannounced_promotions
 from app.telegram.notify import (
     notify_carts_rescued,
     notify_cycle_closed,
     notify_cycle_closed_for_customers,
     notify_cycle_opened,
     notify_cycle_reminders,
+    notify_promo_code_expiring,
+    notify_promo_codes_issued,
+    notify_promotion_started,
     notify_stale_orders,
 )
 
@@ -138,6 +144,57 @@ async def _run_cycle_notice_sweep() -> None:
     await _run_reminder_sweep()
 
 
+async def _run_promotion_sweep() -> None:
+    """Announcements, then missing codes, then expiry reminders - three independent steps.
+
+    Each step is guarded on its own: a failure in one must not cost the others their tick.
+    Sessions are closed before anything is sent, for the reason `_run_announcement_sweep`
+    gives, except the reminder step, which stamps what it delivered and so keeps one.
+
+    - Announcements: `notify_promotion_started` re-checks eligibility, stamps `announced_at`
+      after the fan-out and claims the promotion while it runs, like a cycle's opening.
+    - Missing codes: a paid order whose "issue the code" event failed gets its code here.
+      The codes are committed first and their owners told after, so nobody is told about a
+      code that then rolled back. This is also why the sweep lives here and not in
+      `issue_missing_promo_codes` alone - without the message it would hand codes out silently.
+    - Reminders: plan, send, stamp - and only what was settled is stamped.
+    """
+    try:
+        async with async_session() as session:
+            promotion_ids = await unannounced_promotions(session, datetime.now(UTC))
+        for promotion_id in promotion_ids:
+            if await notify_promotion_started(promotion_id):
+                logger.info("Promotion sweep announced promotion %s", promotion_id)
+    except Exception:  # noqa: BLE001 - the other steps still run
+        logger.exception("Promotion sweep: announcements failed")
+
+    try:
+        async with async_session() as session:
+            issued = await issue_missing_promo_codes(session)
+            code_ids = [code.id for code in issued]
+            await session.commit()
+        if code_ids:
+            logger.warning("Promotion sweep issued %d code(s) the event missed", len(code_ids))
+            await notify_promo_codes_issued(code_ids)
+    except Exception:  # noqa: BLE001 - the other steps still run
+        logger.exception("Promotion sweep: issuing missing codes failed")
+
+    try:
+        async with async_session() as session:
+            now = datetime.now(UTC)
+            codes = await expiring_promo_codes(session, now)
+            reminded = 0
+            for code in codes:
+                if await notify_promo_code_expiring(session, code):
+                    code.reminded_at = now
+                    reminded += 1
+            await session.commit()
+        if reminded:
+            logger.info("Promotion sweep reminded about %d expiring code(s)", reminded)
+    except Exception:  # noqa: BLE001 - nothing left to run, but the loop must survive
+        logger.exception("Promotion sweep: expiry reminders failed")
+
+
 async def _run_auth_session_cleanup() -> None:
     async with async_session() as session:
         deleted = await TelegramLoginService(session).cleanup_expired()
@@ -170,6 +227,12 @@ def start() -> None:
         "interval",
         seconds=settings.scheduler_interval_seconds,
         id="stale_order_sweep",
+    )
+    scheduler.add_job(
+        _run_promotion_sweep,
+        "interval",
+        seconds=settings.scheduler_interval_seconds,
+        id="promotion_sweep",
     )
     scheduler.add_job(
         _run_auth_session_cleanup,

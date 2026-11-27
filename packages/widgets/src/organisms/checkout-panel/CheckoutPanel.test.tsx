@@ -1,7 +1,7 @@
 import { fireEvent } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import { CheckoutPanel } from '.'
-import { feedCheckoutPanel } from '../../stories/feed'
+import { feedCheckoutPanel, feedCheckoutPanelWithPromotions } from '../../stories/feed'
 import { renderWidget } from '../../testing/render'
 
 /**
@@ -113,5 +113,24 @@ describe('CheckoutPanel', () => {
     )
 
     expect(queryAllByRole('button', { name: /Увеличить количество/ }).length).toBe(0)
+  })
+
+  it('подарки акций и промокода идут за составом, у каждого своя пометка', () => {
+    const { getByText } = renderWidget(
+      <CheckoutPanel {...feedCheckoutPanelWithPromotions()} form={<p>Форма</p>} />
+    )
+
+    expect(getByText('Mystery box')).toBeTruthy()
+    expect(getByText('Акция «Весенняя распродажа»')).toBeTruthy()
+    expect(getByText('Миниатюра сыворотки, 5 мл')).toBeTruthy()
+    expect(getByText('Промокод K7M2XQ9R')).toBeTruthy()
+  })
+
+  it('под скелетоном подарков нет', () => {
+    const { queryByText } = renderWidget(
+      <CheckoutPanel {...feedCheckoutPanelWithPromotions()} isLoading={true} form={<p>Форма</p>} />
+    )
+
+    expect(queryByText('Mystery box')).toBeNull()
   })
 })

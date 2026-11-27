@@ -7,16 +7,15 @@ import type {
   ICustomerOption,
 } from 'widgets/types'
 import { useConfirm, useToast } from 'widgets/contexts'
-import { useDebouncedValue } from 'widgets/hooks'
 import { adminOrderNumber } from 'widgets/organisms'
+import { useCustomerSearch } from '@/hooks/useCustomerSearch'
 import { useProductSearch } from '@/hooks/useProductSearch'
 import { catalogLine, clampQuantity } from '@/utils/orderDraft'
 import { randomUuid } from '@/utils/uuid'
 import { isApiError, messageForError } from '@/services/apiErrors'
-import { createAdminOrder, listAdminOrderCycles, listAdminUsers } from '@/services/endpoints/admin'
+import { createAdminOrder, listAdminOrderCycles } from '@/services/endpoints/admin'
 import {
   adminChecklistKey,
-  adminCustomerSearchKey,
   adminOrderCyclesKey,
   isAdminOrderCyclesKey,
   isAdminOrdersKey,
@@ -42,9 +41,6 @@ import {
  * не оформит вторую. Новый ключ — только с новым черновиком.
  */
 
-/** Строк в выдаче поиска покупателя: дальше имя проще уточнить, чем листать. */
-const CUSTOMER_RESULT_LIMIT = 8
-
 interface IAdminOrderDraft {
   /** Пропсы окна целиком — страница только раскладывает их в `AdminOrderDialog`. */
   dialog: IAdminOrderDialogProps
@@ -59,27 +55,14 @@ export const useAdminOrderDraft = (): IAdminOrderDraft => {
   const [isOpen, setIsOpen] = useState(false)
   const [requestId, setRequestId] = useState(() => randomUuid())
   const [customer, setCustomer] = useState<ICustomerOption | null>(null)
-  const [customerQuery, setCustomerQuery] = useState('')
   const [chosenCycleId, setChosenCycleId] = useState<string | null>(null)
   const [lines, setLines] = useState<IAdminOrderDraftLine[]>([])
   const [note, setNote] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  /*
-    Поиск покупателя — по набранному, с тем же дебаунсом, что у товаров.
-    `isSearching` считается от набранного, а не от запроса: иначе между
-    последней буквой и уходом запроса показывать нечего (см. `useProductSearch`).
-  */
-  const pendingQuery = customerQuery.trim()
-  const debouncedQuery = useDebouncedValue(customerQuery).trim()
-  const customers = useSWR(
-    isOpen && debouncedQuery !== '' ? adminCustomerSearchKey(debouncedQuery) : null,
-    () =>
-      listAdminUsers({ q: debouncedQuery, pageSize: CUSTOMER_RESULT_LIMIT }).then(
-        page => page.items
-      )
-  )
+  // Поиск покупателя - общий с формой промокода (`useCustomerSearch`).
+  const customerSearch = useCustomerSearch(isOpen)
 
   /*
     Сборы — с id покупателя: бэкенд заодно называет его открытые заявки в
@@ -116,7 +99,7 @@ export const useAdminOrderDraft = (): IAdminOrderDraft => {
 
   const reset = (): void => {
     setCustomer(null)
-    setCustomerQuery('')
+    customerSearch.reset()
     setChosenCycleId(null)
     setLines([])
     setNote('')
@@ -246,13 +229,7 @@ export const useAdminOrderDraft = (): IAdminOrderDraft => {
           setCustomer(next)
           setError(null)
         },
-        query: customerQuery,
-        onQueryChange: setCustomerQuery,
-        results: customers.data ?? null,
-        isSearching:
-          pendingQuery !== '' && (pendingQuery !== debouncedQuery || customers.isLoading),
-        error:
-          customers.error === undefined ? null : messageForError(customers.error, 'admin.users'),
+        ...customerSearch.props,
       },
       productSearch: {
         query: products.query,

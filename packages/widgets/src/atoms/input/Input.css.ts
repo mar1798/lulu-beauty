@@ -46,3 +46,12 @@ export const affix = style({
 export const hint = style(fieldHint())
 
 export const error = style(fieldError())
+
+/**
+ * Пустое поле даты/времени (`data-empty`): Safari показывает в нём сегодняшнюю
+ * дату, хотя значения нет. Прячем текст поля до фокуса - иконка календаря
+ * остаётся, а в фокусе сегменты видны как обычно.
+ */
+globalStyle(`${input}[data-empty="true"]:not(:focus)::-webkit-datetime-edit`, {
+  color: 'transparent',
+})

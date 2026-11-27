@@ -52,6 +52,7 @@ def _mock_service(mock_service_cls: MagicMock) -> MagicMock:
     service.load_customers = AsyncMock(return_value={})
     service.load_creators = AsyncMock(return_value={})
     service.load_item_tags = AsyncMock(return_value={})
+    service.load_codes = AsyncMock(return_value={})
     return service
 
 
@@ -156,6 +157,7 @@ async def _patch_status(client: AsyncClient, order: Order, *, changed: bool) -> 
         service.load_customers = AsyncMock(return_value={})
         service.load_creators = AsyncMock(return_value={})
         service.load_item_tags = AsyncMock(return_value={})
+        service.load_codes = AsyncMock(return_value={})
         async with client as c:
             response = await c.patch(
                 f"/admin/orders/{order.id}/status", json={"status": order.status.value}
@@ -229,6 +231,7 @@ async def _post_own_order_action(
         service.restore = AsyncMock(return_value=order)
         service.customer_flags = AsyncMock(return_value={})
         service.load_item_tags = AsyncMock(return_value={})
+        service.load_codes = AsyncMock(return_value={})
         async with client as c:
             response = await c.post(f"/orders/{order.id}/{action}")
 

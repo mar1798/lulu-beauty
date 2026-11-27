@@ -56,3 +56,10 @@ export const totalRow = style({
   alignItems: 'baseline',
   justifyContent: 'space-between',
 })
+
+/** Сумма позиций до скидок акций - строка над самими скидками. */
+export const subtotalRow = style({
+  ...flexRow(12),
+  alignItems: 'baseline',
+  justifyContent: 'space-between',
+})

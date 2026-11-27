@@ -2,7 +2,15 @@ import type { StoryFn, Meta } from '@storybook/react'
 import { CheckoutPanel } from '.'
 import { CheckoutForm } from '../checkout-form'
 import { ProductPicker } from '../product-picker'
-import { feedCheckoutForm, feedCheckoutPanel, feedProductPicker } from '../../stories/feed'
+import { PromoCodeField } from '../../molecules/promo-code-field'
+import {
+  feedCheckoutForm,
+  feedCheckoutFormWithPromotions,
+  feedCheckoutPanel,
+  feedCheckoutPanelWithPromotions,
+  feedProductPicker,
+  feedPromoCodeField,
+} from '../../stories/feed'
 import { StoryWrapper } from '../../stories/wrapper'
 
 export default {
@@ -65,3 +73,23 @@ Loading.args = {
   isLoading: true,
   form: <CheckoutForm {...feedCheckoutForm()} isLoading={true} />,
 }
+
+/**
+ * Акции и промокод: подарки идут за составом (акции, затем код), а форма считает
+ * «К оплате» из ответа сервера и держит поле кода над комментарием.
+ */
+export const WithPromotions = Template.bind({})
+WithPromotions.args = {
+  ...feedCheckoutPanelWithPromotions(),
+  form: (
+    <CheckoutForm
+      {...feedCheckoutFormWithPromotions()}
+      code={{ code: 'K7M2XQ9R', discountCents: 20_000 }}
+      promoCode={<PromoCodeField {...feedPromoCodeField()} />}
+    />
+  ),
+}
+
+export const WithPromotionsMobile = Template.bind({})
+WithPromotionsMobile.parameters = { layout: 'fullscreen', viewport: { defaultViewport: 'mobile1' } }
+WithPromotionsMobile.args = WithPromotions.args

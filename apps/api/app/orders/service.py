@@ -24,6 +24,7 @@ from app.orders.models import (
     ADMIN_EDITABLE_STATUSES,
     ADMIN_ORDER_WINDOW,
     ALLOWED_TRANSITIONS,
+    CANCELLED_STATUSES,
     DISCOUNTABLE_STATUSES,
     OPEN_STATUSES,
     PURCHASE_WINDOW,
@@ -35,6 +36,15 @@ from app.orders.models import (
     PendingStage,
 )
 from app.orders.schemas import MAX_ITEM_QUANTITY
+from app.promotions.code_errors import OrderHasPromoCodeError
+from app.promotions.codes import OrderCodes, PromoCodesService
+from app.promotions.models import PromoCode
+from app.promotions.orders import (
+    OrderPromotionsService,
+    PromotionDelta,
+    is_code_participation,
+)
+from app.promotions.owner_codes import resolve_code
 
 # How many product ids go into one `IN (...)` when a price list reprices in bulk.
 # Same reasoning as `_SLUG_CHUNK` in the import service: whole file in one round trip is
@@ -376,6 +386,18 @@ def _discount_of(holder: Order | OrderItem) -> tuple[DiscountKind, int] | None:
 
 
 @dataclass(frozen=True)
+class PromotionImpact:
+    """What a customer's edit would do to the promotions an order holds, and its sum.
+
+    `(promotion id, title)` pairs, by value: the edit was rolled back and the rows are gone.
+    """
+
+    lost: list[tuple[uuid.UUID, str]]
+    gained: list[tuple[uuid.UUID, str]]
+    total_cents: int
+
+
+@dataclass(frozen=True)
 class DeletedOrder:
     """Who to notify about a deletion, and what the order was at the moment of it.
 
@@ -393,8 +415,23 @@ class OrdersService:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
         self._cycles = CyclesService(session)
+        self._promos = OrderPromotionsService(session)
+        self._codes = PromoCodesService(session)
+        # The promo codes the last status change issued (an order marked paid by hand): the
+        # caller notifies their owners after the commit, as `ReviewedReceipt.issued_codes`
+        # does for a receipt. Empty until something is issued.
+        self.issued_codes: list[PromoCode] = []
 
-    async def checkout(self, user_id: uuid.UUID, note: str | None) -> Order:
+    async def checkout(
+        self, user_id: uuid.UUID, note: str | None, promo_code: str | None = None
+    ) -> Order:
+        """Turn the cart into a PENDING order, with the promotions it qualifies for.
+
+        `promo_code` is a code the customer entered, one issued to them or an owner's; it must be
+        theirs to use, unused and inside its dates, and the lines must meet its conditions — a
+        `PromoCodeError` otherwise, and no order. It is reserved for this order (`RESERVED`)
+        and counted in the total.
+        """
         cycle = await self._cycles.get_active_cycle()
         if cycle is None:
             raise NoActiveCycleError
@@ -436,13 +473,35 @@ class OrdersService:
         if not rows:
             raise EmptyCartError
 
-        order = Order(user_id=user_id, cycle_id=cycle.id, status=OrderStatus.PENDING, note=note)
-        total_cents = 0
+        # Locked before anything is written. An issued code's row is locked: of two checkouts
+        # holding it the second waits here, then finds it RESERVED and is refused. An owner's
+        # code locks the customer's row instead: the second checkout of one customer then
+        # finds the first one's participation.
+        code = (
+            await resolve_code(
+                self._session, user_id, promo_code, cycle_id=cycle.id, for_update=True
+            )
+            if promo_code
+            else None
+        )
+
+        # Collections started empty: a new order has no promotions yet, and a collection
+        # never loaded would be fetched lazily — which an async session cannot do.
+        order = Order(
+            user_id=user_id,
+            cycle_id=cycle.id,
+            status=OrderStatus.PENDING,
+            note=note,
+            promotions=[],
+            gifts=[],
+        )
         for cart_item, product, variant in rows:
-            line_total_cents = variant.price_cents * cart_item.quantity
-            total_cents += line_total_cents
             order.items.append(_snapshot_line(product, variant, cart_item.quantity))
-        order.total_cents = total_cents
+        if code is not None:
+            # Refused before anything is written: no order, and the cart stays as it is.
+            await self._promos.check_code(order, code)
+        # Counted again below, once the promotions the lines qualify for are attached.
+        order.total_cents = sum(item.product_price_cents * item.quantity for item in order.items)
 
         self._session.add(order)
         # Only the lines that went into the order. A line hidden from the cart (its
@@ -452,6 +511,18 @@ class OrdersService:
         # order — the remaining lines are exactly the ones the filter above skips.
         ordered_ids = [cart_item.id for cart_item, _, _ in rows]
         await self._session.execute(delete(CartItem).where(CartItem.id.in_(ordered_ids)))
+        await self._session.flush()
+        # The promotions the cart qualified for join the order here, at its price: the same
+        # engine and the same arithmetic as the cart's preview.
+        await self._promos.refresh(order)
+        if code is not None:
+            # After the promotions, so the code is counted on what they left. Its
+            # conditions are checked against the lines as the order now has them.
+            if isinstance(code, PromoCode):
+                await self._promos.attach_code(order, code)
+            else:
+                await self._promos.attach_owner_code(order, code)
+        order.total_cents = order_totals(order).total_cents
         await self._session.flush()
         # The lines went in in whatever order the cart rows came back; read them back
         # in `Order.items` order, the one every later fetch of this order has.
@@ -589,14 +660,18 @@ class OrdersService:
             note=note,
             created_by_id=admin_id,
             request_id=request_id,
+            promotions=[],
+            gifts=[],
         )
         # In the order the owner added them, which is the order they will read them back in.
         for variant_id, quantity in quantities.items():
             variant, product = found[variant_id]
             order.items.append(_snapshot_line(product, variant, quantity))
-        self._recalculate_total(order)
+        order.total_cents = 0
 
         self._session.add(order)
+        await self._session.flush()
+        await self._recount(order)
         await self._session.flush()
         return order, True
 
@@ -723,7 +798,8 @@ class OrdersService:
             clear_discount(item)
         clear_discount(order)
 
-        self._recalculate_total(order)
+        # PENDING only: from the bill on the promotions are frozen (`OrderPromotionsService`).
+        await self._recount(order)
         await self._session.flush()
         # New lines went in last; read them back in `Order.items` order, as `add_item` does.
         await self._session.refresh(order, attribute_names=["items"])
@@ -790,6 +866,10 @@ class OrdersService:
         if order is None:
             raise OrderNotFoundError
         return order
+
+    async def load_codes(self, orders: list[Order]) -> dict[uuid.UUID, OrderCodes]:
+        """The promo code each order holds and the ones it earned, for the responses."""
+        return await self._codes.for_orders(orders)
 
     async def load_item_tags(self, orders: list[Order]) -> dict[uuid.UUID, ProductTags]:
         """Labels for every product behind these orders' lines — one query, keyed by product id.
@@ -923,6 +1003,17 @@ class OrdersService:
             raise OrderNotEditableError
         return order
 
+    async def _recount(self, order: Order) -> PromotionDelta:
+        """The lines of an order changed: ask the promotions again, then count the total.
+
+        The promotions are asked only while the order is PENDING — `refresh` is a no-op
+        otherwise — so an edit after the bill goes out recounts the money against the
+        promotions the order already holds and attaches or releases none.
+        """
+        delta = await self._promos.refresh(order)
+        self._recalculate_total(order)
+        return delta
+
     @staticmethod
     def _recalculate_total(order: Order) -> None:
         """Every change to the lines comes through here, so the revision moves with it.
@@ -996,7 +1087,7 @@ class OrdersService:
             order.items.append(line)
         loss = self._customer_changed(order, line, before, line.quantity)
 
-        self._recalculate_total(order)
+        await self._recount(order)
         await self._session.flush()
         # The append put the new line last; read the lines back so the response already
         # has them in `Order.items` order instead of moving the line on the next fetch.
@@ -1019,7 +1110,7 @@ class OrdersService:
 
         loss = self._customer_changed(order, item, item.quantity, quantity)
         item.quantity = quantity
-        self._recalculate_total(order)
+        await self._recount(order)
         await self._session.flush()
         return order, loss
 
@@ -1038,9 +1129,51 @@ class OrdersService:
 
         loss = self._customer_changed(order, item, item.quantity, 0)
         order.items.remove(item)
-        self._recalculate_total(order)
+        await self._recount(order)
         await self._session.flush()
         return order, loss
+
+    async def add_promo_code(
+        self, user_id: uuid.UUID, order_id: uuid.UUID, code: str, *, revision: int | None = None
+    ) -> Order:
+        """Put a promo code on an order that's already been placed, by checkout's own rules.
+
+        The gate is the one every edit of the customer's has (`_get_editable`), the code is
+        checked like at checkout (`resolve_code`, then the order's lines against the
+        conditions), and a `PromoCodeError` leaves the order as it was. One code per order:
+        another is refused until the held one is taken off. The once-per-cycle rule of an
+        owner's code reads the order's own cycle.
+
+        The lines do not change, so neither the owner's discounts come off
+        (`_customer_changed` is about the composition) nor are the promotions asked again:
+        the customer typed a code, and must not lose a promotion to it without a warning.
+        """
+        order = await self._get_editable(user_id, order_id, revision)
+        if any(p.released_at is None and is_code_participation(p) for p in order.promotions):
+            raise OrderHasPromoCodeError
+        found = await resolve_code(
+            self._session, user_id, code, cycle_id=order.cycle_id, for_update=True
+        )
+        if isinstance(found, PromoCode):
+            await self._promos.attach_code(order, found)
+        else:
+            await self._promos.attach_owner_code(order, found)
+        self._recalculate_total(order)
+        await self._session.flush()
+        return order
+
+    async def remove_promo_code(
+        self, user_id: uuid.UUID, order_id: uuid.UUID, *, revision: int | None = None
+    ) -> Order:
+        """Take the promo code off an order; it goes back to the customer.
+
+        An order without a code is left as it is, revision included.
+        """
+        order = await self._get_editable(user_id, order_id, revision)
+        if await self._promos.release_codes(order):
+            self._recalculate_total(order)
+            await self._session.flush()
+        return order
 
     @staticmethod
     def _customer_changed(
@@ -1072,6 +1205,49 @@ class OrdersService:
             quantity_after=quantity_after,
             order_discount=order_discount,
             line_discount=line_discount,
+        )
+
+    async def preview_customer_edit(
+        self,
+        user_id: uuid.UUID,
+        order_id: uuid.UUID,
+        *,
+        revision: int,
+        item_id: uuid.UUID | None,
+        variant_id: uuid.UUID | None,
+        quantity: int,
+    ) -> PromotionImpact:
+        """Make the customer's edit and report what it did to the promotions — **the caller
+        rolls back**, nothing here is meant to be committed.
+
+        It is the edit itself that runs (`add_item`, `set_item_quantity`, `remove_item`), so
+        the answer cannot drift from what the real edit then does, refusals included.
+        """
+
+        def held(order: Order) -> dict[uuid.UUID, str]:
+            return {
+                p.promotion_id: p.title
+                for p in order.promotions
+                if p.released_at is None and p.promotion_id is not None
+            }
+
+        order = await self.get_for_user(user_id, order_id)
+        before = held(order)
+        if variant_id is not None:
+            order, _ = await self.add_item(
+                user_id, order_id, variant_id, quantity, revision=revision
+            )
+        elif item_id is not None and quantity == 0:
+            order, _ = await self.remove_item(user_id, order_id, item_id, revision=revision)
+        elif item_id is not None:
+            order, _ = await self.set_item_quantity(
+                user_id, order_id, item_id, quantity, revision=revision
+            )
+        after = held(order)
+        return PromotionImpact(
+            lost=[(key, title) for key, title in before.items() if key not in after],
+            gained=[(key, title) for key, title in after.items() if key not in before],
+            total_cents=order.total_cents,
         )
 
     async def set_discount(
@@ -1226,7 +1402,9 @@ class OrdersService:
         the order is the shop's to answer.
         """
         order = await self._get_cancellable(user_id, order_id)
+        was_status = order.status
         order.status = OrderStatus.CANCELLED_BY_CUSTOMER
+        await self._promos.release_all(order, was_status=was_status)
         await self._session.flush()
         return order
 
@@ -1261,6 +1439,9 @@ class OrdersService:
         # repriced again, so the bill it had no longer holds, and the owner taking it
         # again sends a fresh one.
         order.confirmed_at = None
+        # Back in PENDING, it asks the promotions again like any other PENDING order: the
+        # ones it let go are taken again if they still hold and are still the customer's.
+        await self._recount(order)
         await self._session.flush()
         return order
 
@@ -1275,6 +1456,9 @@ class OrdersService:
             raise OrderNotFoundError
 
         deleted = DeletedOrder(order_id=order.id, user_id=order.user_id, status=order.status)
+        # A code reserved by this order goes back to its owner: the participation that
+        # pointed at it is deleted with the order, and the code would be RESERVED for good.
+        await self._promos.release_codes_of(order)
         await self._session.delete(order)
         return deleted
 
@@ -1406,7 +1590,7 @@ class OrdersService:
             if not repriced:
                 continue
 
-            self._recalculate_total(order)
+            await self._recount(order)
             changes.extend(
                 OrderPriceChange(
                     order_id=order.id,
@@ -1509,12 +1693,22 @@ class OrdersService:
             for item in dropped:
                 order.items.remove(item)
 
-            self._recalculate_total(order)
             is_cancelled = not order.items
             if is_cancelled:
                 # The owner's doing, even though nobody pressed "cancel": they took the
                 # product out of the catalog, and the order went with it.
+                was_status = order.status
                 order.status = OrderStatus.CANCELLED_BY_OWNER
+                # The lines went, so the revision moves, as with any change to them. A bill
+                # (or a paid order) keeps its total: it is the sum that was billed, and
+                # emptying the lines does not rewrite it — only a PENDING order is re-counted.
+                if was_status is OrderStatus.PENDING:
+                    self._recalculate_total(order)
+                else:
+                    order.revision = (order.revision or 0) + 1
+                await self._promos.release_all(order, was_status=was_status)
+            else:
+                await self._recount(order)
 
             drops.extend(
                 OrderItemDrop(
@@ -1677,17 +1871,28 @@ class OrdersService:
             raise StatusTransitionError
 
         changed = order.status != new_status
+        was_status = order.status
         order.status = new_status
+        self.issued_codes = []
         if changed and new_status is OrderStatus.AWAITING_PAYMENT:
             order.confirmed_at = datetime.now(UTC)
         if changed and new_status is OrderStatus.CONFIRMED and order.paid_at is None:
             # Marked paid by hand: the money came some other way than a receipt in the bot.
             order.paid_at = datetime.now(UTC)
+            # The code it used is spent, and the codes it earns are issued.
+            self.issued_codes = await self._codes.on_paid(order)
         if new_status is OrderStatus.PENDING:
             # Back in PENDING the order is repriced and loses lines like any other, so a
             # payment taken against its old total no longer covers it. Taking it again
             # sends a fresh bill, and the owner settles the earlier money with the customer.
             order.paid_at = None
             order.confirmed_at = None
+        if changed and new_status in CANCELLED_STATUSES:
+            await self._promos.release_all(order, was_status=was_status)
+        if changed and new_status is OrderStatus.PENDING:
+            # Undoing the owner's cancellation: the code the cancel gave back is taken
+            # again if it is still free and valid, then the promotions are asked again.
+            await self._promos.reattach_codes(order)
+            await self._recount(order)
         await self._session.flush()
         return order, changed

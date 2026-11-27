@@ -23,9 +23,7 @@ async def test_export_rows_sum_one_product_across_orders(db_session: AsyncSessio
     first_user = await make_user(db_session)
     second_user = await make_user(db_session)
     await make_cycle(db_session)
-    krem = await make_product(
-        db_session, name="Крем", slug="krem", price_cents=15000, brand="Lulu"
-    )
+    krem = await make_product(db_session, name="Крем", slug="krem", price_cents=15000, brand="Lulu")
     tonik = await make_product(db_session, name="Тоник", slug="tonik", price_cents=5000)
 
     order = await _place_order(db_session, first_user.id, krem, 2)

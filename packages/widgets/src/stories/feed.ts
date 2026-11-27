@@ -17,6 +17,24 @@ import {
   IAdminChecklistExtraDialogProps,
   IAdminOrdersTableProps,
   IAdminProductFormProps,
+  IAdminPromoCode,
+  IAdminPromoCodeDialogProps,
+  IAdminPromoCodeFormProps,
+  IAdminPromoCodesTableProps,
+  IFormSectionProps,
+  IPromotionPeriodFieldsProps,
+  IAdminPromotionFormProps,
+  IAdminPromotionParticipantsDialogProps,
+  IAdminPromotionsTableProps,
+  IPromotion,
+  IPromotionTarget,
+  IPromotionCatalog,
+  IPromotionConditionBuilderProps,
+  IPromotionBannerFieldProps,
+  IPromotionParticipant,
+  IPromotionProductSearchProps,
+  IPromotionRewardBuilderProps,
+  IPromotionTargetFieldProps,
   IAdminProductGalleryProps,
   IAdminProductsTableProps,
   IAdminUser,
@@ -27,7 +45,21 @@ import {
   ILegalTemplateProps,
   IAuthUser,
   ICart,
+  ICartGift,
   ICartItem,
+  ICartPromotions,
+  IGiftLineProps,
+  IAdminBannerItem,
+  IAdminBannersBoardProps,
+  IAdminNewsBannerFormProps,
+  IBannerSlide,
+  IPromoCarouselProps,
+  IPromotionDetailsProps,
+  IPromoCode,
+  IPromoCodeCardProps,
+  IPromoCodeFieldProps,
+  IPromotionLinesProps,
+  IPublicPromotion,
   ICartPanelProps,
   ICartTemplateProps,
   IBadgeProps,
@@ -68,6 +100,7 @@ import {
   IHeaderProps,
   IHeaderSearchProps,
   IIconButtonProps,
+  IActionMenuProps,
   IImage,
   IInputProps,
   IItemRowProps,
@@ -157,6 +190,17 @@ export const feedLink = (src = 'https://google.com'): ILink => ({
 /** Заглушка обработчика: фикстуры статичны, состояние живёт в стори. */
 const noop = (): void => undefined
 
+/** Корзина без акций: общая константа, чтобы не тратить значения seeded faker. */
+const EMPTY_PROMOTIONS: ICartPromotions = {
+  applied: [],
+  hints: [],
+  gifts: [],
+  itemsDiscountCents: 0,
+  orderDiscountCents: 0,
+  discountCents: 0,
+  payableCents: 0,
+}
+
 export const feedButton = (): IButtonProps => ({
   children: 'Добавить в корзину',
   variant: 'primary',
@@ -166,6 +210,17 @@ export const feedButton = (): IButtonProps => ({
 export const feedIconButton = (): IIconButtonProps => ({
   icon: '✕',
   label: 'Удалить позицию',
+})
+
+export const feedActionMenu = (): IActionMenuProps => ({
+  label: 'Действия «LETO2026»',
+  items: [
+    { label: 'Изменить', link: { href: '/admin/promo-codes/1' } },
+    { label: 'Выключить', onSelect: noop },
+    { label: 'Дублировать', link: { href: '/admin/promo-codes/add?from=1' } },
+    { label: 'Использования', onSelect: noop },
+    { label: 'В архив', tone: 'danger', onSelect: noop },
+  ],
 })
 
 export const feedInput = (): IInputProps => ({
@@ -899,6 +954,7 @@ export const feedCart = (): ICart => {
     cycleDeadlineAt: feedDeadline(),
     items,
     totalCents: items.reduce((sum, item) => sum + item.lineTotalCents, 0),
+    promotions: EMPTY_PROMOTIONS,
   }
 }
 
@@ -995,6 +1051,12 @@ export const feedOrder = (overrides: Partial<IOrder> = {}): IOrder => {
     pendingStage: 'COLLECTING',
     paidAt: null,
     revision: 1,
+    promotions: [],
+    gifts: [],
+    promoItemsDiscountCents: 0,
+    promoOrderDiscountCents: 0,
+    promoCode: null,
+    issuedPromoCodes: [],
     ...overrides,
   }
 }
@@ -1498,6 +1560,10 @@ export const feedAdminUsersTable = (): IAdminUsersTableProps => ({
 })
 
 export const feedAdminChecklist = (): IAdminChecklistProps => ({
+  customGifts: [
+    { title: 'Mystery box', imageUrl: null, quantity: 3 },
+    { title: 'Набор миниатюр', imageUrl: null, quantity: 1 },
+  ],
   items: [
     ...[
       {
@@ -1583,6 +1649,39 @@ export const feedAdminOrdersTable = (): IAdminOrdersTableProps => ({
       discountValue: 10,
       discountNote: 'Постоянный клиент',
       discountCents: 30_000,
+      promotions: [
+        {
+          id: faker.string.uuid(),
+          promotionId: faker.string.uuid(),
+          promoCodeId: null,
+          isPromoCode: false,
+          title: 'Весенняя распродажа',
+          discountCents: 15_000,
+        },
+      ],
+      gifts: [
+        {
+          id: faker.string.uuid(),
+          orderPromotionId: faker.string.uuid(),
+          kind: 'CUSTOM',
+          title: 'Mystery box',
+          imageUrl: null,
+          productId: null,
+          variantId: null,
+          quantity: 1,
+        },
+      ],
+      issuedPromoCodes: [
+        {
+          id: faker.string.uuid(),
+          code: 'K7M2QX9P',
+          status: 'ACTIVE',
+          conditions: [],
+          rewards: [{ type: 'DISCOUNT', kind: 'PERCENT', value: 10, target: null }],
+          validFrom: new Date().toISOString(),
+          expiresAt: new Date(Date.now() + 30 * DAY_MS).toISOString(),
+        },
+      ],
     }),
   ],
   onStatusChange: noop,
@@ -1590,4 +1689,788 @@ export const feedAdminOrdersTable = (): IAdminOrdersTableProps => ({
   onDiscount: noop,
   buildProductHref: slug => `/catalog/${slug}`,
   summary: { orderCount: 42, itemCount: 118, totalCents: 18_450_000 },
+})
+
+/* --- Акции и промокоды (админка) --- */
+
+const feedTarget = (overrides: Partial<IPromotionTarget> = {}): IPromotionTarget => ({
+  productIds: [],
+  categoryIds: [],
+  brands: [],
+  ...overrides,
+})
+
+export const feedPromotion = (overrides: Partial<IPromotion> = {}): IPromotion => ({
+  id: faker.string.uuid(),
+  slug: 'spring-sale',
+  title: 'Весенняя распродажа',
+  descriptionHtml: '<p>Скидка на уход и подарок к заявке от 3000 сом.</p>',
+  bannerMobileUrl: faker.image.url({ width: 1080, height: 720 }),
+  bannerDesktopUrl: null,
+  startsAt: new Date(Date.now() - DAY_MS).toISOString(),
+  endsAt: new Date(Date.now() + 14 * DAY_MS).toISOString(),
+  isEnabled: true,
+  announce: false,
+  announcedAt: null,
+  sortOrder: 0,
+  conditions: [{ type: 'SUBTOTAL', minCents: 300_000, target: null }],
+  rewards: [
+    { type: 'DISCOUNT', kind: 'PERCENT', value: 10, target: null },
+    {
+      type: 'GIFT',
+      gift: 'CUSTOM',
+      title: 'Mystery box',
+      imageUrl: null,
+      variantId: null,
+      quantity: 1,
+    },
+  ],
+  status: 'ACTIVE',
+  participantsCount: 12,
+  showInCarousel: true,
+  deletedAt: null,
+  createdAt: new Date(Date.now() - 5 * DAY_MS).toISOString(),
+  updatedAt: new Date(Date.now() - DAY_MS).toISOString(),
+  ...overrides,
+})
+
+export const feedAdminPromotionsTable = (): IAdminPromotionsTableProps => ({
+  promotions: [
+    feedPromotion(),
+    feedPromotion({
+      title: 'Подарок за три товара бренда Anua и вторая очень длинная часть названия акции',
+      slug: 'anua-gift',
+      status: 'SCHEDULED',
+      isEnabled: true,
+      participantsCount: 0,
+      startsAt: new Date(Date.now() + 3 * DAY_MS).toISOString(),
+      conditions: [{ type: 'QUANTITY', minQuantity: 3, target: feedTarget({ brands: ['Anua'] }) }],
+      rewards: [
+        {
+          type: 'PROMO_CODE',
+          validDays: 30,
+          validFrom: null,
+          validUntil: null,
+          conditions: [],
+          rewards: [{ type: 'DISCOUNT', kind: 'AMOUNT', value: 50_000, target: null }],
+        },
+      ],
+    }),
+    feedPromotion({ title: 'Осенний сбор', slug: 'autumn', status: 'DISABLED', isEnabled: false }),
+    feedPromotion({
+      title: 'Прошлогодняя акция',
+      slug: 'old',
+      status: 'ARCHIVED',
+      deletedAt: new Date().toISOString(),
+    }),
+  ],
+  buildEditHref: promotion => `/admin/promotions/${promotion.id}`,
+  buildDuplicateHref: promotion => `/admin/promotions/add?from=${promotion.id}`,
+  onToggleEnabled: noop,
+  onShowParticipants: noop,
+  onDelete: noop,
+})
+
+export const feedPromotionCatalog = (): IPromotionCatalog => ({
+  categories: feedCategorySet(),
+  brands: ['Anua', 'COSRX', 'Laneige', 'Round Lab'],
+  // Первый результат - `p-1`, уже выбранный в `feedPromotionTargetField`: в истории видна пометка «Выбран».
+  searchProducts: async query => [
+    feedProduct({ id: 'p-1', name: `Сыворотка ${query}` }),
+    feedProduct({ name: `Тонер ${query}` }),
+  ],
+  labels: {},
+  onLabel: noop,
+  uploadGiftImage: async () => faker.image.url({ width: 400, height: 400 }),
+})
+
+export const feedAdminPromotionForm = (): IAdminPromotionFormProps => ({
+  catalog: feedPromotionCatalog(),
+  initialValues: feedPromotion(),
+  savedBanners: { mobile: feedPromotion().bannerMobileUrl, desktop: null },
+  onBannerUpload: noop,
+  onBannerRemove: noop,
+  onSubmit: noop,
+})
+
+export const feedFormSection = (): IFormSectionProps => ({
+  title: 'Основное',
+  summary: 'Весенняя распродажа',
+  isOpen: true,
+  onToggle: noop,
+  children: 'Поля секции',
+})
+
+export const feedPromotionPeriodFields = (): IPromotionPeriodFieldsProps => ({
+  startDate: '2026-12-01',
+  startTime: '00:00',
+  endDate: '2026-12-31',
+  endTime: '23:59',
+  isOpenEnded: false,
+  errors: { start: null, end: null },
+  onChange: noop,
+  onOpenEndedChange: noop,
+})
+
+export const feedAdminPromoCode = (overrides: Partial<IAdminPromoCode> = {}): IAdminPromoCode => ({
+  id: faker.string.uuid(),
+  code: 'LETO2026',
+  title: 'Скидка 10% на летнюю заявку',
+  descriptionHtml: '<p>Для постоянных покупателей.</p>',
+  startsAt: new Date(Date.now() - DAY_MS).toISOString(),
+  endsAt: null,
+  isEnabled: true,
+  assignedUsers: [],
+  usesPerCustomer: 1,
+  conditions: [{ type: 'SUBTOTAL', minCents: 200_000, target: null }],
+  rewards: [{ type: 'DISCOUNT', kind: 'PERCENT', value: 10, target: null }],
+  status: 'ACTIVE',
+  participantsCount: 4,
+  deletedAt: null,
+  createdAt: new Date(Date.now() - 5 * DAY_MS).toISOString(),
+  updatedAt: new Date(Date.now() - DAY_MS).toISOString(),
+  ...overrides,
+})
+
+export const feedAdminPromoCodesTable = (): IAdminPromoCodesTableProps => ({
+  promoCodes: [
+    feedAdminPromoCode(),
+    feedAdminPromoCode({
+      code: 'K7M2XQ9R',
+      title: 'Персональная скидка для Айгуль',
+      endsAt: new Date(Date.now() + 14 * DAY_MS).toISOString(),
+      assignedUsers: [
+        { ...feedCustomerOption({ name: 'Айгуль', phone: '+996700123456' }), isDeleted: false },
+      ],
+      participantsCount: 1,
+      rewards: [
+        {
+          type: 'GIFT',
+          gift: 'CUSTOM',
+          title: 'Mystery box',
+          imageUrl: null,
+          variantId: null,
+          quantity: 1,
+        },
+      ],
+    }),
+    feedAdminPromoCode({
+      code: 'ZIMA2026',
+      title: 'Зимняя акция (выключен)',
+      isEnabled: false,
+      status: 'DISABLED',
+      participantsCount: 0,
+    }),
+  ],
+  buildEditHref: promoCode => `/admin/promo-codes/${promoCode.id}`,
+  buildDuplicateHref: promoCode => `/admin/promo-codes/add?from=${promoCode.id}`,
+  onCopy: noop,
+  onToggleEnabled: noop,
+  onShowParticipants: noop,
+  onDelete: noop,
+})
+
+export const feedAdminPromoCodeForm = (): IAdminPromoCodeFormProps => ({
+  catalog: feedPromotionCatalog(),
+  customerSelect: {
+    query: '',
+    onQueryChange: noop,
+    results: [
+      feedCustomerOption({ name: 'Айгуль', phone: '+996700123456' }),
+      feedCustomerOption({ name: 'Айгерим', phone: '+996555987654', telegramLinked: false }),
+    ],
+  },
+  onSubmit: noop,
+})
+
+export const feedAdminPromoCodeDialog = (): IAdminPromoCodeDialogProps => ({
+  isOpen: true,
+  onClose: noop,
+  onSave: noop,
+  catalog: feedPromotionCatalog(),
+  value: {
+    validity: 'DAYS',
+    validDays: '30',
+    validFromDate: '',
+    validUntilDate: '',
+    conditions: [],
+    rewards: [],
+  },
+})
+
+export const feedAdminPromotionParticipantsDialog = (): IAdminPromotionParticipantsDialogProps => {
+  const participants: IPromotionParticipant[] = [
+    {
+      orderPromotionId: faker.string.uuid(),
+      orderId: faker.string.uuid(),
+      userId: faker.string.uuid(),
+      userName: 'Айгуль',
+      orderStatus: 'CONFIRMED',
+      orderTotalCents: 270_000,
+      rewards: feedPromotion().rewards,
+      releasedAt: null,
+      createdAt: new Date(Date.now() - DAY_MS).toISOString(),
+    },
+    {
+      orderPromotionId: faker.string.uuid(),
+      orderId: faker.string.uuid(),
+      userId: faker.string.uuid(),
+      userName: 'Нурзат',
+      orderStatus: 'CANCELLED_BY_CUSTOMER',
+      orderTotalCents: 150_000,
+      rewards: feedPromotion().rewards,
+      releasedAt: new Date().toISOString(),
+      createdAt: new Date(Date.now() - 2 * DAY_MS).toISOString(),
+    },
+  ]
+
+  return {
+    isOpen: true,
+    onClose: noop,
+    promotionTitle: 'Весенняя распродажа',
+    participants,
+    page: 1,
+    pageSize: 20,
+    total: 46,
+    onPageChange: noop,
+    buildOrderHref: orderId => `/admin/orders?order=${orderId}`,
+  }
+}
+
+export const feedPromotionTargetField = (): IPromotionTargetFieldProps => {
+  const catalog = feedPromotionCatalog()
+
+  return {
+    catalog: { ...catalog, labels: { 'p-1': 'Сыворотка Centella' } },
+    value: feedTarget({
+      productIds: ['p-1'],
+      categoryIds: catalog.categories.slice(0, 1).map(category => category.id),
+      brands: ['Anua'],
+    }),
+    onChange: noop,
+  }
+}
+
+export const feedPromotionConditionBuilder = (): IPromotionConditionBuilderProps => ({
+  catalog: feedPromotionCatalog(),
+  value: [
+    {
+      key: 'c-1',
+      type: 'SUBTOTAL',
+      amount: '3000',
+      quantity: '',
+      mode: 'ANY',
+      hasTarget: false,
+      target: feedTarget(),
+    },
+    {
+      key: 'c-2',
+      type: 'CONTAINS',
+      amount: '',
+      quantity: '',
+      mode: 'ANY',
+      hasTarget: true,
+      target: feedTarget({ brands: ['Anua'] }),
+    },
+  ],
+  onChange: noop,
+})
+
+export const feedPromotionRewardBuilder = (): IPromotionRewardBuilderProps => ({
+  catalog: feedPromotionCatalog(),
+  value: [
+    {
+      key: 'r-1',
+      type: 'DISCOUNT',
+      kind: 'PERCENT',
+      value: '10',
+      hasTarget: false,
+      target: feedTarget(),
+      gift: 'CUSTOM',
+      giftTitle: 'Mystery box',
+      giftImageUrl: null,
+      giftVariantId: null,
+      giftQuantity: '1',
+      promoCode: null,
+    },
+    {
+      key: 'r-2',
+      type: 'GIFT',
+      kind: 'PERCENT',
+      value: '',
+      hasTarget: false,
+      target: feedTarget(),
+      gift: 'CUSTOM',
+      giftTitle: 'Mystery box',
+      giftImageUrl: null,
+      giftVariantId: null,
+      giftQuantity: '1',
+      promoCode: null,
+    },
+  ],
+  onChange: noop,
+  onEditPromoCode: noop,
+})
+
+export const feedPromotionProductSearch = (): IPromotionProductSearchProps => ({
+  searchProducts: feedPromotionCatalog().searchProducts,
+  onPick: noop,
+})
+
+export const feedPromotionBannerField = (): IPromotionBannerFieldProps => ({
+  variant: 'mobile',
+  url: faker.image.url({ width: 1080, height: 720 }),
+  isRequired: true,
+  onSelect: noop,
+  onRemove: noop,
+})
+
+/* --- Акции и промокоды: витрина --- */
+
+/**
+ * Баннер как data-URI: сторис не должны зависеть от сети, и пропорции видны сразу.
+ * Размеры - `BANNER_SPECS`: мобильный 1080x720, десктопный 1920x640.
+ */
+const bannerImage = (label: string, width: number, height: number, hue: number): string => {
+  const svg =
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">` +
+    `<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1">` +
+    `<stop offset="0" stop-color="hsl(${hue},70%,86%)"/><stop offset="1" stop-color="hsl(${hue + 40},65%,70%)"/>` +
+    `</linearGradient></defs><rect width="100%" height="100%" fill="url(#g)"/>` +
+    `<text x="50%" y="50%" text-anchor="middle" dominant-baseline="middle" font-family="sans-serif" ` +
+    `font-weight="700" font-size="${Math.round(height / 7)}" fill="#442131">${label}</text></svg>`
+
+  return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`
+}
+
+export const feedPublicPromotion = (
+  overrides: Partial<IPublicPromotion> = {}
+): IPublicPromotion => ({
+  id: 'promo-spring',
+  slug: 'spring-sale',
+  title: 'Весенняя распродажа',
+  descriptionHtml: '<p>Скидка 10% на заявку от 3000 сом и подарок - Mystery box.</p>',
+  bannerMobileUrl: bannerImage('Весенняя распродажа - 1080x720', 1080, 720, 320),
+  bannerDesktopUrl: bannerImage('Весенняя распродажа - 1920x640', 1920, 640, 320),
+  startsAt: new Date(Date.now() - DAY_MS).toISOString(),
+  endsAt: new Date(Date.now() + 14 * DAY_MS).toISOString(),
+  conditions: [{ type: 'SUBTOTAL', minCents: 300_000, target: null }],
+  rewards: [
+    { type: 'DISCOUNT', kind: 'PERCENT', value: 10, target: null },
+    {
+      type: 'GIFT',
+      gift: 'CUSTOM',
+      title: 'Mystery box',
+      imageUrl: null,
+      variantId: null,
+      quantity: 1,
+    },
+  ],
+  products: [],
+  categories: [],
+  ...overrides,
+})
+
+/** Акционный слайд: как его собирает сайт из `GET /banners`. */
+export const feedBannerSlide = (overrides: Partial<IBannerSlide> = {}): IBannerSlide => ({
+  key: 'promotion:promo-spring',
+  kind: 'PROMOTION',
+  title: 'Весенняя распродажа',
+  text: null,
+  imageMobileUrl: bannerImage('Весенняя распродажа - 1080x720', 1080, 720, 320),
+  imageDesktopUrl: bannerImage('Весенняя распродажа - 1920x640', 1920, 640, 320),
+  href: '/promotions/spring-sale',
+  isExternal: false,
+  ctaLabel: null,
+  ...overrides,
+})
+
+/** Текстовая новость без картинки: карточка из заголовка, текста и кнопки. */
+export const feedNewsTextSlide = (overrides: Partial<IBannerSlide> = {}): IBannerSlide =>
+  feedBannerSlide({
+    key: 'news:news-cycle',
+    kind: 'NEWS',
+    title: 'Новый сбор открыт',
+    text: 'Принимаем заявки до пятницы - успейте собрать любимое к весне.',
+    imageMobileUrl: null,
+    imageDesktopUrl: null,
+    href: '/catalog',
+    ctaLabel: 'В каталог',
+    ...overrides,
+  })
+
+export const feedBannerSlides = (): IBannerSlide[] => [
+  feedBannerSlide(),
+  // Только мобильный баннер: на широком экране он кадрируется под 3:1.
+  feedBannerSlide({
+    key: 'promotion:promo-box',
+    title: 'Mystery box в подарок',
+    imageMobileUrl: bannerImage('Mystery box - 1080x720', 1080, 720, 20),
+    imageDesktopUrl: null,
+    href: '/promotions/mystery-box',
+  }),
+  feedNewsTextSlide(),
+  // Новость с картинкой и внешней ссылкой.
+  feedBannerSlide({
+    key: 'news:news-channel',
+    kind: 'NEWS',
+    title: 'Мы в Telegram',
+    imageMobileUrl: bannerImage('Telegram - 1080x720', 1080, 720, 200),
+    imageDesktopUrl: bannerImage('Telegram - 1920x640', 1920, 640, 200),
+    href: 'https://t.me/sululu',
+    isExternal: true,
+  }),
+]
+
+export const feedPromoCarousel = (): IPromoCarouselProps => ({
+  slides: feedBannerSlides(),
+})
+
+/** Строка списка баннеров; по умолчанию - идущая акция с баннером. */
+export const feedAdminBannerItem = (
+  overrides: Partial<IAdminBannerItem> = {}
+): IAdminBannerItem => ({
+  key: 'promotion:promo-spring',
+  id: 'promo-spring',
+  kind: 'PROMOTION',
+  state: 'SHOWN',
+  isShown: true,
+  position: 0,
+  slide: {
+    key: 'promotion:promo-spring',
+    kind: 'PROMOTION',
+    title: 'Весенняя распродажа',
+    text: null,
+    imageMobileUrl: bannerImage('Весенняя распродажа - 1080x720', 1080, 720, 320),
+    imageDesktopUrl: null,
+    promotionSlug: 'spring-sale',
+    linkUrl: null,
+    ctaLabel: null,
+  },
+  promotionId: 'promo-spring',
+  promotionStatus: 'ACTIVE',
+  startsAt: new Date(Date.now() - DAY_MS).toISOString(),
+  endsAt: new Date(Date.now() + 14 * DAY_MS).toISOString(),
+  news: null,
+  createdAt: new Date(Date.now() - 5 * DAY_MS).toISOString(),
+  ...overrides,
+})
+
+export const feedAdminBannersBoard = (): IAdminBannersBoardProps => ({
+  items: feedAdminBannerItems(),
+  buildPromotionHref: item => `/admin/promotions/${item.id}`,
+  buildNewsEditHref: item => `/admin/banners/news/${item.id}`,
+  onToggleShown: () => {},
+  onReorder: () => {},
+  onDeleteNews: () => {},
+})
+
+/** Форма сохранённой новости: текстовый слайд со ссылкой, без картинок. */
+export const feedAdminNewsBannerForm = (): IAdminNewsBannerFormProps => ({
+  initialValues: {
+    title: 'Новый сбор открыт',
+    text: 'Принимаем заявки до пятницы - успейте собрать любимое к весне.',
+    linkUrl: '/catalog',
+    ctaLabel: 'В каталог',
+    imageMobileUrl: null,
+    imageDesktopUrl: null,
+    startsAt: null,
+    endsAt: null,
+    isEnabled: true,
+  },
+  savedImages: { mobile: null, desktop: null },
+  onImageUpload: () => {},
+  onImageRemove: () => {},
+  onSubmit: () => {},
+})
+
+const feedNewsItem = (
+  id: string,
+  overrides: Partial<IAdminBannerItem> = {},
+  news: Partial<NonNullable<IAdminBannerItem['news']>> = {}
+): IAdminBannerItem => {
+  const fields = {
+    title: 'Новый сбор открыт',
+    text: 'Принимаем заявки до пятницы',
+    linkUrl: '/catalog',
+    ctaLabel: 'В каталог',
+    imageMobileUrl: null,
+    imageDesktopUrl: null,
+    startsAt: null,
+    endsAt: null,
+    isEnabled: true,
+    ...news,
+  }
+
+  return feedAdminBannerItem({
+    key: `news:${id}`,
+    id,
+    kind: 'NEWS',
+    isShown: fields.isEnabled,
+    slide: {
+      key: `news:${id}`,
+      kind: 'NEWS',
+      title: fields.title,
+      text: fields.text,
+      imageMobileUrl: fields.imageMobileUrl,
+      imageDesktopUrl: fields.imageDesktopUrl,
+      promotionSlug: null,
+      linkUrl: fields.linkUrl,
+      ctaLabel: fields.ctaLabel,
+    },
+    promotionId: null,
+    promotionStatus: null,
+    startsAt: fields.startsAt,
+    endsAt: fields.endsAt,
+    news: fields,
+    ...overrides,
+  })
+}
+
+/** Смешанный список: показанные, скрытые, завершённые, без баннера, выключенная акция. */
+export const feedAdminBannerItems = (): IAdminBannerItem[] => [
+  feedNewsItem('news-cycle', { position: 0 }),
+  feedAdminBannerItem({ position: 1 }),
+  feedAdminBannerItem({
+    key: 'promotion:promo-box',
+    id: 'promo-box',
+    promotionId: 'promo-box',
+    state: 'HIDDEN',
+    isShown: false,
+    position: 2,
+    slide: {
+      ...feedAdminBannerItem().slide,
+      key: 'promotion:promo-box',
+      title: 'Mystery box в подарок',
+      promotionSlug: 'mystery-box',
+    },
+  }),
+  feedAdminBannerItem({
+    key: 'promotion:promo-plain',
+    id: 'promo-plain',
+    promotionId: 'promo-plain',
+    state: 'NO_IMAGE',
+    position: 3,
+    slide: {
+      ...feedAdminBannerItem().slide,
+      key: 'promotion:promo-plain',
+      title: 'Скидка без баннера',
+      imageMobileUrl: null,
+      promotionSlug: 'plain',
+    },
+  }),
+  feedAdminBannerItem({
+    key: 'promotion:promo-off',
+    id: 'promo-off',
+    promotionId: 'promo-off',
+    state: 'PROMOTION_OFF',
+    promotionStatus: 'DISABLED',
+    position: 4,
+    slide: {
+      ...feedAdminBannerItem().slide,
+      key: 'promotion:promo-off',
+      title: 'Выключенная акция',
+      promotionSlug: 'off',
+    },
+  }),
+  feedNewsItem(
+    'news-old',
+    { state: 'FINISHED', position: 5 },
+    {
+      title: 'Прошлый сбор закрыт',
+      text: null,
+      linkUrl: null,
+      ctaLabel: null,
+      endsAt: new Date(Date.now() - 3 * DAY_MS).toISOString(),
+    }
+  ),
+  feedNewsItem(
+    'news-later',
+    { state: 'SCHEDULED', position: 6 },
+    {
+      title: 'Скоро: новое поступление',
+      startsAt: new Date(Date.now() + 2 * DAY_MS).toISOString(),
+    }
+  ),
+]
+
+export const feedCartGift = (overrides: Partial<ICartGift> = {}): ICartGift => ({
+  kind: 'CUSTOM',
+  title: 'Mystery box',
+  imageUrl: null,
+  productId: null,
+  variantId: null,
+  quantity: 1,
+  ...overrides,
+})
+
+export const feedGiftLine = (): IGiftLineProps => ({
+  gift: feedCartGift(),
+  note: 'Акция «Весенняя распродажа»',
+})
+
+/** Корзина, на которую действует акция со скидкой и подарком и ещё одна не добрана. */
+export const feedCartPromotions = (totalCents: number): ICartPromotions => {
+  const discountCents = Math.round(totalCents / 10)
+  const gift = feedCartGift()
+
+  return {
+    applied: [
+      {
+        promotionId: 'promo-spring',
+        slug: 'spring-sale',
+        title: 'Весенняя распродажа',
+        discountCents,
+        gifts: [gift],
+      },
+    ],
+    hints: [
+      {
+        promotionId: 'promo-big',
+        slug: 'big-order',
+        title: 'Подарок за большую заявку',
+        missingCents: 120_000,
+        missingQuantity: 0,
+      },
+    ],
+    gifts: [gift],
+    itemsDiscountCents: 0,
+    orderDiscountCents: discountCents,
+    discountCents,
+    payableCents: totalCents - discountCents,
+  }
+}
+
+export const feedCartWithPromotions = (): ICart => {
+  const cart = feedCart()
+
+  return { ...cart, promotions: feedCartPromotions(cart.totalCents) }
+}
+
+export const feedCartPanelWithPromotions = (): ICartPanelProps => ({
+  ...feedCartPanel(),
+  cart: feedCartWithPromotions(),
+  buildPromotionHref: slug => `/promotions/${slug}`,
+})
+
+export const feedPromotionLines = (): IPromotionLinesProps => ({
+  promotions: feedCartPromotions(500_000),
+  kind: 'discounts',
+  buildPromotionHref: slug => `/promotions/${slug}`,
+})
+
+export const feedPromoCode = (overrides: Partial<IPromoCode> = {}): IPromoCode => ({
+  id: 'code-1',
+  code: 'K7M2XQ9R',
+  status: 'ACTIVE',
+  conditions: [{ type: 'SUBTOTAL', minCents: 200_000, target: null }],
+  rewards: [{ type: 'DISCOUNT', kind: 'PERCENT', value: 15, target: null }],
+  validFrom: new Date(Date.now() - DAY_MS).toISOString(),
+  expiresAt: new Date(Date.now() + 20 * DAY_MS).toISOString(),
+  promotionTitle: 'Весенняя распродажа',
+  isOwnerCode: false,
+  descriptionHtml: null,
+  sourceOrderId: 'order-1',
+  usedOrderId: null,
+  createdAt: new Date(Date.now() - DAY_MS).toISOString(),
+  ...overrides,
+})
+
+export const feedPromoCodeCard = (): IPromoCodeCardProps => ({
+  code: feedPromoCode(),
+  onCopy: noop,
+  buildOrderHref: id => `/orders/${id}`,
+})
+
+export const feedPromoCodeField = (): IPromoCodeFieldProps => ({
+  value: '',
+  onChange: noop,
+  onApply: noop,
+  applied: null,
+  onRemove: noop,
+  options: [
+    { code: 'K7M2XQ9R', label: 'Скидка 15% · от 2 000 сом' },
+    { code: 'P4TN8W3B', label: 'Подарок: Mystery box' },
+  ],
+  onPickOption: noop,
+  allCodesHref: '/promocodes',
+})
+
+export const feedCheckoutFormWithPromotions = (): ICheckoutFormProps => ({
+  ...feedCheckoutForm(),
+  promotions: feedCartPromotions(348_000),
+  buildPromotionHref: slug => `/promotions/${slug}`,
+})
+
+/** Заявка, в которой сработали акция со скидкой и подарком, держится код и выдан новый. */
+export const feedOrderWithPromotions = (): IOrder => {
+  const order = feedOrder()
+  const discountCents = Math.round(order.subtotalCents / 10)
+
+  return {
+    ...order,
+    totalCents: order.subtotalCents - discountCents - 20_000,
+    promoOrderDiscountCents: discountCents + 20_000,
+    promotions: [
+      {
+        id: 'op-1',
+        promotionId: 'promo-spring',
+        promoCodeId: null,
+        isPromoCode: false,
+        title: 'Весенняя распродажа',
+        discountCents,
+      },
+      {
+        id: 'op-2',
+        promotionId: null,
+        promoCodeId: 'code-1',
+        isPromoCode: true,
+        title: 'Промокод K7M2XQ9R',
+        discountCents: 20_000,
+      },
+    ],
+    gifts: [
+      {
+        id: 'gift-1',
+        orderPromotionId: 'op-1',
+        kind: 'CUSTOM',
+        title: 'Mystery box',
+        imageUrl: null,
+        productId: null,
+        variantId: null,
+        quantity: 1,
+      },
+    ],
+    promoCode: {
+      id: 'code-1',
+      code: 'K7M2XQ9R',
+      status: 'RESERVED',
+      conditions: [],
+      rewards: [{ type: 'DISCOUNT', kind: 'AMOUNT', value: 20_000, target: null }],
+      validFrom: new Date(Date.now() - DAY_MS).toISOString(),
+      expiresAt: new Date(Date.now() + 20 * DAY_MS).toISOString(),
+    },
+    issuedPromoCodes: [
+      {
+        id: 'code-2',
+        code: 'P4TN8W3B',
+        status: 'ACTIVE',
+        conditions: [{ type: 'SUBTOTAL', minCents: 200_000, target: null }],
+        rewards: [{ type: 'DISCOUNT', kind: 'PERCENT', value: 15, target: null }],
+        validFrom: new Date(Date.now() - DAY_MS).toISOString(),
+        expiresAt: new Date(Date.now() + 30 * DAY_MS).toISOString(),
+      },
+    ],
+  }
+}
+
+export const feedCheckoutPanelWithPromotions = (): Omit<ICheckoutPanelProps, 'form'> => ({
+  ...feedCheckoutPanel(),
+  cart: feedCartWithPromotions(),
+  code: { code: 'K7M2XQ9R', gifts: [feedCartGift({ title: 'Миниатюра сыворотки, 5 мл' })] },
+})
+
+export const feedPromotionDetails = (): IPromotionDetailsProps => ({
+  promotion: feedPublicPromotion(),
+  catalogHref: '/catalog',
 })

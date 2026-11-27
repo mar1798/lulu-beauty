@@ -1,0 +1,121 @@
+import clsx from 'clsx'
+import { type FC } from 'react'
+import type { IBasicStyling, IPromoCodeCardProps, PromoCodeView } from '../../types'
+import { IconCopy } from '../../svg/icons'
+import { AppLink } from '../../atoms/app-link'
+import { Badge } from '../../atoms/badge'
+import { RichText } from '../../atoms/rich-text'
+import { IconButton } from '../../atoms/icon-button'
+import { formatShortDate } from '../../utils/datetime'
+import {
+  PROMO_CODE_STATUS_LABELS,
+  describePromoCodeConditions,
+  describePromoCodeRewards,
+} from '../../utils/promotion'
+import * as styles from './PromoCodeCard.css'
+
+/**
+ * Промокод на странице «Промокоды», нарисованный купоном: корешок с самим кодом
+ * и копированием, перфорация с вырезами, и основная часть - что код даёт, при
+ * каких условиях, срок, статус.
+ *
+ * Кнопки «Использовать» нет: код вводится на оформлении, а ссылка в корзину
+ * ничего не применяла и только уводила со страницы. Копирование - то самое
+ * действие, которое здесь нужно.
+ *
+ * Статус приходит с сервера (`EXPIRED` он вычисляет по сроку на момент ответа),
+ * здесь только подпись и тон. Недействующий код - использованный, истёкший,
+ * отозванный - остаётся на странице приглушённым, с серым корешком: по нему
+ * видно, почему код не подошёл, а копировать его уже незачем, поэтому кнопка
+ * копирования у него пропадает.
+ */
+
+const TONES: Record<PromoCodeView, 'success' | 'info' | 'neutral' | 'danger'> = {
+  ACTIVE: 'success',
+  RESERVED: 'info',
+  USED: 'neutral',
+  EXPIRED: 'neutral',
+  REVOKED: 'danger',
+}
+
+export const PromoCodeCard: FC<IPromoCodeCardProps & IBasicStyling> = ({
+  code,
+  onCopy,
+  buildOrderHref,
+  className,
+}) => {
+  const isActive = code.status === 'ACTIVE'
+  const conditions = describePromoCodeConditions(code)
+  const orderId = code.usedOrderId
+
+  return (
+    <article className={clsx(styles.container, !isActive && styles.inactive, className)}>
+      <div className={clsx(styles.stub, !isActive && styles.stubInactive)}>
+        <span className={styles.stubLabel}>Промокод</span>
+
+        <div className={styles.codeRow}>
+          <span className={styles.code}>{code.code}</span>
+
+          {onCopy !== undefined && isActive && (
+            <IconButton
+              icon={<IconCopy />}
+              label={`Скопировать код ${code.code}`}
+              variant="solid"
+              size="lg"
+              onClick={() => {
+                onCopy(code.code)
+              }}
+            />
+          )}
+        </div>
+      </div>
+
+      <div className={styles.body}>
+        <div className={styles.head}>
+          <Badge tone={TONES[code.status]} withDot={true}>
+            {PROMO_CODE_STATUS_LABELS[code.status]}
+          </Badge>
+
+          {code.promotionTitle !== null && (
+            <span className={styles.promotion}>
+              {code.isOwnerCode ? code.promotionTitle : `Акция «${code.promotionTitle}»`}
+            </span>
+          )}
+        </div>
+
+        {code.descriptionHtml !== null && code.descriptionHtml !== '' && (
+          <RichText html={code.descriptionHtml} />
+        )}
+
+        <dl className={styles.facts}>
+          <div className={styles.fact}>
+            <dt className={styles.term}>Что даёт</dt>
+            <dd className={styles.value}>{describePromoCodeRewards(code)}</dd>
+          </div>
+
+          {conditions !== '' && (
+            <div className={styles.fact}>
+              <dt className={styles.term}>Условия</dt>
+              <dd className={styles.value}>{conditions}</dd>
+            </div>
+          )}
+
+          <div className={styles.fact}>
+            <dt className={styles.term}>Срок</dt>
+            <dd className={styles.value}>
+              {code.expiresAt === null
+                ? `с ${formatShortDate(code.validFrom)}`
+                : `${formatShortDate(code.validFrom)} - ${formatShortDate(code.expiresAt)}`}
+            </dd>
+          </div>
+        </dl>
+
+        {orderId !== null && buildOrderHref !== undefined && (
+          <AppLink href={buildOrderHref(orderId)} className={styles.orderLink}>
+            {code.status === 'USED' ? 'Использован в заявке' : 'Лежит в заявке'}
+          </AppLink>
+        )}
+      </div>
+    </article>
+  )
+}

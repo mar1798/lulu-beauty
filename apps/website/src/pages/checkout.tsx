@@ -3,8 +3,8 @@ import Head from 'next/head'
 import { useRouter } from 'next/router'
 import { mutate as globalMutate } from 'swr'
 import type { IOrder } from 'widgets/types'
-import { Alert, AppLink, Button, Text } from 'widgets/atoms'
-import { EmptyState } from 'widgets/molecules'
+import { Alert, AppLink, Button, Text, formatPrice } from 'widgets/atoms'
+import { EmptyState, PromoCodeField } from 'widgets/molecules'
 import { CheckoutForm, CheckoutPanel, ProductPicker } from 'widgets/organisms'
 import { ITEM_FORMS, orderNumber } from 'widgets/molecules'
 import { useToast } from 'widgets/contexts'
@@ -19,7 +19,9 @@ import { useProductSearch } from '@/hooks/useProductSearch'
 import { linesOfVariants, useDiscountLossConfirm } from '@/hooks/useDiscountLossConfirm'
 import { isApiError, messageForError } from '@/services/apiErrors'
 import { addMyOrderItem, checkout, getMyOrder } from '@/services/endpoints/orders'
-import { isOrdersKey } from '@/services/swrKeys'
+import { isOrdersKey, isPromoCodesKey } from '@/services/swrKeys'
+import { usePromoCode } from '@/hooks/usePromoCode'
+import { promoCodeSummary, usePromoCodeOptions } from '@/hooks/usePromoCodeOptions'
 import { useLoginHref } from '@/hooks/useLoginHref'
 import { useCycleExpiryRefresh } from '@/hooks/useCycleExpiryRefresh'
 
@@ -46,16 +48,40 @@ import { useCycleExpiryRefresh } from '@/hooks/useCycleExpiryRefresh'
 /** Номер поданной заявки в адресе — чтобы экран успеха пережил перезагрузку. */
 const ORDER_PARAM = 'order'
 
+/** Что дали акции: по строке на скидку и подарок; если ни того ни другого - названия акций. */
+const promotionLines = (order: IOrder): string[] => {
+  const lines = [
+    ...order.promotions
+      .filter(entry => entry.discountCents > 0)
+      .map(entry => `${entry.title}: скидка ${formatPrice(entry.discountCents)}`),
+    ...order.gifts.map(gift => `Подарок: ${gift.title}`),
+  ]
+
+  return lines.length > 0 ? lines : order.promotions.map(entry => entry.title)
+}
+
 const CheckoutPage: React.FC = () => {
   const router = useRouter()
   const { user, isLoading: isAuthLoading } = useAuth()
   const loginHref = useLoginHref()
   const { cart, isLoading, error: cartError, reload, addItem, updateItem, settled } = useCart()
+  const userId = user?.id ?? null
   const { notify } = useToast()
   const search = useProductSearch()
   // Дедлайн прошёл, пока страница открыта, — перечитать сбор и корзину, чтобы
   // «Оформить» погасла сразу, а не ответила 409.
   useCycleExpiryRefresh(cart?.cycleDeadlineAt ?? null)
+
+  /*
+    Промокод: проверка и суммы - с сервера (`POST /cart/promo-code/check`), перепроверка при
+    любой правке состава. Подпись - объёмы с количествами: от них зависят условия кода.
+  */
+  const promo = usePromoCode(
+    cart?.items.map(item => `${item.variantId}:${item.quantity}`).join(',') ?? '',
+    settled
+  )
+  const codeOptions = usePromoCodeOptions(userId)
+  const appliedCode = promo.applied
 
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -134,7 +160,9 @@ const CheckoutPage: React.FC = () => {
    */
   const handleAddToOrder = async (current: IOrder, variantId: string): Promise<void> => {
     // Скидку на заявку, открытую заново, магазин мог дать, пока экран висел.
-    if (!(await confirmDiscountLoss(current, linesOfVariants(current, [variantId])))) {
+    const edits = [{ variantId, quantity: 1 }]
+
+    if (!(await confirmDiscountLoss(current, linesOfVariants(current, [variantId]), edits))) {
       return
     }
 
@@ -169,7 +197,7 @@ const CheckoutPage: React.FC = () => {
       // Сервер снимает заявку с корзины — сперва пусть корзина догонит экран.
       await settled()
 
-      const placed = await checkout(note ?? undefined)
+      const placed = await checkout(note ?? undefined, appliedCode?.code.code)
 
       setOrder(placed)
       void router.replace(
@@ -182,11 +210,19 @@ const CheckoutPage: React.FC = () => {
       if (user !== null) {
         // Все страницы списка: новая заявка встаёт первой и сдвигает остальные.
         void globalMutate(isOrdersKey)
+        // Код ушёл в резерв заявки: список «Промокоды» и подсказки читаются заново.
+        void globalMutate(isPromoCodesKey)
       }
+      promo.remove()
     } catch (cause: unknown) {
       const message = messageForError(cause, 'checkout')
 
       setError(message)
+
+      // Отказ из-за кода: он больше не годится, и повторная отправка с ним упёрлась бы в то же.
+      if (isApiError(cause) && cause.code.startsWith('promo_code_')) {
+        promo.remove()
+      }
       // Дублируем тостом: на телефоне форма длинная, и ошибка у кнопки может
       // оказаться под клавиатурой.
       notify({ tone: 'danger', title: 'Заявка не оформилась', description: message })
@@ -224,6 +260,20 @@ const CheckoutPage: React.FC = () => {
               </>
             )}
           </Alert>
+
+          {/* Что дали акции: подарки кладёт владелец вместе с товарами, скидка уже в сумме заявки. */}
+          {(order.gifts.length > 0 || order.promotions.length > 0) && (
+            <Alert tone="info" title="Акции в вашей заявке">
+              {/* Списком, а не строкой через точку: по пункту на скидку и подарок. */}
+              <ul className={styles.alertList}>
+                {promotionLines(order).map((line, index) => (
+                  // Строки могут совпасть (два одинаковых подарка), поэтому ключ с индексом.
+                  // eslint-disable-next-line react/no-array-index-key
+                  <li key={`${index}-${line}`}>{line}</li>
+                ))}
+              </ul>
+            </Alert>
+          )}
 
           {/*
             Правимость решает бэкенд: между отправкой и этим кадром сбор мог
@@ -326,10 +376,18 @@ const CheckoutPage: React.FC = () => {
         <EditableOrderNotice />
 
         <CheckoutPanel
-          cart={cart}
+          // Акции с учётом кода, если он принят: подарки и суммы - ответ его проверки.
+          cart={
+            cart !== null && appliedCode !== null
+              ? { ...cart, promotions: appliedCode.promotions }
+              : cart
+          }
           buildProductHref={slug => `/catalog/${slug}`}
           cartHref="/cart"
           isLoading={isCartLoading}
+          code={
+            appliedCode === null ? null : { code: appliedCode.code.code, gifts: appliedCode.gifts }
+          }
           /*
             Степперы замирают только под отправкой: под собственный запрос
             гасить их нельзя — быстрые нажатия должны складываться.
@@ -359,6 +417,41 @@ const CheckoutPage: React.FC = () => {
             <CheckoutForm
               totalCents={cart?.totalCents ?? 0}
               itemCount={cart?.items.reduce((sum, item) => sum + item.quantity, 0) ?? 0}
+              promotions={appliedCode?.promotions ?? cart?.promotions}
+              code={
+                appliedCode === null
+                  ? null
+                  : { code: appliedCode.code.code, discountCents: appliedCode.discountCents }
+              }
+              buildPromotionHref={slug => `/promotions/${slug}`}
+              promoCode={
+                <PromoCodeField
+                  value={promo.value}
+                  onChange={promo.setValue}
+                  onApply={() => {
+                    void promo.apply()
+                  }}
+                  applied={
+                    appliedCode === null
+                      ? null
+                      : {
+                          code: appliedCode.code.code,
+                          discountCents: appliedCode.discountCents,
+                          description: promoCodeSummary(appliedCode.code),
+                        }
+                  }
+                  onRemove={promo.remove}
+                  isChecking={promo.isChecking}
+                  error={promo.error}
+                  options={codeOptions}
+                  onPickOption={code => {
+                    void promo.apply(code)
+                  }}
+                  // Ссылка - к своим кодам; когда применить нечего, она ведёт в пустоту.
+                  allCodesHref={codeOptions.length > 0 ? '/promocodes' : undefined}
+                  disabled={isSubmitting}
+                />
+              }
               deadlineAt={cart?.cycleDeadlineAt ?? null}
               isLoading={isCartLoading}
               isSubmitting={isSubmitting}

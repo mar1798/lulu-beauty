@@ -721,8 +721,9 @@ and asks for confirmation — with the sum before and after — before anything 
 - **What it does not touch.** The purchase list and the checklist are what the shop buys,
   at the price per unit, so a discount changes neither. `orders.total_cents` — and with it
   the admin table's sum and the cycle's summary — is after discounts.
-- **No discount at checkout.** A discount is the admin's act on a placed order; the cart
-  and checkout know nothing of it.
+- **No owner's discount at checkout.** A discount is the admin's act on a placed order; the
+  cart and checkout know nothing of it. Promotions are the automatic kind and do apply there
+  — see [Promotions](#promotions), whose discounts slot into this order of operations.
 
 ### Statuses
 
@@ -953,6 +954,415 @@ save a fetched blob — `<a download>` on a blob URL is silently ignored. There 
 lives two minutes, is typed `download` so it can never pass as an access token, and the
 download re-reads the account's role (`load_admin`), so a demotion kills an unused link.
 Client side: `apps/website/src/utils/exportDownload.ts`.
+
+## Promotions
+
+An owner-run offer with a window, conditions and rewards: «покупка от 2000 сом - скидка
+10%», «от 3 товаров бренда X - подарок», «оплатите заявку - получите промокод». Code in
+`apps/api/app/promotions/`; the arithmetic of the money is still `app/orders/discounts.py`.
+Any admin manages them (`require_admin` on every `/admin/promotions*` route), like the
+rest of the owner panel.
+
+### A promotion
+
+`Promotion`: `slug` (unique, the URL `/promotions/<slug>`), `title`, `description_html`
+(cleaned like a product description), two banners (`banner_mobile_url`, `banner_desktop_url`),
+`starts_at`/`ends_at`, `is_enabled`, `announce`, `announced_at`, `conditions`, `rewards`,
+`sort_order`, `deleted_at`.
+
+- **The window is `[starts_at, ends_at)`**, `ends_at > starts_at` (`422
+promotion_ends_before_start`, and a CHECK constraint). A promotion ending at midnight is over
+  at midnight.
+- **`ends_at` is optional.** `NULL` is an open-ended promotion: running from `starts_at` on,
+  never `FINISHED`, until the owner disables or archives it (`not_ended()` is the SQL half of
+  the window check). The form makes it an explicit «Бессрочная» switch rather than an empty
+  date, so a forgotten end does not quietly run forever. **Customers are never told it is
+  open-ended**: the page, the snippet, the start broadcast, the `/promocodes` card, an order's
+  issued-code note and the personal-code message name only the start date («Действует с …»).
+  Only the admin tables say «бессрочно».
+- **The status is derived, never stored** (`promotion_status`): `ARCHIVED` (`deleted_at`),
+  `DISABLED` (`is_enabled` off), `SCHEDULED`, `ACTIVE`, `FINISHED`. "Running" means enabled,
+  not archived and inside the window (`active_promotions`).
+- **`announce` defaults to `false`.** A broadcast to everyone is an act towards the outside,
+  so it is switched on per promotion. `announced_at` is the stamp that it went out
+  ([telegram.md](telegram.md#promotions-and-promo-codes)).
+- **`sort_order`** is only the order cart-wide discounts are taken in. The carousel has its own
+  order (`position`, see [Catalog banners](#catalog-banners)), so rearranging slides can never
+  change the arithmetic of a cart.
+- **No cap on participants** — only "once per customer" below.
+- **Archive vs delete.** `DELETE /admin/promotions/{id}` removes the row only when nothing
+  points at it: no `order_promotions` row (released ones count — they are history) and no
+  promo code. Otherwise it sets `deleted_at` (archive) and answers `200 {deleted}` either way (`deleted: false` when archived). An
+  archived promotion cannot be switched on or deleted again from the table; the form still
+  edits it, with a warning. A promotion that was deleted loses its banner files; an archived
+  one keeps them.
+
+### Conditions and targets
+
+`conditions` is a list of typed rows, **all of which must hold** (AND); empty means "always".
+They are pydantic discriminated unions on `type` (`promotions/rules.py`), checked when the
+admin writes and again when a row is read, so the engine never sees an unknown shape.
+
+| Type       | Fields                         | Reads as                                                     |
+| ---------- | ------------------------------ | ------------------------------------------------------------ |
+| `SUBTOTAL` | `min_cents`, `target?`         | price × quantity of the matching lines, **before** discounts |
+| `QUANTITY` | `min_quantity`, `target?`      | units (not lines) of the matching lines                      |
+| `CONTAINS` | `target`, `mode: ANY` or `ALL` | the cart holds one of the target / every entry of the target |
+
+A **target** is `{productIds, categoryIds, brands}`; a line matches when it fits **any** of the
+three lists, and an empty target is the whole cart (`CONTAINS` must name something). A
+category entry also catches the subcategories (the line carries its category and the section
+above it). Brands are compared case-insensitively without edge spaces. Gifts are never lines,
+so a gift cannot help its own order over a threshold.
+
+A reference to a product or category that has since gone does not break the promotion on read
+— it just stops matching (and is left out where the terms are named for a customer: the public
+`GET /promotions*` returns `products`/`categories`, the names behind the ids, and the bot's
+messages use the same lookup, `promotions/names.py`). Only a write checks the ids exist (`409 promotion_invalid_rules`:
+live products, existing categories, a gift variant that is still on sale). Structural errors
+(unknown type, a percent above 100, two `PROMO_CODE` rewards, a bad code term) are an ordinary
+`422` from pydantic. A `PROMO_CODE` template whose fixed window has already ended is refused on
+write (`422 promotion_code_window_past`): on create always, on update only for a window that is
+new or changed against what the promotion stores (compared as days in the shop timezone, like the dialog), so an ended promotion's other fields stay
+editable. Reads never check it. Limits are in `app/common/limits.py` (`MAX_PROMOTION_CONDITIONS`,
+`MAX_PROMOTION_REWARDS`, `MAX_PROMOTION_TARGET_ENTRIES`, `MAX_GIFT_QUANTITY`,
+`MAX_PROMO_CODE_VALID_DAYS`).
+
+### Rewards
+
+A promotion has one or more (`rewards`), and all of them apply:
+
+- **`DISCOUNT`** — `kind` (`PERCENT` 1-100 or `AMOUNT` in cents), `value`, optional `target`.
+  Without a target it is taken off the cart, with one off the matching lines.
+- **`GIFT`** — `CUSTOM` (a title, default «Mystery box», and an optional picture from our own
+  storage: the contents stay a secret) or `PRODUCT` (a variant from the catalogue, free), and
+  a `quantity`. A catalogue gift whose variant has gone or is out of stock at the moment of
+  joining is skipped; the rest of the promotion still applies.
+- **`PROMO_CODE`** — at most one per promotion. A template for a personal code: validity
+  (`valid_days` from issue, **or** `valid_from` + `valid_until`), its own conditions and its
+  own rewards, which are only `DISCOUNT`/`GIFT` (a code that hands out codes would never
+  end).
+
+### Once per customer, and when a customer joins
+
+A customer takes part in a promotion **once**. The database holds this: a partial unique index
+on `order_promotions (promotion_id, user_id) WHERE released_at IS NULL`, and a
+`SELECT … FOR UPDATE` on the user row when there is something to join, so two tabs or two
+orders of one customer cannot both join. Cancelling the order (or an edit that stops meeting
+the conditions) sets `released_at` and the customer may take part again.
+
+- **Discount and gift: at checkout, `PENDING`.** The cart already shows them (the preview
+  runs the same engine), and the order is created holding them.
+- **Promo code: at payment, `CONFIRMED`.** The participation is made at checkout like any
+  other, but the code itself is issued only when the order is paid for
+  ([below](#issued-promo-codes)).
+
+`OrderPromotion` is the order's part in one promotion **or** its use of one promo code (a CHECK
+makes exactly one of `promotion_id`/`promo_code_id` set). It stores the **title and the
+rewards as a snapshot** — editing the promotion later does not rewrite what an order was
+promised — plus `sort_order` and `item_scopes` (which order lines each line-targeted discount
+landed on: reward index → line ids). With the scopes, `order_totals(order)` counts the money
+from the order alone, without asking the promotion or the catalogue.
+
+### The arithmetic
+
+The order of operations is fixed, each step taking from what the one before left (so the total
+never goes below zero). The code is `app/orders/discounts.py` and nowhere else; the site
+never adds anything up:
+
+1. the owner's discounts on lines (anchored, as in [Discounts](#discounts));
+2. promotions' and codes' discounts **on lines** (`promo_item_discounts`), in `sort_order`;
+   a discount is split over the matching lines in proportion to what each has left, the
+   rounding leftovers going to the first lines with room;
+3. the owner's discount on the order, off the lines as they now stand (its anchor is taken
+   from the remainder after step 2);
+4. promotions' and codes' **cart-wide** discounts (`promo_order_discounts`), one after another
+   in `sort_order`. A promo code goes last: `CODE_SORT_ORDER` is a million.
+
+Promotions' discounts have **no anchor**: they are recounted from the order as it is, for as
+long as the order holds them. `OrderTotals` carries `promo_items_discount_cents`,
+`promo_order_discount_cents` and the share of each layer (`promo_by_layer`). A reward whose
+`item_scopes` entry is an empty list is a target nothing matched (discount 0), not a cart-wide
+one.
+
+All matching promotions fire, not the best one. The cart's own preview
+(`CartResponse.promotions`) and the checkout use the same engine and arithmetic, so the cart
+and the order made of it agree.
+
+### How a recount decides (`PENDING`)
+
+`OrderPromotionsService.refresh(order)` runs on checkout, on every edit of a `PENDING` order
+(customer's, admin's, a reprice, a product dropped) and on restore. It tries:
+
+- the promotions the order **already holds** — their conditions are the promotion's own, the
+  rewards are the order's snapshot — **even if the promotion has ended, been switched off or
+  archived since**: the customer was promised it; and
+- the promotions running **now**, which the order does not hold and the customer has not
+  joined elsewhere.
+
+What holds stays; what no longer meets its conditions is released (`released_at`, and its
+`order_gifts` are deleted — the row stays as history); a finished promotion never attaches
+afresh. The pure decision is `promotions/engine.py` (`evaluate`, no session, no clock — the
+caller chooses which offers to try). It also returns **shortfalls**: «ещё 300 сом и 2 товара
+до акции» (`missing_cents`, `missing_quantity`), only for a promotion whose every condition is
+a whole-cart `SUBTOTAL` or `QUANTITY` (no target, no `CONTAINS`): a hint promises that adding
+anything wins it, which a promotion about chosen products, categories or brands cannot keep.
+
+The site warns before an edit that would lose a promotion
+(`POST /orders/{id}/edit-preview`, [frontend.md](frontend.md#hooks-worth-knowing)).
+
+### Frozen from the bill
+
+`refresh` does nothing outside `PENDING`. From `AWAITING_PAYMENT` the set of promotions on the
+order is **frozen**: the bill is a sum. An owner's edit of the composition in
+`AWAITING_PAYMENT`/`CONFIRMED` still recounts the money against the participations the order
+already holds, but a new line is not added to any target (`item_scopes` is not refreshed) and
+nothing is joined or released.
+
+### Cancel, restore, release
+
+`release_all(order, was_status=…)` runs on every way an order ends: cancelled by the customer,
+by the owner, emptied by `drop_product`, or its account erased. It sets `released_at` on
+every participation and then:
+
+- **The total is recounted without the promotions only when the order was `PENDING`.** An
+  order with a bill keeps the billed sum.
+- **The code it held goes back to `ACTIVE`** — a `RESERVED` one, and a `USED` one too when
+  this very order spent it (an owner cancelling a paid order: the customer gets the code
+  back, the money is settled by hand). A code past `expires_at` comes back as any unused
+  expired code does: `ACTIVE` in the database, `EXPIRED` as shown, not usable. The code row
+  is locked (`FOR UPDATE`) while it is given back. An owner's `DELETE` of the order returns
+  only a `RESERVED` code; a spent one stays `USED` (deleting is not cancelling, and a cycle
+  delete leaves it `USED` too). Deleting an order also leaves the promo codes it earned
+  as they are; cancel it first to revoke them. Whatever the path, a code whose _earning_
+  order is cancelled never comes back: it ends `REVOKED` instead of `ACTIVE`, whichever of
+  the two orders was cancelled first.
+- **Codes the order earned** and nobody has used (`ACTIVE`) become `REVOKED`; a `USED` one
+  stays. A `RESERVED` earned code: if a `PENDING` order holds it, that participation is
+  released (sum recounted, `revision` +1) and the code revoked; if an order with a bill holds
+  it, it is left alone — the bill already promised it.
+- A **customer's restore** of a cancelled order is a plain recount. It does not give a code
+  back (it is already `ACTIVE` and free for the next checkout).
+- **The owner undoing a cancellation** (`CANCELLED_BY_OWNER` → `PENDING`) first tries to take
+  again the codes that cancel let go of (`OrderPromotionsService.reattach_codes`, before the
+  recount): the code is locked and attached again — `RESERVED` by the order — only if it is
+  still the customer's, `ACTIVE`, inside its dates and its conditions hold for the order's
+  lines. Otherwise (used by another order, expired, conditions gone) it is dropped quietly:
+  the order simply has no code and its total is the plain one. A paid order that comes back
+  to `PENDING` is unpaid again, so the code is `RESERVED` and is spent once more when it is
+  paid. Codes the order _earned_ are not restored: one revoked by the cancellation stays
+  `REVOKED`, a `USED` one stays `USED`. Known limit: "released together by the cancel" is
+  the participations with the latest `released_at`, so when the cancel released nothing, the
+  undo may take again a code the order had dropped earlier through an edit, if it is still free.
+  A cancelled order shows the code its cancellation released only if it had been billed or
+  paid (`confirmed_at`/`paid_at` set), since only then its total keeps the discount
+  (`release_all` recounts a `PENDING` order without it); the code carries its own current
+  status, so it may read as used by another order. A cancelled `PENDING` order shows no code.
+
+### Issued promo codes
+
+`PromoCode`: 8 characters from `ABCDEFGHJKLMNPQRSTUVWXYZ23456789` (no `0/O/1/I`), `user_id`
+(personal), `promotion_id`, `source_order_id`, a **snapshot** of the template's `conditions`
+and `rewards`, `valid_from`, `expires_at`, `status`, `used_order_id`, `reminded_at`.
+
+| Status     | Meaning                                                                                                  |
+| ---------- | -------------------------------------------------------------------------------------------------------- |
+| `ACTIVE`   | Issued, waiting to be used.                                                                              |
+| `RESERVED` | On an order (entered at checkout or later); that order is not paid yet.                                  |
+| `USED`     | The order that held it was paid for.                                                                     |
+| `REVOKED`  | The order that earned it was cancelled before the code was used.                                         |
+| `EXPIRED`  | **Computed**, never stored: an `ACTIVE` code whose `expires_at` has passed. Only an unused code expires. |
+
+- **Issuing.** `PromoCodesService.on_paid` runs when an order becomes `CONFIRMED`
+  (`PaymentsService.review` on accept, and the owner's manual status change): the code the
+  order held becomes `USED`, and every live participation whose snapshot has a `PROMO_CODE`
+  reward earns a code. It is idempotent: a partial unique index on
+  `promo_codes (promotion_id, user_id) WHERE status <> 'REVOKED'` makes the second attempt
+  (event racing the sweep) read as "already issued", and a revoked code does not block
+  earning it again. The sweep `issue_missing_promo_codes` covers a paid order whose event
+  failed (`CONFIRMED`/`READY`/`COMPLETED` with a live participation and no code).
+  A fixed-window template whose `valid_until` has already passed when the order is paid
+  still issues its code (it shows as `EXPIRED`), but the customer is not sent the bot message.
+- **Entering.** `POST /cart/promo-code/check` validates against the cart and writes nothing;
+  `checkout` takes `promo_code`, locks the code row, checks **before** the order is created
+  (a refusal leaves no order and an untouched cart), and attaches it as an `order_promotions`
+  row with `promo_code_id` titled «Промокод XXXXXXXX» — the code becomes `RESERVED` with
+  `used_order_id` set. One live order per code (`uq_order_promotions_live_code`). Input is
+  normalised (upper case, whitespace removed; a dash is part of the code). A code is attached only because the
+  customer entered it: at checkout, or on a placed order.
+- **On a placed order.** `POST /orders/{id}/promo-code` (`OrdersService.add_promo_code`) puts a
+  code of either kind on an order the customer may still edit (`isEditable`), by checkout's
+  rules and with its refusals; an owner code's once-per-cycle rule reads the **order's** cycle.
+  It applies at once (no separate check), and a refusal leaves the order as it was. One code
+  per order: `409 order_has_promo_code` until the held one is taken off with
+  `DELETE /orders/{id}/promo-code`, which frees the code (an expired one comes back expired).
+  Both take the order's `revision` and move it. The lines do not change, so the admin's
+  discounts stay and the promotions are **not** asked again: typing a code must not lose a
+  promotion unwarned. Known limit: an admin's `AMOUNT` discount on the order is settled against what
+  a line-targeted code leaves, as on any recount, and does not grow back when the code is taken off.
+- **Refusals**, in order: unknown, someone else's or `REVOKED` → `404 promo_code_not_found`
+  (a stranger's code looks exactly like a missing one); `USED`/`RESERVED` →
+  `409 promo_code_already_used`; past `expires_at` → `409 promo_code_expired`; before
+  `valid_from` → `409 promo_code_not_yet_valid`; conditions not met, an empty cart included →
+  `409 promo_code_conditions_not_met`.
+- **While `PENDING`** an attached code is kept as long as the conditions from its snapshot hold,
+  **even if it has expired since** (the same promise a promotion keeps); a new expired one
+  cannot be attached. If the conditions stop holding the participation is released and the
+  code is `ACTIVE` again; it does not re-attach by itself.
+- **Reading.** `GET /me/promo-codes` lists every code the customer has had, newest first,
+  `REVOKED` included (the page says why a code is gone). It also lists the **personal owner
+  codes** assigned to the customer (next section), but never general ones. A switched-off personal
+  code stays listed (as used) while an order of theirs holds it; one never used disappears.
+
+### Owner's promo codes
+
+The owner can also make a code by hand (`/admin/promo-codes`). It is **not** a `PromoCode`
+row: it is a `Promotion` whose `code` is set (`is_code`), with an internal slug
+`promo-code-<uuid hex>` that is never served. So the rules are the promotions' own: the same
+conditions and rewards (checked on write the same way), the same window (`starts_at`, and
+`ends_at` or open-ended), enabled/disabled, the derived `promotion_status`, archive-vs-delete
+and the participants list. The differences:
+
+- **Never automatic.** Every query that picks promotions for a cart leaves code rows out
+  (`active_promotions`, the carousel/sitemap/public page reads, `unannounced_promotions`), and
+  `/admin/promotions*` answers 404 for a code row just as `/admin/promo-codes*` does for an
+  automatic one. A code joins an order only when the customer types it, at checkout or on a
+  placed order.
+- **Rewards: `DISCOUNT` and `GIFT` only**, the same `CodeReward` an issued code gives. No
+  `PROMO_CODE` reward: a code does not hand out codes.
+- **General or personal.** No rows in `promotion_code_users`: any customer may use it. Rows:
+  only those customers (one or many, up to `MAX_PROMO_CODE_ASSIGNEES`). Taking a customer off
+  the list closes the code to them but leaves an order that already holds it alone.
+- **How many times.** `uses_per_customer` is how many times **each** customer may use it (1 by
+  default, up to `MAX_PROMO_CODE_USES`), or NULL: no limit, until it is switched off or ends.
+  Either way **never twice in one cycle**. On use the code becomes an ordinary `order_promotions`
+  participation (`promotion_id` set, `promo_code_id` NULL) carrying its order's cycle
+  (`code_cycle_id`); the once-per-cycle rule is the database's
+  (`uq_order_promotions_live_code_cycle`), the count is `usable`'s, under the customer's row
+  lock. Every live participation counts as a use — in a `PENDING` order too. Cancelling the order
+  releases the participation, which gives the use (and the cycle) back.
+- **Format and uniqueness.** The string is normalised (upper case, whitespace removed — and
+  nothing else: `LETO-2026` and `LETO2026` are two codes) and must be 4-16 characters of any
+  kind, Cyrillic and punctuation included (`422 promo_code_invalid`). The owner may type `0/O/1/I`; only generated codes (the form's `SULU-` plus 5
+  characters, or the server's 8 when the API is sent `code: null`; the same alphabet as
+  issued codes) avoid them. A string is unique **across both kinds**
+  (`promotions.code`, archived rows included, and `promo_codes.code`), because the customer
+  types one string into one field: `409 promo_code_taken`. `PromoCodesService._issue` skips a
+  generated string an owner code holds. The owner may change or regenerate the string later;
+  orders keep the old one in their title snapshot.
+- **Refusals**, in the same order as issued codes: missing, archived, switched off or someone
+  else's personal code → `404 promo_code_not_found` (a paused campaign is not revealed);
+  every use spent by this customer → `409 promo_code_already_used`; one of their orders in the
+  cycle the order goes into already holds it → `409 promo_code_used_this_cycle`; past
+  `ends_at` → `promo_code_expired`; before `starts_at` → `promo_code_not_yet_valid`; conditions
+  not met → `promo_code_conditions_not_met`, with no order created. `OwnerCodesService.usable`
+  locks the customer's row for update (the lock `refresh` takes), and a unique violation that
+  still gets through maps to `promo_code_used_this_cycle`, not a 500.
+- **Counted last.** A participation through an owner code carries `CODE_SORT_ORDER` and the
+  title «Промокод XXXX», so its cart-wide discount is taken after every promotion's, like an
+  issued code's. While `PENDING` a held owner code stays while its conditions hold, even after
+  the window ended; a recount never attaches one. The owner undoing a cancellation takes it
+  again (`reattach_codes`) if the customer may still use it, and drops it quietly otherwise.
+- **Delete/archive.** Unused: the row is deleted. Ever used (a participation, released ones
+  included): archived (`deleted_at`), still unusable, and its string stays taken.
+- **The customer sees** a personal code on `/promocodes` (and in the checkout quick-pick) as
+  `ACTIVE` (uses left and none in this cycle), `RESERVED`/`USED` (an order in this cycle holds
+  it, or every use is spent — unpaid/paid) or `EXPIRED`. The check
+  answer for an open-ended code has `expiresAt: null`, as does `IOrderPromoCode` on the site.
+
+### Gifts
+
+A gift is **not** an `order_items` line priced at zero: it is an `order_gifts` row (`kind`
+`CUSTOM`/`PRODUCT`, title and picture snapshot, `product_id`/`variant_id` set null if the
+catalogue loses them, `quantity`), tied to the participation that brought it
+(`order_promotion_id`, cascade). That keeps it out of the arithmetic, the export, composition
+edits and `ADMIN_EDITABLE_STATUSES`. In the cart a gift is a **virtual line** in
+`promotions.gifts` — nothing is written to `cart_items`. Releasing a participation deletes its gifts.
+
+The owner finds them in three places: `GET /admin/checklist` (catalogue gifts join the
+purchase rows, summed with the same variant and priced from the catalogue, since the shop
+buys them; custom gifts are a separate `customGifts` block — nothing to buy, something to
+pack), the admin order table, and the new-order message in Telegram. The xlsx order export is
+unchanged: it is the customers' orders.
+
+### What the discount rules above now mean
+
+[Discounts](#discounts) are still the owner's act on a placed order, and an owner's edit still
+takes them off. Promotions are the opposite: automatic, recounted while `PENDING`, never
+anchored. A customer's own edit does not take a promotion off; it ends only when its
+conditions stop holding.
+
+### Known limitations
+
+- `POST /orders/{id}/edit-preview` reports lost and gained **promotions** by `promotion_id`,
+  which includes a held owner code; an **issued** code an edit would detach (it has no
+  `promotion_id`) is not mentioned.
+- Codes have no brute-force limit beyond the global rate limit (300/min). The space is
+  32^8 and a stranger's code answers the same as a missing one.
+- The «code issued» Telegram message is **not retried**: the code row is the record, and
+  `/promocodes` shows it whether or not the message arrived
+  ([telegram.md](telegram.md#promotions-and-promo-codes)).
+- An owner code has **no total cap** ("the first 100"): the limit is per customer
+  (`uses_per_customer`), with no limit on customers. The admin's «Использован» mark on a personal
+  code is an estimate from the total (`participantsCount` ≥ customers × uses).
+- An issued code and an owner code live in different tables (`promo_codes`, `promotions`), so no
+  unique index spans both. Creating or editing an owner code checks `promo_codes` too
+  (`code_string_taken`) and issuing skips strings an owner code holds, so a duplicate needs two
+  such inserts to race. If it ever happens, `resolve_code` gives the string to the customer the
+  issued code belongs to and the owner code to everyone else.
+- A customer **is told** (Telegram, `personal_promo_code`) when a personal code becomes theirs:
+  created switched on for them, added to its customers, or switched on while theirs — each
+  customer separately. The message says how often it works (once, N times or every cycle, never
+  twice in one). An edit
+  that changes neither (title, dates, rules) is silent, and so is a code they have already
+  used. Nothing is stamped: a code switched off and on again is announced again. General codes
+  are never sent to anyone.
+- Orders the owner places on a customer's behalf (`AdminOrderDialog`) take no promo code.
+- A gift picture the admin uploads and then abandons stays in storage.
+- There is no list page `/promotions` (only the carousel on `/catalog` and `/`, and each promotion's
+  own page) and no "Акция" badge on product cards; both were deferred.
+
+## Catalog banners
+
+The carousel above the catalogue and on the home page, below «Заявка вместо оплаты».
+Its slides are **running promotions with a mobile banner** and **the owner's own news**, in
+one order the owner arranges in the admin's «Баннеры». Where it lives: `apps/api/app/banners/`
+([backend.md](backend.md#catalog-banners)); the site side is in
+[frontend.md](frontend.md#catalog-banners).
+
+- **A promotion's slide is derived, not stored.** Its title, pictures, slug and window are read
+  from the promotion when the feed is built, so editing a promotion cannot drift from its
+  slide. The owner stores only a decision (`promotion_banner_settings`: `show_in_carousel`,
+  `position`). **No row means «shown, not yet placed»** — which is also what a promotion made
+  by an older release looks like after a rollback, so a release can be rolled back safely.
+- **News is a row** (`news_banners`): a title, optional text, link and button label, optional
+  mobile/desktop pictures, an optional window `[starts_at, ends_at)` (a missing bound is open)
+  and `is_enabled`. With a mobile picture it is a picture slide; without one, a text card in
+  the same proportions, so a news item needs no designer. At most **20** (`MAX_NEWS_BANNERS`,
+  switched-off ones included). News is deleted for good — nothing refers to it.
+- **The feed** (`BannersService.feed`, `GET /banners`) is one function: a promotion is in it
+  when it is _running_ (`running_promotion_filters`, the same definition the cart and the
+  sitemap use), has a mobile banner and is not hidden by the owner; a news item when it is
+  enabled and inside its window. Archived promotions and the owner's promo codes are never in it.
+- **Order.** One numeric space `position` for both kinds. Items without a position («new,
+  not placed») come first, newest first; then by `position`; ties by newest, then id. So a
+  new promotion or news item appears **first** until the owner places it.
+- **State in the admin list** (derived like `promotion_status`, checked in this order):
+  `PROMOTION_OFF` (the promotion is switched off), `FINISHED` («Завершена»; for news «Истекла»),
+  `SCHEDULED`, `NO_IMAGE` (a promotion without a mobile banner), `HIDDEN` (the owner's switch
+  is off), `SHOWN`.
+- **Hiding a slide is not switching the promotion off.** `show_in_carousel = false` only takes
+  the slide out of the carousel; the promotion keeps running and its discount keeps applying.
+  Switching a promotion off removes both, but its `show_in_carousel` and `position` are kept,
+  so switching it back on returns the slide to its place.
+- **Reordering** sends the whole list of keys (`promotion:<id>` / `news:<id>`) and is refused
+  with `banner_order_mismatch` when the set differs from the current one — the list changed
+  under the owner. It never touches `Promotion.sort_order`.
+- **Links** of a news item: a path on this site (`/…`, not `//…`) or an `https://` address;
+  nothing else (`http:`, `javascript:`, `data:`). An external link opens in a new tab.
+- **Access**: any admin (`ADMIN` or `SUPER_ADMIN`), like the promotions. News is not announced in Telegram.
+- A start or end by the clock reaches the storefront within the ISR backstop (≤ 60 s), like
+  a promotion's.
 
 ## Money
 

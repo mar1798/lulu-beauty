@@ -1,10 +1,15 @@
-import type { IOrder, IPage } from 'widgets/types'
+import type { IOrder, IOrderEditPreview, IPage } from 'widgets/types'
 import { api } from '../api'
 
 /** Заказы покупателя. Оформление переносит текущую корзину в заказ активного сбора. */
 
-export const checkout = (note?: string): Promise<IOrder> =>
-  api.post('/orders/checkout', { body: { note: note ?? null } })
+/**
+ * `promoCode` - код, который покупатель ввёл на оформлении и сервер уже проверил
+ * (`checkPromoCode`): его условия перепроверяются при оформлении, а сам код
+ * резервируется за заявкой. Без кода - `null`, ничего не применяется.
+ */
+export const checkout = (note?: string, promoCode?: string): Promise<IOrder> =>
+  api.post('/orders/checkout', { body: { note: note ?? null, promoCode: promoCode ?? null } })
 
 export interface IMyOrderListParams {
   page?: number
@@ -86,6 +91,22 @@ export const removeMyOrderItem = (
     query: { revision },
   })
 
+/**
+ * Промокод в уже поданную заявку - по правилам оформления, но без отдельной проверки:
+ * код применяется сразу, а отказ (`promo_code_*`, `order_has_promo_code`) заявку не трогает.
+ * Состав код не меняет, поэтому скидок магазина и акций он не снимает.
+ */
+export const addMyOrderPromoCode = (
+  orderId: string,
+  revision: number,
+  code: string
+): Promise<IOrder> =>
+  api.post(`/orders/${encodeURIComponent(orderId)}/promo-code`, { body: { revision, code } })
+
+/** Убирает промокод из заявки - он снова свободен. У DELETE нет тела, как у позиций. */
+export const removeMyOrderPromoCode = (orderId: string, revision: number): Promise<IOrder> =>
+  api.remove(`/orders/${encodeURIComponent(orderId)}/promo-code`, { query: { revision } })
+
 export const updateMyOrderNote = (orderId: string, note: string | null): Promise<IOrder> =>
   api.patch(`/orders/${encodeURIComponent(orderId)}`, { body: { note } })
 
@@ -116,3 +137,24 @@ export const cancelMyOrder = (orderId: string): Promise<IOrder> =>
  */
 export const restoreMyOrder = (orderId: string): Promise<IOrder> =>
   api.post(`/orders/${encodeURIComponent(orderId)}/restore`)
+
+/**
+ * Что правка сделает с акциями заявки - до самой правки. Сервер выполняет её
+ * и откатывает, поэтому условия акций и арифметика остаются на нём. Либо
+ * `itemId` (строка заявки; `quantity: 0` - убрать её), либо `variantId`
+ * (объём, который добавляют).
+ */
+export interface IOrderEditTarget {
+  itemId?: string
+  variantId?: string
+  quantity: number
+}
+
+export const previewMyOrderEdit = (
+  orderId: string,
+  revision: number,
+  target: IOrderEditTarget
+): Promise<IOrderEditPreview> =>
+  api.post(`/orders/${encodeURIComponent(orderId)}/edit-preview`, {
+    body: { revision, ...target },
+  })

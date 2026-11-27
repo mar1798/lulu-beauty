@@ -121,9 +121,7 @@ async def test_a_throttled_callback_is_always_answered(clock: _Clock) -> None:
     assert query.answer.await_count == 3
 
 
-async def test_idle_buckets_are_pruned(
-    clock: _Clock, monkeypatch: pytest.MonkeyPatch
-) -> None:
+async def test_idle_buckets_are_pruned(clock: _Clock, monkeypatch: pytest.MonkeyPatch) -> None:
     """The map is keyed by a Telegram user id — unbounded input from outside, so
     something has to drop the entries that have gone back to saying nothing."""
     monkeypatch.setattr(throttling, "PRUNE_AT", 3)

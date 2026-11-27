@@ -65,3 +65,39 @@ MAX_DESCRIPTION_LENGTH = 2000
 # text leaves room for any formatting a real description has, and stops a pasted page of
 # markup from being parsed at all.
 MAX_DESCRIPTION_HTML_LENGTH = 20_000
+
+# Conditions and rewards in one promotion (and in one promo code's template). A promotion
+# is read in full on every cart look and every checkout, so the lists are short by
+# ceiling, not by courtesy: no real offer has ten conditions joined by "и".
+MAX_PROMOTION_CONDITIONS = 10
+MAX_PROMOTION_REWARDS = 10
+
+# Entries in one target — the products, categories or brands a condition or a discount
+# is about. A whole brand or category is one entry, so this caps hand-picked products.
+MAX_PROMOTION_TARGET_ENTRIES = 200
+
+# Units of one gift. A gift is a sample or a box, not a second order.
+MAX_GIFT_QUANTITY = 10
+
+# How long a promo code may be valid for when given as a number of days from issue.
+MAX_PROMO_CODE_VALID_DAYS = 365
+
+# How many times one customer may use one owner's code (once per cycle at most). Unlimited
+# is its own setting (no number), so the ceiling only stops a typo like 1000.
+MAX_PROMO_CODE_USES = 100
+
+# Customers one personal owner's code is given to. The form picks them one by one; a code
+# for a crowd is a general one.
+MAX_PROMO_CODE_ASSIGNEES = 200
+
+# Own news in the catalogue carousel, switched-off ones included. The carousel is read whole
+# on every page build and a slide is a thing the owner looks after by hand, so the ceiling is
+# a handful of screens, not a feed.
+MAX_NEWS_BANNERS = 20
+
+# A news slide's texts. The title is also the picture's alt text; the text is clipped to three
+# lines on the slide, so a longer one would only be paid for in the payload. The columns
+# behind them are wider (255 / 500 / 64), so a limit change never needs a migration.
+MAX_NEWS_TITLE_LENGTH = 120
+MAX_NEWS_TEXT_LENGTH = 300
+MAX_NEWS_CTA_LENGTH = 40

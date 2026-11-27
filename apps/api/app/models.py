@@ -3,12 +3,20 @@ before Alembic autogenerate (or anything else) inspects it.
 """
 
 from app.auth.models import RefreshToken, TelegramAuthSession, User  # noqa: F401
+from app.banners.models import NewsBanner, PromotionBannerSetting  # noqa: F401
 from app.cart.models import Cart, CartItem  # noqa: F401
 from app.catalog.models import Category, Product, ProductImage, ProductVariant  # noqa: F401
 from app.checklist.models import ChecklistExtra, ChecklistMark  # noqa: F401
 from app.cycles.models import OrderCycle  # noqa: F401
 from app.orders.models import Order, OrderItem  # noqa: F401
 from app.payments.models import PaymentReceipt  # noqa: F401
+from app.promotions.models import (  # noqa: F401
+    OrderGift,
+    OrderPromotion,
+    PromoCode,
+    Promotion,
+    PromotionCodeUser,
+)
 from app.telegram.models import RelayedMessage  # noqa: F401
 from app.wanted.models import WantedProduct  # noqa: F401
 from app.wishlist.models import WishlistItem  # noqa: F401

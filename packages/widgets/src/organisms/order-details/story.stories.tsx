@@ -1,6 +1,12 @@
 import type { StoryFn, Meta } from '@storybook/react'
 import { OrderDetails } from '.'
-import { feedOrder, feedOrderDetails } from '../../stories/feed'
+import { PromoCodeField } from '../../molecules/promo-code-field'
+import {
+  feedOrder,
+  feedOrderDetails,
+  feedOrderWithPromotions,
+  feedPromoCodeField,
+} from '../../stories/feed'
 import { StoryWrapper } from '../../stories/wrapper'
 
 export default {
@@ -85,3 +91,27 @@ export const Loading = Template.bind({})
 /* `padded`, а не `centered`: у скелетона нет содержимого, задающего ширину. */
 Loading.parameters = { layout: 'padded' }
 Loading.args = { ...feedOrderDetails(), order: null, isLoading: true }
+
+/** Акции заявки: подарок после состава, строки скидок, промокод и выданный код. */
+export const WithPromotions = Template.bind({})
+WithPromotions.parameters = { layout: 'centered' }
+WithPromotions.args = {
+  ...feedOrderDetails(),
+  order: feedOrderWithPromotions(),
+  promoCodesHref: '/promocodes',
+}
+
+/** Правимая заявка: промокод вводится здесь же, тем же полем, что на оформлении. */
+export const WithPromoCodeField = Template.bind({})
+WithPromoCodeField.parameters = { layout: 'centered' }
+WithPromoCodeField.args = {
+  ...feedOrderDetails(),
+  order: feedOrder({ isEditable: true }),
+  onItemQuantityChange: () => undefined,
+  onItemRemove: () => undefined,
+  promoCode: <PromoCodeField {...feedPromoCodeField()} />,
+}
+
+export const WithPromotionsMobile = Template.bind({})
+WithPromotionsMobile.parameters = { layout: 'fullscreen', viewport: { defaultViewport: 'mobile1' } }
+WithPromotionsMobile.args = WithPromotions.args

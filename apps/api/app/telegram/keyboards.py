@@ -9,7 +9,7 @@ the format lives next to the filter that decodes it rather than next to prose.
 import logging
 import uuid
 from typing import Literal
-from urllib.parse import urlparse
+from urllib.parse import quote, urlparse
 
 from aiogram.filters.callback_data import CallbackData
 from aiogram.types import (
@@ -277,6 +277,8 @@ CATALOG_PATH = "/catalog"
 ORDERS_PATH = "/orders"
 ADMIN_ORDERS_PATH = "/admin/orders"
 PRIVACY_PATH = "/privacy"
+PROMO_CODES_PATH = "/promocodes"
+PROMOTIONS_PATH = "/promotions"
 
 
 def instagram_button() -> InlineKeyboardButton:
@@ -436,6 +438,16 @@ def checkout_link() -> InlineKeyboardMarkup | None:
     friction between reading it and checking out.
     """
     return _site_link(CHECKOUT_PATH, messages.CHECKOUT_BUTTON)
+
+
+def promotion_link(slug: str) -> InlineKeyboardMarkup | None:
+    """Under the announcement of a promotion: its page, where the terms are."""
+    return _site_link(f"{PROMOTIONS_PATH}/{quote(slug, safe='')}", messages.PROMOTION_BUTTON)
+
+
+def promo_codes_link() -> InlineKeyboardMarkup | None:
+    """Under a promo code message: the page where all the customer's codes live."""
+    return _site_link(PROMO_CODES_PATH, messages.PROMO_CODES_BUTTON)
 
 
 def wishlist_link() -> InlineKeyboardMarkup | None:

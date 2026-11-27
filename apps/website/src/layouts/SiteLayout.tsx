@@ -38,6 +38,7 @@ const SHOP_COLUMN: IFooterColumn = {
     { label: 'Каталог', link: { href: '/catalog' } },
     { label: 'Избранное', link: { href: '/wishlist' } },
     { label: 'Мои заявки', link: { href: '/orders' } },
+    { label: 'Промокоды', link: { href: '/promocodes' } },
   ],
 }
 

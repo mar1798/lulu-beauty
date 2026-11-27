@@ -4,7 +4,9 @@ import type { IBasicStyling, ICheckoutPanelProps } from '../../types'
 import { AppLink } from '../../atoms/app-link'
 import { Heading } from '../../atoms/heading'
 import { Skeleton } from '../../atoms/skeleton'
+import { GiftLine } from '../../molecules/gift-line'
 import { ItemRow } from '../../molecules/item-row'
+import { giftSource } from '../../utils/promotion'
 import * as styles from './CheckoutPanel.css'
 
 /**
@@ -38,6 +40,7 @@ export const CheckoutPanel: FC<ICheckoutPanelProps & IBasicStyling> = ({
   isBusy = false,
   isLoading = false,
   skeletonRows = DEFAULT_SKELETON_ROWS,
+  code = null,
   className,
 }) => (
   <div className={clsx(styles.container, className)} aria-busy={isLoading || undefined}>
@@ -98,6 +101,34 @@ export const CheckoutPanel: FC<ICheckoutPanelProps & IBasicStyling> = ({
                 }
               />
             ))}
+
+        {/*
+          Подарки идут за составом: они не позиции (количество не правится, убрать нельзя),
+          но уйдут в заявку, и человек должен увидеть их до отправки. Подарки промокода
+          стоят после подарков акций с пометкой кода.
+        */}
+        {!isLoading &&
+          cart !== null &&
+          cart.promotions.gifts.map((gift, index) => (
+            <GiftLine
+              // Подарок не имеет id; одинаковые по содержимому различает порядок в ответе.
+              // eslint-disable-next-line react/no-array-index-key
+              key={`${gift.title}-${index}`}
+              gift={gift}
+              note={giftSource(cart.promotions, gift) ?? undefined}
+            />
+          ))}
+
+        {!isLoading &&
+          code !== null &&
+          code.gifts.map((gift, index) => (
+            <GiftLine
+              // eslint-disable-next-line react/no-array-index-key
+              key={`code-${gift.title}-${index}`}
+              gift={gift}
+              note={`Промокод ${code.code}`}
+            />
+          ))}
       </div>
 
       {/*

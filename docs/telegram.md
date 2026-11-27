@@ -310,10 +310,21 @@ between lines (`service.split_message`), the receipt button under the last.
 The bill greets the customers of the **first** cycle (no earlier deadline) as the shop's
 first; every later one gets the same text without that word (`notify._is_first_cycle`).
 
-The bill is the one message sent with `parse_mode="HTML"`: «Sululu» and the sum to pay are
-bold, so every product name in it goes through `html.escape`. Every other text is plain and
-escapes nothing. Its amounts are written without the thousands separator («3050 сом»),
-unlike every other message and the site («3 050 сом»).
+Between the lines and «Итого к оплате» the bill (and `order_edited` and
+`order_created_for_customer`, which end in «Сумма») itemises what the promotions did, so that the
+lines minus the discounts equal the total: one line per live participation (`promotion_lines`:
+what it gives, the gifts going out with the order, a promo code marked as applied), then «Скидки
+по акциям: -N сом» when they took money off, then the owner's order discount. An order with no
+promotions renders as before.
+
+The bill, `order_edited`, `order_created_for_customer`, `order_discount` and `promo_code_issued`
+are sent with `parse_mode="HTML"` (the sums are bold), so every product name and promotion title
+in them goes through `html.escape`. Every other text is plain and escapes nothing.
+
+Four of those messages print their amounts without the thousands separator («3050 сом»): the
+bill (`order_confirmed`), `order_edited`, `order_created_for_customer` and `order_discount`
+(`format_price(..., grouped=False)`). Every other message that names a sum, and the site, write
+«3 050 сом».
 
 ### Polling vs webhook
 
@@ -339,34 +350,101 @@ production token never receives an update — see **Local dev needs its own bot*
 `app/telegram/notify.py`. Everything addressed to "the owner" fans out to **every** account
 with admin rights — `ADMIN` and `SUPER_ADMIN` alike (`recipients.get_owners`).
 
-| Trigger                                                                       | Who hears                       |
-| ----------------------------------------------------------------------------- | ------------------------------- |
-| New order — at checkout, or placed by an admin (then it names them)           | Owner                           |
-| Order an admin placed for the customer, listing its lines                     | That customer                   |
-| Composition changed by an admin: the new lines and sum, discounts it took off | That customer                   |
-| Discount given, made bigger or smaller, or taken back by an admin: new sum    | That customer                   |
-| Order status change (incl. the owner undoing their own cancel)                | Customer                        |
-| Order taken (AWAITING_PAYMENT): the bill, requisites and «📎 Отправить чек»   | Customer                        |
-| Payment receipt sent to the bot                                               | Owner (the file, with verdict)  |
-| Owner accepted / rejected a receipt, or marked the payment in the panel       | Customer                        |
-| Order cancelled by its customer, and that cancellation taken back             | Owner                           |
-| Customer's own edit took off an admin's discount: the edit, what came off     | Owner                           |
-| Order cancelled by its customer: confirmed, with the way to restore it        | That customer                   |
-| Order deleted by owner (unless it was already completed or cancelled)         | Customer                        |
-| Catalog price change repricing PENDING orders                                 | Each affected customer          |
-| Product soft-deleted, dropping lines                                          | Each affected customer          |
-| Cycle opened / deadline moved                                                 | Customers                       |
-| Deadline reminders (24h, 3h)                                                  | Customers with a non-empty cart |
-| Cycle closed: shopping summary                                                | Owner                           |
-| Cycle closed: cart rescued into wishlist                                      | Each cart holder                |
-| Cycle closed                                                                  | Customers with orders in it     |
-| Account erased, withdrawing its pending orders                                | Owner (one message naming them) |
-| Closed cycle still holding unanswered orders (once per cycle)                 | Owner                           |
-| Wish for a product the catalog lacks, left under an empty search              | Owner (name, phone and text)    |
-| Owner's own text from the orders panel (sent in the request)                  | That order's customer           |
-| Customer's reply to the owner's text or to the «Ответить» prompt              | Owner (name, phone and reply)   |
-| Owner's reply in the chat to a customer's passed-on message                   | That customer                   |
-| Owner's reply in the chat to a wish for the next cycle                        | Its writer, if linked by phone  |
+| Trigger                                                                              | Who hears                       |
+| ------------------------------------------------------------------------------------ | ------------------------------- |
+| New order — at checkout, or placed by an admin (then it names them); lists its gifts | Owner                           |
+| Order an admin placed for the customer, listing its lines                            | That customer                   |
+| Composition changed by an admin: the new lines and sum, discounts it took off        | That customer                   |
+| Discount given, made bigger or smaller, or taken back by an admin: new sum           | That customer                   |
+| Order status change (incl. the owner undoing their own cancel)                       | Customer                        |
+| Order taken (AWAITING_PAYMENT): the bill, requisites and «📎 Отправить чек»          | Customer                        |
+| Payment receipt sent to the bot                                                      | Owner (the file, with verdict)  |
+| Owner accepted / rejected a receipt, or marked the payment in the panel              | Customer                        |
+| Order cancelled by its customer, and that cancellation taken back                    | Owner                           |
+| Customer's own edit took off an admin's discount: the edit, what came off            | Owner                           |
+| Order cancelled by its customer: confirmed, with the way to restore it               | That customer                   |
+| Order deleted by owner (unless it was already completed or cancelled)                | Customer                        |
+| Catalog price change repricing PENDING orders                                        | Each affected customer          |
+| Product soft-deleted, dropping lines                                                 | Each affected customer          |
+| Cycle opened / deadline moved                                                        | Customers                       |
+| Deadline reminders (24h, 3h)                                                         | Customers with a non-empty cart |
+| Cycle closed: shopping summary                                                       | Owner                           |
+| Cycle closed: cart rescued into wishlist                                             | Each cart holder                |
+| Cycle closed                                                                         | Customers with orders in it     |
+| Account erased, withdrawing its pending orders                                       | Owner (one message naming them) |
+| Closed cycle still holding unanswered orders (once per cycle)                        | Owner                           |
+| Wish for a product the catalog lacks, left under an empty search                     | Owner (name, phone and text)    |
+| Owner's own text from the orders panel (sent in the request)                         | That order's customer           |
+| Customer's reply to the owner's text or to the «Ответить» prompt                     | Owner (name, phone and reply)   |
+| Owner's reply in the chat to a customer's passed-on message                          | That customer                   |
+| Owner's reply in the chat to a wish for the next cycle                               | Its writer, if linked by phone  |
+| Promotion began (`announce` on, once)                                                | Every linked customer           |
+| Promo code earned: the order was paid for (`CONFIRMED`)                              | The code's owner                |
+| Promo code runs out in 3 days and is unused                                          | The code's owner                |
+
+### Promotions and promo codes
+
+Rules: [domain.md](domain.md#promotions). Wording is in `messages.py` (Russian), the
+link buttons in `keyboards.py` (`promotion_link(slug)`, `promo_codes_link()` — under the
+message as a button like every other site link, never as text), the sending in `service.py`
+and the fan-out in `notify.py`.
+
+| Message                                                                         | To                           | When                                                                                                                                                                                                                                                                       |
+| ------------------------------------------------------------------------------- | ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `promotion_started` — name, what it gives, terms, until                         | `get_broadcast_audience`     | `starts_at` passed, `announce` is on, `announced_at` is empty. Button: the promotion's page.                                                                                                                                                                               |
+| `promo_code_issued` — HTML, the code in `<code>` (tap to copy), terms, validity | The code's owner             | After the commit that made the order `CONFIRMED`. Skipped for a code that is `REVOKED` or already past its `expires_at`. Button: `/promocodes`.                                                                                                                            |
+| `promo_code_expiring`                                                           | The code's owner             | 3 days before `expires_at`, code still `ACTIVE`.                                                                                                                                                                                                                           |
+| `personal_promo_code` — HTML, the owner's code in `<code>`, terms, validity     | Each customer it is given to | After the `/admin/promo-codes` write that handed the code over (`handed_to`: created on, added to its customers, switched on), one message per customer. The last line says how often it works. Re-checked before sending; skipped if already used. Button: `/promocodes`. |
+| Promotion lines inside `order_created_for_customer`                             | The customer                 | Only when **an admin placed the order for them**: «вы участвуете в акции X: скидка …, подарок …». A customer who checked out themselves gets no message — they see the order on the site.                                                                                  |
+| A «Подарки - не забыть положить» block in `new_order_for_owner`                 | Owner                        | After the «Оформлена в админке» line, before the comment.                                                                                                                                                                                                                  |
+
+**`announce` is off by default**, so a new promotion is silent until the owner turns the
+broadcast on. The announcement is text without a URL; the link is the button.
+
+**Terms name what they are about.** The notifier reads the names behind a promotion's or a
+code's targets (`promotions/names.py`, `load_rule_names`: live products, existing categories)
+and hands them to the builder, so a condition reads «покупка от 2 000 сом на «Тоник», товары
+бренда Anua» rather than «на выбранные товары» — in the start broadcast, the issued, personal
+and expiring code messages. At most `TARGET_ENTRIES_SHOWN` (10) entries per target, then «и
+ещё N». The start broadcast lists rewards and conditions as bullets and spells a promised
+promo code out in full: what it gives, «действует N дней с момента выдачи» or its dates, and
+its own conditions. An order's promotion lines keep the short form (no names).
+
+**The sweep** — `_run_promotion_sweep` in `app/scheduler.py`, job `promotion_sweep` on the
+shared interval (`SCHEDULER_INTERVAL_SECONDS`). Its queries are in `promotions/sweep.py`
+(read-only: "what is due"); stamping happens in the notifier. Three independent steps, each in
+its own `try` so one failure does not cost the others their tick:
+
+1. **Announcements.** `unannounced_promotions` (enabled, not archived, inside the window,
+   `announce`, `announced_at` empty) → `notify_promotion_started`, which re-reads eligibility,
+   fans out and **stamps `announced_at` after the send** — the same plan, send, stamp shape as
+   a cycle's opening, with the same in-memory claim (`_announcing_promotions`) against a tick
+   landing mid-broadcast. A promotion that ended, was switched off or archived is not
+   announced: telling everyone about an offer that is over is worse than silence. Enabling one
+   late inside its window announces it then.
+2. **Missing codes.** `issue_missing_promo_codes` gives a code to a paid order whose
+   "issue" event failed; the codes are committed first and their owners told after
+   (`notify_promo_codes_issued`), so nobody hears of a code that rolled back. The sweep
+   messages only about codes it issued itself.
+3. **Expiry reminders.** `expiring_promo_codes`: `ACTIVE`, `reminded_at` empty, already valid,
+   expiring within `EXPIRY_REMINDER_LEAD` (3 days), **and** at least `EXPIRY_REMINDER_MIN_AGE`
+   (a day) old — otherwise a code that lives two days would be reminded right after it was
+   handed over. A batch of 200 per tick. `notify_promo_code_expiring` returns whether the
+   reminder is _settled_, and only then is `reminded_at` stamped: an erased account, a chat
+   that was never bound or a bot that was blocked count as settled (the binding is cleared),
+   a transient Telegram failure does not, and the next tick retries.
+
+**Issued-code messages are sent after the commit**, from three places that all pass the ids of
+the codes taken **before** the commit (the rows expire on it): `PATCH /admin/orders/{id}/status`
+(a background task), and the bot's two handlers — `handle_order_action` and
+`handle_payment_action` (the receipt verdict) — which call `notify_promo_codes_issued` after
+the status notification. The ids come from `OrdersService.issued_codes` and
+`ReviewedReceipt.issued_codes`.
+
+**What is not retried.** The «code issued» message carries no stamp: the code row is the record
+and `/promocodes` shows it whether or not Telegram delivered. A crash between the commit and
+the send costs the message and nothing else, and the sweep tells only about codes it issued
+itself — a code issued by the event is never announced a second time.
 
 **Three rules that the code is shaped around:**
 

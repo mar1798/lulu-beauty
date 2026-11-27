@@ -1,4 +1,4 @@
-import type { ICart } from 'widgets/types'
+import type { ICart, IPromoCodeCheck } from 'widgets/types'
 import { api } from '../api'
 
 /**
@@ -44,3 +44,12 @@ export const previewCart = (items: IGuestCartLineBody[]): Promise<ICart> =>
  */
 export const mergeCart = (items: IGuestCartLineBody[], cycleId: string | null): Promise<ICart> =>
   api.post('/cart/merge', { body: { items, cycleId } })
+
+/**
+ * Проверка промокода на корзине до оформления. Ничего не записывает: код
+ * резервируется самим оформлением (`checkout` с `promoCode`). Ответ - сумма
+ * корзины с кодом, скидка кода и подарки; отказ - 404/409 с кодом ошибки
+ * `promo_code_*`, текст выбирается по области `promoCode.check`.
+ */
+export const checkPromoCode = (code: string): Promise<IPromoCodeCheck> =>
+  api.post('/cart/promo-code/check', { body: { code } })

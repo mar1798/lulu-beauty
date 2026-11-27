@@ -39,7 +39,8 @@ export const Alert: FC<IAlertProps & IBasicStyling> = ({
     >
       <div className={styles.body}>
         {title !== undefined && <span className={styles.title}>{title}</span>}
-        <span className={styles.message}>{children}</span>
+        {/* `div`, а не `span`: в сообщение кладут и блоки - список акций на оформлении. */}
+        <div className={styles.message}>{children}</div>
 
         {action !== undefined && <div className={styles.action}>{action}</div>}
       </div>

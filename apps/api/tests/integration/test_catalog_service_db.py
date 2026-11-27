@@ -970,7 +970,7 @@ async def test_normalisation_matches_the_database(db_session: AsyncSession) -> N
 
 
 async def test_a_query_of_nothing_but_noise_filters_nothing(db_session: AsyncSession) -> None:
-    """"-" or "..." normalises to an empty string, and an empty query is no query.
+    """ "-" or "..." normalises to an empty string, and an empty query is no query.
 
     A consequence of normalising rather than a decision taken separately: there is no
     text left to match on, and the alternative — matching nothing at all — would answer

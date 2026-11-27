@@ -19,5 +19,6 @@ Disallow: /checkout
 Disallow: /account
 Disallow: /orders
 Disallow: /wishlist
+Disallow: /promocodes
 
 Sitemap: https://sululu.store/sitemap.xml

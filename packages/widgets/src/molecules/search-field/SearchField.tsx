@@ -31,25 +31,16 @@ export const SearchField: FC<ISearchFieldProps & IBasicStyling> = ({
   label,
   placeholder = 'Поиск по названию',
   isBusy = false,
+  isForm = true,
   className,
-}) => (
-  /*
-    Форма — ради клавиши «Найти» на экранной клавиатуре: без неё Enter в поле на
-    телефоне не делает ничего, и клавиатура так и закрывает выдачу. Искать по
-    Enter нечего — выдача уже обновляется на ходу, — поэтому отправка только
-    убирает клавиатуру.
-  */
-  <form
-    className={styles.form}
-    role="search"
-    onSubmit={event => {
-      event.preventDefault()
+}) => {
+  const blurActive = (): void => {
+    if (document.activeElement instanceof HTMLElement) {
+      document.activeElement.blur()
+    }
+  }
 
-      if (document.activeElement instanceof HTMLElement) {
-        document.activeElement.blur()
-      }
-    }}
-  >
+  const field = (
     <Input
       className={clsx(styles.container, className)}
       type="search"
@@ -82,5 +73,43 @@ export const SearchField: FC<ISearchFieldProps & IBasicStyling> = ({
         )
       }
     />
-  </form>
-)
+  )
+
+  /*
+    Форма - ради клавиши «Найти» на экранной клавиатуре: без неё Enter в поле на
+    телефоне не делает ничего, и клавиатура так и закрывает выдачу. Искать по
+    Enter нечего - выдача уже обновляется на ходу, - поэтому отправка только
+    убирает клавиатуру. Внутри чужой формы (`isForm={false}`) вложенный `<form>`
+    невалиден: роль держит `div`, а Enter гасится здесь, чтобы не отправить
+    внешнюю форму.
+  */
+  if (!isForm) {
+    return (
+      <div
+        className={styles.form}
+        role="search"
+        onKeyDown={event => {
+          if (event.key === 'Enter') {
+            event.preventDefault()
+            blurActive()
+          }
+        }}
+      >
+        {field}
+      </div>
+    )
+  }
+
+  return (
+    <form
+      className={styles.form}
+      role="search"
+      onSubmit={event => {
+        event.preventDefault()
+        blurActive()
+      }}
+    >
+      {field}
+    </form>
+  )
+}

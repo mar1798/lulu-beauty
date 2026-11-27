@@ -1,0 +1,567 @@
+import clsx from 'clsx'
+import { type FC, type FormEvent, useEffect, useRef, useState } from 'react'
+import type {
+  IAdminPromoCodeFormProps,
+  IBasicStyling,
+  ICustomerOption,
+  IPromotionCatalog,
+  IPromotionCodeReward,
+  IPromotionConditionDraft,
+  IPromotionRewardDraft,
+} from '../../types'
+import { Alert } from '../../atoms/alert'
+import { Badge } from '../../atoms/badge'
+import { Button } from '../../atoms/button'
+import { IconButton } from '../../atoms/icon-button'
+import { Input } from '../../atoms/input'
+import { Switch } from '../../atoms/switch'
+import { Text } from '../../atoms/text'
+import { CustomerSelect } from '../../molecules/customer-select'
+import { FormSection } from '../../molecules/form-section'
+import { PromotionPeriodFields } from '../../molecules/promotion-period-fields'
+import { RichTextEditor } from '../../molecules/rich-text-editor'
+import { IconClose, IconRefresh } from '../../svg/icons'
+import { storeIso, storeToday, toStoreParts } from '../../utils/datetime'
+import {
+  MAX_PROMOTION_CONDITIONS,
+  MAX_PROMOTION_REWARDS,
+  buildConditions,
+  buildRewards,
+  conditionToDraft,
+  rewardToDraft,
+} from '../../utils/promotion'
+import { pluralize } from '../../utils/plural'
+import { plainTextToHtml } from '../../utils/richText'
+import { PromotionConditionBuilder } from '../promotion-condition-builder'
+import { PromotionRewardBuilder } from '../promotion-reward-builder'
+import * as styles from './AdminPromoCodeForm.css'
+
+/**
+ * Форма промокода владельца: код, название, окно действия, «кому», условия и награды.
+ *
+ * Условия и награды те же, что у акции (`PromotionConditionBuilder`,
+ * `PromotionRewardBuilder`), с одним отличием: наградой кода не может быть другой
+ * промокод (`allowPromoCode={false}`). Окно действия - `PromotionPeriodFields`,
+ * время по магазину (Asia/Bishkek); «Бессрочный» уводит `endsAt: null`.
+ *
+ * Код. Новый промокод (и дубль) открывается с уже готовым кодом вида `SULU-XXXXX`,
+ * сгенерированным здесь же: владелец видит его до сохранения и может набрать свой
+ * или нажать «Перегенерировать» в поле. У сохранённого кода в поле его строка, и та
+ * же кнопка заменяет её новой. На сервер код уходит в том виде, в каком хранится:
+ * заглавными и без пробелов (так же делает сервер, `normalize_code`). Остальные
+ * символы - кириллица, дефисы, знаки - часть кода: `SULU-AB3CD` сохраняется с
+ * дефисом, и покупатель набирает его тоже с дефисом. Если сгенерированный код вдруг занят, сервер ответит `promo_code_taken` -
+ * хватит перегенерировать.
+ *
+ * «Кому». Общий код может применить любой покупатель. Персональный - только
+ * выбранные: владелец добавляет их по одному поиском (сам поиск ведёт страница,
+ * `customerSelect`), список выбранных - состояние формы. Выбор без включённого
+ * «Персональный» не уходит.
+ *
+ * «Сколько раз». Число применений на одного покупателя (1-100) или «Без ограничений» -
+ * пока код не выключат или не кончится срок. Чаще раза за сбор код не срабатывает
+ * в любом случае: это правило сервера, форма о нём только говорит.
+ *
+ * Четыре секции сворачиваются так же, как у формы акции (`FormSection`): открыта
+ * только «Основное», у остальных в заголовке сводка. При ошибке форма раскрывает
+ * секцию и ставит фокус на первое неверное поле.
+ */
+
+const TITLE_MAX_LENGTH = 255
+/** Набранное с пробелами длиннее самого кода: сервер их убирает, форма тоже. */
+const CODE_INPUT_MAX_LENGTH = 24
+/** 4-16 символов любых, кроме пробельных; длина - в кодовых точках, как у сервера. */
+const isValidCode = (code: string): boolean => {
+  const length = [...code].length
+  return length >= 4 && length <= 16 && !/\s/.test(code)
+}
+/** `MAX_DESCRIPTION_HTML_LENGTH` отсекает сервер; видимый предел - как у акции. */
+const DESCRIPTION_MAX_LENGTH = 2000
+/** `MAX_PROMO_CODE_USES` сервера. */
+const MAX_USES = 100
+/** `MAX_PROMO_CODE_ASSIGNEES` сервера. */
+const MAX_ASSIGNEES = 200
+const START_TIME = '00:00'
+const END_TIME = '23:59'
+
+/** Код в том виде, в каком его хранит сервер: без пробелов, заглавными. */
+const normalizeCode = (raw: string): string => raw.toUpperCase().replace(/\s/g, '')
+
+/** Алфавит выдаваемых кодов сервера (`CODE_ALPHABET`): без 0/O и 1/I, их путают на слух и на глаз. */
+const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+const GENERATED_PREFIX = 'SULU-'
+const GENERATED_LENGTH = 5
+
+/** Новый код `SULU-XXXXX`. 32^5 вариантов - совпадение редкость, и его всё равно отсечёт сервер. */
+const generatePromoCode = (): string => {
+  const bytes = crypto.getRandomValues(new Uint8Array(GENERATED_LENGTH))
+  // 256 делится на 32 нацело, поэтому остаток не смещает распределение.
+  const tail = Array.from(bytes, byte => CODE_ALPHABET[byte % CODE_ALPHABET.length]).join('')
+
+  return `${GENERATED_PREFIX}${tail}`
+}
+
+const partsOf = (iso: string | null | undefined): { date: string; time: string } =>
+  (iso === undefined || iso === null ? null : toStoreParts(iso)) ?? { date: '', time: '' }
+
+const isCodeReward = (
+  reward: ReturnType<typeof buildRewards>['value'][number]
+): reward is IPromotionCodeReward => reward.type !== 'PROMO_CODE'
+
+interface IFields {
+  title: string
+  code: string
+  startDate: string
+  startTime: string
+  endDate: string
+  endTime: string
+  /** Число применений как набрано; при «Без ограничений» не читается. */
+  uses: string
+}
+
+/** Целое 1-`MAX_USES` из набранного, иначе `null`. */
+const parseUses = (raw: string): number | null => {
+  if (!/^\d+$/.test(raw.trim())) {
+    return null
+  }
+  const value = Number(raw.trim())
+
+  return value >= 1 && value <= MAX_USES ? value : null
+}
+
+type SectionKey = 'main' | 'whom' | 'conditions' | 'rewards'
+
+const INITIAL_OPEN: Record<SectionKey, boolean> = {
+  main: true,
+  whom: false,
+  conditions: false,
+  rewards: false,
+}
+
+export const AdminPromoCodeForm: FC<IAdminPromoCodeFormProps & IBasicStyling> = ({
+  catalog,
+  customerSelect,
+  initialValues,
+  isSaved = false,
+  onSubmit,
+  isSubmitting = false,
+  error,
+  footer,
+  className,
+}) => {
+  const start = partsOf(initialValues?.startsAt)
+  const end = partsOf(initialValues?.endsAt)
+  const savedCode = initialValues?.code ?? null
+
+  const [fields, setFields] = useState<IFields>(() => ({
+    title: initialValues?.title ?? '',
+    code: savedCode ?? generatePromoCode(),
+    startDate: start.date === '' ? storeToday().date : start.date,
+    startTime: start.date === '' ? START_TIME : start.time,
+    endDate: end.date,
+    endTime: end.date === '' ? END_TIME : end.time,
+    uses: String(initialValues?.usesPerCustomer ?? 1),
+  }))
+  const [isUnlimited, setIsUnlimited] = useState(
+    initialValues !== undefined && initialValues.usesPerCustomer === null
+  )
+  const [descriptionHtml, setDescriptionHtml] = useState(
+    () => initialValues?.descriptionHtml ?? plainTextToHtml('')
+  )
+  const [isEnabled, setIsEnabled] = useState(initialValues?.isEnabled ?? true)
+  const [isOpenEnded, setIsOpenEnded] = useState(
+    initialValues === undefined || initialValues.endsAt === null
+  )
+  const [isPersonal, setIsPersonal] = useState((initialValues?.assignedUsers.length ?? 0) > 0)
+  const [assignedUsers, setAssignedUsers] = useState<ICustomerOption[]>(
+    initialValues?.assignedUsers ?? []
+  )
+  const [conditions, setConditions] = useState<IPromotionConditionDraft[]>(
+    () => initialValues?.conditions.map(conditionToDraft) ?? []
+  )
+  const [rewards, setRewards] = useState<IPromotionRewardDraft[]>(
+    () => initialValues?.rewards.map(rewardToDraft) ?? []
+  )
+  const [isSubmitted, setIsSubmitted] = useState(false)
+  const [openSections, setOpenSections] = useState(INITIAL_OPEN)
+  // Растёт с каждой неудачной отправкой: фокус ставится после того, как раскрылись секции с ошибками.
+  const [focusRequest, setFocusRequest] = useState(0)
+  const formRef = useRef<HTMLFormElement>(null)
+
+  // Названия товаров, выбранных в этой форме: страница знает только те, что пришли с сервером.
+  const [labels, setLabels] = useState<Record<string, string>>(catalog.labels)
+
+  useEffect(() => {
+    if (focusRequest > 0) {
+      formRef.current?.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus()
+    }
+  }, [focusRequest])
+
+  // Страница дочитывает названия после загрузки кода - подмешиваем, не теряя выбранные здесь.
+  useEffect(() => {
+    setLabels(current => ({ ...catalog.labels, ...current }))
+  }, [catalog.labels])
+
+  const scopedCatalog: IPromotionCatalog = {
+    ...catalog,
+    labels,
+    onLabel: (id, label) => {
+      setLabels(current => (current[id] === label ? current : { ...current, [id]: label }))
+      catalog.onLabel(id, label)
+    },
+  }
+
+  const patch = (next: Partial<IFields>): void => {
+    setFields(current => ({ ...current, ...next }))
+  }
+
+  const startIso = storeIso(fields.startDate, fields.startTime)
+  const endIso = fields.endDate === '' ? '' : storeIso(fields.endDate, fields.endTime)
+  const builtConditions = buildConditions(conditions)
+  const builtRewards = buildRewards(rewards)
+  const normalizedCode = normalizeCode(fields.code)
+
+  const errors = {
+    code: isValidCode(normalizedCode) ? null : 'Код - от 4 до 16 символов, пробелы не считаются',
+    title: fields.title.trim() === '' ? 'Введите название промокода' : null,
+    start: startIso === '' ? 'Укажите дату и время начала' : null,
+    end: isOpenEnded
+      ? null
+      : endIso === ''
+        ? 'Укажите дату и время окончания'
+        : startIso !== '' && endIso <= startIso
+          ? 'Промокод должен заканчиваться позже, чем начинается'
+          : null,
+    customer:
+      isPersonal && assignedUsers.length === 0 ? 'Выберите хотя бы одного покупателя' : null,
+    uses:
+      isUnlimited || parseUses(fields.uses) !== null ? null : `Введите число от 1 до ${MAX_USES}`,
+    rewards: rewards.length === 0 ? 'Добавьте хотя бы одну награду' : null,
+  }
+
+  const sectionErrors: Record<SectionKey, boolean> = {
+    main: [errors.code, errors.title, errors.start, errors.end].some(message => message !== null),
+    whom: errors.customer !== null || errors.uses !== null,
+    conditions: Object.keys(builtConditions.errors).length > 0,
+    rewards: errors.rewards !== null || Object.keys(builtRewards.errors).length > 0,
+  }
+
+  const hasErrors = Object.values(sectionErrors).some(Boolean)
+
+  const toggleSection = (key: SectionKey): void => {
+    setOpenSections(current => ({ ...current, [key]: !current[key] }))
+  }
+
+  const handleSubmit = (event: FormEvent): void => {
+    event.preventDefault()
+    setIsSubmitted(true)
+
+    if (hasErrors) {
+      // Наверх формы не прыгаем: ошибка стоит у самого поля, фокус ведёт к нему. Свёрнутые
+      // секции с ошибками раскрываются, иначе фокусировать было бы нечего.
+      setOpenSections(current => ({
+        main: current.main || sectionErrors.main,
+        whom: current.whom || sectionErrors.whom,
+        conditions: current.conditions || sectionErrors.conditions,
+        rewards: current.rewards || sectionErrors.rewards,
+      }))
+      setFocusRequest(current => current + 1)
+
+      return
+    }
+
+    onSubmit({
+      code: normalizedCode,
+      title: fields.title.trim(),
+      descriptionHtml,
+      startsAt: startIso,
+      endsAt: isOpenEnded ? null : endIso,
+      isEnabled,
+      assignedUsers: isPersonal ? assignedUsers : [],
+      usesPerCustomer: isUnlimited ? null : parseUses(fields.uses),
+      conditions: builtConditions.value,
+      rewards: builtRewards.value.filter(isCodeReward),
+    })
+  }
+
+  const conditionSummary =
+    conditions.length === 0
+      ? 'Без условий'
+      : pluralize(conditions.length, ['условие', 'условия', 'условий'])
+  const rewardSummary =
+    rewards.length === 0
+      ? 'Не добавлены'
+      : pluralize(rewards.length, ['награда', 'награды', 'наград'])
+  const mainSummary = [fields.code.trim(), fields.title.trim()]
+    .filter(part => part !== '')
+    .join(' - ')
+  const usesSummary = isUnlimited
+    ? 'без ограничений'
+    : pluralize(parseUses(fields.uses) ?? 0, ['раз', 'раза', 'раз'])
+  const whomSummary = isPersonal
+    ? assignedUsers.length === 0
+      ? 'Покупатели не выбраны'
+      : assignedUsers.length === 1
+        ? assignedUsers[0].name
+        : pluralize(assignedUsers.length, ['покупатель', 'покупателя', 'покупателей'])
+    : 'Всем'
+  const chosenIds = new Set(assignedUsers.map(user => user.id))
+
+  const addCustomer = (customer: ICustomerOption | null): void => {
+    if (customer === null || chosenIds.has(customer.id)) {
+      return
+    }
+    setAssignedUsers(current => [...current, customer])
+    // Поиск очищается: следующего покупателя ищут с чистого поля.
+    customerSelect.onQueryChange('')
+  }
+
+  const removeCustomer = (id: string): void => {
+    setAssignedUsers(current => current.filter(user => user.id !== id))
+  }
+
+  const isCodeReplaced = savedCode !== null && normalizedCode !== normalizeCode(savedCode)
+
+  return (
+    <form
+      ref={formRef}
+      className={clsx(styles.container, className)}
+      noValidate={true}
+      onSubmit={handleSubmit}
+    >
+      <FormSection
+        title="Основное"
+        summary={openSections.main || mainSummary === '' ? undefined : mainSummary}
+        isOpen={openSections.main}
+        onToggle={() => {
+          toggleSection('main')
+        }}
+      >
+        <Input
+          label="Код"
+          value={fields.code}
+          maxLength={CODE_INPUT_MAX_LENGTH}
+          required={true}
+          autoComplete="off"
+          hint={
+            isCodeReplaced
+              ? `Прежний код ${savedCode ?? ''} перестанет работать после сохранения.`
+              : '4-16 символов, любые, кроме пробелов - пробелы убираются.'
+          }
+          error={isSubmitted ? errors.code : null}
+          onChange={next => {
+            patch({ code: next.toUpperCase() })
+          }}
+          suffix={
+            <IconButton
+              size="sm"
+              variant="ghost"
+              icon={<IconRefresh />}
+              label="Перегенерировать"
+              onClick={() => {
+                patch({ code: generatePromoCode() })
+              }}
+            />
+          }
+        />
+
+        <Input
+          label="Название"
+          value={fields.title}
+          maxLength={TITLE_MAX_LENGTH}
+          required={true}
+          hint="Видно владельцу в списке; покупатель увидит его, если код персональный."
+          error={isSubmitted ? errors.title : null}
+          onChange={next => {
+            patch({ title: next })
+          }}
+        />
+
+        <RichTextEditor
+          label="Описание"
+          value={descriptionHtml}
+          maxLength={DESCRIPTION_MAX_LENGTH}
+          hint="Видно покупателю, если код персональный - на странице «Промокоды»"
+          onChange={setDescriptionHtml}
+        />
+
+        <PromotionPeriodFields
+          startDate={fields.startDate}
+          startTime={fields.startTime}
+          endDate={fields.endDate}
+          endTime={fields.endTime}
+          isOpenEnded={isOpenEnded}
+          errors={{
+            start: isSubmitted ? errors.start : null,
+            end: isSubmitted ? errors.end : null,
+          }}
+          onChange={patch}
+          onOpenEndedChange={setIsOpenEnded}
+          openEndedLabel="Бессрочный - без даты окончания"
+          endHint="Время по Бишкеку. Промокод действует до этого момента, не включая его."
+        />
+
+        <div className={styles.switches}>
+          <Switch label="Промокод включён" checked={isEnabled} onChange={setIsEnabled} />
+        </div>
+      </FormSection>
+
+      <FormSection
+        title="Кому"
+        summary={`${whomSummary}, ${usesSummary}`}
+        isOpen={openSections.whom}
+        onToggle={() => {
+          toggleSection('whom')
+        }}
+      >
+        <Text tone="secondary" size="sm">
+          Общий код может применить любой покупатель. Персональный - только выбранные. Каждый
+          применяет его столько раз, сколько указано ниже, и не чаще раза за сбор.
+        </Text>
+
+        <Switch
+          label="Персональный - только для выбранных покупателей"
+          checked={isPersonal}
+          onChange={setIsPersonal}
+        />
+
+        {isPersonal && assignedUsers.length > 0 && (
+          <ul className={styles.customers} aria-label="Выбранные покупатели">
+            {assignedUsers.map(user => (
+              <li key={user.id} className={styles.customer}>
+                <span className={styles.person}>
+                  <Text as="span" size="sm" weight="medium" clamp={1}>
+                    {user.name}
+                  </Text>
+                  <Text as="span" size="sm" tone="muted">
+                    {user.phone}
+                  </Text>
+                </span>
+                {!user.telegramLinked && <Badge tone="warning">Не в боте</Badge>}
+                <IconButton
+                  size="sm"
+                  variant="ghost"
+                  icon={<IconClose />}
+                  label={`Убрать ${user.name}`}
+                  onClick={() => {
+                    removeCustomer(user.id)
+                  }}
+                />
+              </li>
+            ))}
+          </ul>
+        )}
+
+        {isPersonal && assignedUsers.length < MAX_ASSIGNEES && (
+          <CustomerSelect
+            {...customerSelect}
+            label={assignedUsers.length === 0 ? 'Покупатель' : 'Добавить покупателя'}
+            results={
+              customerSelect.results === null
+                ? null
+                : customerSelect.results.filter(customer => !chosenIds.has(customer.id))
+            }
+            value={null}
+            onChange={addCustomer}
+          />
+        )}
+
+        {/* Ошибка проверки - у поля, а не вместо выдачи: поиск покупателя должен работать. */}
+        {isPersonal && isSubmitted && errors.customer !== null && (
+          <Text size="sm" tone="danger">
+            {errors.customer}
+          </Text>
+        )}
+
+        <Switch
+          label="Без ограничений - в каждом сборе, пока код включён"
+          checked={isUnlimited}
+          onChange={setIsUnlimited}
+        />
+
+        {!isUnlimited && (
+          <Input
+            label="Сколько раз один покупатель может применить код"
+            value={fields.uses}
+            inputMode="numeric"
+            maxLength={String(MAX_USES).length}
+            hint="Не чаще раза за сбор."
+            error={isSubmitted ? errors.uses : null}
+            onChange={next => {
+              patch({ uses: next.replace(/\D/g, '') })
+            }}
+          />
+        )}
+      </FormSection>
+
+      <FormSection
+        title="Условия"
+        summary={conditionSummary}
+        isOpen={openSections.conditions}
+        onToggle={() => {
+          toggleSection('conditions')
+        }}
+      >
+        <Text tone="secondary" size="sm">
+          Чтобы код сработал, заявка должна выполнять все условия сразу. Сумма и количество
+          считаются до скидок, подарки не в счёт.
+        </Text>
+
+        <PromotionConditionBuilder
+          value={conditions}
+          onChange={setConditions}
+          catalog={scopedCatalog}
+          errors={isSubmitted ? builtConditions.errors : {}}
+          maxRows={MAX_PROMOTION_CONDITIONS}
+        />
+      </FormSection>
+
+      <FormSection
+        title="Награды"
+        summary={rewardSummary}
+        isOpen={openSections.rewards}
+        onToggle={() => {
+          toggleSection('rewards')
+        }}
+      >
+        <PromotionRewardBuilder
+          value={rewards}
+          onChange={setRewards}
+          catalog={scopedCatalog}
+          errors={isSubmitted ? builtRewards.errors : {}}
+          maxRows={MAX_PROMOTION_REWARDS}
+          allowPromoCode={false}
+        />
+
+        {isSubmitted && errors.rewards !== null && (
+          <Text size="sm" tone="danger">
+            {errors.rewards}
+          </Text>
+        )}
+      </FormSection>
+
+      {/*
+        Ошибка сервера - у кнопки, а не над формой: на телефоне верх формы в этот
+        момент за краем экрана.
+      */}
+      {error !== undefined && error !== null && !(isSubmitted && hasErrors) && (
+        <Alert tone="danger" title="Не получилось сохранить">
+          {error}
+        </Alert>
+      )}
+
+      {isSubmitted && hasErrors && (
+        <Alert tone="warning" title="Проверьте форму">
+          Некоторые поля заполнены неверно - они отмечены выше.
+        </Alert>
+      )}
+
+      <div className={styles.actions}>
+        <Button isFullWidth="mobile" type="submit" isLoading={isSubmitting}>
+          {isSaved ? 'Сохранить' : 'Создать промокод'}
+        </Button>
+        {footer}
+      </div>
+    </form>
+  )
+}
