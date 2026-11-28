@@ -1265,6 +1265,33 @@ That image lives until the next deploy pulls the CI-built one over it, so the
 repository variable has to be fixed too — otherwise the next release quietly
 brings the old value back.
 
+**Emergency off for the New Year decor.** `NEW_YEAR_DECOR`, `NEW_YEAR_START` and
+`NEW_YEAR_END` are baked into the bundle like the public variables above, so
+switching the decor off is a rebuild, not a restart.
+
+- The normal path: set the repository variable `NEW_YEAR_DECOR=off`, then
+  release: with nothing new on `development` the release PR has nothing to
+  compare, so first push `git commit --allow-empty -m "Release: switch the New
+Year decor off"` to `development`, then open the PR (`release-tag.yml` runs
+  only on a push to `master`).
+- Right now, on the server: put `NEW_YEAR_DECOR=off` in `.env.prod` (the block is
+  commented out in `deploy/.env.prod.example`) and rebuild `website` with the
+  `--build` command from the paragraph above. Then change the repository
+  variable as well, or the next release brings the decor back.
+
+To see which mode a running site was built with, read the inline early script
+that sits in the HTML of every page (the page itself, not the decor, which is
+drawn only after hydration):
+
+```bash
+curl -s https://SITE_DOMAIN/ | grep -oE 'var a=(true|false);|if\((true|false)\)\{|a=[0-9]+<=[0-9]+\?'
+```
+
+`a=1128<=115?` (the window, `MMDD`) is in the script text in every mode, so it
+prints in all three; the mode is told by the first two: `auto` prints
+`var a=false;` and `if(true){`, `on` prints `var a=true;` and `if(false){`, `off`
+prints `var a=false;` and `if(false){`.
+
 **Stopping and tearing down:**
 
 ```bash

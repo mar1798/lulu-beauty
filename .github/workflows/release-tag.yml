@@ -418,6 +418,9 @@ jobs:
             NEXT_PUBLIC_TELEGRAM_BOT_USERNAME=${{ vars.TELEGRAM_BOT_USERNAME }}
             NEXT_PUBLIC_TELEGRAM_LOGIN_WIDGET=${{ vars.NEXT_PUBLIC_TELEGRAM_LOGIN_WIDGET || 'false' }}
             API_BASE_URL=http://api:3001
+            NEW_YEAR_DECOR=${{ vars.NEW_YEAR_DECOR || 'auto' }}
+            NEW_YEAR_START=${{ vars.NEW_YEAR_START || '11-28' }}
+            NEW_YEAR_END=${{ vars.NEW_YEAR_END || '01-15' }}
           cache-from: type=gha,scope=website
           cache-to: type=gha,scope=website,mode=max
 
