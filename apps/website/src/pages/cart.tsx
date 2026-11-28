@@ -7,8 +7,7 @@ import { CartPanel } from 'widgets/organisms'
 import { CartTemplate } from 'widgets/templates'
 import { useToast } from 'widgets/contexts'
 import { SiteLayout } from '@/layouts/SiteLayout'
-import { HalloweenEmpty, HalloweenScene } from '@/halloween/HalloweenScene'
-import * as halloween from '@/halloween/halloween.css'
+import { CartStockings, CartTree, Decor } from '@/seasonal/NewYear'
 import { EditableOrderNotice } from '@/components/EditableOrderNotice'
 import { useAuth } from '@/contexts/AuthContext'
 import { useCart } from '@/contexts/CartContext'
@@ -151,26 +150,34 @@ const CartPage: React.FC = () => {
               : undefined
           }
           emptyState={
-            <HalloweenEmpty kind="cart">
-              <EmptyState
-                title="Пока пусто"
-                // Вторая фраза — не реклама избранного, а ответ на «где мой прошлый
-                // выбор»: корзину закрывшегося сбора туда переносит планировщик
-                // (apps/api/app/cycles/scheduler_service.py), и человек, пропустивший
-                // уведомление бота, узнаёт об этом только здесь.
-                description="Загляните в каталог - товары появляются перед каждым сбором. То, что вы не успели оформить в прошлом сборе, ждёт в избранном."
-                action={
-                  <Button link={{ href: '/catalog' }} isFullWidth="mobile">
-                    В каталог
-                  </Button>
-                }
-              />
-            </HalloweenEmpty>
+            <EmptyState
+              // Пустая корзина рисуется только на клиенте: на сервере и до ответа `/api/auth/me` (у
+              // вошедшего - и самой корзины) стоит скелетон, поэтому Decor встаёт сразу с размерами
+              // и в уже занятую `sessionArea`: отдельный резерв под иконку не нужен. Вне сезона
+              // Decor даёт null, обёртка иконки скрывается через :empty.
+              icon={<Decor name="gift-box-blush" size={140} className="ny-decor--empty" />}
+              title="Пока пусто"
+              // Вторая фраза — не реклама избранного, а ответ на «где мой прошлый
+              // выбор»: корзину закрывшегося сбора туда переносит планировщик
+              // (apps/api/app/cycles/scheduler_service.py), и человек, пропустивший
+              // уведомление бота, узнаёт об этом только здесь.
+              description="Загляните в каталог - товары появляются перед каждым сбором. То, что вы не успели оформить в прошлом сборе, ждёт в избранном."
+              action={
+                <Button link={{ href: '/catalog' }} isFullWidth="mobile">
+                  В каталог
+                </Button>
+              }
+            />
           }
         />
+
+        {/* Ёлка под панелью - на узком экране, где у заголовка ей нет места (с `lg` скрыта). */}
+        {cart !== null && cart.items.length > 0 && <CartTree placement="below" hasGap={true} />}
       </>
     )
   }
+
+  const hasItems = cart !== null && cart.items.length > 0
 
   return (
     <SiteLayout>
@@ -180,9 +187,11 @@ const CartPage: React.FC = () => {
       </Head>
 
       <CartTemplate
-        // Точка отсчёта для хэллоуинской сцены справа от заголовка.
-        className={halloween.host}
         title="Корзина"
+        // Носки у заголовка и ёлка с подарками - только над непустой корзиной: у пустой свой
+        // подарок в EmptyState. Оба слота места не занимают и страницу не двигают.
+        titleDecor={hasItems ? <CartStockings /> : undefined}
+        decor={hasItems ? <CartTree placement="head" /> : undefined}
         summary="Оплата не проводится: это заявка, которую мы подтвердим после закрытия сбора"
       >
         {/*
@@ -190,7 +199,6 @@ const CartPage: React.FC = () => {
           отличаются высотой вдвое, и на ответе `/api/auth/me` подвал переезжал
           (см. `styles/layout.css`).
         */}
-        {cart !== null && cart.items.length > 0 && <HalloweenScene variant="list-title" />}
         <div className={styles.sessionArea}>{content()}</div>
       </CartTemplate>
     </SiteLayout>

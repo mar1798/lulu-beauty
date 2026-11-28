@@ -7,6 +7,7 @@ import { EmptyState } from 'widgets/molecules'
 import { ProductGrid } from 'widgets/organisms'
 import { IconHeart } from 'widgets/svg'
 import { CatalogTemplate } from 'widgets/templates'
+import { Decor } from '@/seasonal/NewYear'
 import { SiteLayout } from '@/layouts/SiteLayout'
 import { AddToCartButton } from '@/components/AddToCartButton'
 import { WishlistButton } from '@/components/WishlistButton'
@@ -15,8 +16,6 @@ import { useWishlist } from '@/contexts/WishlistContext'
 import { listCategories } from '@/services/endpoints/catalog'
 import { categoriesKey } from '@/services/swrKeys'
 import * as styles from '@/styles/layout.css'
-import { HalloweenEmpty, HalloweenScene } from '@/halloween/HalloweenScene'
-import * as halloween from '@/halloween/halloween.css'
 
 /**
  * Избранное. Приватное и целиком клиентское, как корзина: данные идут через
@@ -80,30 +79,33 @@ const WishlistPage: React.FC = () => {
             <WishlistButton productId={product.id} productName={product.name} />
           )}
           emptyState={
-            <HalloweenEmpty kind="wishlist">
-              <EmptyState
-                title="Пока пусто"
-                description={
-                  <>
-                    {/*
-                      Само сердце вместо слова «сердце»: подсказка показывает ту же
-                      кнопку, что стоит в углу фотографии в каталоге. Иконка скрыта
-                      от скринридера (`aria-hidden` у всего набора), поэтому слово
-                      рядом с ней остаётся — иначе фраза читалась бы «нажмите на на
-                      товаре».
+            <EmptyState
+              // Пустое состояние рисуется только после проверки сессии (`isAuthLoading`
+              // выше даёт `null`), то есть уже на клиенте и после гидрации: Decor встаёт
+              // сразу с размерами, и резерв под него не нужен. Вне сезона Decor даёт
+              // null, обёртка иконки скрывается через :empty.
+              icon={<Decor name="stocking" size={140} className="ny-decor--empty" />}
+              title="Пока пусто"
+              description={
+                <>
+                  {/*
+                    Само сердце вместо слова «сердце»: подсказка показывает ту же
+                    кнопку, что стоит в углу фотографии в каталоге. Иконка скрыта
+                    от скринридера (`aria-hidden` у всего набора), поэтому слово
+                    рядом с ней остаётся — иначе фраза читалась бы «нажмите на на
+                    товаре».
                     */}
-                    Нажмите на <IconHeart className={styles.inlineIcon} />
-                    <VisuallyHidden>сердце</VisuallyHidden> на товаре в каталоге - он сохранится
-                    здесь до следующего сбора
-                  </>
-                }
-                action={
-                  <Button link={{ href: '/catalog' }} isFullWidth="mobile">
-                    В каталог
-                  </Button>
-                }
-              />
-            </HalloweenEmpty>
+                  Нажмите на <IconHeart className={styles.inlineIcon} />
+                  <VisuallyHidden>сердце</VisuallyHidden> на товаре в каталоге - он сохранится здесь
+                  до следующего сбора
+                </>
+              }
+              action={
+                <Button link={{ href: '/catalog' }} isFullWidth="mobile">
+                  В каталог
+                </Button>
+              }
+            />
           }
         />
       </>
@@ -118,12 +120,9 @@ const WishlistPage: React.FC = () => {
       </Head>
 
       <CatalogTemplate
-        // Точка отсчёта для хэллоуинской сцены справа от заголовка.
-        className={halloween.host}
         title="Избранное"
         summary={products.length === 0 ? undefined : `Сохранено товаров: ${products.length}`}
       >
-        {products.length > 0 && <HalloweenScene variant="list-title" />}
         <div className={styles.sessionArea}>{content()}</div>
       </CatalogTemplate>
     </SiteLayout>

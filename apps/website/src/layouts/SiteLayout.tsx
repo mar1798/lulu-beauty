@@ -8,13 +8,11 @@ import { BaseLayout } from 'widgets/templates'
 import { CatalogSearch } from '@/components/CatalogSearch'
 import { useAuth } from '@/contexts/AuthContext'
 import { useCart } from '@/contexts/CartContext'
+import { CartHat, HeaderGarland } from '@/seasonal/NewYear'
 import { usePrefetchRoutes } from '@/hooks/usePrefetchRoutes'
 import { useTelegramWebview } from '@/hooks/useTelegramWebview'
 import { INSTAGRAM_URL } from '@/utils/contacts'
 import { useLoginHref } from '@/hooks/useLoginHref'
-import { HalloweenHeaderNote } from '@/halloween/HalloweenHeaderNote'
-import { HalloweenScene } from '@/halloween/HalloweenScene'
-import * as halloween from '@/halloween/halloween.css'
 
 /**
  * Каркас публичных страниц: шапка и подвал, настроенные данными сайта.
@@ -165,7 +163,6 @@ export const SiteLayout: React.FC<ISiteLayoutProps> = ({ children, isCartCountSh
         <>
           <Header
             logo={{ label: 'Sululu', link: { href: '/' } }}
-            logoNote={<HalloweenHeaderNote />}
             navigation={navigation}
             cartLink={{ href: '/cart' }}
             cartCount={isCartCountShown ? itemCount : 0}
@@ -187,6 +184,8 @@ export const SiteLayout: React.FC<ISiteLayoutProps> = ({ children, isCartCountSh
               в `Header.css.ts`). Заодно отменяется и режим «поверх героя».
             */
             isPinned={!isTelegramWebview}
+            decor={<HeaderGarland />}
+            cartDecor={<CartHat />}
           />
 
           {/*
@@ -206,18 +205,11 @@ export const SiteLayout: React.FC<ISiteLayoutProps> = ({ children, isCartCountSh
         </>
       }
       footer={
-        /*
-          Обёртка — точка отсчёта для хэллоуинской сцены: тыквы и свечи стоят
-          на верхней кромке подвала. Сама по себе она ничего не меняет.
-        */
-        <div className={halloween.host}>
-          <HalloweenScene variant="footer" />
-          <Footer
-            columns={footerColumns}
-            copyright={`© ${START_YEAR} Sululu`}
-            note="Оплата - переводом, чек отправляете боту. Доставка обсуждается лично"
-          />
-        </div>
+        <Footer
+          columns={footerColumns}
+          copyright={`© ${START_YEAR} Sululu`}
+          note="Оплата - переводом, чек отправляете боту. Доставка обсуждается лично"
+        />
       }
     >
       {children}

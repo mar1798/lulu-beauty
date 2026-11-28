@@ -5,6 +5,7 @@ import { IconButton, Tooltip } from 'widgets/atoms'
 import { useToast } from 'widgets/contexts'
 import { IconHeart, IconHeartFilled } from 'widgets/svg'
 import { useWishlist } from '@/contexts/WishlistContext'
+import { Decor } from '@/seasonal/NewYear'
 
 /**
  * «В избранное» для карточки и страницы товара.
@@ -142,6 +143,8 @@ export const WishlistButton: React.FC<{
           tone: 'success',
           title: 'Товар в избранном',
           subject: name,
+          // Новогодний носок; вне сезона `Decor` отдаёт `null`, и тост остаётся прежним.
+          icon: <Decor name="stocking" size={28} />,
           action: {
             label: 'Посмотреть',
             onAction: () => {

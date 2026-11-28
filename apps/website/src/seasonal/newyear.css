@@ -1,0 +1,311 @@
+/* Новогодний декор Sululu. Подключён один раз в pages/_app.tsx:
+   import '@/seasonal/newyear.css'
+   Правила привязаны к классам .ny-*. Большинство рендерится только в сезон; четыре хука всегда
+   есть в разметке: .ny-catalog-grid, .ny-auth (/login), .ny-error (404) и обёртка .ny-success
+   (экран успеха чекаута). Их правила работают под html[data-newyear], кроме нейтрального для
+   раскладки базового `.ny-success { display: contents }`. Вне сезона ничего видимого не меняется. */
+
+/* ---------- Гирлянда под хедером ---------- */
+.ny-garland {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -16px; /* свисает под нижнюю границу хедера */
+  height: 29px;
+  background: url('/seasonal/newyear/animated/garland-tile.svg') repeat-x 0 0 / 160px 29px;
+  pointer-events: none; /* не перекрывает клики по контенту */
+  z-index: 1;
+}
+@media (min-width: 40.0625rem) {
+  .ny-garland {
+    background-size: 200px 37px;
+    height: 37px;
+    bottom: -22px;
+  }
+}
+
+/* ---------- Снегопад (анимированный; при reduced motion снежинки просто замирают) ---------- */
+/* Рисунок идёт маской, а не `background-image`: фоновая картинка во весь блок становилась
+   LCP-кандидатом героя (замер на главной: 360 x 740 px против текста 29 КБ px и позже по
+   времени), а маска в LCP не попадает. Плитка одноцветная (#D9A3BE / #FFFFFF, прозрачность
+   в самом SVG), поэтому цвет снежинок - `background-color`, форма и анимация - из маски
+   (Chrome анимирует SVG и внутри маски). */
+.ny-snowfall {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  -webkit-mask-repeat: repeat;
+  mask-repeat: repeat;
+  -webkit-mask-size: 400px 400px;
+  mask-size: 400px 400px;
+  opacity: 0.9;
+  z-index: 0;
+}
+.ny-snowfall--pink {
+  background-color: #d9a3be;
+  -webkit-mask-image: url('/seasonal/newyear/animated/snowfall-tile.svg');
+  mask-image: url('/seasonal/newyear/animated/snowfall-tile.svg');
+}
+.ny-snowfall--white {
+  background-color: #fff;
+  -webkit-mask-image: url('/seasonal/newyear/animated/snowfall-tile-white.svg');
+  mask-image: url('/seasonal/newyear/animated/snowfall-tile-white.svg');
+}
+/* контент блока должен быть над снегом */
+.ny-snowfall ~ * {
+  position: relative;
+  z-index: 1;
+}
+
+/* ---------- Шапочка на карточке ---------- */
+.ny-card-hat {
+  position: absolute;
+  top: -17px;
+  left: -10px;
+  width: 52px;
+  height: auto;
+  transform: rotate(-14deg);
+  pointer-events: none;
+  z-index: 2;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.08));
+}
+@media (min-width: 40.0625rem) {
+  .ny-card-hat {
+    width: 72px;
+    top: -24px;
+    left: -14px;
+  }
+}
+
+/* ---------- Иллюстрации ---------- */
+.ny-decor {
+  display: block;
+  user-select: none;
+  pointer-events: none;
+}
+.ny-decor.ny-decor--corner {
+  position: absolute;
+  right: 24px;
+  bottom: -8px;
+}
+.ny-decor--hide-mobile {
+  display: none;
+}
+@media (min-width: 40.0625rem) {
+  .ny-decor--hide-mobile {
+    display: block;
+  }
+}
+
+/* Леденцы у SectionHeading (titleDecor): до 360 px срезались бы краем экрана. Mobile-first:
+   базово скрыты, с 360 px показываются (display тот же block, что у `.ny-decor`). */
+.ny-decor--hide-xs {
+  display: none;
+}
+@media (min-width: 22.5rem) {
+  .ny-decor--hide-xs {
+    display: block;
+  }
+}
+
+/* Иллюстрация пустого состояния (EmptyState.icon): на телефоне не выше 96 px, чтобы заголовок,
+   текст и кнопка остались на первом экране 360 x 640 (подарок 140 px уводит кнопку на ~17 px
+   ниже сгиба). Ширина `auto` идёт за высотой по пропорциям рисунка; с 641 px размер из пропа. */
+.ny-decor--empty {
+  width: auto;
+  max-height: 96px;
+}
+
+@media (min-width: 40.0625rem) {
+  .ny-decor--empty {
+    max-height: none;
+  }
+}
+
+/* ---------- Экран успеха чекаута: «Заявка отправлена» ---------- */
+/* Группа (снег, подарок, номер, врезка) всегда в разметке, но вне сезона она `display: contents`:
+   её дети становятся детьми колонки `CartTemplate`, как будто обёртки нет (ни отступов, ни
+   рамки). В сезон это такая же колонка с тем же зазором 1.5rem (= rem(24) колонки) и точкой
+   отсчёта для снега; снег (`.ny-snowfall ~ *`) оставляет детям position: relative. Снег виден
+   вокруг номера заявки (простой текст без фона), а у врезки фон непрозрачный, поэтому абзац
+   с «Telegram» читается на сплошной заливке. Подарок: на телефоне низкий (mobile-first), с 641 px - размер из пропа.
+   Расчёт первого экрана - docs/frontend.md, «Seasonal decor». */
+.ny-success {
+  display: contents;
+}
+html[data-newyear] .ny-success {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  position: relative;
+}
+.ny-decor--success {
+  align-self: center;
+  width: auto;
+  max-height: 112px;
+}
+@media (min-width: 40.0625rem) {
+  .ny-decor--success {
+    max-height: none;
+  }
+}
+
+/* ---------- Каталог: снег на всю страницу и воздух для шапочек ---------- */
+/* Слой `PageSnowfall`: фиксирован на весь экран и стоит за содержимым. `z-index: -1` в корневом
+   контексте наложения рисуется над фоном страницы, но под любым блоком со своим фоном (карточки,
+   шапка, поля, карусель), так что снег не мешает читать и не перехватывает клики. Вне потока:
+   появление после гидрации не двигает раскладку. */
+/* Фон в `global.css.ts` стоит на `html, body`. Фон `body` - фон потомка корня, он рисуется поверх
+   слоя с `z-index: -1` и прятал бы снег целиком. В сезон с `body` его снимаем: под ним тот же
+   цвет у `html` (он уходит на холст), так что страница выглядит как прежде. */
+html[data-newyear] body {
+  background-color: transparent;
+}
+.ny-page-snow {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+}
+
+/* Сетка каталога (className у ProductGrid): шапочка висит на 24 px над карточкой и не должна
+   налезать на цену, кнопку и сердце соседа сверху. Меняется только row-gap, column-gap остаётся
+   как в виджете. Селектор `html[атрибут] .класс` специфичнее одиночного класса
+   vanilla-extract: бьёт его без `!important` и независимо от порядка стилей.
+   Отступ над сеткой отдельно не нужен: в колонке `CatalogTemplate` между блоками 48 px (>= 32). */
+html[data-newyear] .ny-catalog-grid {
+  row-gap: 32px;
+}
+
+/* ---------- Шапочка на иконке корзины (слот cartDecor хедера) ---------- */
+/* Ссылка корзины - position: relative, а шапочка в DOM стоит раньше счётчика,
+   поэтому счётчик остаётся над ней (оба без z-index). Клики не перехватывает. */
+.ny-cart-hat {
+  position: absolute;
+  top: -6px;
+  left: -2px;
+  width: 24px;
+  height: auto;
+  transform: rotate(-14deg);
+  pointer-events: none;
+}
+
+/* ---------- Корзина: носки у заголовка и ёлка с подарками ---------- */
+/* Носки в слоте `titleDecor` (нулевой высоты, строку заголовка не растягивает). */
+.ny-cart-stockings {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+/* Ёлка с подарками, два места (`CartTree placement`), на каждом экране видна одна.
+   `--head`: слой `CartTemplate.decor` - абсолют на весь блок заголовка. Ёлка стоит у его правого
+   края и опускается на 16 px ниже блока, в 24 px зазора до содержимого: так её верх не доходит
+   до гирлянды хедера. Только с `lg`: там справа от подписи свободно (под ней колонка панели
+   итога), а ниже подпись в две строки уходит под ёлку.
+   `--below`: в потоке под панелью корзины / оформления, по центру, только до `lg`. Встаёт в том
+   же рендере, что и панель с товарами (обе ждут корзину), поэтому ничего не сдвигает. */
+.ny-cart-tree {
+  display: flex;
+  align-items: flex-end;
+}
+.ny-cart-tree--head {
+  display: none;
+}
+.ny-cart-tree--below {
+  justify-content: center;
+}
+/* Корзина: `sessionArea` - простой блок без зазоров, отступ над ёлкой свой. В оформлении ёлка -
+   прямой ребёнок колонки `CartTemplate`, и 24 px даёт её `gap`. */
+.ny-cart-tree--gap {
+  margin-top: 24px;
+}
+@media (min-width: 64rem) {
+  .ny-cart-tree--head {
+    display: flex;
+    position: absolute;
+    right: 24px;
+    bottom: -16px;
+  }
+  .ny-cart-tree.ny-cart-tree--below {
+    display: none;
+  }
+}
+/* Подарки сдвинуты к стволу отрицательными полями и стоят на той же линии. */
+.ny-cart-tree__gift {
+  position: relative;
+  z-index: 1;
+}
+.ny-cart-tree__gift--left {
+  margin-right: -14px;
+}
+.ny-cart-tree__gift--front {
+  margin-left: -26px;
+}
+
+/* ---------- Главная: герой ---------- */
+/* Слой `HomeHero.decor` - абсолют на весь герой под содержимым, поэтому картинки не двигают
+   раскладку и не меняют LCP (меньше фотографии витрины, `loading="lazy"`). Позиции - от низа
+   слоя: от правого нижнего угла героя (right 16 / 112 px, bottom 24 px).
+   Селектор `.ny-decor.ny-hero-*` (две точки) бьёт `.ny-snowfall ~ *` (position: relative). */
+.ny-decor.ny-hero-tree {
+  display: none;
+  position: absolute;
+  right: 16px;
+  bottom: 24px;
+}
+.ny-decor.ny-hero-gift {
+  display: none;
+  position: absolute;
+  right: 112px;
+  bottom: 24px;
+}
+/* Mobile-first: ёлка с 768 px (с `md` витрина больше не доходит до неё), подарок с 1024 px.
+   Ниже витрина лентой лежит у нижнего края героя и подарок ушёл бы под карточку. */
+@media (min-width: 48rem) {
+  .ny-decor.ny-hero-tree {
+    display: block;
+  }
+}
+@media (min-width: 64rem) {
+  .ny-decor.ny-hero-gift {
+    display: block;
+  }
+}
+
+/* ---------- Вход и 404: рисунок над краем карточки ---------- */
+/* Слот `AuthTemplate.decor` / `ErrorTemplate.decor` - абсолютный слой на всю карточку (она
+   relative), и рисунок встаёт над её верхним краем, не занимая места в потоке: обе страницы
+   статические, форма и карточка в серверном HTML, и рисунок в потоке сдвинул бы их после
+   гидрации. `.ny-decor.ny-decor--*` (две точки) бьёт `.ny-snowfall ~ *`.
+   Над карточкой всего 48 px поля, а рисунок выше хедера с гирляндой (она свисает до ~94 px).
+   Поэтому рисунок показан только при `min-width: 641px` и `min-height: 500px` (на телефоне
+   контенту первого экрана 360 x 640 место нужнее, в альбомной ориентации по высоте тоже), и
+   ровно при том же условии у контейнера страницы (`.ny-auth`, `.ny-error`) добавлено поле
+   сверху - оно зарезервировано в первом кадре по атрибуту `data-newyear`, а не появляется
+   вместе с рисунком, так что сдвига нет. */
+.ny-decor.ny-decor--auth {
+  display: none;
+  position: absolute;
+  right: 16px;
+  bottom: calc(100% - 8px);
+}
+.ny-decor.ny-decor--error {
+  display: none;
+  position: absolute;
+  right: 24px;
+  bottom: calc(100% - 8px);
+}
+@media (min-width: 40.0625rem) and (min-height: 31.25rem) {
+  .ny-decor.ny-decor--auth,
+  .ny-decor.ny-decor--error {
+    display: block;
+  }
+  html[data-newyear] .ny-auth {
+    padding-top: calc(3rem + 72px);
+  }
+  html[data-newyear] .ny-error {
+    padding-top: calc(3rem + 88px);
+  }
+}

@@ -1,4 +1,3 @@
-import clsx from 'clsx'
 import React, { useCallback, useMemo } from 'react'
 import useSWR from 'swr'
 import type { GetStaticProps } from 'next'
@@ -22,6 +21,7 @@ import { JsonLd } from '@/components/JsonLd'
 import { PageMeta } from '@/components/PageMeta'
 import { WantedProductPrompt } from '@/components/WantedProductPrompt'
 import { WishlistButton } from '@/components/WishlistButton'
+import { CardHat, PageSnowfall } from '@/seasonal/NewYear'
 import {
   enumParam,
   optionalTextParam,
@@ -47,8 +47,6 @@ import { productListLd } from '@/utils/jsonLd'
 import { scrollToTop } from '@/utils/scroll'
 import { CATALOG_DESCRIPTION, CATALOG_TITLE } from '@/utils/seo'
 import * as styles from '@/styles/catalog.css'
-import { HalloweenScene } from '@/halloween/HalloweenScene'
-import * as halloween from '@/halloween/halloween.css'
 
 /**
  * Витрина.
@@ -331,9 +329,10 @@ const CatalogPage: React.FC<ICatalogPageProps> = ({
       */}
       {products.length > 0 && <JsonLd data={productListLd(products)} />}
 
+      {/* Сезонный снег на всю страницу: фиксированный слой за содержимым, места не занимает. */}
+      <PageSnowfall />
+
       <CatalogTemplate
-        // Точка отсчёта для хэллоуинских сцен: у заголовка, над фильтрами и по бокам сетки.
-        className={clsx(halloween.host, halloween.catalogPage)}
         title="Каталог"
         /*
           Над заголовком: акции и новости, под ними врезка «Приём заказов закрыт». Без
@@ -343,7 +342,7 @@ const CatalogPage: React.FC<ICatalogPageProps> = ({
         banner={
           <>
             {slides.length > 0 && <PromoCarousel slides={slides} />}
-            <ClosedCycleNotice decor={<HalloweenScene variant="catalog-banner" />} />
+            <ClosedCycleNotice />
           </>
         }
         summary={isFirstLoad ? undefined : `Найдено товаров: ${total}`}
@@ -395,20 +394,9 @@ const CatalogPage: React.FC<ICatalogPageProps> = ({
           />
         }
         pagination={
-          <div className={halloween.host}>
-            <Pagination page={pageNumber} pageSize={PAGE_SIZE} total={total} onChange={goToPage} />
-            {/* Только при видимой пагинации: на одной странице её нет, и декору не у чего стоять. */}
-            {total > PAGE_SIZE && <HalloweenScene variant="catalog-pagination" />}
-          </div>
+          <Pagination page={pageNumber} pageSize={PAGE_SIZE} total={total} onChange={goToPage} />
         }
       >
-        {/*
-          Сцены стоят вне сетки и фильтров и от их состояния не зависят: смена
-          категории, поиска или страницы их не перемонтирует и не мигает ими.
-        */}
-        <HalloweenScene variant="catalog-title" />
-        <HalloweenScene variant="catalog-sides" />
-
         {error === null ? (
           <ProductGrid
             products={products}
@@ -417,8 +405,18 @@ const CatalogPage: React.FC<ICatalogPageProps> = ({
             buildHref={product => `/catalog/${product.slug}`}
             categoryNames={categoryNames}
             priorityCount={PRIORITY_CARDS}
-            // Крючок для хэллоуинских паутинок и свечения карточек (по атрибуту `<html>`).
-            className={halloween.catalogGrid}
+            // `ny-catalog-grid` - зацеп для `row-gap` в сезон (seasonal/newyear.css).
+            className="ny-catalog-grid"
+            /*
+              Шапочка по сквозному номеру карточки в выдаче, а не на странице: пагинация
+              здесь постраничная, и без смещения на каждой странице шапочки стояли бы в одних
+              и тех же местах.
+            */
+            indexOffset={((page?.page ?? pageNumber) - 1) * (page?.pageSize ?? PAGE_SIZE)}
+            // у товара не в наличии шапочки нет: она закрывала бы бейдж «Нет в наличии»
+            renderCardDecor={(product, index) =>
+              product.inStock ? <CardHat index={index} /> : null
+            }
             renderAction={product =>
               product.inStock ? <AddToCartButton product={product} isCompact={true} /> : null
             }
@@ -436,13 +434,10 @@ const CatalogPage: React.FC<ICatalogPageProps> = ({
               блока подряд с одной мыслью читались бы как повтор.
             */
             emptyState={
-              <div className={halloween.host}>
-                <HalloweenScene variant="empty-state" kind="catalog" />
-                <WantedProductPrompt
-                  className={styles.wanted}
-                  description="Попробуйте изменить запрос, категорию или бренд - или расскажите, что вы ищете, и мы постараемся добавить это в следующий сбор"
-                />
-              </div>
+              <WantedProductPrompt
+                className={styles.wanted}
+                description="Попробуйте изменить запрос, категорию или бренд - или расскажите, что вы ищете, и мы постараемся добавить это в следующий сбор"
+              />
             }
           />
         ) : (
