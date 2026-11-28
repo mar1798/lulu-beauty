@@ -14,10 +14,28 @@ export const container = style({
 
 export const item = style({
   ...flexColumn(12),
+  position: 'relative',
   padding: vars.space.lg,
   backgroundColor: color.surface('base'),
   borderRadius: vars.radius.xxl,
   boxShadow: vars.shadow.sm,
+})
+
+/**
+ * Слот иконки шага (сезонный декор): правый верхний угол карточки, на 16 px
+ * над её краем. Абсолют - в потоке слот ничего не занимает, поэтому иконка,
+ * пришедшая после гидратации, не сдвигает ни шаги, ни страницу. Пустой слот
+ * (вне сезона декор отдаёт `null`) скрыт.
+ */
+export const icon = style({
+  position: 'absolute',
+  top: rem(-16),
+  right: vars.space.md,
+  zIndex: 1,
+  pointerEvents: 'none',
+  selectors: {
+    '&:empty': { display: 'none' },
+  },
 })
 
 /** Строка «номер + заголовок» под сценой. */

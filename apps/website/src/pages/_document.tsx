@@ -1,8 +1,7 @@
 import { Head, Html, Main, NextScript } from 'next/document'
 import React from 'react'
 import { EARLY_READY_SCRIPT } from '@/utils/telegramMiniApp'
-import { HALLOWEEN_ENABLED } from '@/halloween/config'
-import { HALLOWEEN_EARLY_SCRIPT } from '@/halloween/earlyScript'
+import { NEWYEAR_EARLY_SCRIPT } from '@/seasonal/earlyScript'
 
 /**
  * `lang="ru"` — сайт русскоязычный целиком: от этого зависит и синтез речи
@@ -45,11 +44,11 @@ const Document = (): React.ReactElement => (
       {/* Цвет холста: им браузер красит адресную строку и подложку под страницей. */}
       <meta name="theme-color" content="#f2f4f5" />
       {/*
-        Хэллоуин: атрибут на `<html>` и «сумеречный» `theme-color` — до первого
-        кадра, иначе холст вспыхивал бы другим цветом после гидрации. После
-        мета-тега, который он перекрашивает. Вне флага скрипта в разметке нет.
+        Новогодний режим: ставит `data-newyear` на `<html>` до первой отрисовки, если по
+        часам браузера идёт окно декора. Страницы статические, поэтому дата сверяется
+        здесь, а не при сборке. Инлайн-скрипт разрешён `'unsafe-inline'` в `script-src`.
       */}
-      {HALLOWEEN_ENABLED && <script dangerouslySetInnerHTML={{ __html: HALLOWEEN_EARLY_SCRIPT }} />}
+      <script dangerouslySetInnerHTML={{ __html: NEWYEAR_EARLY_SCRIPT }} />
     </Head>
     <body>
       <Main />

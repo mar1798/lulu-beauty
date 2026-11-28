@@ -39,6 +39,11 @@ cp apps/api/.env.example apps/api/.env
 npm ci
 ```
 
+`apps/website` also reads `NEW_YEAR_DECOR` (`auto` | `on` | `off`), `NEW_YEAR_START` and
+`NEW_YEAR_END` (`MM-DD`) for the New Year decor. They are baked in at build time, so changing
+them means a rebuild; the defaults (`auto`, `11-28`, `01-15`) need no setup. See
+[docs/environment.md](docs/environment.md).
+
 Then start what you need (all commands run from the repo root):
 
 | Command                 | Starts                                               | Ports      |

@@ -19,6 +19,13 @@ import * as styles from './Toast.css'
  */
 export const Toast: FC<IToastProps & IBasicStyling> = ({ toast, onDismiss, className }) => (
   <div className={clsx(styles.container, styles.tone[toast.tone], className)}>
+    {toast.icon !== undefined && toast.icon !== null && (
+      /* Пустая обёртка (иллюстрация вне сезона) прячется сама - см. `styles.icon`. */
+      <span className={styles.icon} aria-hidden={true}>
+        {toast.icon}
+      </span>
+    )}
+
     <div className={styles.body}>
       <span className={styles.title}>{toast.title}</span>
       {toast.subject !== undefined && <span className={styles.subject}>{toast.subject}</span>}

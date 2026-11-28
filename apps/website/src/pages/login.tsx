@@ -1,4 +1,3 @@
-import clsx from 'clsx'
 import React from 'react'
 import Head from 'next/head'
 import { useRouter } from 'next/router'
@@ -6,6 +5,7 @@ import { Alert, AppLink, Spinner, Text } from 'widgets/atoms'
 import { pluralize } from 'widgets/utils'
 import { TelegramLoginPanel } from 'widgets/organisms'
 import { AuthTemplate } from 'widgets/templates'
+import { Decor } from '@/seasonal/NewYear'
 import { SiteLayout } from '@/layouts/SiteLayout'
 import { TelegramLoginWidget, isTelegramLoginWidgetEnabled } from '@/components/TelegramLoginWidget'
 import { useRedirectIfAuthenticated } from '@/hooks/useRedirectIfAuthenticated'
@@ -17,8 +17,6 @@ import { useGuestState } from '@/utils/guestStorage'
 import { INSTAGRAM_URL } from '@/utils/contacts'
 import * as layout from '@/styles/layout.css'
 import * as styles from '@/styles/login.css'
-import { HalloweenScene } from '@/halloween/HalloweenScene'
-import * as halloween from '@/halloween/halloween.css'
 
 /**
  * Вход — он же регистрация.
@@ -80,9 +78,12 @@ const LoginPage: React.FC = () => {
         центрирует карточку по высоте экрана.
       */}
       <AuthTemplate
-        // `authHost` делает карточку точкой отсчёта для хэллоуинской стайки над заголовком.
-        className={clsx(layout.sessionArea, halloween.authHost)}
+        className={`${layout.sessionArea} ny-auth`}
         title="Вход"
+        // Ёлка над краем карточки (слот `decor`: абсолют, места в потоке не занимает).
+        // Страница статическая и форма в серверном HTML, поэтому в поток декор нельзя:
+        // после гидрации он сдвинул бы форму.
+        decor={<Decor name="tree" size={96} className="ny-decor--auth" />}
         subtitle="Через Telegram - регистрация не нужна, аккаунт заведётся сам"
         /*
           Согласие — под карточкой, но на экране одновременно с кнопкой входа:
@@ -109,7 +110,6 @@ const LoginPage: React.FC = () => {
           </Text>
         }
       >
-        <HalloweenScene variant="auth" />
         {isRedirecting ? (
           <Spinner label="Проверяем сессию" />
         ) : (

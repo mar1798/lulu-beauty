@@ -9,12 +9,14 @@ import { vars } from '../../styling/themes/contract.css'
  * а подвал закрывает его сплошным чернильным блоком без рамки сверху.
  */
 export const container = style({
+  position: 'relative',
   marginTop: 'auto',
   backgroundColor: color.background('inverse'),
 })
 
 export const inner = style({
   ...flexColumn(32),
+  position: 'relative',
   paddingBlock: vars.space.xxxl,
 })
 
@@ -70,4 +72,19 @@ export const bottom = style({
 export const note = style({
   font: font('12/20'),
   color: color.neutral('400'),
+})
+
+/**
+ * Слот сезонного декора: абсолютный слой на весь подвал, под содержимым (`inner` стоит
+ * позже и `relative`), без кликов. `overflow: hidden` - чтобы рисунок у края не давал
+ * горизонтальной прокрутки. Пустой (вне сезона декор отдаёт `null`) скрыт.
+ */
+export const decor = style({
+  position: 'absolute',
+  inset: 0,
+  overflow: 'hidden',
+  pointerEvents: 'none',
+  selectors: {
+    '&:empty': { display: 'none' },
+  },
 })

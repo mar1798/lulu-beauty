@@ -25,4 +25,17 @@ describe('CatalogTemplate', () => {
     // Общий родитель — шапка: таймер стоит в одной строке с заголовком.
     expect(heading.closest('div')?.parentElement).toBe(aside.parentElement)
   })
+
+  it('ставит слот `decor` между заголовком и фильтрами', () => {
+    renderWidget(
+      <CatalogTemplate {...feedCatalogTemplate()} decor={<div>Полоса</div>} filter="Фильтры" />
+    )
+
+    const heading = screen.getByRole('heading', { level: 1 })
+    const decor = screen.getByText('Полоса')
+    const filter = screen.getByText('Фильтры')
+
+    expect(heading.compareDocumentPosition(decor) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(decor.compareDocumentPosition(filter) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
 })

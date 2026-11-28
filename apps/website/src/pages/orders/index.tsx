@@ -6,8 +6,6 @@ import { EmptyState, Pagination } from 'widgets/molecules'
 import { OrderList } from 'widgets/organisms'
 import { AccountTemplate } from 'widgets/templates'
 import { SiteLayout } from '@/layouts/SiteLayout'
-import { HalloweenEmpty, HalloweenScene } from '@/halloween/HalloweenScene'
-import * as halloween from '@/halloween/halloween.css'
 import { ACCOUNT_NAVIGATION } from '@/layouts/accountNavigation'
 import { useAuth } from '@/contexts/AuthContext'
 import { messageForError } from '@/services/apiErrors'
@@ -15,6 +13,7 @@ import { listMyOrders, MY_ORDERS_PAGE_SIZE } from '@/services/endpoints/orders'
 import { ordersKey } from '@/services/swrKeys'
 import { scrollToTop } from '@/utils/scroll'
 import { useLoginHref } from '@/hooks/useLoginHref'
+import { Decor } from '@/seasonal/NewYear'
 
 /**
  * Мои заявки.
@@ -58,17 +57,15 @@ const OrdersPage: React.FC = () => {
     // это была бы вспышка чужого экрана вместо его собственных заявок.
     if (user === null && !isAuthLoading) {
       return (
-        <HalloweenEmpty kind="orders">
-          <EmptyState
-            title="Заявки видны после входа"
-            description="Войдите - и здесь появится история ваших заявок по сборам"
-            action={
-              <Button link={{ href: loginHref }} isFullWidth="mobile">
-                Войти
-              </Button>
-            }
-          />
-        </HalloweenEmpty>
+        <EmptyState
+          title="Заявки видны после входа"
+          description="Войдите - и здесь появится история ваших заявок по сборам"
+          action={
+            <Button link={{ href: loginHref }} isFullWidth="mobile">
+              Войти
+            </Button>
+          }
+        />
       )
     }
 
@@ -103,17 +100,29 @@ const OrdersPage: React.FC = () => {
           isLoading={(isAuthLoading || isLoading) && data === undefined}
           buildHref={order => `/orders/${order.id}`}
           emptyState={
-            <HalloweenEmpty kind="orders">
-              <EmptyState
-                title="Заявок пока нет"
-                description="Соберите корзину и оформите заявку - она появится здесь"
-                action={
-                  <Button link={{ href: '/catalog' }} isFullWidth="mobile">
-                    В каталог
-                  </Button>
-                }
-              />
-            </HalloweenEmpty>
+            <EmptyState
+              // Пустой список рисуется только на клиенте: на сервере и пока не пришли сессия
+              // и заявки стоит скелетон (`isLoading` выше), поэтому Decor встаёт сразу с
+              // размерами, и резерв под него не нужен. Вне сезона Decor даёт null, обёртка
+              // иконки скрывается через :empty. На телефоне (≤640 px) снежинка скрыта
+              // (`ny-decor--hide-mobile`): навигация кабинета опускает блок, и при 96 px кнопка
+              // «В каталог» ушла бы за экран 360×640 (633–677); с 641 px - 96 px; пустая обёртка
+              // иконки сохраняет зазор колонки 12 px.
+              icon={
+                <Decor
+                  name="snowflake"
+                  size={96}
+                  className="ny-decor--empty ny-decor--hide-mobile"
+                />
+              }
+              title="Заявок пока нет"
+              description="Соберите корзину и оформите заявку - она появится здесь"
+              action={
+                <Button link={{ href: '/catalog' }} isFullWidth="mobile">
+                  В каталог
+                </Button>
+              }
+            />
           }
         />
 
@@ -137,14 +146,11 @@ const OrdersPage: React.FC = () => {
       </Head>
 
       <AccountTemplate
-        // Точка отсчёта для хэллоуинской сцены справа от заголовка.
-        className={halloween.host}
         title="Мои заявки"
         summary="Состав и цены закрепляются в момент подтверждения - дальше они не меняются вслед за каталогом"
         navigation={ACCOUNT_NAVIGATION}
         currentHref="/orders"
       >
-        {user !== null && (data?.items.length ?? 0) > 0 && <HalloweenScene variant="list-title" />}
         {content()}
       </AccountTemplate>
     </SiteLayout>

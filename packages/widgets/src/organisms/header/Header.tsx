@@ -21,6 +21,9 @@ import * as styles from './Header.css'
  * его `apps/website`. На узком экране он показывает лупу и открывает такую же
  * панель, как `MobileMenu` под бургером, — поле живёт уже внутри неё.
  *
+ * Слот `decor` — последний ребёнок `<header>`, `cartDecor` — первый ребёнок ссылки
+ * корзины. Оба нужны сезонному оформлению: сам виджет декора не знает.
+ *
  * Режим `isFloating` (главная): шапка лежит fixed поверх полноэкранного
  * героя без фона и границы, а с первым же пикселем прокрутки возвращает
  * обычный вид. Порог отслеживается `useScroll` + `useMotionValueEvent` —
@@ -83,6 +86,8 @@ export const Header: FC<IHeaderProps & IBasicStyling> = ({
   isMenuOpen = false,
   isFloating = false,
   isPinned = true,
+  decor,
+  cartDecor,
   className,
 }) => {
   const [isScrolled, setScrolled] = useState(false)
@@ -144,6 +149,7 @@ export const Header: FC<IHeaderProps & IBasicStyling> = ({
               className={styles.cart}
               aria-label={`Корзина, товаров: ${cartCount}`}
             >
+              {cartDecor}
               <IconCart />
               {cartCount > 0 && (
                 <span className={styles.cartCount} aria-hidden={true}>
@@ -168,6 +174,8 @@ export const Header: FC<IHeaderProps & IBasicStyling> = ({
       </Container>
 
       {notice !== undefined && <div className={styles.notice}>{notice}</div>}
+
+      {decor}
     </header>
   )
 }

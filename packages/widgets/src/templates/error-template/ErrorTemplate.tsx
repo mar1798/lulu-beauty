@@ -18,6 +18,7 @@ export const ErrorTemplate: FC<IErrorTemplateProps & IBasicStyling> = ({
   description,
   actions,
   details,
+  decor,
   className,
 }) => (
   <div className={clsx(styles.container, className)}>
@@ -39,6 +40,13 @@ export const ErrorTemplate: FC<IErrorTemplateProps & IBasicStyling> = ({
       {actions !== undefined && <div className={styles.actions}>{actions}</div>}
 
       {details !== undefined && <div className={styles.details}>{details}</div>}
+
+      {/* Сезонный декор: слой без места в потоке, поверх края карточки. */}
+      {decor !== undefined && (
+        <div className={styles.decor} aria-hidden={true}>
+          {decor}
+        </div>
+      )}
     </section>
   </div>
 )

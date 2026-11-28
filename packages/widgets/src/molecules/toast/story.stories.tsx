@@ -33,3 +33,29 @@ LongTitle.parameters = {
   layout: 'centered',
 }
 LongTitle.args = feedToastOverflowing()
+
+/** Слот `icon`: плейсхолдер вместо носка слева от текста. Без `icon` тост такой же, как раньше. */
+export const WithIcon = Template.bind({})
+WithIcon.parameters = {
+  layout: 'centered',
+}
+WithIcon.args = (() => {
+  const fixture = feedToastWithAction()
+
+  return {
+    ...fixture,
+    toast: {
+      ...fixture.toast,
+      icon: (
+        <span
+          style={{
+            width: 24,
+            height: 28,
+            borderRadius: '4px 4px 12px 12px',
+            background: '#d9534f',
+          }}
+        />
+      ),
+    },
+  }
+})()

@@ -13,6 +13,10 @@ export const container = style({
 export const icon = style({
   fontSize: rem(40),
   color: color.text('subtle'),
+  selectors: {
+    // Сезонная иллюстрация вне сезона отдаёт `null`: пустая обёртка не должна держать зазор колонки.
+    '&:empty': { display: 'none' },
+  },
 })
 
 /*

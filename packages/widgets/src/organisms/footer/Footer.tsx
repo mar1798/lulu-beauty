@@ -15,9 +15,17 @@ export const Footer: FC<IFooterProps & IBasicStyling> = ({
   columns,
   copyright,
   note,
+  decor,
   className,
 }) => (
   <footer className={clsx(styles.container, className)}>
+    {/* Сезонный декор: слой без места в потоке, под содержимым (оно идёт позже и `relative`). */}
+    {decor !== undefined && (
+      <div className={styles.decor} aria-hidden={true}>
+        {decor}
+      </div>
+    )}
+
     <Container as="div" className={styles.inner}>
       <div className={styles.columns}>
         {columns.map(column => (

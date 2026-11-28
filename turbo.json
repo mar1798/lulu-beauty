@@ -4,6 +4,7 @@
   "tasks": {
     "dev": {
       "cache": false,
+      "passThroughEnv": ["NEW_YEAR_*"],
       "persistent": true
     },
     "clear": {

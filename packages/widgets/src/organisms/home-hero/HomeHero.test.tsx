@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { screen } from '@testing-library/react'
 import { renderToString } from 'react-dom/server'
 import { HomeHero } from '.'
+import * as styles from './HomeHero.css'
 import { feedHomeHero } from '../../stories/feed'
 import { StoryWrapper } from '../../stories/wrapper'
 import { renderWidget } from '../../testing/render'
@@ -76,5 +77,23 @@ describe('HomeHero', () => {
     )
 
     expect(html).not.toMatch(/translate/i)
+  })
+
+  it('кладёт decor отдельным слоем перед содержимым и прячет его от скринридера', () => {
+    renderWidget(<HomeHero title="Заголовок" decor={<i data-testid="decor" />} />)
+
+    const layer = screen.getByTestId('decor').parentElement as HTMLElement
+    expect(layer).toHaveAttribute('aria-hidden', 'true')
+    // Слой раньше содержимого: в разметке выше значит под ним.
+    expect(
+      layer.compareDocumentPosition(screen.getByRole('heading', { level: 1 })) &
+        Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy()
+  })
+
+  it('без decor слоя нет', () => {
+    const { container } = renderWidget(<HomeHero title="Заголовок" />)
+
+    expect(container.querySelector(`.${styles.decor}`)).toBeNull()
   })
 })

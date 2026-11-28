@@ -2,6 +2,7 @@ import React from 'react'
 import Head from 'next/head'
 import { Button } from 'widgets/atoms'
 import { ErrorTemplate } from 'widgets/templates'
+import { Decor } from '@/seasonal/NewYear'
 import { SiteLayout } from '@/layouts/SiteLayout'
 
 /**
@@ -22,7 +23,11 @@ const NotFoundPage: React.FC = () => (
     </Head>
 
     <ErrorTemplate
+      className="ny-error"
       code="404"
+      // Леденец над краем карточки (слот `decor`: абсолют, без места в потоке): страница
+      // статическая, и в поток после гидрации он сдвинул бы карточку.
+      decor={<Decor name="candy-cane" size={120} className="ny-decor--error" />}
       title="Такой страницы нет"
       description="Возможно, ссылка устарела или товар убрали из каталога - состав меняется перед каждым сбором"
       actions={

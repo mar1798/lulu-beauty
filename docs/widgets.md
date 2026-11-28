@@ -216,6 +216,76 @@ Smaller additions: icons `IconCopy`, `IconUsers`, `IconGift`, `IconTicket` (the 
 `IPromotionCondition`/`IPromotionReward` and friends in `types.ts`; `IAdminChecklist` has
 `customGifts`.
 
+## Decor slots
+
+Seasonal decor reaches `widgets` only through slots; the package never knows what is drawn.
+
+- **`Header.decor`** — last child of `<header>`. The header is `relative` (the Telegram iOS
+  `unpinned` mode), `sticky` or `fixed` (over the hero), so an `absolute` child anchors to it.
+  `unpinned` is `position: relative`, not `static`, for exactly that reason: it only has to stop
+  sticking, and `relative` without offsets scrolls with the page just the same. Nothing in the
+  header sets `overflow`, so decor may hang below its border.
+- **`Header.cartDecor`** — first child of the cart link (before the icon and the counter). The
+  link is `relative`; the counter comes later in document order, so it stays above the decor.
+  The decor must be `aria-hidden` and `pointer-events: none`.
+
+- **`CatalogTemplate.decor`** — a strip between the heading block and the filters, in the same
+  column (24px step). The template reserves nothing: the slot must keep its own container in
+  the markup and take its height from CSS, otherwise it shifts the page (see "Seasonal decor"
+  in [frontend.md](frontend.md)). A `display: none` slot leaves no gap in the column.
+- **`ProductCard.decor`** — child of the card root, next to `media`, **not inside it**
+  (`media` is `overflow: hidden`, the root is `relative` with no `overflow`). The card
+  positions nothing: the passed node is `absolute`, `aria-hidden`, `pointer-events: none`. The
+  heart (`mediaAction`) sits top-right, so a hat belongs top-left.
+- **`ProductGrid.renderCardDecor(product, index)` and `indexOffset`** — fill `ProductCard.decor`.
+  `index` is **overall**: `indexOffset + position on the page`, so which card gets a hat does
+  not depend on the page (the catalog passes `(page - 1) * PAGE_SIZE`). The grid takes a
+  `className`; the site hangs its in-season `row-gap` on it.
+- **`INotifyInput.icon` / `IToast.icon`** — an illustration left of the toast text. Its wrapper
+  is `aria-hidden` and `:empty { display: none }`, so decor that renders `null` out of season
+  leaves no gap and the toast looks as before. Screen readers still get only the text.
+- **`CartTemplate.titleDecor`** — an illustration right of the `h1`. It sits in a zero-height
+  flex box centred on the heading line, so the picture overflows it equally up and down and the
+  heading row never changes height (no CLS). Empty slot: `:empty { display: none }`, no gap.
+- **`CartTemplate.decor`** — an `absolute`, `inset: 0`, `aria-hidden`, `pointer-events: none`
+  layer over the heading block (`h1` plus summary; the block is `relative`). Takes no space, so
+  a late mount causes no CLS; hidden with `:empty`. The passed picture positions itself in it.
+- **`EmptyState.icon`** — the wrapper has no frame and no size cap (`font-size` only affects
+  glyph icons); it hides itself with `:empty` for the same reason.
+
+- **`HomeHero.decor`** — an `absolute`, `inset: 0`, `pointer-events: none` layer between `background`
+  and the content (the content comes later in the markup, so it is above, and the layer has `z-index: 0`, so it is its own stacking context and its pictures never rise over the content). Takes no space; hidden
+  with `:empty`. The layer only provides the box: the passed pictures position themselves in it.
+- **`StepList.renderIcon(index)`** — a picture per step, in a wrapper `absolute` at the card's
+  top-right corner (16px over the edge; the card is `relative`). Out of the flow, so a late mount
+  causes no CLS; `aria-hidden`, `:empty` hidden.
+- **`SectionHeading.titleDecor`** — a picture right after the last word of the title. It is a
+  zero-width, zero-height inline flex box inside the heading, so the picture overflows it and neither
+  wrapping nor line height changes. Unlike `CartTemplate.titleDecor` it must not take width: in a
+  `h2` that wraps, a flex sibling would re-wrap the title when it appears. The picture's
+  `max-width` is reset (preflight's `max-width: 100%` would collapse it to 0).
+- **`HomeCta`** needs no new slot: seasonal decor goes into the existing `background`
+  (`relative`, `overflow: hidden` container).
+
+- **`AuthTemplate.decor` / `ErrorTemplate.decor`** — an `absolute`, `inset: 0` layer over the whole card
+  (the card is `relative`), `aria-hidden`, `pointer-events: none`, `:empty` hidden. The templates reserve
+  nothing: the passed picture positions itself (usually over the card's top edge) and the site
+  reserves the room above the card itself.
+- **`Footer.decor`** — first child of `<footer>`: an `absolute`, `inset: 0` layer under the content
+  (`inner` is `relative` and comes later), `overflow: hidden`, `pointer-events: none`, `:empty` hidden.
+  The picture positions itself in the footer's top padding.
+
+Stories: `Templates/CatalogTemplate/WithDecor`, `Templates/AuthTemplate/WithDecor`, `Templates/ErrorTemplate/WithDecor`, `Organisms/Footer/WithDecor`,
+`Molecules/ProductCard/WithDecor`, `Organisms/ProductGrid/WithCardDecor`,
+`Molecules/Toast/WithIcon`, `Templates/CartTemplate/WithTitleDecor`, `Organisms/HomeHero/WithDecor`,
+`Organisms/HomeCta/WithDecor`, `Molecules/StepList/WithIcons`, `Molecules/SectionHeading/WithTitleDecor`.
+
+`Header.decor` hangs at the bottom edge of `<header>`: if the header is given a `notice`, the
+garland lies on the notice strip (the site passes no `notice` today).
+
+Both layers sit in the header's stacking context (`zIndex.header`), under `MobileMenu` and the
+narrow-screen search panel (portals at `zIndex.drawer`). Stories: `Organisms/Header/WithDecor`, `Organisms/Header/WithDecorUnpinned`.
+
 ## Public subpaths
 
 The package is consumed through subpath exports: `widgets/atoms`, `widgets/molecules`,
@@ -322,7 +392,7 @@ decorative jars (`DecorField`) and the hero's showcase cards (`Float`) breathe t
 infinite CSS animation whose period and negative delay come inline from a `phase`, so
 neighbours never sway in step — the shared `floatTiming` in `src/utils/motion.ts` derives
 both. The jars' keyframes (±8px with a ±1.2° tilt) live in `src/styling/levitate.css.ts` and
-are exported as `widgets/styling/levitate`, so seasonal decor on the site floats with the very
+are exported as `widgets/styling/levitate`, so other decor can float with the very
 same curve instead of a lookalike copy. motion contributes only `useInView`, which pauses the animation off screen: an infinite
 compositor animation otherwise ticks for as long as the tab is open. `ShowcaseMore` pauses its
 sweeping border the same way, and has the most to gain from it — that layer is 250 % of the

@@ -22,6 +22,7 @@ export const CatalogTemplate: FC<ICatalogTemplateProps & IBasicStyling> = ({
   banner,
   summary,
   focusKey,
+  decor,
   aside,
   search,
   filter,
@@ -62,6 +63,9 @@ export const CatalogTemplate: FC<ICatalogTemplateProps & IBasicStyling> = ({
 
           {aside !== undefined && <div className={styles.aside}>{aside}</div>}
         </div>
+
+        {/* Полоса сезонного декора: между заголовком и фильтрами, в той же колонке с шагом 24. */}
+        {decor}
 
         {(search !== undefined || filter !== undefined) && (
           <div className={styles.controls}>

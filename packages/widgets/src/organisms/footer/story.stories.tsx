@@ -42,3 +42,32 @@ WithContacts.args = {
     },
   ],
 }
+
+/** Слот сезонного декора: три плейсхолдера разной высоты у верхнего края, под содержимым. */
+export const WithDecor = Template.bind({})
+WithDecor.parameters = {
+  layout: 'fullscreen',
+}
+WithDecor.args = {
+  ...feedFooter(),
+  decor: (
+    <>
+      {[40, 56, 48].map((height, index) => (
+        <span
+          key={height}
+          aria-hidden="true"
+          style={{
+            position: 'absolute',
+            top: 8,
+            right: 16 + index * 56,
+            width: Math.round(height * 0.8),
+            height,
+            borderRadius: 8,
+            background: '#d9534f',
+            opacity: 0.7,
+          }}
+        />
+      ))}
+    </>
+  ),
+}

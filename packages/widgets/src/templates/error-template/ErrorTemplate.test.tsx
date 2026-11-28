@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { screen } from '@testing-library/react'
 import { ErrorTemplate } from '.'
 import { feedErrorTemplate } from '../../stories/feed'
+import * as styles from './ErrorTemplate.css'
 import { renderWidget } from '../../testing/render'
 
 describe('ErrorTemplate', () => {
@@ -32,5 +33,19 @@ describe('ErrorTemplate', () => {
 
     expect(screen.getByRole('heading', { level: 1 })).toBeInTheDocument()
     expect(screen.queryByText('404')).toBeNull()
+  })
+
+  it('decor кладётся в отдельный слой, скрытый от скринридера', () => {
+    renderWidget(<ErrorTemplate {...feedErrorTemplate()} decor={<i data-testid="decor" />} />)
+
+    const layer = screen.getByTestId('decor').parentElement as HTMLElement
+    expect(layer).toHaveClass(styles.decor)
+    expect(layer).toHaveAttribute('aria-hidden', 'true')
+  })
+
+  it('без decor слоя нет', () => {
+    const { container } = renderWidget(<ErrorTemplate {...feedErrorTemplate()} />)
+
+    expect(container.querySelector(`.${styles.decor}`)).toBeNull()
   })
 })

@@ -35,6 +35,7 @@ import { WishlistButton } from '@/components/WishlistButton'
 import { useActiveCycle } from '@/hooks/useActiveCycle'
 import { useCycleExpiryRefresh } from '@/hooks/useCycleExpiryRefresh'
 import { useTelegramWebview } from '@/hooks/useTelegramWebview'
+import { CardHat, Decor, Snowfall, type DecorName } from '@/seasonal/NewYear'
 import { getActiveCycleOrNull } from '@/services/endpoints/cycles'
 import { listBrands, listCategories, listProducts } from '@/services/endpoints/catalog'
 import { listBannerFeed } from '@/services/endpoints/banners'
@@ -44,8 +45,6 @@ import { INSTAGRAM_URL } from '@/utils/contacts'
 import { faqLd } from '@/utils/jsonLd'
 import { SITE_DESCRIPTION, SITE_TITLE } from '@/utils/seo'
 import { publicConfig } from '@/сonfig'
-import { HalloweenScene } from '@/halloween/HalloweenScene'
-import * as halloween from '@/halloween/halloween.css'
 
 /**
  * Главная.
@@ -101,6 +100,38 @@ const STEPS: IStep[] = [
     visual: 'handover',
   },
 ]
+
+/**
+ * Новогодняя иконка шага (`StepList.renderIcon`) по порядковому номеру. Шагов
+ * четыре, иконок четыре; для лишнего шага иконки нет, а не повтор.
+ */
+const STEP_DECOR: readonly DecorName[] = ['stocking', 'snowflake', 'tree', 'gift-box']
+
+/**
+ * Новогодний декор героя: снег на весь слой и справа ёлка с подарком (ёлка с 768 px, подарок
+ * с 1024 px, ниже уступают контенту). Слой абсолютный и вне потока (`HomeHero.decor`), а
+ * картинки с `loading="lazy"` меньше фотографии витрины - LCP героя они не меняют.
+ * Вне сезона `Snowfall` и `Decor` отдают `null`, слот пуст и скрыт.
+ */
+const HERO_DECOR = (
+  <>
+    <Snowfall />
+    <Decor name="gift-box" size={96} className="ny-hero-gift" />
+    <Decor name="tree" size={140} className="ny-hero-tree" />
+  </>
+)
+
+/**
+ * Угол Telegram-блока: белый снег и снежинка (`HomeCta.background`). Снежинка только с 641 px:
+ * на 360 px она ложится под вторую строку приписки под кнопкой (кнопку не задевает, но
+ * читаемость строки хуже), поэтому на телефоне остаётся один снег.
+ */
+const CTA_DECOR = (
+  <>
+    <Snowfall tone="white" />
+    <Decor name="snowflake-white" size={72} className="ny-decor--corner ny-decor--hide-mobile" />
+  </>
+)
 
 /** Все ответы опираются на факты о реальном поведении сайта — без обещаний. */
 const FAQ_ITEMS = [
@@ -455,6 +486,7 @@ const HeroCycle: React.FC<{
       hasOverlayHeader={!isTelegramWebview}
       description="Заказываем общим объёмом и напрямую - поэтому и цены выгодные. Оплаты на сайте нет: вы оставляете заявку, а решение по ней присылает бот."
       background={background}
+      decor={HERO_DECOR}
       badge={
         openCycle !== null ? (
           <Badge tone="brand" withDot={true}>
@@ -569,12 +601,7 @@ const HomePage: React.FC<IHomePageProps> = ({
             <HeroCycle
               cycle={currentCycle}
               note={heroNote}
-              background={
-                <>
-                  <DecorField spots={HERO_SPOTS} containerRef={heroRef} />
-                  <HalloweenScene variant="home-hero" />
-                </>
-              }
+              background={<DecorField spots={HERO_SPOTS} containerRef={heroRef} />}
               /*
                 Витрина прячется целиком, когда товаров нет: три пустые
                 карточки на первом экране читаются как поломка, а герой без
@@ -636,19 +663,22 @@ const HomePage: React.FC<IHomePageProps> = ({
           sectionRef={stepsRef}
           background={<DecorField spots={STEPS_SPOTS} containerRef={stepsRef} />}
         >
-          {/* Обёртка — точка отсчёта для хэллоуинской стайки справа от заголовка. */}
-          <div className={halloween.host}>
-            <Reveal>
-              <SectionHeading
-                eyebrow="Как это работает"
-                title="Заявка вместо оплаты"
-                description="Онлайн-оплаты нет: всё, что нужно, - успеть до закрытия сбора"
-              />
-            </Reveal>
-            <HalloweenScene variant="home-steps" />
-          </div>
+          <Reveal>
+            <SectionHeading
+              eyebrow="Как это работает"
+              title="Заявка вместо оплаты"
+              description="Онлайн-оплаты нет: всё, что нужно, - успеть до закрытия сбора"
+            />
+          </Reveal>
 
-          <StepList steps={STEPS} />
+          <StepList
+            steps={STEPS}
+            /* Абсолютом в углу карточки: после гидратации раскладку не двигает. */
+            renderIcon={index => {
+              const name = STEP_DECOR[index]
+              return name !== undefined ? <Decor name={name} size={56} /> : null
+            }}
+          />
         </HomeSection>
 
         {/*
@@ -686,6 +716,11 @@ const HomePage: React.FC<IHomePageProps> = ({
             <ProductGrid
               products={fresh}
               isStaggered={true}
+              /* Шапочка на товарах в наличии; в сезон row-gap 32 px, чтобы она не легла на ряд выше. */
+              className="ny-catalog-grid"
+              renderCardDecor={(product, index) =>
+                product.inStock ? <CardHat index={index} /> : null
+              }
               buildHref={product => `/catalog/${product.slug}`}
               renderAction={product =>
                 product.inStock ? <AddToCartButton product={product} isCompact={true} /> : null
@@ -710,6 +745,7 @@ const HomePage: React.FC<IHomePageProps> = ({
                 eyebrow="Ассортимент"
                 title="С чего начать"
                 description="Разделы каталога и бренды, которые в нём уже есть"
+                titleDecor={<Decor name="candy-cane" size={48} className="ny-decor--hide-xs" />}
               />
             </Reveal>
 
@@ -743,7 +779,11 @@ const HomePage: React.FC<IHomePageProps> = ({
           background={<DecorField spots={FAQ_SPOTS} containerRef={faqRef} />}
         >
           <Reveal>
-            <SectionHeading eyebrow="Вопросы" title="Что обычно спрашивают" />
+            <SectionHeading
+              eyebrow="Вопросы"
+              title="Что обычно спрашивают"
+              titleDecor={<Decor name="candy-cane" size={48} className="ny-decor--hide-xs" />}
+            />
           </Reveal>
 
           <FaqAccordion items={FAQ_ITEMS} />
@@ -753,6 +793,7 @@ const HomePage: React.FC<IHomePageProps> = ({
           <Reveal>
             <Parallax strength={24} containerRef={ctaRef}>
               <HomeCta
+                background={CTA_DECOR}
                 title="Вход и подтверждение - в Telegram"
                 description="Бот заводит аккаунт, подтверждает вход, присылает счёт по заявке и принимает чек. Через него же можно написать магазину."
                 note="Оплата - переводом, чек отправляете боту. Доставка обсуждается лично"

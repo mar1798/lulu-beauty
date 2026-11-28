@@ -1,4 +1,4 @@
-import { style } from '@vanilla-extract/css'
+import { globalStyle, style } from '@vanilla-extract/css'
 import { color, font } from '../../styling/lib'
 import { media } from '../../styling/lib/media'
 import { flexColumn, flexRow } from '../../styling/mixin'
@@ -37,3 +37,26 @@ export const eyebrow = style({
 export const action = style({
   flexShrink: 0,
 })
+
+/**
+ * Слот иконки у заголовка (сезонный декор). Нулевые ширина и высота в потоке,
+ * сама картинка висит абсолютом: она не сдвигает перенос слов и не растягивает
+ * строку, поэтому не даёт CLS, даже когда приходит после гидратации. Центр
+ * картинки - на середине строки заголовка. Пустой слот скрыт.
+ */
+export const titleDecor = style({
+  display: 'inline-flex',
+  alignItems: 'center',
+  width: 0,
+  height: 0,
+  verticalAlign: 'middle',
+  /* Отступ от слова - трансформацией: поля и padding прибавили бы ширину в потоке. */
+  transform: `translateX(${vars.space.sm})`,
+  pointerEvents: 'none',
+  selectors: {
+    '&:empty': { display: 'none' },
+  },
+})
+
+/* Картинка не должна сжиматься в нулевой ширине слота: ни flex-shrink, ни `max-width: 100%` из preflight. */
+globalStyle(`${titleDecor} > *`, { flexShrink: 0, maxWidth: 'none' })

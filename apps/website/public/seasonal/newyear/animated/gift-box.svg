@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="160" height="170" viewBox="0 0 160 170" aria-hidden="true"><style>
+.lid{animation:hop 2.8s ease-in-out infinite}
+@keyframes hop{0%,60%,100%{transform:translateY(0) rotate(0)}70%{transform:translateY(-10px) rotate(-3deg)}80%{transform:translateY(0) rotate(0)}86%{transform:translateY(-4px) rotate(2deg)}92%{transform:translateY(0)}}
+.sp{opacity:0;animation:sp 2.8s ease-in-out infinite}
+@keyframes sp{0%,62%{opacity:0}72%{opacity:1}90%,100%{opacity:0}}@media (prefers-reduced-motion:reduce){*{animation:none!important}}</style><ellipse cx="80" cy="162" rx="62" ry="6" fill="#000" opacity=".07"/>
+<rect x="22" y="72" width="116" height="86" rx="8" fill="#A9587E"/>
+<rect x="100" y="72" width="38" height="86" rx="8" fill="#67334A" opacity=".35"/>
+<g fill="#C4739A" opacity=".8"><circle cx="38" cy="92" r="3"/><circle cx="54" cy="122" r="3"/><circle cx="36" cy="142" r="3"/><circle cx="110" cy="96" r="3"/><circle cx="124" cy="128" r="3"/><circle cx="104" cy="146" r="3"/></g>
+<rect x="70" y="72" width="20" height="86" fill="#E8C79A"/>
+<rect x="70" y="72" width="20" height="8" fill="#C99A5E" opacity=".5"/>
+<g class="lid">
+<rect x="14" y="50" width="132" height="26" rx="7" fill="#8A4463"/>
+<rect x="68" y="50" width="24" height="26" fill="#E8C79A"/>
+<path d="M80 50 C58 18 34 30 50 44 C58 51 72 51 80 50Z" fill="#E8C79A" stroke="#C99A5E" stroke-width="2" stroke-linejoin="round"/>
+<path d="M80 50 C102 18 126 30 110 44 C102 51 88 51 80 50Z" fill="#E8C79A" stroke="#C99A5E" stroke-width="2" stroke-linejoin="round"/>
+<path d="M58 34 C64 38 70 43 76 47 M102 34 C96 38 90 43 84 47" stroke="#C99A5E" stroke-width="1.6" fill="none" opacity=".6"/>
+<ellipse cx="80" cy="49" rx="7" ry="6" fill="#C99A5E"/></g>
+<g class="sp" fill="#E8C79A"><path d="M30 30 l2.5 6 6 2.5 -6 2.5 -2.5 6 -2.5 -6 -6 -2.5 6 -2.5Z"/><path d="M132 20 l2 4.5 4.5 2 -4.5 2 -2 4.5 -2 -4.5 -4.5 -2 4.5 -2Z"/></g></svg>

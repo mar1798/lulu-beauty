@@ -93,4 +93,23 @@ describe('ProductGrid', () => {
       expect(cell.parentElement?.children).toHaveLength(1)
     }
   })
+
+  it('отдаёт в renderCardDecor сквозной номер: смещение страницы плюс индекс', () => {
+    const feed = feedProductGrid()
+    const seen: number[] = []
+
+    renderWidget(
+      <ProductGrid
+        {...feed}
+        indexOffset={24}
+        renderCardDecor={(_, index) => {
+          seen.push(index)
+
+          return null
+        }}
+      />
+    )
+
+    expect(seen).toEqual(feed.products.map((_, index) => 24 + index))
+  })
 })

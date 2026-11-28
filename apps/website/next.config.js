@@ -251,6 +251,17 @@ const nextConfig = {
   // мешает скриншотам. Ошибки сборки и рантайма оверлей показывает и без него.
   devIndicators: false,
   reactStrictMode: true,
+  /**
+   * Новогодний декор (`src/seasonal/season.ts`): режим и даты вшиваются в бандл при
+   * сборке, а не читаются при запуске. Страницы статические, и браузеру нужны те же
+   * значения, что видел сервер. Пустая строка (пустой build-arg) - то же, что «не
+   * задано»: `||` подставляет значения по умолчанию.
+   */
+  env: {
+    NEW_YEAR_DECOR: process.env.NEW_YEAR_DECOR || 'auto',
+    NEW_YEAR_START: process.env.NEW_YEAR_START || '11-28',
+    NEW_YEAR_END: process.env.NEW_YEAR_END || '01-15',
+  },
   transpilePackages: ['widgets'],
   /**
    * `widgets` отдаётся сабпасами-бочками (`widgets/atoms` и т.д.), а бочка —

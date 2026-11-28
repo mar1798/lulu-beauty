@@ -533,46 +533,213 @@ rasterised preview can reference a webfont. The preview repeats the home page's 
 is static, so there is no environment variable to interpolate. The map itself is generated —
 `pages/sitemap.xml.ts`, described in [seo.md](seo.md).
 
-## Seasonal decor (Halloween)
+## Seasonal decor
 
-`src/halloween/` holds a temporary Halloween theme, removable as one folder plus its hook-up
-points. `config.ts` has the switch: `HALLOWEEN_ENABLED = false` turns everything off, and with
-it on the theme still ends by itself at `HALLOWEEN_UNTIL` (2 November inclusive, Bishkek time).
+The New Year decor lives in `src/seasonal/` and `public/seasonal/newyear/` (SVG, 11 files).
+`HeaderGarland` and `CartHat` are rendered by `SiteLayout` through the `Header.decor` and
+`Header.cartDecor` slots of `widgets` (see [widgets.md](widgets.md#decor-slots)).
 
-- The date is checked **in the browser**, never at build time: the pages are static, and a
-  cart built in October would otherwise keep its pumpkins until the next release.
-- `earlyScript.ts`, inlined by `_document` after the `theme-color` meta, sets
-  `data-halloween` on `<html>` and recolours `theme-color` before first paint. Every global
-  rule in `halloween.css.ts` (canvas colour, card cobwebs and hover glow, the catalog's side decor,
-  the product gallery's cobweb and pumpkin) hangs off that attribute, so without it the hook
-  classes pages hand out (`catalogGrid`, `catalogPage`, `productDetails`, `authHost`, `host`)
-  match nothing.
-- `HalloweenLayer` (in `_app`) draws the vignette, the corner cobwebs, the bat flight and, on
-  phones on `/` and `/catalog`, a spider hanging from the right cobweb (fixed under the header);
-  `HalloweenScene variant="…"` draws spot scenes inside a page block, absolutely positioned
-  against a `host` ancestor. Both go through `useHalloween`, which is `false` on the server and
-  during hydration, so scenes appear right after it: no hydration mismatch, no CLS (nothing
-  takes space in flow), and decor never competes for LCP.
-- «Happy Halloween» next to the logo is `HalloweenHeaderNote`, passed through the `Header`'s
-  `logoNote` slot, set at a slight angle above the logo, or beside it in two lines on phones
-  (`absolute` either way, so the header doesn't grow). It is in the markup whenever
-  the flag is on and shown by the `data-halloween` attribute, not `useHalloween`: the header is
-  in the first frame, and a note appearing after hydration would shift the navigation.
-- The vignette and corner cobwebs sit at `z-index: -1`, under the content. That is why `body`
-  is made transparent while the attribute is on: a body background would paint over them.
-- Levitation is the jars' own animation, `widgets/styling/levitate`, timed by `floatTiming`.
-- The flapping bat is inline SVG (`BatFlap.tsx`), not a file in `public/halloween`: Chrome plays
-  neither CSS nor SMIL animation inside an SVG loaded through `<img>`, so the wings froze.
-- Every animated piece of decor pauses off screen (`data-halloween-paused`, one shared
-  `IntersectionObserver` in `Deco`); the flying bat keeps its wings paused between flights.
-- The catalog spreads its decor out: a light row above the filters, ten figures alternating
-  down both sides of the grid (`catalog-sides`, from 1280px, centred in the side gutter or
-  peeking from behind the cards where the gutter is narrower), then the pagination and the
-  footer. Which side figures show is decided by CSS `:has()` on the grid's card count, so
-  changing filters never remounts them.
-- Removing the theme: delete `src/halloween/` and `public/halloween/`, then fix what
-  `grep -rn "@/halloween" src` finds — each hit is a hook-up line, a `host`/hook class or a
-  wrapper `<div>` around a slot. `widgets/styling/levitate` stays: the jars use it.
+- **Flag.** `season.ts`: `NEW_YEAR_DECOR` (`auto` | `on` | `off`) and the window
+  `NEW_YEAR_START` / `NEW_YEAR_END` (`MM-DD`, Bishkek time, may span New Year). The three are
+  baked in at build through `env` in `next.config.js` (build args in the image), so the
+  emergency `off` means rebuilding. See [environment.md](environment.md).
+- **The date is checked in the browser.** Pages are static, so a server-side check would freeze
+  at build time. `useNewYear()` is `useSyncExternalStore` returning `false` on the server and
+  during hydration, then whether `<html>` carries `data-newyear` (set by the early script). The
+  decor and the reserved space therefore come from one source and are fixed at page load: a tab
+  left open across midnight does not turn the decor on or off until reloaded. Every component in
+  `NewYear.tsx` (`NewYearOnly`, `HeaderGarland`, `CartHat`, `Snowfall`, `PageSnowfall`, `CardHat`, `Decor`) goes through
+  it, so the decor appears after hydration, never in the first frame.
+- **Early script.** What must be in the first frame (reserved space, grid `row-gap`) hangs on
+  `data-newyear` on `<html>`. `earlyScript.ts` builds an inline script from the same
+  mode/window values and `_document` embeds it; it needs no CSP change (`script-src` already
+  has `'unsafe-inline'`). The script logic and `isNewYearActive` are checked against each other
+  by `earlyScript.test.ts` over a date grid.
+- **Styles.** `seasonal/newyear.css` is a plain global stylesheet imported in `_app.tsx`
+  (Pages Router allows global CSS only there); every rule hangs on `.ny-*` classes. Most render
+  only in season; four hooks are always in the markup: `.ny-catalog-grid`, `.ny-auth`
+  (`/login`), `.ny-error` (404) and the `.ny-success` wrapper (checkout success screen). Their
+  rules work under `html[data-newyear]`, except the layout-neutral base rule
+  `.ny-success { display: contents }`, so out of season
+  nothing visible changes and no `/seasonal/*` request is made.
+- **Catalog (`/catalog`).** Three places, all through widget slots:
+  - `PageSnowfall` (`seasonal/NewYear.tsx`) is rendered once by the page: a
+    `<div class="ny-page-snow">` with `position: fixed; inset: 0; z-index: -1` holding a pink
+    `.ny-snowfall`. In the root stacking context `-1` paints above the page background but under
+    every block with its own background (cards, header, fields, carousel), so the snow falls on
+    the page itself, never over photos or text, and takes no clicks. That needs `html[data-newyear] body { background-color: transparent }`: `global.css.ts` paints the page color on both `html` and `body`, and `body`'s background, as a descendant's, would cover the `-1` layer; `html` keeps the same color, so nothing else changes. It is out of flow, so it
+    needs no reserved box: it mounts after hydration without shifting anything, and out of season
+    it is not in the markup at all. The snow sits inside the wrapper rather than being the fixed
+    block itself because `.ny-snowfall ~ *` would otherwise reposition the page's siblings.
+    There is no decor between the heading and the filters any more (the 160px strip with a tree
+    is gone), so that step is the template's own 24px in and out of season.
+  - `CardHat` goes through `ProductGrid.renderCardDecor` on every sixth card starting with the
+    first (`hasCardHat`, `index % 6 === 0` on the running index) with `indexOffset = ((page?.page ??
+pageNumber) - 1) * (page?.pageSize ?? PAGE_SIZE)` (pagination is page-by-page, and the offset
+    follows the data on screen). Out-of-stock products get no hat, so it never covers the "Нет в
+    наличии" badge. The grid gets `className="ny-catalog-grid"`.
+  - `html[data-newyear] .ny-catalog-grid { row-gap: 32px }` — only the row gap changes (the
+    column gap stays), at all three ranges (base 12 → 32, `sm`/`md` 24 → 32). Space above the
+    grid needs no rule: `CatalogTemplate` already leaves 48px between its blocks.
+- **Site-wide: the "Товар в избранном" toast.** `WishlistButton` passes
+  `<Decor name="stocking" size={28} />` as `icon` of that toast only (the cart has no visible
+  toast). It fires wherever `WishlistButton` is used: `/`, `/catalog`, `/catalog/[slug]` and
+  `/wishlist`.
+- **Cart (`/cart`).** Two places (the empty state and the heading), plus two notes:
+  - Empty cart: `EmptyState icon={<Decor name="gift-box-blush" size={140} className="ny-decor--empty" />}`.
+    **No reserved box is needed here, and that is the rule for any empty state:** the cart body is
+    client-only (the server HTML holds the skeleton, never "Пока пусто"; checked with `curl`), so
+    the empty state and its `Decor` mount in the same commit, with `width`/`height` already set,
+    inside `sessionArea` (`min-height: 100vh`). Nothing the decor adds happens after the first
+    paint of the block. Out of season `Decor` is `null` and the `EmptyState.icon` wrapper hides
+    itself (`:empty`), so the view is as before (heading at y=307 at 360px, same as without the
+    change). If an empty state is ever rendered into the server HTML, it needs a reserved
+    always-present box (reserved in the first frame by a CSS rule under `html[data-newyear]`, the way `.ny-auth` reserves the login page's top padding); do not reuse the cart approach there.
+  - `.ny-decor--empty` (`newyear.css`): on phones the illustration is capped at 96px
+    (`max-height`, `width: auto`). Used by the empty states of `/cart` (gift-box-blush 140, 132x140 on desktop, capped to 96 high on phones),
+    `/wishlist` (stocking 140, 101x140 on desktop, capped to 96 high on phones) and
+    `/orders` (snowflake 96, hidden on phones).
+    First-screen arithmetic, 360px, guest/user with an empty cart: heading 307, button bottom 505
+    without the season; with the 140px gift it would be 657 (below the fold of 360x640), with the
+    cap 613, which fits 640.
+  - Non-empty cart only (`cart.items.length > 0`; the empty one has its own gift), two slots:
+    - `CartStockings` (three stockings, 40/34/40px) into `CartTemplate.titleDecor`. The slot has
+      zero height, so the heading row (36px) and everything below it stay put. The wrapper is
+      inside `NewYearOnly`, so out of season the slot is empty and hidden (`:empty`), no gap.
+    - `CartTree` (a 96px tree with three gifts at its foot) into `CartTemplate.decor`, an
+      absolute layer over the heading block. `.ny-cart-tree` sits at `right: 24px; bottom: -16px`
+      and is shown from `lg` (1024px) only: there the space right of the subtitle is free (the
+      total panel's column is below it), while narrower the subtitle wraps under the tree.
+      Measured at 1512px: tree 123-219, garland bottom 94, total panel top 227.
+      `CartTree` takes `placement`: `head` is this layer (from `lg`), `below` is the same tree in
+      the flow right after the panel, centred, shown **below `lg` only**, so each screen has
+      exactly one. `below` mounts in the same commit as the panel with items (both wait for the
+      cart), so it shifts nothing. The gap above it is 24px: the cart passes `hasGap`
+      (`.ny-cart-tree--gap`), since `sessionArea` is a plain block; on `/checkout` the tree is a
+      direct child of the `CartTemplate` column, whose `gap` gives the 24px.
+      `/checkout` renders both placements, only on the form itself (`order === null` and a
+      non-empty cart): the success screen has its own snow and gift, and the login /
+      nothing-to-order states get no decor.
+      The list, the total and the checkout button carry no decor.
+  - Sticky total panel (`lg`): `top: calc(headerOffset + space.lg)`, so it always clears the
+    header (73px while the header is sticky or floating, 0 in Telegram unpinned mode) plus 24px
+    of air. The same holds for the checkout form. In season the garland hangs to y=94 and the
+    panel's top edge stays below it. The checkout button is never covered.
+- **My orders (`/orders`).** Only the "Заявок пока нет" empty state (the `emptyState` of
+  `OrderList`) gets `icon={<Decor name="snowflake" size={96} className="ny-decor--empty ny-decor--hide-mobile" />}`; the
+  "log in" state and the error `Alert` get no decor. **No reserved box is needed:** that state
+  renders only when `OrderList` is not loading, and it is loading on the server and during
+  hydration (`isAuthLoading || isLoading` with no data), so the server HTML holds the skeleton and
+  the snowflake mounts in the same commit as the empty state, with `width`/`height` set. Out of
+  season `Decor` is `null` and the `EmptyState.icon` wrapper hides itself (`:empty`), so the view is
+  as before. First-screen arithmetic at 360x640, measured: the empty state's icon/heading start at 419; the
+  button sits at 525-569 out of season; with a 96px snowflake it would be 633-677, so on <=640px
+  the snowflake is hidden (`ny-decor--hide-mobile`); with it hidden the button is at 537-581 (the
+  empty icon wrapper keeps the 12px column gap). From 641px the snowflake is 96px.
+- **Order sent (`/checkout`, `order !== null`).** The success screen wraps the order number and
+  the "Заявка принята" `Alert` in `<div className="ny-success">` together with `<Snowfall />` and
+  `<Decor name="gift-box" size={160} className="ny-decor--success" />` (snow first, so
+  `.ny-snowfall ~ *` lifts the gift, number and alert above it; snow shows around the order number (plain text,
+  no background) while the alert has an opaque background, so the paragraph with "Telegram" reads
+  on a solid fill; the snow has `pointer-events: none`). Cancelled orders get no decor: no snow and
+  no gift, only the wrapper stays). **No reserved box is
+  needed:** the screen only exists after a client-side submit or after `?order=` is re-read with
+  `getMyOrder` in an effect, both after hydration, so the gift mounts in the same commit as the
+  order itself, with `width`/`height` already set. Out of season `.ny-success` is `display: contents`
+  (its children behave as direct children of the `CartTemplate` column, so the layout is the same
+  as before the change) and only `html[data-newyear]` turns it into a 24px-gap flex column with
+  `position: relative`. `.ny-decor--success` caps the gift at 112px on phones (`max-height`,
+  `width: auto`) and lifts the cap from 641px, where the prop size 160 applies (151x160 on desktop).
+  First-screen arithmetic at 360x640 (editable order, three-line summary): heading
+  block 121-235, gift 259-371, number 395-419, alert 443-637; the "Telegram" line sits at
+  526-543, 97px above the fold. With the full 160px gift it would be 574-591, which still fits but
+  leaves the alert's tail and the picker lower for no gain, hence 112.
+- **Home (`/`).** Five places, all through widget slots (no new components):
+  - **Hero**: `HomeHero.decor={HERO_DECOR}` = `Snowfall` + `Decor tree` (140) + `Decor gift-box` (96),
+    the pictures positioned by `.ny-hero-tree` / `.ny-hero-gift` (`newyear.css`, bottom-right,
+    mobile-first: hidden by default, the tree shows from 768px and the gift from 1024px, because
+    below that the showcase ribbon lies along the bottom edge and would cover them). The layer has
+    `z-index: 0`, so it is its own stacking context under the content. The slot is an `absolute`
+    layer under the content, so it takes no space and mounting after hydration shifts nothing.
+    The existing `DecorField` (`background`) is untouched; the decor layer comes after it.
+  - **LCP.** Measured with a `PerformanceObserver` on hard loads with the date forced into the
+    window: the LCP element is the same with and without the decor at 360, 768 and 1440 (text at
+    360/768, the first showcase photo or `DecorField` image at 1440). The pictures are lazy and
+    smaller than every candidate. **The snow is the trap:** as a full-size `background-image` the
+    snowfall tile became the LCP candidate itself (360x740 px, later than the text). It is now
+    painted with `mask-image` over a flat `background-color` (the tiles are single-colour:
+    `#D9A3BE` and white, alpha inside the SVG), which Chrome does not count for LCP, and the
+    SVG animation still runs inside the mask. This applies to every `Snowfall`.
+  - **Fresh picks grid**: `className="ny-catalog-grid"` (row-gap 32px in season) and
+    `renderCardDecor` with the plain `index` (one page, no offset), in-stock products only. The
+    hero showcase gets no hats: its ribbon is `overflow-x: auto` and would clip them.
+  - **"Как это работает"**: `StepList.renderIcon` returns `Decor` stocking / snowflake / tree /
+    gift-box (56px) by step index (`STEP_DECOR`; the page has exactly four steps). The slot is
+    `absolute` in the card's top-right corner, half over its edge, so nothing in the flow changes.
+  - **Headings "Ассортимент" and "Вопросы"**: `SectionHeading.titleDecor` = `Decor candy-cane` (48px).
+    Both carry `ny-decor--hide-xs`: hidden below 360px (mobile-first, `display: none` by default),
+    where the edge of the screen would clip them.
+    The slot sits inside the `<h2>` after the last word as a zero-width, zero-height inline box and
+    the picture overflows it, so word wrapping and the line height are unchanged (a flex slot like
+    `CartTemplate.titleDecor` would narrow the heading and could re-wrap it after hydration).
+  - **Telegram block**: `HomeCta.background` = `Snowfall tone="white"` + `snowflake-white` with
+    `ny-decor--corner ny-decor--hide-mobile` (the corner flake lies under the second line of the
+    note at 360px, so on phones only the snow stays; the bot button is never touched).
+  - The `logoNote` banner is untouched.
+- **Wishlist, login, footer, 404, privacy.**
+  - **`/wishlist` empty state:** `EmptyState icon={<Decor name="stocking" size={140} className="ny-decor--empty" />}`.
+    No reserved box: the page renders nothing until the session is checked (`isAuthLoading` gives `null`), so
+    the empty state exists only on the client after hydration (server HTML has no "Пока пусто"; checked
+    with `curl`) and the stocking mounts in the same commit with `width`/`height` set. Stocking is 101x140 on desktop; capped to 96px high on
+    phones by `ny-decor--empty`; at 360x640 (guest, empty list) the button sits at 499-543, inside the
+    fold, so no `ny-decor--hide-mobile` is needed.
+  - **`/login` and 404:** `AuthTemplate.decor` (`tree` 96) and `ErrorTemplate.decor` (`candy-cane` 120),
+    classes `ny-decor--auth` / `ny-decor--error`. Both pages are static and
+    the card is in the server HTML, so the picture is an `absolute` layer over the card's top edge (no
+    space in the flow). The card has only 48px of padding above it and the garland hangs to y=94, so
+    from 641px the page container gets extra top padding (`.ny-auth` +72px, `.ny-error` +88px) under
+    `html[data-newyear]`, i.e. reserved in the first frame by the early script, not added with the
+    picture: the card does not move when the picture mounts. The picture and the reserve share one condition, `min-width: 641px` and `min-height: 500px`: below 641px, and in a phone's landscape orientation (height < 500), there is neither picture nor reserve, and the
+    card stays at y=121 as out of season. Measured top of the picture: /login 105 at every size; 404 97-162 (centred, depends on viewport height: 97 at 1440x700, 125 at 1440x900, 162 at 768x1024) - always below the garland (y=94). The 404 page already had "В каталог".
+  - **Footer:** no decor; `SiteLayout` passes nothing to `Footer.decor` (the owner removed
+    the three trees that stood there).
+  - **`/admin/*`:** `AdminShell` renders `SiteLayout`, so the garland and the cart hat show in `/admin` too - by design (owner's decision).
+  - **`/privacy`:** no decor of its own, only the header garland.
+- **Removing the theme.** Delete, all of it:
+  - `apps/website/src/seasonal/` and `apps/website/public/seasonal/`;
+  - every import and render of the `seasonal` components (including the `decor` and `cartDecor`
+    props of `Header` in `SiteLayout`), and the `newyear.css` import in `_app.tsx`;
+  - in `pages/cart.tsx`: the `Decor` import, `titleDecor` and the `icon` of the empty state;
+  - in `pages/orders/index.tsx`: the `Decor` import and the `icon` of the empty state;
+  - in `pages/wishlist.tsx`: the `Decor` import and the `icon` of the empty state;
+  - in `pages/login.tsx`: the `Decor` import, `decor=` and the ` ny-auth` class; in `pages/404.tsx`:
+    the `Decor` import, `decor=` and `className="ny-error"`;
+  - in `pages/checkout.tsx`: the `seasonal` import, `isFestive` and the comments above the wrapper,
+    and the `ny-success` wrapper with `Snowfall` and `Decor` (keep the number and the alert as
+    direct children of the fragment);
+  - in `pages/catalog/index.tsx`: `<PageSnowfall />` (with its comment), `className="ny-catalog-grid"`,
+    `indexOffset` and `renderCardDecor`;
+  - the early script in `_document.tsx` (the `NEWYEAR_EARLY_SCRIPT` import and its `<script>`);
+  - `env` in `next.config.js`;
+  - in `components/WishlistButton.tsx`: the `Decor` import and the `icon` (with its comment) of the "Товар в избранном" toast;
+  - `"passThroughEnv": ["NEW_YEAR_*"]` of the `dev` task in `turbo.json`;
+  - outside the repository: the `NEW_YEAR_*` repository variables on GitHub (Settings → Secrets and variables → Actions → Variables) and any `NEW_YEAR_*` line in the server's `.env.prod`;
+  - the `NEW_YEAR_*` `ARG`s, their `ENV` lines and the comment above them in `apps/website/Dockerfile`;
+  - the `NEW_YEAR_*` build args in `.github/workflows/release-tag.yml` and `docker-compose.prod.build.yml`;
+  - the block in `apps/website/.env.example`;
+  - the paragraph in `README.md`;
+  - the `NEW_YEAR_*` rows and their mention in the repository-variables paragraph of `docs/environment.md`;
+  - the "Emergency off for the New Year decor" paragraph in `docs/deployment.md`;
+  - the commented block in `deploy/.env.prod.example`;
+  - in `pages/index.tsx`: the `seasonal` import, `STEP_DECOR`, `HERO_DECOR`, `CTA_DECOR`, `decor=`,
+    `renderIcon`, `titleDecor` (two), `background={CTA_DECOR}`, and on the fresh grid `className="ny-catalog-grid"`
+    and `renderCardDecor`;
+  - this section and the `env` bullet under `next.config.js` here.
+
+**Stays:** every `widgets` slot from [widgets.md](widgets.md#decor-slots) (`Header.decor`/`cartDecor`/`logoNote`, `CatalogTemplate.decor`, `ProductCard.decor`, `ProductGrid.renderCardDecor`/`indexOffset`, `IToast.icon`, `CartTemplate.titleDecor`, `SectionHeading.titleDecor`, `StepList.renderIcon`, `HomeHero.decor`, `AuthTemplate.decor`, `ErrorTemplate.decor`, `Footer.decor`, the `:empty` rules), their stories and tests: they know nothing about the season.
+
+The `Header`'s `logoNote` slot is kept for a short seasonal caption next to the logo;
+`SiteLayout` currently passes nothing to it.
 
 ## Configuration
 
@@ -588,6 +755,7 @@ of a live WordPress integration.
 ## `next.config.js`
 
 - **`output: 'standalone'`** for the production image.
+- **`env`** bakes `NEW_YEAR_DECOR` / `NEW_YEAR_START` / `NEW_YEAR_END` into the bundle (see "Seasonal decor").
 - **Security headers** in `headers()`. Two CSPs on purpose: a short **enforced** one
   (`base-uri` / `form-action` / `object-src` / `frame-ancestors`) and a full
   **`Content-Security-Policy-Report-Only`** that is not enforced yet — the pages are static so

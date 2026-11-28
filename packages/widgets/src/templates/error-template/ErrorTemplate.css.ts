@@ -20,6 +20,7 @@ export const container = style({
 
 export const card = style({
   ...flexColumn(20),
+  position: 'relative',
   alignItems: 'center',
   textAlign: 'center',
   width: '100%',
@@ -74,4 +75,18 @@ export const details = style({
   width: '100%',
   paddingTop: vars.space.md,
   borderTop: `1px solid ${color.border('subtle')}`,
+})
+
+/**
+ * Слот сезонного декора: абсолютный слой на всю карточку (она `relative`), без кликов.
+ * Сам слой места не занимает; рисунок внутри ставит тот, кто его передал, - обычно над
+ * верхним краем карточки. Пустой (вне сезона декор отдаёт `null`) скрыт.
+ */
+export const decor = style({
+  position: 'absolute',
+  inset: 0,
+  pointerEvents: 'none',
+  selectors: {
+    '&:empty': { display: 'none' },
+  },
 })

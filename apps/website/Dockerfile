@@ -48,11 +48,20 @@ ARG NEXT_PUBLIC_TELEGRAM_LOGIN_WIDGET=false
 # 500 на `/files/*` и 400 от `/_next/image`). Значение обязано совпадать с
 # рантаймовым `API_BASE_URL` в compose.
 ARG API_BASE_URL=http://localhost:3001
+# Новогодний декор (`src/seasonal/season.ts`): режим и окно дат вшиваются через `env` в
+# next.config.js, то есть тоже на этапе сборки. `auto` включает и гасит декор по датам сам;
+# `off` - аварийный рубильник, и он требует пересборки образа.
+ARG NEW_YEAR_DECOR=auto
+ARG NEW_YEAR_START=11-28
+ARG NEW_YEAR_END=01-15
 ENV API_BASE_URL=$API_BASE_URL \
     NEXT_PUBLIC_API_BASE_URL=$NEXT_PUBLIC_API_BASE_URL \
     NEXT_PUBLIC_SITE_URL=$NEXT_PUBLIC_SITE_URL \
     NEXT_PUBLIC_TELEGRAM_BOT_USERNAME=$NEXT_PUBLIC_TELEGRAM_BOT_USERNAME \
     NEXT_PUBLIC_TELEGRAM_LOGIN_WIDGET=$NEXT_PUBLIC_TELEGRAM_LOGIN_WIDGET \
+    NEW_YEAR_DECOR=$NEW_YEAR_DECOR \
+    NEW_YEAR_START=$NEW_YEAR_START \
+    NEW_YEAR_END=$NEW_YEAR_END \
     NEXT_TELEMETRY_DISABLED=1 \
     NODE_ENV=production
 

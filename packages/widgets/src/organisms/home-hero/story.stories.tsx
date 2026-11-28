@@ -120,3 +120,29 @@ WithoutShowcase.args = {
   badge: <Badge tone="brand">Сбор открыт</Badge>,
   actions,
 }
+
+/** Слот сезонного декора: плейсхолдеры в углу слоя, под содержимым и без кликов. */
+export const WithDecor = Template.bind({})
+WithDecor.parameters = LAYOUT
+WithDecor.args = {
+  ...feedHomeHero(),
+  badge: <Badge tone="brand">Сбор открыт</Badge>,
+  actions,
+  showcase,
+  showcaseMore,
+  decor: (
+    <span
+      aria-hidden="true"
+      style={{
+        position: 'absolute',
+        right: 24,
+        bottom: 24,
+        width: 96,
+        height: 120,
+        borderRadius: 8,
+        background: '#d9534f',
+        opacity: 0.7,
+      }}
+    />
+  ),
+}

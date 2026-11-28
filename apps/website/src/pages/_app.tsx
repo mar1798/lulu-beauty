@@ -1,5 +1,6 @@
 import 'widgets/styling/preflight.css'
 import 'widgets/styling/global.css'
+import '@/seasonal/newyear.css'
 import { AppProps } from 'next/app'
 import { Inter } from 'next/font/google'
 import clsx from 'clsx'
@@ -16,7 +17,6 @@ import { SiteMeta } from '@/components/PageMeta'
 import { LiveStateRefresh } from '@/components/LiveStateRefresh'
 import { TelegramMiniAppSession } from '@/components/TelegramMiniAppSession'
 import { storeLd } from '@/utils/jsonLd'
-import { HalloweenLayer } from '@/halloween/HalloweenLayer'
 import { shell } from '@/styles/shell.css'
 
 /**
@@ -105,8 +105,6 @@ const App: React.FC<AppProps> = ({ Component, pageProps }) => {
                 <CartProvider>
                   <WishlistProvider>
                     <div className={clsx(shell, inter.variable, inter.className)}>
-                      {/* Сезонное оформление поверх всех страниц; вне сезона — ничего. */}
-                      <HalloweenLayer />
                       <Component {...pageProps} />
                     </div>
                   </WishlistProvider>

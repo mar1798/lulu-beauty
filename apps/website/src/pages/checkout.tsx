@@ -11,6 +11,7 @@ import { useToast } from 'widgets/contexts'
 import { pluralize } from 'widgets/utils'
 import { CartTemplate } from 'widgets/templates'
 import { SiteLayout } from '@/layouts/SiteLayout'
+import { CartTree, Decor, Snowfall } from '@/seasonal/NewYear'
 import { EditableOrderNotice } from '@/components/EditableOrderNotice'
 import * as styles from '@/styles/layout.css'
 import { useAuth } from '@/contexts/AuthContext'
@@ -233,33 +234,48 @@ const CheckoutPage: React.FC = () => {
 
   const content = (): React.ReactNode => {
     if (order !== null) {
+      // У отменённой заявки праздничный снег и подарок неуместны.
+      const isFestive =
+        order.status !== 'CANCELLED_BY_CUSTOMER' && order.status !== 'CANCELLED_BY_OWNER'
       return (
         <>
           {/*
-            Номер над врезкой, а не под ней: это опознавательный знак заявки —
-            по нему её называют владельцу, — и искать его после абзаца про
-            подтверждение значит читать абзац целиком.
-
-            `items.length` — число позиций, а не штук: складывать количества
-            здесь незачем.
+            Новогодняя группа: снег фоном, подарок, номер и врезка. Экран успеха рисуется только
+            после отправки (или перечитывания заявки по адресу), то есть на клиенте и после
+            гидрации: `Decor` встаёт в том же рендере, что и сама заявка, с размерами в атрибутах,
+            поэтому резерв места не нужен. Вне сезона `.ny-success` - `display: contents`
+            (`seasonal/newyear.css`), раскладка та же, что без обёртки.
           */}
-          <Text tone="secondary">
-            {`Номер заявки: ${orderNumber(order.id)} · ${pluralize(order.items.length, ITEM_FORMS)}`}
-          </Text>
+          <div className="ny-success">
+            {isFestive && <Snowfall />}
+            {isFestive && <Decor name="gift-box" size={160} className="ny-decor--success" />}
 
-          <Alert tone="success" title="Заявка принята">
-            Мы её получили. После закрытия сбора подтвердим заявку - уведомление придёт в Telegram,
-            а о выдаче договоримся лично.
-            {order.isEditable && (
-              <>
-                {' Пока сбор открыт, заявку можно дополнить - добавьте товар прямо здесь или на '}
-                <AppLink href={`/orders/${order.id}`} className={styles.alertLink}>
-                  странице заявки
-                </AppLink>
-                {', второй заявки для этого не нужно.'}
-              </>
-            )}
-          </Alert>
+            {/*
+              Номер над врезкой, а не под ней: это опознавательный знак заявки —
+              по нему её называют владельцу, — и искать его после абзаца про
+              подтверждение значит читать абзац целиком.
+
+              `items.length` — число позиций, а не штук: складывать количества
+              здесь незачем.
+            */}
+            <Text tone="secondary">
+              {`Номер заявки: ${orderNumber(order.id)} · ${pluralize(order.items.length, ITEM_FORMS)}`}
+            </Text>
+
+            <Alert tone="success" title="Заявка принята">
+              Мы её получили. После закрытия сбора подтвердим заявку - уведомление придёт в
+              Telegram, а о выдаче договоримся лично.
+              {order.isEditable && (
+                <>
+                  {' Пока сбор открыт, заявку можно дополнить - добавьте товар прямо здесь или на '}
+                  <AppLink href={`/orders/${order.id}`} className={styles.alertLink}>
+                    странице заявки
+                  </AppLink>
+                  {', второй заявки для этого не нужно.'}
+                </>
+              )}
+            </Alert>
+          </div>
 
           {/* Что дали акции: подарки кладёт владелец вместе с товарами, скидка уже в сумме заявки. */}
           {(order.gifts.length > 0 || order.promotions.length > 0) && (
@@ -462,6 +478,9 @@ const CheckoutPage: React.FC = () => {
             />
           }
         />
+
+        {/* Ёлка под панелью - на узком экране, где у заголовка ей нет места (с `lg` скрыта). */}
+        {cart !== null && cart.items.length > 0 && <CartTree placement="below" />}
       </>
     )
   }
@@ -492,6 +511,16 @@ const CheckoutPage: React.FC = () => {
       <CartTemplate
         title={order === null ? 'Оформление заявки' : 'Заявка отправлена'}
         summary={orderSummary()}
+        /*
+          Ёлка с подарками, как в корзине: только на самой форме. У экрана успеха свой снег и
+          подарок, а «Нужен вход» и «Оформлять нечего» - не повод для праздника. Слой места
+          не занимает, так что появление после ответа по корзине страницу не двигает.
+        */
+        decor={
+          order === null && cart !== null && cart.items.length > 0 ? (
+            <CartTree placement="head" />
+          ) : undefined
+        }
       >
         {content()}
       </CartTemplate>

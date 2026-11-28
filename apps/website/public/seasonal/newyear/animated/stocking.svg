@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="130" height="180" viewBox="0 0 130 180" aria-hidden="true"><style>
+.s{transform-origin:43px 6px;animation:sway 3.4s ease-in-out infinite}
+@keyframes sway{0%,100%{transform:rotate(-4deg)}50%{transform:rotate(4deg)}}@media (prefers-reduced-motion:reduce){*{animation:none!important}}</style><g class="s">
+<path d="M36 18 C34 2 52 2 50 18" fill="none" stroke="#AE7B45" stroke-width="3" stroke-linecap="round"/>
+<defs><clipPath id="sc"><path d="M28 40 H84 V108 C84 118 92 126 102 130 C118 137 116 168 94 168 H60 C36 168 28 148 28 126Z"/></clipPath></defs>
+<path d="M28 40 H84 V108 C84 118 92 126 102 130 C118 137 116 168 94 168 H60 C36 168 28 148 28 126Z" fill="#A9587E"/>
+<g clip-path="url(#sc)"><rect x="20" y="62" width="100" height="7" fill="#C4739A"/><rect x="20" y="78" width="100" height="7" fill="#C4739A"/>
+<circle cx="102" cy="152" r="20" fill="#8A4463"/><circle cx="34" cy="160" r="16" fill="#8A4463" opacity=".0"/></g>
+<g transform="translate(55 112)" stroke="#fff" stroke-width="2.2" stroke-linecap="round" opacity=".9"><path d="M0 -10V10M-8.7 -5L8.7 5M-8.7 5L8.7 -5"/></g>
+<rect x="22" y="16" width="68" height="30" rx="10" fill="#fff" stroke="#E6E9EC" stroke-width="1.5"/>
+<g fill="#F2F4F5"><circle cx="34" cy="27" r="3"/><circle cx="50" cy="35" r="3.5"/><circle cx="66" cy="26" r="3"/><circle cx="80" cy="35" r="3"/></g>
+</g></svg>

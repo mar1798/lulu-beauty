@@ -35,3 +35,8 @@ services:
         # сборки (см. apps/website/Dockerfile), а `getStaticProps` и API-роуты
         # читают переменную в рантайме.
         API_BASE_URL: http://api:3001
+        # Новогодний декор: режим и окно дат запекаются при сборке (см.
+        # apps/website/Dockerfile). По умолчанию `auto` и даты из season.ts.
+        NEW_YEAR_DECOR: ${NEW_YEAR_DECOR:-auto}
+        NEW_YEAR_START: ${NEW_YEAR_START:-11-28}
+        NEW_YEAR_END: ${NEW_YEAR_END:-01-15}

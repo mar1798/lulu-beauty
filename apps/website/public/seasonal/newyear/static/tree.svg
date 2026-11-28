@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="160" height="200" viewBox="0 0 160 200" aria-hidden="true"><ellipse cx="80" cy="190" rx="58" ry="7" fill="#000" opacity=".07"/>
+<rect x="72" y="166" width="16" height="22" rx="3" fill="#8C6A3F"/>
+<g stroke-linejoin="round" stroke-width="8">
+<path d="M80 72 L134 166 Q80 176 26 166Z" fill="#67334A" stroke="#67334A"/>
+<path d="M80 46 L120 122 Q80 131 40 122Z" fill="#7A3D58" stroke="#7A3D58"/>
+<path d="M80 22 L105 82 Q80 89 55 82Z" fill="#8A4463" stroke="#8A4463"/></g>
+<g fill="none" stroke="#E8C79A" stroke-width="2.4" stroke-dasharray="1 5" stroke-linecap="round">
+<path d="M60 74 Q82 86 102 70"/><path d="M48 112 Q80 128 114 106"/><path d="M36 156 Q80 176 128 150"/></g>
+<g><circle class="t a" cx="70" cy="62" r="4.5" fill="#F2A7C6"/><circle class="t b" cx="92" cy="80" r="4.5" fill="#FFF6E8"/>
+<circle class="t c" cx="60" cy="104" r="5" fill="#E8C79A"/><circle class="t a" cx="98" cy="110" r="5" fill="#F2D8E5"/>
+<circle class="t b" cx="78" cy="100" r="4" fill="#F2A7C6"/><circle class="t c" cx="48" cy="146" r="5.5" fill="#FFF6E8"/>
+<circle class="t a" cx="84" cy="150" r="5.5" fill="#E8C79A"/><circle class="t b" cx="116" cy="146" r="5.5" fill="#F2D8E5"/>
+<circle class="t c" cx="66" cy="136" r="4" fill="#F2D8E5"/><circle class="t a" cx="104" cy="132" r="4" fill="#F2A7C6"/></g>
+<g class="star"><circle cx="80" cy="18" r="13" fill="#F6DDB4" opacity=".55"/>
+<path d="M80 6 L83.5 14 L92 14.8 L85.6 20.4 L87.5 28.8 L80 24.4 L72.5 28.8 L74.4 20.4 L68 14.8 L76.5 14Z" fill="#E8C79A" stroke="#D9A066" stroke-width="1.5" stroke-linejoin="round"/></g></svg>
