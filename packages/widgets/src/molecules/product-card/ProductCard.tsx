@@ -41,6 +41,7 @@ export const ProductCard: FC<IProductCardProps & IBasicStyling> = ({
   sizes = DEFAULT_SIZES,
   action,
   mediaAction,
+  decor,
   isPriority,
   className,
 }) => {
@@ -96,6 +97,9 @@ export const ProductCard: FC<IProductCardProps & IBasicStyling> = ({
       {mediaAction !== undefined && mediaAction !== null && (
         <span className={styles.mediaAction}>{mediaAction}</span>
       )}
+
+      {/* Украшение - в корне карточки, рядом с `media`, а не в нём: см. `IProductCardProps['decor']`. */}
+      {decor}
 
       <div className={styles.body}>
         <AppLink href={href} className={styles.link}>

@@ -35,10 +35,17 @@ import * as styles from './StepList.css'
  */
 const SCENE_PARALLAX = 18
 
-export const StepList: FC<IStepListProps & IBasicStyling> = ({ steps, className }) => (
+export const StepList: FC<IStepListProps & IBasicStyling> = ({ steps, renderIcon, className }) => (
   <ol className={clsx(styles.container, className)}>
     {steps.map((step, index) => (
       <Reveal key={step.title} as="li" delay={staggerDelay(index)} className={styles.item}>
+        {/* Абсолютом в углу карточки: места в потоке не занимает, раскладку не двигает. */}
+        {renderIcon !== undefined && (
+          <span className={styles.icon} aria-hidden={true}>
+            {renderIcon(index)}
+          </span>
+        )}
+
         {step.visual !== undefined && (
           <Parallax strength={SCENE_PARALLAX}>
             <StepScene kind={step.visual} delay={staggerDelay(index)} />

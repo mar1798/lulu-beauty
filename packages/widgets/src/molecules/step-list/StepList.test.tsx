@@ -30,4 +30,23 @@ describe('StepList', () => {
 
     expect(screen.getByText('1')).toHaveAttribute('aria-hidden', 'true')
   })
+
+  it('renderIcon рисует иконку каждому шагу по его номеру, скрыв её от скринридера', () => {
+    const { steps } = feedStepList()
+
+    renderWidget(
+      <StepList steps={steps} renderIcon={index => <i data-testid="icon">{`#${index}`}</i>} />
+    )
+
+    const icons = screen.getAllByTestId('icon')
+    expect(icons).toHaveLength(steps.length)
+    expect(icons[0]).toHaveTextContent('#0')
+    expect(icons[0].parentElement).toHaveAttribute('aria-hidden', 'true')
+  })
+
+  it('без renderIcon иконок нет', () => {
+    const { container } = renderWidget(<StepList {...feedStepList()} />)
+
+    expect(container.querySelector('li > [aria-hidden="true"]')).toBeNull()
+  })
 })

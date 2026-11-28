@@ -14,4 +14,19 @@ describe('Header', () => {
 
     expect(container.firstElementChild).not.toBeNull()
   })
+
+  it('кладёт decor последним ребёнком шапки, а cartDecor - первым в ссылку корзины', () => {
+    const { container } = renderWidget(
+      <Header
+        {...feedHeader()}
+        decor={<div data-testid="decor" />}
+        cartDecor={<i data-testid="cart-decor" />}
+      />
+    )
+
+    const header = container.querySelector('header')
+    expect(header?.lastElementChild?.getAttribute('data-testid')).toBe('decor')
+    const cart = container.querySelector('a[aria-label^="Корзина"]')
+    expect(cart?.firstElementChild?.getAttribute('data-testid')).toBe('cart-decor')
+  })
 })

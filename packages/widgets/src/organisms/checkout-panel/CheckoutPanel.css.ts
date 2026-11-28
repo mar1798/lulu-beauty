@@ -1,7 +1,8 @@
-import { style } from '@vanilla-extract/css'
+import { fallbackVar, style } from '@vanilla-extract/css'
 import { border, color, font, transition } from '../../styling/lib'
 import { media } from '../../styling/lib/media'
 import { flexColumn, flexRow, focusVisibleRing } from '../../styling/mixin'
+import { headerOffset } from '../../styling/properties.css'
 import { vars } from '../../styling/themes/contract.css'
 
 /** Та же сетка, что в корзине: состав тянется, вторая колонка фиксирована. */
@@ -71,6 +72,9 @@ export const skeletonLines = style({
  */
 export const form = style({
   ...media({
-    lg: { position: 'sticky', top: vars.space.xxl },
+    lg: {
+      position: 'sticky',
+      top: `calc(${fallbackVar(headerOffset, '0px')} + ${vars.space.lg})`,
+    },
   }),
 })

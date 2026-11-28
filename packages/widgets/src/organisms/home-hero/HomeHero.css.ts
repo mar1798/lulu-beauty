@@ -133,6 +133,23 @@ export const background = style({
   ...reducedOff,
 })
 
+/**
+ * Слот сезонного декора. Абсолютный слой на весь герой, без анимации входа и без
+ * кликов; пустой (вне сезона декор отдаёт `null`) скрыт. Содержимое героя
+ * (`inner`, `position: relative`) стоит в разметке позже и потому выше.
+ * `zIndex: 0` делает слой своим stacking context: позиционированные картинки внутри
+ * (у них свои z-index) не вылезают над `inner` и не ложатся поверх витрины.
+ */
+export const decor = style({
+  position: 'absolute',
+  inset: 0,
+  zIndex: 0,
+  pointerEvents: 'none',
+  selectors: {
+    '&:empty': { display: 'none' },
+  },
+})
+
 export const inner = style({
   ...flexColumn(),
   position: 'relative',

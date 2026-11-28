@@ -264,6 +264,7 @@ export const HomeHero: FC<IHomeHeroProps & IBasicStyling> = ({
   showcase,
   showcaseMore,
   background,
+  decor,
   scrollHint,
   hasOverlayHeader = true,
   className,
@@ -298,6 +299,13 @@ export const HomeHero: FC<IHomeHeroProps & IBasicStyling> = ({
   const body = (
     <>
       {background !== undefined && <div className={styles.background}>{background}</div>}
+
+      {/* Сезонный декор: слой без места в потоке, под содержимым (`inner` идёт позже). */}
+      {decor !== undefined && (
+        <div className={styles.decor} aria-hidden={true}>
+          {decor}
+        </div>
+      )}
 
       <Container className={styles.inner}>
         <div className={clsx(styles.content, showcase !== undefined && styles.contentSplit)}>

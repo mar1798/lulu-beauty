@@ -6,6 +6,7 @@ import React, {
   useMemo,
   useRef,
   useState,
+  type ReactNode,
 } from 'react'
 import type { IToast, IToastAction, IToastTone } from '../types'
 import { ToastViewport } from '../organisms/toast-viewport'
@@ -33,6 +34,11 @@ export interface INotifyInput {
    * прочитать «убрано», но не чтобы успеть передумать.
    */
   action?: IToastAction
+  /**
+   * Иллюстрация слева от текста - см. `IToast.icon`. Декоративная: скринридеру
+   * уходит только текст уведомления.
+   */
+  icon?: ReactNode
 }
 
 export type IAnnouncePoliteness = 'polite' | 'assertive'
@@ -208,6 +214,7 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         subject: input.subject,
         description: input.description,
         action: input.action,
+        icon: input.icon,
       }
 
       setToasts(current => [...current, toast])

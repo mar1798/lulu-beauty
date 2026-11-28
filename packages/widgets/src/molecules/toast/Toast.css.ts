@@ -28,6 +28,20 @@ export const tone = styleVariants({
   danger: { borderLeft: border(4, color.danger('500')) },
 })
 
+/**
+ * Иллюстрация слева от текста. Размер задаёт сама иллюстрация, обёртка только не
+ * даёт ей сжаться. Если внутри ничего нет (сезонный декор вне сезона отдаёт
+ * `null`), `:empty` убирает обёртку из раскладки вместе с зазором `gap`, и тост
+ * выглядит так же, как без иконки.
+ */
+export const icon = style({
+  display: 'flex',
+  flexShrink: 0,
+  selectors: {
+    '&:empty': { display: 'none' },
+  },
+})
+
 export const body = style({
   ...flexColumn(2),
   minWidth: 0,

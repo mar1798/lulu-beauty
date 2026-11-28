@@ -36,6 +36,8 @@ export const ProductGrid: FC<IProductGridProps & IBasicStyling> = ({
   emptyState,
   renderAction,
   renderMediaAction,
+  renderCardDecor,
+  indexOffset = 0,
   isStaggered = false,
   priorityCount = 0,
   isBusy = false,
@@ -91,6 +93,7 @@ export const ProductGrid: FC<IProductGridProps & IBasicStyling> = ({
               }
               action={renderAction?.(product)}
               mediaAction={renderMediaAction?.(product)}
+              decor={renderCardDecor?.(product, indexOffset + index)}
               isPriority={index < priorityCount}
             />
           )

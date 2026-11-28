@@ -28,3 +28,21 @@ WithPromoCarousel.args = {
   ...feedCatalogTemplate(),
   banner: <PromoCarousel {...feedPromoCarousel()} />,
 }
+
+/** Слот `decor`: полоска между заголовком и фильтрами. Плейсхолдер - настоящий декор рисует сайт. */
+export const WithDecor = Template.bind({})
+WithDecor.parameters = { layout: 'padded' }
+WithDecor.args = {
+  ...feedCatalogTemplate(),
+  decor: (
+    <div
+      aria-hidden="true"
+      style={{
+        height: 96,
+        borderRadius: 16,
+        background: '#d9534f',
+        opacity: 0.7,
+      }}
+    />
+  ),
+}

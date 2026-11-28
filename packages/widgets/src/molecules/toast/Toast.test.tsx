@@ -40,4 +40,23 @@ describe('Toast', () => {
 
     expect(screen.queryByRole('button', { name: 'Вернуть' })).toBeNull()
   })
+
+  it('рисует иконку слева от текста и прячет её от скринридера', () => {
+    const fixture = feedToast()
+
+    const { container } = renderWidget(
+      <Toast toast={{ ...fixture.toast, icon: <i data-testid="icon" /> }} onDismiss={() => {}} />
+    )
+
+    expect(screen.getByTestId('icon').parentElement).toHaveAttribute('aria-hidden', 'true')
+    expect(container.firstElementChild?.firstElementChild).toContainElement(
+      screen.getByTestId('icon')
+    )
+  })
+
+  it('без иконки обёртки под неё нет', () => {
+    const { container } = renderWidget(<Toast {...feedToast()} />)
+
+    expect(container.querySelector('span[aria-hidden="true"]')).toBeNull()
+  })
 })

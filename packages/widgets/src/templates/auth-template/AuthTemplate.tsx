@@ -16,6 +16,7 @@ export const AuthTemplate: FC<IAuthTemplateProps & IBasicStyling> = ({
   subtitle,
   children,
   footer,
+  decor,
   className,
 }) => (
   <div className={clsx(styles.container, className)}>
@@ -32,6 +33,13 @@ export const AuthTemplate: FC<IAuthTemplateProps & IBasicStyling> = ({
       </div>
 
       {children}
+
+      {/* Сезонный декор: слой без места в потоке, поверх края карточки. */}
+      {decor !== undefined && (
+        <div className={styles.decor} aria-hidden={true}>
+          {decor}
+        </div>
+      )}
     </section>
 
     {footer !== undefined && <div className={styles.footer}>{footer}</div>}

@@ -56,3 +56,25 @@ WithoutCode.args = {
   description: 'Не получилось получить список товаров. Это ненадолго.',
   actions: <Button>Повторить</Button>,
 }
+
+/** Слот сезонного декора: плейсхолдер над верхним краем карточки, без места в потоке. */
+export const WithDecor = Template.bind({})
+WithDecor.parameters = LAYOUT
+WithDecor.args = {
+  ...feedErrorTemplate(),
+  decor: (
+    <span
+      aria-hidden="true"
+      style={{
+        position: 'absolute',
+        right: 24,
+        bottom: '100%',
+        width: 60,
+        height: 120,
+        borderRadius: 8,
+        background: '#d9534f',
+        opacity: 0.7,
+      }}
+    />
+  ),
+}

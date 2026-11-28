@@ -18,13 +18,19 @@ export const SectionHeading: FC<ISectionHeadingProps & IBasicStyling> = ({
   description,
   level = 2,
   action,
+  titleDecor,
   className,
 }) => (
   <div className={clsx(styles.container, className)}>
     <div className={styles.text}>
       {eyebrow !== undefined && <span className={styles.eyebrow}>{eyebrow}</span>}
 
-      <Heading level={level}>{title}</Heading>
+      <Heading level={level}>
+        {title}
+
+        {/* Сразу за последним словом, с нулевым размером в потоке: перенос строк не меняется. */}
+        {titleDecor !== undefined && <span className={styles.titleDecor}>{titleDecor}</span>}
+      </Heading>
 
       {description !== undefined && <Text tone="secondary">{description}</Text>}
     </div>

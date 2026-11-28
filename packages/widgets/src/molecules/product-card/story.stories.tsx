@@ -58,3 +58,30 @@ SeveralVolumes.args = {
   product: feedProductWithVariants(),
   action: <IconButton icon={<IconPlus />} label="Выбрать объём" variant="primary" size="md" />,
 }
+
+/** Слот `decor`: плейсхолдер вместо шапочки - висит на углу карточки, вне `media`, клики не ловит. */
+export const WithDecor = Template.bind({})
+WithDecor.parameters = {
+  layout: 'padded',
+}
+WithDecor.args = {
+  ...feedProductCard(),
+  action: <IconButton icon={<IconPlus />} label="В корзину" variant="primary" size="md" />,
+  decor: (
+    <span
+      aria-hidden="true"
+      style={{
+        position: 'absolute',
+        top: -24,
+        left: -14,
+        width: 52,
+        height: 40,
+        borderRadius: '50% 50% 8px 8px',
+        background: '#d9534f',
+        transform: 'rotate(-14deg)',
+        pointerEvents: 'none',
+        zIndex: 2,
+      }}
+    />
+  ),
+}

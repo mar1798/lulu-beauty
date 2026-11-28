@@ -92,4 +92,16 @@ describe('ProductCard и несколько объёмов', () => {
     expect(screen.getByText('от')).toBeInTheDocument()
     expect(screen.getByText('30 / 50 мл')).toBeInTheDocument()
   })
+
+  it('кладёт украшение в корень карточки, а не в фотографию', () => {
+    const product = feedProduct()
+
+    const { container } = renderWidget(
+      <ProductCard product={product} href="/catalog/x" decor={<i data-testid="decor" />} />
+    )
+
+    const decor = screen.getByTestId('decor')
+
+    expect(decor.parentElement).toBe(container.querySelector('article'))
+  })
 })
