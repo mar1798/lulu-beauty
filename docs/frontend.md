@@ -724,7 +724,6 @@ pageNumber) - 1) * (page?.pageSize ?? PAGE_SIZE)` (pagination is page-by-page, a
   - in `components/WishlistButton.tsx`: the `Decor` import and the `icon` (with its comment) of the "Товар в избранном" toast;
   - `"passThroughEnv": ["NEW_YEAR_*"]` of the `dev` task in `turbo.json`;
   - outside the repository: the `NEW_YEAR_*` repository variables on GitHub (Settings → Secrets and variables → Actions → Variables) and any `NEW_YEAR_*` line in the server's `.env.prod`;
-  - the `// TODO` about the New Year `logoNote` text in `SiteLayout` (the slot itself stays);
   - the `NEW_YEAR_*` `ARG`s, their `ENV` lines and the comment above them in `apps/website/Dockerfile`;
   - the `NEW_YEAR_*` build args in `.github/workflows/release-tag.yml` and `docker-compose.prod.build.yml`;
   - the block in `apps/website/.env.example`;
@@ -740,7 +739,7 @@ pageNumber) - 1) * (page?.pageSize ?? PAGE_SIZE)` (pagination is page-by-page, a
 **Stays:** every `widgets` slot from [widgets.md](widgets.md#decor-slots) (`Header.decor`/`cartDecor`/`logoNote`, `CatalogTemplate.decor`, `ProductCard.decor`, `ProductGrid.renderCardDecor`/`indexOffset`, `IToast.icon`, `CartTemplate.titleDecor`, `SectionHeading.titleDecor`, `StepList.renderIcon`, `HomeHero.decor`, `AuthTemplate.decor`, `ErrorTemplate.decor`, `Footer.decor`, the `:empty` rules), their stories and tests: they know nothing about the season.
 
 The `Header`'s `logoNote` slot is kept for a short seasonal caption next to the logo;
-`SiteLayout` leaves a `TODO` where its text goes.
+`SiteLayout` currently passes nothing to it.
 
 ## Configuration
 
